@@ -18,15 +18,16 @@
  * removes this dsh home's containers whose session is archived, or gone and
  * stopped. A container keeps running without a helper only when dsh is
  * killed, or exits before the teardown finishes; its next use takes it over.
- * The image is built from this package's `image/` folder at startup.
+ * The image is a prerequisite, built by this package's `build-image` script;
+ * without it this service does not start, dsh's startup warning says why, and
+ * no session can run.
  * @module fleet-world/world
  */
 
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
-import { isAbsolute, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { mkdir, rm } from 'node:fs/promises'
+import { isAbsolute, join } from 'node:path'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
@@ -41,6 +42,7 @@ import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { SshSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-ssh'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { DockerConnection } from './connection.ts'
+import { HELPER_ENTRY, HELPER_NODE, helperHash, imageTag } from './image.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -54,11 +56,6 @@ const HOME_LABEL = 'fleet.world.home'
 /** Digest of a container's `docker run` arguments; a mismatch means the container is out of date. */
 const SPEC_LABEL = 'fleet.world.spec'
 
-/** The image definition this package builds; every file below it feeds the image tag. */
-const IMAGE_CONTEXT = fileURLToPath(new URL('../image/', import.meta.url))
-/** Where `image/Dockerfile` installs Node and the dsh-ssh helper. */
-const HELPER_NODE = '/usr/local/bin/node'
-const HELPER_ENTRY = '/opt/fleet-world/helper/node_modules/@deepseek-ai/dsh-ssh/lib/helper.js'
 /** dsh-ssh's defaults for the helper's request deadline and heartbeat lease. */
 const HELPER_REQUEST_TIMEOUT_MS = 30_000
 const HELPER_LEASE_MS = 30_000
@@ -84,7 +81,7 @@ export interface Config {
   docker: string
   /** Host directory holding each session's private `/tmp`; short enough for the helper's socket paths. */
   runtimeDir: string
-  /** Deadline for one Docker CLI call other than an image build. */
+  /** Deadline for one Docker CLI call. */
   dockerTimeoutMs: number
 }
 
@@ -132,7 +129,7 @@ export class FleetWorld extends Service {
     runtimeDir: Schema.string()
       .default(process.env.XDG_RUNTIME_DIR === undefined ? '' : join(process.env.XDG_RUNTIME_DIR, 'fleet-world'))
       .description("Host directory holding each session's private /tmp; short enough for the helper's socket paths."),
-    dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call other than an image build.'),
+    dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call.'),
   })
 
   private readonly config: Config
@@ -141,7 +138,7 @@ export class FleetWorld extends Service {
   /** Sessions archived in the workspace registry, as of its latest write. */
   private archived: ReadonlySet<SessionId>
   /**
-   * Settles once the image is built and stale containers are removed. Agents
+   * Settles once the image is found and stale containers are removed. Agents
    * can be created before that, and their worlds wait for it, so none opens
    * without an image or is mistaken for stale before its session is saved.
    */
@@ -176,12 +173,18 @@ export class FleetWorld extends Service {
     ctx.on('domain/changed', (change) => { this.followArchive(change) })
   }
 
-  /** Build the image before any session needs it, then clean up; a missing Docker fails startup. */
+  /** Find the image and clean up before any session needs them; without the image or Docker, this service does not start. */
   async [Service.init](): Promise<void> {
     try {
-      const helper = await readFile(fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-ssh/helper')))
-      this.helperHash = createHash('sha256').update(helper).digest('hex')
-      this.image = await this.buildImage()
+      this.helperHash = await helperHash()
+      this.image = await imageTag()
+      try {
+        await this.docker(['image', 'inspect', '--format', '{{.Id}}', this.image])
+      } catch (error) {
+        if (!/no such image/iu.test(message(error))) throw error
+        throw new Error(`fleet-world: the session image ${this.image} is not built; build it with this package's build-image script `
+          + '(`pnpm build-image` in the deepseek-fleet repository)')
+      }
       await this.removeStale()
       this.started.resolve()
     } catch (error) {
@@ -472,23 +475,6 @@ export class FleetWorld extends Service {
     return { name, id: created.id, created: created.created, workspace, tmp }
   }
 
-  /** Build the session image unless its tag, a digest of `image/`, already exists. */
-  private async buildImage(): Promise<string> {
-    const digest = createHash('sha256')
-    const files = (await readdir(IMAGE_CONTEXT, { recursive: true, withFileTypes: true }))
-      .filter(entry => entry.isFile())
-      .map(entry => relative(IMAGE_CONTEXT, join(entry.parentPath, entry.name)))
-      .sort()
-    for (const file of files) digest.update(`${file}\0`).update(await readFile(join(IMAGE_CONTEXT, file))).update('\0')
-    const tag = `fleet-world:${digest.digest('hex').slice(0, 12)}`
-    const present = await this.docker(['image', 'inspect', tag]).then(() => true, () => false)
-    if (!present) {
-      this.ctx.logger.info(`fleet-world: building image ${tag}; the first build takes a minute`)
-      await this.docker(['build', '--quiet', '--tag', tag, IMAGE_CONTEXT], 0)
-    }
-    return tag
-  }
-
   /** @returns the container's identity and state, or undefined when no such container exists. */
   private async inspect(name: string): Promise<{ id: string; created: number; running: boolean; spec: string } | undefined> {
     let state: string
@@ -517,13 +503,12 @@ export class FleetWorld extends Service {
   }
 
   /**
-   * Run one Docker CLI command.
-   * @param timeoutMs - 0 waits without a deadline.
+   * Run one Docker CLI command within the configured deadline.
    * @returns trimmed stdout; a failure carries Docker's stderr.
    */
-  private docker(args: string[], timeoutMs = this.config.dockerTimeoutMs): Promise<string> {
+  private docker(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      execFile(this.config.docker, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      execFile(this.config.docker, args, { timeout: this.config.dockerTimeoutMs, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
         if (error === null) resolve(stdout.trim())
         else reject(new Error(`fleet-world: docker ${args[0]} failed: ${stderr.trim() || error.message}`, { cause: error }))
       })

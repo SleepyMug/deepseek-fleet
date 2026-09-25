@@ -30,6 +30,7 @@
   ],
   "scripts": {
     "build": "tsc -b",
+    "build-image": "tsc -b && node lib/build-image.js",
     "prepack": "tsc -b"
   },
   "dsh": {
