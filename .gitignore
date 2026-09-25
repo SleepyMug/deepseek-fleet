@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output of each package (tsc -b)
+/*/lib/
+*.tsbuildinfo
+
+# pnpm pack output
+*.tgz
+
+# Claude Code's local state
+.claude/*.lock
+.claude/settings.local.json
+
+# Editor backups
+*~

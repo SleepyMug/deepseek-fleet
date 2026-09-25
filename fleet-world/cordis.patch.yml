@@ -1,0 +1,75 @@
+# Docker execution world, layered after profile-fleet: it replaces that
+# bundle's `fs-local` row, so list it later in the profile's bundles.
+#
+# Every root session gets one container when its agent is created: the
+# session folder is bind-mounted at the same path, /tmp is a private folder
+# under $XDG_RUNTIME_DIR/fleet-world (tmpfs, cleared at reboot), and
+# processes run as the container's root (you, under rootless
+# Docker). Subagent sessions share their root's container. Containers stop
+# when dsh exits. The image is built from fleet-world/image at startup.
+#
+# Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
+# its container, through the dsh-ssh helper and dsh's SSH providers. A call
+# outside a session's work fails instead of touching the host, so features
+# that make such calls are disabled below until the world serves them.
+
+# ── The world replaces the local execution providers ──
+
+- id: subprocess
+  disabled: true
+
+- id: fs-local
+  disabled: true
+
+- insert:
+    - id: fleet-world
+      name: fleet-world/world
+
+    - id: fleet-world-fs
+      name: fleet-world/fs
+
+    - id: fleet-world-subprocess
+      name: fleet-world/subprocess
+
+# ── Not served by the world yet ──
+
+# Sidebar terminal: it spawns outside any agent turn, so the world cannot
+# tell its session yet.
+- id: terminal-controller
+  disabled: true
+
+- id: ui-sidebar-terminal
+  disabled: true
+
+# ── Views that read files or run processes without a session ──
+
+# Sidebar file tree and document preview read through ctx.fs with no session attached.
+- id: workspace-files
+  disabled: true
+
+- id: ui-sidebar-files
+  disabled: true
+
+- id: ui-sidebar-documentpreview
+  disabled: true
+
+- id: office-to-pdf
+  disabled: true
+
+# `@` file mentions walk the host folder directly.
+- id: file-reference-local
+  disabled: true
+
+# Changed-files card: git snapshots through host temp paths.
+- id: workspace-changes
+  disabled: true
+
+- id: ui-deliverables
+  disabled: true
+
+# Open in app: finds apps through ctx.subprocess but launches them on the host.
+- id: open-in-app
+  disabled: true
+
+- id: ui-open-in-app
+  disabled: true

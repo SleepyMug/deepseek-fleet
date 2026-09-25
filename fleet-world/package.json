@@ -1,0 +1,61 @@
+{
+  "name": "fleet-world",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Docker execution world for the fleet profile: one container per root session with its folder bind-mounted at the same path",
+  "type": "module",
+  "exports": {
+    "./world": {
+      "types": "./lib/world.d.ts",
+      "default": "./lib/world.js"
+    },
+    "./fs": {
+      "types": "./lib/fs.d.ts",
+      "default": "./lib/fs.js"
+    },
+    "./subprocess": {
+      "types": "./lib/subprocess.d.ts",
+      "default": "./lib/subprocess.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "image",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs-ssh": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-ssh": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess-ssh": "0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs-ssh": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-session": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-ssh": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess-ssh": "0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4"
+  }
+}

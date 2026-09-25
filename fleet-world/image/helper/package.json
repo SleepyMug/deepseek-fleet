@@ -1,0 +1,10 @@
+{
+  "name": "fleet-world-helper",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The dsh-ssh helper and the local providers it runs, installed in the session image",
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-ssh": "0.1.7-rc.2"
+  }
+}

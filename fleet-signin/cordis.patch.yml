@@ -1,0 +1,14 @@
+# One-shot sign-in app layered over @deepseek-ai/dsh-base, in its own profile:
+#
+#   pnpm exec dsh plugin --profile signin add ./fleet-signin   # once
+#   pnpm exec dsh signin openai-codex                          # sign in
+#   pnpm exec dsh signin                                       # list sign-ins
+#
+# Do not add this bundle to a long-running profile: it runs on every start
+# and exits the process when the attempt ends.
+- insert:
+    - id: fleet-signin
+      name: fleet-signin
+
+- id: hmr
+  disabled: true
