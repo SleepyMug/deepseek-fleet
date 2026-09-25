@@ -4,6 +4,8 @@
  * inputs, which gives the image a new tag; a tag already built is kept.
  * Docker gets exactly the inputs as its build context, and the result must
  * run the same dsh-ssh helper as the host, or its tag is removed again.
+ * Older fleet-world tags are removed once no container uses them, so running
+ * it again later clears those that were still in use.
  *
  * Usage: `node lib/build-image.js`, or `pnpm build-image`.
  * @module fleet-world/build-image
@@ -20,8 +22,13 @@ async function main(): Promise<void> {
   const tag = await imageTag()
   if (await docker(['image', 'inspect', '--format', '{{.Id}}', tag]).then(() => true, () => false)) {
     console.log(`fleet-world: ${tag} is already built`)
-    return
+  } else {
+    await buildChecked(tag)
   }
+  await removeOlder(tag)
+}
+
+async function buildChecked(tag: string): Promise<void> {
   console.log(`fleet-world: building ${tag}`)
   await build(tag)
   const inImage = await docker(['run', '--rm', '--network', 'none', '--entrypoint', HELPER_NODE, tag, '-e', HASH_SCRIPT, HELPER_ENTRY])
@@ -31,6 +38,20 @@ async function main(): Promise<void> {
       + 'version in image/helper/package.json and its lockfile, then build again')
   }
   console.log(`fleet-world: built ${tag}`)
+}
+
+/** Remove every other fleet-world tag; Docker refuses those a container still uses, and they stay. */
+async function removeOlder(tag: string): Promise<void> {
+  const tags = (await docker(['image', 'ls', '--filter', 'reference=fleet-world', '--format', '{{.Repository}}:{{.Tag}}']))
+    .split('\n').filter(line => line !== '' && line !== tag)
+  for (const older of tags) {
+    try {
+      await docker(['image', 'rm', older])
+      console.log(`fleet-world: removed ${older}`)
+    } catch {
+      console.log(`fleet-world: kept ${older}, which a container still uses`)
+    }
+  }
 }
 
 /** Send the inputs to `docker build` as a tar stream, so the context holds nothing else. */

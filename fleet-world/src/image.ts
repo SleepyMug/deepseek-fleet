@@ -15,9 +15,10 @@ export const IMAGE_DIR = fileURLToPath(new URL('../image/', import.meta.url))
 /**
  * The files the image is built from, relative to `IMAGE_DIR`. They are the
  * whole build context and all its tag digests, so a Dockerfile that uses any
- * other file fails to build instead of leaving the tag stale.
+ * other file fails to build instead of leaving the tag stale. The helper's
+ * lockfile is an npm-shrinkwrap.json because packing drops package-lock.json.
  */
-export const IMAGE_INPUTS: readonly string[] = ['Dockerfile', 'helper/package-lock.json', 'helper/package.json']
+export const IMAGE_INPUTS: readonly string[] = ['Dockerfile', 'helper/npm-shrinkwrap.json', 'helper/package.json']
 /** Where the Dockerfile installs Node and the dsh-ssh helper. */
 export const HELPER_NODE = '/usr/local/bin/node'
 export const HELPER_ENTRY = '/opt/fleet-world/helper/node_modules/@deepseek-ai/dsh-ssh/lib/helper.js'

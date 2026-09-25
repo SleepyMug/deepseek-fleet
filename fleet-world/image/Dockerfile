@@ -9,7 +9,7 @@ RUN apt-get update \
  && apt-get install --yes --no-install-recommends ca-certificates curl git less procps ripgrep \
  && rm -rf /var/lib/apt/lists/*
 
-COPY helper/package.json helper/package-lock.json /opt/fleet-world/helper/
+COPY helper/package.json helper/npm-shrinkwrap.json /opt/fleet-world/helper/
 RUN cd /opt/fleet-world/helper \
  && npm ci --no-audit --no-fund --no-update-notifier \
  && npm cache clean --force

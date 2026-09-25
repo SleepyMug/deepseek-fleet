@@ -46,17 +46,16 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
 }
 
-/** Between the harness-source and web-surface sections, which also describe where things live. */
-const ENVIRONMENT_ORDER = 10_050
 const ENVIRONMENT = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, with {{cwd}} '
   + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages, '
-  + 'persists until the session is archived; /tmp is emptied when the machine restarts.'
+  + 'persists from turn to turn, and you are told if the container is ever replaced; /tmp is emptied when the machine restarts.'
 
 export const name = 'fleet-world-context'
 export const inject = ['fleetWorld', 'systemPrompt', 'sessionProjections']
 
 export function apply(ctx: Context): void {
-  ctx.systemPrompt.section({ name: 'fleet-world:environment', order: ENVIRONMENT_ORDER, text: ENVIRONMENT })
+  // The web surface's slot among the local paths and endpoints; this bundle turns that section off, since it describes the host.
+  ctx.systemPrompt.section({ name: 'fleet-world:environment', order: ctx.systemPrompt.getSectionOrder('WEB_SURFACE'), text: ENVIRONMENT })
 
   ctx.sessionProjections.register({
     key: 'fleetWorldContainer',

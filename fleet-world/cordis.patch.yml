@@ -16,7 +16,9 @@
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through the dsh-ssh helper and dsh's SSH providers. A call
 # outside a session's work fails instead of touching the host, so features
-# that make such calls are disabled below until the world serves them.
+# that make such calls are disabled below until the world serves them. The
+# chat's file links (`/api/file`) are one too, but session-controller serves
+# them itself, so they stay and fail when opened.
 
 # ── The world replaces the local execution providers ──
 
@@ -40,6 +42,18 @@
     # container is newer than its conversation.
     - id: fleet-world-context
       name: fleet-world/context
+
+# ── Host details the model cannot use from its container ──
+
+# The dsh checkout path and developer notes in the system prompt, and
+# DSH_WEB_URL, a loopback URL of the host, in every command's environment.
+# Patches replace a row's config whole, so this restates the other fields.
+- id: web-runtime
+  config:
+    openBrowser: !!js ctx.webStartup.openBrowser
+    printUrl: true
+    surfaceContext: false
+    trustedHosts: !!js ctx.webStartup.trustedHosts
 
 # ── Not served by the world yet ──
 
