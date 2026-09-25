@@ -9,9 +9,10 @@
 # dsh has its helper connected: it starts before a model step needs it, stops
 # when dsh exits or the helper is lost, and is removed when its session is
 # archived; an unarchived session starts fresh, and the model is told once.
-# The session image is a prerequisite: build it with `pnpm build-image` in
-# this repository. Without it fleet-world does not start, dsh's startup
-# warning says so, and no session can run.
+# The session image is a prerequisite: build it with the fleet-image app
+# (`dsh fleet-image`, see fleet-image/cordis.patch.yml). Without it
+# fleet-world does not start, dsh's startup warning says so, and no session
+# can run.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through the dsh-ssh helper and dsh's SSH providers. A call

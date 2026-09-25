@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "fleet-image" },
     { "path": "fleet-signin" },
     { "path": "fleet-world" }
   ]

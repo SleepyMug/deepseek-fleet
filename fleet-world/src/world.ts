@@ -18,9 +18,9 @@
  * removes this dsh home's containers whose session is archived, or gone and
  * stopped. A container keeps running without a helper only when dsh is
  * killed, or exits before the teardown finishes; its next use takes it over.
- * The image is a prerequisite, built by this package's `build-image` script;
- * without it this service does not start, dsh's startup warning says why, and
- * no session can run.
+ * The image is a prerequisite, built by the fleet-image app (`dsh
+ * fleet-image`); without it this service does not start, dsh's startup
+ * warning says why, and no session can run.
  * @module fleet-world/world
  */
 
@@ -42,7 +42,7 @@ import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { SshSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-ssh'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { DockerConnection } from './connection.ts'
-import { HELPER_ENTRY, HELPER_NODE, helperHash, imageTag } from './image.ts'
+import { HELPER_ENTRY, HELPER_NODE, helperHash, imageTag, packageVersion } from './image.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -182,8 +182,8 @@ export class FleetWorld extends Service {
         await this.docker(['image', 'inspect', '--format', '{{.Id}}', this.image])
       } catch (error) {
         if (!/no such image/iu.test(message(error))) throw error
-        throw new Error(`fleet-world: the session image ${this.image} is not built; build it with this package's build-image script `
-          + '(`pnpm build-image` in the deepseek-fleet repository)')
+        throw new Error(`fleet-world ${await packageVersion()} needs the session image ${this.image}, which is not built; `
+          + 'build it with the fleet-image app (`dsh fleet-image`) on the same fleet-world version')
       }
       await this.removeStale()
       this.started.resolve()

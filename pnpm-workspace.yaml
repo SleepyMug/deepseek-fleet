@@ -1,4 +1,5 @@
 packages:
+  - fleet-image
   - fleet-signin
   - fleet-world
   - profile-fleet

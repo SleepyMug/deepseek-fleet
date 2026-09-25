@@ -1,0 +1,13 @@
+# One-shot app that builds fleet-world's session image, in its own profile:
+#
+#   dsh plugin --profile fleet-image add ./fleet-image   # once
+#   dsh fleet-image                                      # build the image
+#
+# Run it after installing or updating fleet-world; the fleet profile only
+# looks the image up. Keep both profiles on the same fleet-world version:
+# each builds or wants the image of its own copy, and both name the version.
+# Do not add this bundle to a long-running profile: it runs on every start
+# and exits the process when the build ends.
+- insert:
+    - id: fleet-image
+      name: fleet-image

@@ -21,6 +21,10 @@
       "types": "./lib/context.d.ts",
       "default": "./lib/context.js"
     },
+    "./image": {
+      "types": "./lib/image.d.ts",
+      "default": "./lib/image.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -30,7 +34,6 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "build-image": "tsc -b && node lib/build-image.js",
     "prepack": "tsc -b"
   },
   "dsh": {
