@@ -6,8 +6,8 @@
  * process stream is a Unix socket the helper creates under the container's
  * `/tmp`: the host reaches it through the session's bind-mounted `/tmp`
  * folder, without forwarding, and authenticates it with TLS-PSK. Like
- * `SshConnection`, a connection never reconnects; losing the helper fails
- * every pending operation, and `lost` tells the owner to open a new one.
+ * `SshConnection`, a connection never reconnects: losing the helper fails
+ * every pending operation, and `ended` tells the owner to tear the world down.
  * @module fleet-world/connection
  */
 
@@ -54,11 +54,14 @@ export interface Config {
 export class DockerConnection extends Service {
   /** The helper's handshake; operations wait for it. */
   readonly ready: Promise<Hello>
-  /** Settles with the failure that ended the connection; never settles after a clean dispose. */
-  readonly lost: Promise<Error>
+  /**
+   * Settles with what ended the connection when anything but its own teardown
+   * did: the helper failed, or dsh's providers gave up on it.
+   */
+  readonly ended: Promise<Error>
 
   private readonly config: Config
-  private readonly markLost: (error: Error) => void
+  private readonly markEnded: (error: Error) => void
   private readonly lifetime = new AbortController()
   private readonly sockets = new Set<Socket>()
   private rpc: SshRpcPeer | undefined
@@ -68,17 +71,17 @@ export class DockerConnection extends Service {
   private stderr = ''
   private closed = false
   private failure: Error | undefined
-  private disposal: Promise<void> | undefined
+  private closing: Promise<void> | undefined
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'ssh')
     this.config = config
-    const lost = Promise.withResolvers<Error>()
-    this.lost = lost.promise
-    this.markLost = lost.resolve
+    const ended = Promise.withResolvers<Error>()
+    this.ended = ended.promise
+    this.markEnded = ended.resolve
     this.ready = this.start()
     void this.ready.catch((error: unknown) => { this.fail(asError(error)) })
-    ctx.effect(() => () => this.dispose(), 'fleet-world helper connection')
+    ctx.effect(() => () => this.close(), 'fleet-world helper connection')
   }
 
   /** Keep the providers that use this connection waiting until the helper is verified. */
@@ -123,13 +126,23 @@ export class DockerConnection extends Service {
     return authenticated
   }
 
-  /** Stop everything the helper started, then end the helper. */
+  /**
+   * What dsh's SSH providers call when they can no longer vouch for the
+   * helper, after it did not confirm that a process was stopped: end the
+   * connection and report it ended, so its owner tears the world down.
+   */
   dispose(): Promise<void> {
-    this.disposal ??= this.disposeOnce()
-    return this.disposal
+    this.fail(new Error('fleet-world: dsh\'s SSH providers gave up on the helper after it did not confirm that a process was stopped'))
+    return this.close()
   }
 
-  private async disposeOnce(): Promise<void> {
+  /** Stop everything the helper started, then end the helper; this service's own teardown, which reports nothing. */
+  private close(): Promise<void> {
+    this.closing ??= this.closeOnce()
+    return this.closing
+  }
+
+  private async closeOnce(): Promise<void> {
     this.closed = true
     this.lifetime.abort(new Error('fleet-world: the helper connection is closing'))
     clearInterval(this.heartbeat)
@@ -241,7 +254,7 @@ export class DockerConnection extends Service {
     this.rpc?.close(error)
     for (const socket of [...this.sockets].reverse()) socket.destroy(error)
     this.child?.kill('SIGTERM')
-    if (!this.closed) this.markLost(error)
+    if (!this.closed) this.markEnded(error)
   }
 
   private stderrNote(): string {

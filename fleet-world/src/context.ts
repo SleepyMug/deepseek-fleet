@@ -1,0 +1,99 @@
+/**
+ * What the model is told about its container: a standing system-prompt
+ * section, and a one-time notice when a session's container is newer than its
+ * conversation. That happens after an unarchive, a fork, an image update, or a
+ * container removed by hand, and everything earlier turns installed or created
+ * outside the workspace is gone. A brand-new session never gets the notice,
+ * since its container exists before its first message; an ordinary resume
+ * never does either, since its container is the same.
+ *
+ * The notice is an ordinary `user/message` with a `fleet-world` source, added
+ * to the next step that already sends messages, so it never makes a model
+ * call of its own, and written to the session log once; a projection folds
+ * the log back into when the conversation began and which container the last
+ * notice described.
+ * @module fleet-world/context
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
+import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+import { z } from 'zod'
+import type { SessionContainer } from './world.ts'
+
+const KIND = 'fleet-world'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** A notice that the session's container is new; `container` is the Docker id it describes. */
+    'fleet-world': { kind: 'fleet-world'; container: string } & ContextFormed
+  }
+}
+
+const historySchema = z.object({
+  /** When the conversation's first message was written, in epoch milliseconds; null before it has one. */
+  since: z.number().nullable(),
+  /** The container the latest notice described; null before any notice. */
+  noticed: z.string().nullable(),
+})
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionStateMap {
+    fleetWorldContainer: z.infer<typeof historySchema>
+  }
+}
+
+/** Between the harness-source and web-surface sections, which also describe where things live. */
+const ENVIRONMENT_ORDER = 10_050
+const ENVIRONMENT = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, with {{cwd}} '
+  + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages, '
+  + 'persists until the session is archived; /tmp is emptied when the machine restarts.'
+
+export const name = 'fleet-world-context'
+export const inject = ['fleetWorld', 'systemPrompt', 'sessionProjections']
+
+export function apply(ctx: Context): void {
+  ctx.systemPrompt.section({ name: 'fleet-world:environment', order: ENVIRONMENT_ORDER, text: ENVIRONMENT })
+
+  ctx.sessionProjections.register({
+    key: 'fleetWorldContainer',
+    stateVersion: 1,
+    stateSchema: historySchema,
+    init: () => ({ since: null, noticed: null }),
+    apply: (state, event) => {
+      if (event.type !== 'user/message') return state
+      if (event.data.source.kind === KIND) return { ...state, noticed: event.data.source.container }
+      return state.since === null ? { ...state, since: event.time } : state
+    },
+  })
+
+  ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecision> => {
+    const decision = await next()
+    // dsh skips a step with nothing to send; a notice must not turn it into a model call.
+    if (decision.kind === 'reject' || signal.aborted || decision.messages.length === 0) return decision
+    const { container } = await ctx.fleetWorld.forAgent(agent, signal)
+    const history = ctx.sessionProjections.stateOf(agent.session, 'fleetWorldContainer')
+    if (history === undefined || history.since === null || history.since >= container.created || history.noticed === container.id) {
+      return decision
+    }
+    return { ...decision, messages: [notice(container), ...decision.messages] }
+  }, { prepend: true })
+}
+
+function notice(container: SessionContainer) {
+  const text = `This session's container is new: it was created after earlier parts of this conversation. `
+    + `Anything installed or created outside ${container.workspace} in the previous container, such as packages and files in /tmp, `
+    + `is gone; the files in ${container.workspace} are unchanged.`
+  return createUserMessage({
+    content: [{ type: 'text', text }],
+    source: {
+      kind: KIND,
+      form: 'notice',
+      summary: boundContextSummary('This session\'s container is new; what earlier turns installed outside the workspace is gone.'),
+      container: container.id,
+    },
+  })
+}

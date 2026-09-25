@@ -1,12 +1,15 @@
 # Docker execution world, layered after profile-fleet: it replaces that
 # bundle's `fs-local` row, so list it later in the profile's bundles.
 #
-# Every root session gets one container when its agent is created: the
-# session folder is bind-mounted at the same path, /tmp is a private folder
-# under $XDG_RUNTIME_DIR/fleet-world (tmpfs, cleared at reboot), and
-# processes run as the container's root (you, under rootless
-# Docker). Subagent sessions share their root's container. Containers stop
-# when dsh exits. The image is built from fleet-world/image at startup.
+# Every root session owns one container while it is unarchived: the session
+# folder is bind-mounted at the same path, /tmp is a private folder under
+# $XDG_RUNTIME_DIR/fleet-world (tmpfs, cleared at reboot), and processes run
+# as the container's root (you, under rootless Docker). Subagent sessions
+# share their root's container; a fork gets its own. A container runs while
+# dsh has its helper connected: it starts before a model step needs it, stops
+# when dsh exits or the helper is lost, and is removed when its session is
+# archived; an unarchived session starts fresh, and the model is told once.
+# The image is built from fleet-world/image at startup.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through the dsh-ssh helper and dsh's SSH providers. A call
@@ -30,6 +33,11 @@
 
     - id: fleet-world-subprocess
       name: fleet-world/subprocess
+
+    # The container in the system prompt, and the notice when a session's
+    # container is newer than its conversation.
+    - id: fleet-world-context
+      name: fleet-world/context
 
 # ── Not served by the world yet ──
 

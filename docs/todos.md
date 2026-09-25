@@ -1,3 +1,5 @@
 # TODOs
 
 - **Helper socket directory.** The dsh-ssh helper hard-codes its socket root as `mkdtemp('/tmp/dsh-ssh-')`, so its sockets sit in the model-writable container `/tmp`, where a routine `rm -rf /tmp/*` breaks later spawns in that session. Move the root to a dedicated mount such as `/run/fleet`, ideally through an upstream option rather than a `node --import` shim that wraps `mkdtemp`.
+- **Stop idle containers.** The web app never releases a session once it is opened, and each open container keeps a helper of about 80 MB, so close a session's world after a stretch with nothing running (the same running-work check dsh uses before archiving); its teardown stops the container, and the next step starts it again. Processes the model left running outside a background job would die with it.
+- **Forks and containers.** A fork gets a fresh container and a notice that earlier installs are gone; it could instead start from a copy of its source's container (`docker commit`), so installed tools carry over.

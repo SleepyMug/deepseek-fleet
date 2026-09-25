@@ -3,7 +3,7 @@
  * container of the session whose agent started it, through that session's
  * dsh-ssh helper, and a spawn outside any session's work fails instead of
  * running on the host. `spawn` is synchronous, so it needs the session's world
- * open already: agent creation opens it, and a spawn while the world
+ * open already: every model step opens it first, and a spawn while the world
  * reconnects fails.
  * @module fleet-world/subprocess
  */

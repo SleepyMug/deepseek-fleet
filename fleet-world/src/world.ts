@@ -1,32 +1,45 @@
 /**
  * The fleet execution world (`ctx.fleetWorld`). Every root session owns one
- * Docker container, opened whenever one of its agents is created, and one
- * dsh-ssh helper inside it that serves the session's files and processes to
- * dsh's SSH providers. The session folder is bind-mounted at the same absolute
- * path, and the container's `/tmp` is a private host folder under the user's
- * runtime directory, kept short so the host can reach the helper's sockets
- * there. Processes run as the container's root, which rootless Docker maps to
- * the host user, so files in the workspace stay the user's. Subagent sessions
- * share their root's container. The image is built from this package's
- * `image/` folder at startup. Containers used by this process are stopped, not
- * removed, when it exits.
+ * Docker container for as long as it is unarchived, and one dsh-ssh helper
+ * inside it that serves the session's files and processes to dsh's SSH
+ * providers. The session folder is bind-mounted at the same absolute path, and
+ * the container's `/tmp` is a private host folder under the user's runtime
+ * directory, kept short so the host can reach the helper's sockets there.
+ * Processes run as the container's root, which rootless Docker maps to the
+ * host user, so files in the workspace stay the user's. Subagent sessions
+ * share their root's container; a fork is its own root.
+ *
+ * Lifetime: a container runs exactly while this process has its session's
+ * world open, its helper connected and dsh's providers serving it. A world
+ * opens before a model step needs it, and its teardown always ends with the
+ * container stopped, whether its helper was lost or dsh exits; the next use
+ * starts it again. Archiving a session removes its container and `/tmp`
+ * folder, and an unarchived session gets a fresh one on its next use. Startup
+ * removes this dsh home's containers whose session is archived, or gone and
+ * stopped. A container keeps running without a helper only when dsh is
+ * killed, or exits before the teardown finishes; its next use takes it over.
+ * The image is built from this package's `image/` folder at startup.
  * @module fleet-world/world
  */
 
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import { SshFileSystem } from '@deepseek-ai/dsh-fs-ssh'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
+import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { SshSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-ssh'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { DockerConnection } from './connection.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -36,6 +49,8 @@ declare module '@deepseek-ai/cordis' {
 }
 
 const SESSION_LABEL = 'fleet.world.session'
+/** The dsh home a container's session belongs to; startup clean-up touches only its own home's containers. */
+const HOME_LABEL = 'fleet.world.home'
 /** Digest of a container's `docker run` arguments; a mismatch means the container is out of date. */
 const SPEC_LABEL = 'fleet.world.spec'
 
@@ -47,6 +62,12 @@ const HELPER_ENTRY = '/opt/fleet-world/helper/node_modules/@deepseek-ai/dsh-ssh/
 /** dsh-ssh's defaults for the helper's request deadline and heartbeat lease. */
 const HELPER_REQUEST_TIMEOUT_MS = 30_000
 const HELPER_LEASE_MS = 30_000
+/**
+ * Grace `docker stop` gives the container's init. The helper has stopped
+ * everything it started by then, leaving `sleep`, which exits on SIGTERM;
+ * whatever escaped the helper is killed when the init exits, whatever the grace.
+ */
+const STOP_GRACE_SECONDS = 1
 
 /** Hex digits of the session-id digest naming a session's `/tmp` folder. */
 const TMP_KEY_LENGTH = 12
@@ -65,14 +86,16 @@ export interface Config {
   runtimeDir: string
   /** Deadline for one Docker CLI call other than an image build. */
   dockerTimeoutMs: number
-  /** Grace `docker stop` gives a container before killing it. */
-  stopTimeoutSeconds: number
 }
 
 /** One root session's container. */
 export interface SessionContainer {
   /** Docker container name. */
   name: string
+  /** Docker container id; a recreated container has a new one. */
+  id: string
+  /** When Docker created the container, in epoch milliseconds. */
+  created: number
   /** Host folder bind-mounted at the same path. */
   workspace: string
   /** Host folder, under the runtime directory, mounted at the container's `/tmp`. */
@@ -86,15 +109,23 @@ export interface SessionWorld {
   subprocess: SubprocessRuntime
 }
 
-/** An open world, with the connection loss that ends it and the release of its providers. */
+/** An open world and its teardown. */
 interface OpenWorld {
   world: SessionWorld
-  lost: Promise<Error>
+  /** Tear the world down, whoever started it; settles once the container has stopped. */
   close(): Promise<void>
 }
 
+/** The owner of one root session's world. */
+interface Root {
+  /** Opening, teardown and removal run one at a time, in order. */
+  queue: Promise<unknown>
+  /** The open world; detached as soon as its teardown begins, so no call gets a closing world. */
+  open: OpenWorld | undefined
+}
+
 export class FleetWorld extends Service {
-  static inject = ['sessions', 'agents']
+  static inject = ['sessions', 'agents', 'workspaceRegistry', 'sessionPersistence']
 
   static Config: Schema<Config> = Schema.object({
     docker: Schema.string().default('docker').description('Docker CLI executable.'),
@@ -102,16 +133,19 @@ export class FleetWorld extends Service {
       .default(process.env.XDG_RUNTIME_DIR === undefined ? '' : join(process.env.XDG_RUNTIME_DIR, 'fleet-world'))
       .description("Host directory holding each session's private /tmp; short enough for the helper's socket paths."),
     dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call other than an image build.'),
-    stopTimeoutSeconds: Schema.number().default(5).description('Grace docker stop gives a container before killing it.'),
   })
 
   private readonly config: Config
-  /** Worlds by root session, opening or open; a failed or lost world is forgotten so the next use opens a new one. */
-  private readonly worlds = new Map<SessionId, Promise<OpenWorld>>()
-  /** The open worlds, for synchronous callers. */
-  private readonly open = new Map<SessionId, SessionWorld>()
-  /** Containers this process started or found running, by root session; each is stopped on exit. */
-  private readonly containers = new Map<SessionId, SessionContainer>()
+  private readonly home = resolveDshHome()
+  private readonly roots = new Map<SessionId, Root>()
+  /** Sessions archived in the workspace registry, as of its latest write. */
+  private archived: ReadonlySet<SessionId>
+  /**
+   * Settles once the image is built and stale containers are removed. Agents
+   * can be created before that, and their worlds wait for it, so none opens
+   * without an image or is mistaken for stale before its session is saved.
+   */
+  private readonly started = Promise.withResolvers<void>()
   private image = ''
   private helperHash = ''
 
@@ -124,17 +158,36 @@ export class FleetWorld extends Service {
       throw new Error(`fleet-world: runtimeDir ${config.runtimeDir} is too long; helper sockets under it would take ${Buffer.byteLength(longest)} of at most ${MAX_SOCKET_PATH_BYTES} bytes`)
     }
     this.config = config
-    // Serial and awaited: a Docker or helper failure rolls back the agent creation instead of leaving a session without its world.
-    ctx.on('agent/created', ({ agent }) => this.forAgent(agent).then(() => undefined))
-    // Registered before any world, so every world's providers are released before the containers stop.
-    ctx.effect(() => () => this.stopAll(), 'fleet-world session containers')
+    this.archived = new Set(ctx.workspaceRegistry.archivedSessionIds)
+    this.started.promise.catch(() => {})
+
+    // Every step opens its world first: a synchronous spawn then finds it open, a session
+    // unarchived while its agent stayed live gets a fresh container, and a Docker failure fails
+    // the step rather than the session. A step in the middle of a turn often sends no new
+    // messages yet still calls the model, so none is skipped. A cancelled step stops waiting;
+    // the open goes on for the session's other agents. dsh's archive gate rejects the steps of
+    // an archived session before they get here.
+    ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecision> => {
+      const decision = await next()
+      if (decision.kind === 'reject' || signal.aborted) return decision
+      await this.forAgent(agent, signal)
+      return decision
+    }, { prepend: true })
+    ctx.on('domain/changed', (change) => { this.followArchive(change) })
   }
 
-  /** Build the image before any session needs it; a missing Docker fails startup. */
+  /** Build the image before any session needs it, then clean up; a missing Docker fails startup. */
   async [Service.init](): Promise<void> {
-    const helper = await readFile(fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-ssh/helper')))
-    this.helperHash = createHash('sha256').update(helper).digest('hex')
-    this.image = await this.buildImage()
+    try {
+      const helper = await readFile(fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-ssh/helper')))
+      this.helperHash = createHash('sha256').update(helper).digest('hex')
+      this.image = await this.buildImage()
+      await this.removeStale()
+      this.started.resolve()
+    } catch (error) {
+      this.started.reject(error)
+      throw error
+    }
   }
 
   /**
@@ -148,18 +201,19 @@ export class FleetWorld extends Service {
   }
 
   /**
-   * The same for a synchronous call, which needs the world open already. A
-   * world still opening, or reconnecting after its helper was lost, fails the
-   * call and keeps opening.
+   * The same for a synchronous call, which needs the world open already. Each
+   * model step opens it first, so this fails only for a world lost during
+   * the step; the call fails and the world reopens.
    * @param operation - the provider method, named in the error.
    * @returns the initiating agent's open world.
    */
   currentOpen(operation: string): SessionWorld {
     const root = this.rootHeader(this.initiator(operation).session.header)
-    const world = this.open.get(root.id)
+    if (this.archived.has(root.id)) throw archivedError(root.id)
+    const world = this.roots.get(root.id)?.open?.world
     if (world !== undefined) return world
     this.forRoot(root).catch((error: unknown) => {
-      this.ctx.logger.warn(`fleet-world: could not open the container of session ${root.id}: ${error instanceof Error ? error.message : String(error)}`)
+      this.ctx.logger.warn(`fleet-world: could not open the container of session ${root.id}: ${message(error)}`)
     })
     throw new Error(`fleet-world: ${operation} found the container of session ${root.id} still connecting; try again`)
   }
@@ -167,39 +221,44 @@ export class FleetWorld extends Service {
   /**
    * Open the world of an agent's root session.
    * @param agent - any agent of the session.
+   * @param signal - stops waiting; the open goes on for the session's other agents.
    * @returns the root session's world, its container running and its helper connected.
    */
-  forAgent(agent: Agent): Promise<SessionWorld> {
-    return this.forRoot(this.rootHeader(agent.session.header))
+  forAgent(agent: Agent, signal?: AbortSignal): Promise<SessionWorld> {
+    return this.forRoot(this.rootHeader(agent.session.header), signal)
   }
 
   /**
-   * Open a root session's world once; a failed attempt, or a world whose
-   * helper connection is lost, is replaced on the next use.
+   * Open a root session's world, starting or creating its container; a world
+   * whose helper was lost is replaced on the next use.
    * @param root - header of a session that is not a subagent.
+   * @param signal - stops waiting; the open goes on for the session's other agents.
    * @returns the session's open world.
+   * @throws when the session is archived, since its container was removed.
    */
-  forRoot(root: SessionHeader): Promise<SessionWorld> {
-    let opening = this.worlds.get(root.id)
-    if (opening === undefined) {
-      const attempt = this.openWorld(root)
-      opening = attempt
-      this.worlds.set(root.id, attempt)
-      const forget = (): boolean => {
-        if (this.worlds.get(root.id) !== attempt) return false
-        this.worlds.delete(root.id)
-        this.open.delete(root.id)
-        return true
-      }
-      attempt.then(({ world, lost, close }) => {
-        if (this.worlds.get(root.id) === attempt) this.open.set(root.id, world)
-        void lost.then(async (error) => {
-          if (forget()) this.ctx.logger.warn(`fleet-world: lost the helper in ${world.container.name}, ending its running commands; the next use reconnects: ${error.message}`)
-          await close()
-        })
-      }, forget)
+  forRoot(root: SessionHeader, signal?: AbortSignal): Promise<SessionWorld> {
+    const open = this.roots.get(root.id)?.open
+    if (open !== undefined && !this.archived.has(root.id)) return Promise.resolve(open.world)
+    // Wait outside the queue, which startup's clean-up uses too.
+    const opening = this.started.promise.then(() => this.enqueue(root.id, async (state) => {
+      if (this.archived.has(root.id)) throw archivedError(root.id)
+      // The world serves the session and all its subagents, so it belongs to none of their agents.
+      return (state.open ?? await this.ctx.agents.withoutInitiator(() => this.openWorld(root, state))).world
+    }))
+    return signal === undefined ? opening : abortable(opening, signal)
+  }
+
+  /** Run one container operation of a root session after the ones before it. */
+  private enqueue<T>(id: SessionId, operation: (root: Root) => Promise<T>): Promise<T> {
+    let root = this.roots.get(id)
+    if (root === undefined) {
+      root = { queue: Promise.resolve(), open: undefined }
+      this.roots.set(id, root)
     }
-    return opening.then(({ world }) => world)
+    const state = root
+    const result = state.queue.then(() => operation(state))
+    state.queue = result.catch(() => {})
+    return result
   }
 
   private initiator(operation: string): Agent {
@@ -227,44 +286,153 @@ export class FleetWorld extends Service {
   }
 
   /**
-   * Start the session's container and connect a helper in it. The world's
-   * `ssh`, `fs` and `subprocess` live in their own scope below this service,
-   * apart from the global `fs` and `subprocess`, which route to them.
+   * Follow the registry's archive list and remove the containers of newly
+   * archived sessions. Archiving has no event of its own, but every archive
+   * and unarchive rewrites the registry's storage, and that write carries the
+   * whole new list; the registry's own getter lags until the write returns.
+   * An unarchived session needs nothing here: its next use opens a fresh container.
    */
-  private async openWorld(root: SessionHeader): Promise<OpenWorld> {
+  private followArchive(change: DomainChanged): void {
+    if (change.domain !== 'workspace' || change.table !== '' || change.operation !== 'put') return
+    const value = change.value
+    if (typeof value !== 'object' || value === null) return
+    const ids = (value as { archivedSessionIds?: unknown }).archivedSessionIds
+    if (!Array.isArray(ids)) return
+    const previous = this.archived
+    this.archived = new Set(ids as SessionId[])
+    for (const id of this.archived) {
+      if (previous.has(id)) continue
+      this.remove(id).catch((error: unknown) => {
+        this.ctx.logger.warn(`fleet-world: could not remove the container of archived session ${id}: ${message(error)}`)
+      })
+    }
+  }
+
+  /**
+   * Remove a session's container and its `/tmp` folder; the workspace stays.
+   * The world's teardown stops everything first. A subagent session owns no
+   * container, so its id removes nothing.
+   */
+  private remove(id: SessionId): Promise<void> {
+    return this.enqueue(id, async (state) => {
+      const opened = state.open
+      state.open = undefined
+      await opened?.close()
+      try {
+        await this.docker(['rm', '--force', containerName(id)])
+      } catch (error) {
+        if (!isNoSuchContainer(error)) throw error
+      }
+      await rm(this.tmpFolder(id), { recursive: true, force: true })
+    })
+  }
+
+  /**
+   * Remove this dsh home's containers whose session is archived, or gone and
+   * stopped: archived by a dsh process without this plugin, left by a crash
+   * during a removal, or made for a new session that was never saved. A
+   * running one may serve another dsh process's new session that is not saved
+   * yet, and it stops when that process exits.
+   */
+  private async removeStale(): Promise<void> {
+    const listed = await this.docker([
+      'container', 'ls', '--all', '--filter', `label=${HOME_LABEL}=${this.home}`, '--format', `{{.Label "${SESSION_LABEL}"}} {{.State}}`,
+    ])
+    for (const line of listed.split('\n').filter(line => line !== '')) {
+      const [label = '', state = ''] = line.split(' ')
+      const id = label as SessionId
+      if (this.archived.has(id) || (state !== 'running' && await this.ctx.sessionPersistence.stat(id) === undefined)) await this.remove(id)
+    }
+  }
+
+  /**
+   * Start the session's container, connect a helper in it, and attach the
+   * world to its owner. The world's `ssh`, `fs` and `subprocess` live in their
+   * own scope below this service, apart from the global `fs` and `subprocess`,
+   * which route to them.
+   *
+   * The world is one effect of this service: cordis undoes its parts in
+   * reverse, one at a time, whoever ends it. The world detaches from its
+   * owner, the providers and then the helper close, and the container stops
+   * last. That runs the same when the helper is lost, when the session is
+   * archived, when dsh exits, and when the open fails halfway.
+   */
+  private async openWorld(root: SessionHeader, owner: Root): Promise<OpenWorld> {
     const container = await this.ensureContainer(root)
     const scope = this.ctx.isolate('ssh').isolate('fs').isolate('subprocess')
-    const fibers: Fiber[] = []
-    const close = async (): Promise<void> => {
-      for (const fiber of fibers.splice(0).reverse()) await fiber.dispose()
+    const loads = [
+      () => scope.plugin(DockerConnection, {
+        docker: this.config.docker, container: container.name, workspace: container.workspace, tmp: container.tmp,
+        node: HELPER_NODE, helper: HELPER_ENTRY, helperHash: this.helperHash,
+        requestTimeoutMs: HELPER_REQUEST_TIMEOUT_MS, leaseMs: HELPER_LEASE_MS,
+      }),
+      () => scope.plugin(SshFileSystem),
+      () => scope.plugin(SshSubprocessRuntime),
+    ]
+    const stopped = Promise.withResolvers<void>()
+    const stop = (): Promise<void> => this.stop(container.name).catch((error: unknown) => {
+      this.ctx.logger.warn(`fleet-world: could not stop ${container.name}: ${message(error)}`)
+    }).finally(() => { stopped.resolve() })
+    let opened: OpenWorld | undefined
+    const detach = (): void => {
+      if (opened !== undefined && owner.open === opened) owner.open = undefined
     }
+
+    const fibers: Fiber[] = []
+    let dispose: () => unknown
     try {
-      const loads = [
-        () => scope.plugin(DockerConnection, {
-          docker: this.config.docker, container: container.name, workspace: container.workspace, tmp: container.tmp,
-          node: HELPER_NODE, helper: HELPER_ENTRY, helperHash: this.helperHash,
-          requestTimeoutMs: HELPER_REQUEST_TIMEOUT_MS, leaseMs: HELPER_LEASE_MS,
-        }),
-        () => scope.plugin(SshFileSystem),
-        () => scope.plugin(SshSubprocessRuntime),
-      ]
-      for (const load of loads) {
-        const fiber = load()
-        fibers.push(fiber)
-        await fiber
+      // A synchronous generator: an async one would await each thenable fiber disposer it
+      // yields, and cordis would not take them over.
+      dispose = this.ctx.effect(function* () {
+        yield stop
+        for (const load of loads) {
+          const fiber = load()
+          fibers.push(fiber)
+          yield fiber.dispose
+        }
+        yield detach
+      }, `fleet-world world of ${container.name}`)
+    } catch (error) {
+      // This service is unloading; cordis undid whatever the effect had made.
+      await stop()
+      throw error
+    }
+    const close = (): Promise<void> => {
+      Promise.resolve(dispose()).catch((error: unknown) => {
+        this.ctx.logger.warn(`fleet-world: could not tear down the world of ${container.name}: ${message(error)}`)
+      })
+      return stopped.promise
+    }
+
+    try {
+      for (const fiber of fibers) await fiber
+      const connection = scope.get('ssh')
+      const fs = scope.get('fs')
+      const subprocess = scope.get('subprocess')
+      if (!(connection instanceof DockerConnection) || fs === undefined || subprocess === undefined) {
+        throw new Error(`fleet-world: the providers for ${container.name} did not start`)
       }
+      const world: OpenWorld = { world: { container, fs, subprocess }, close }
+      opened = world
+      owner.open = world
+      void connection.ended.then((error) => { this.lose(root.id, owner, world, error) })
+      return world
     } catch (error) {
       await close()
       throw error
     }
-    const connection = scope.get('ssh') as unknown as DockerConnection | undefined
-    const fs = scope.get('fs')
-    const subprocess = scope.get('subprocess')
-    if (connection === undefined || fs === undefined || subprocess === undefined) {
-      await close()
-      throw new Error(`fleet-world: the providers for ${container.name} did not start`)
-    }
-    return { world: { container, fs, subprocess }, lost: connection.lost, close }
+  }
+
+  /**
+   * Detach a world whose helper ended without being asked to, so no call gets
+   * it, and tear it down after the operations before it.
+   */
+  private lose(id: SessionId, owner: Root, opened: OpenWorld, error: Error): void {
+    if (owner.open !== opened) return
+    owner.open = undefined
+    this.ctx.logger.warn(`fleet-world: lost the helper in ${opened.world.container.name}, which ends its running commands; `
+      + `the container stops, and the next use starts it again: ${error.message}`)
+    void this.enqueue(id, () => opened.close())
   }
 
   /** Create, recreate, or start the root session's container. */
@@ -276,37 +444,32 @@ export class FleetWorld extends Service {
     // `--mount` parses comma-separated fields.
     if (/[,\n]/u.test(workspace)) throw new Error(`fleet-world: cannot mount a folder whose path contains a comma or newline: ${workspace}`)
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(root.id)) throw new Error(`fleet-world: session id ${root.id} is not usable as a container name`)
-    const container: SessionContainer = {
-      name: `fleet-${root.id}`,
-      workspace,
-      tmp: join(this.config.runtimeDir, createHash('sha256').update(root.id).digest('hex').slice(0, TMP_KEY_LENGTH)),
-    }
-    await mkdir(container.tmp, { recursive: true, mode: 0o700 })
+    const name = containerName(root.id)
+    const tmp = this.tmpFolder(root.id)
+    await mkdir(tmp, { recursive: true, mode: 0o700 })
 
     const runArgs = [
+      '--label', `${SESSION_LABEL}=${root.id}`, '--label', `${HOME_LABEL}=${this.home}`,
       '--init',
       '--mount', `type=bind,src=${workspace},dst=${workspace}`,
-      '--mount', `type=bind,src=${container.tmp},dst=/tmp`,
+      '--mount', `type=bind,src=${tmp},dst=/tmp`,
       '--workdir', workspace,
       this.image, 'sleep', 'infinity',
     ]
     const spec = createHash('sha256').update(JSON.stringify(runArgs)).digest('hex').slice(0, 16)
-    const existing = await this.inspect(container.name)
+    const existing = await this.inspect(name)
     if (existing?.spec === spec) {
-      if (!existing.running) await this.docker(['start', container.name])
+      if (!existing.running) await this.docker(['start', name])
     } else {
       if (existing !== undefined) {
-        this.ctx.logger.warn(`fleet-world: recreating ${container.name}; its image or mounts changed, so changes outside ${workspace} and /tmp are lost`)
-        await this.docker(['rm', '--force', container.name])
+        this.ctx.logger.warn(`fleet-world: recreating ${name}; its image or mounts changed, so changes outside ${workspace} and /tmp are lost`)
+        await this.docker(['rm', '--force', name])
       }
-      await this.docker([
-        'run', '--detach', '--name', container.name,
-        '--label', `${SESSION_LABEL}=${root.id}`, '--label', `${SPEC_LABEL}=${spec}`,
-        ...runArgs,
-      ])
+      await this.docker(['run', '--detach', '--name', name, '--label', `${SPEC_LABEL}=${spec}`, ...runArgs])
     }
-    this.containers.set(root.id, container)
-    return container
+    const created = existing?.spec === spec ? existing : await this.inspect(name)
+    if (created === undefined) throw new Error(`fleet-world: ${name} disappeared right after it started`)
+    return { name, id: created.id, created: created.created, workspace, tmp }
   }
 
   /** Build the session image unless its tag, a digest of `image/`, already exists. */
@@ -326,26 +489,31 @@ export class FleetWorld extends Service {
     return tag
   }
 
-  /** @returns the container's state, or undefined when no such container exists. */
-  private async inspect(name: string): Promise<{ running: boolean; spec: string } | undefined> {
+  /** @returns the container's identity and state, or undefined when no such container exists. */
+  private async inspect(name: string): Promise<{ id: string; created: number; running: boolean; spec: string } | undefined> {
     let state: string
     try {
-      state = await this.docker(['container', 'inspect', '--format', `{{.State.Running}} {{index .Config.Labels "${SPEC_LABEL}"}}`, name])
+      state = await this.docker(['container', 'inspect', '--format', `{{.Id}} {{.Created}} {{.State.Running}} {{index .Config.Labels "${SPEC_LABEL}"}}`, name])
     } catch (error) {
       if (error instanceof Error && /no such (object|container)/iu.test(error.message)) return undefined
       throw error
     }
-    const [running = '', spec = ''] = state.split(' ')
-    return { running: running === 'true', spec }
+    const [id = '', created = '', running = '', spec = ''] = state.split(' ')
+    return { id, created: Date.parse(created), running: running === 'true', spec }
   }
 
-  /** Stop every container this process used; they stay until their session is archived. */
-  private async stopAll(): Promise<void> {
-    const names = [...this.containers.values()].map(container => container.name)
-    this.containers.clear()
-    if (names.length === 0) return
-    await this.docker(['stop', '--time', String(this.config.stopTimeoutSeconds), ...names],
-      this.config.dockerTimeoutMs + this.config.stopTimeoutSeconds * 1000)
+  /** The host folder mounted at a session container's `/tmp`. */
+  private tmpFolder(id: SessionId): string {
+    return join(this.config.runtimeDir, createHash('sha256').update(id).digest('hex').slice(0, TMP_KEY_LENGTH))
+  }
+
+  /** Stop a container, which stays until its session is archived. */
+  private async stop(name: string): Promise<void> {
+    try {
+      await this.docker(['stop', '--timeout', String(STOP_GRACE_SECONDS), name])
+    } catch (error) {
+      if (!isNoSuchContainer(error)) throw error
+    }
   }
 
   /**
@@ -361,6 +529,32 @@ export class FleetWorld extends Service {
       })
     })
   }
+}
+
+function containerName(id: SessionId): string {
+  return `fleet-${id}`
+}
+
+function isNoSuchContainer(error: unknown): boolean {
+  return error instanceof Error && /no such container/iu.test(error.message)
+}
+
+/** Stop waiting for an operation when the signal aborts; the operation goes on. */
+function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise((resolve, reject) => {
+    const aborted = (): void => { reject(signal.reason) }
+    signal.addEventListener('abort', aborted, { once: true })
+    operation.then(resolve, reject).finally(() => { signal.removeEventListener('abort', aborted) })
+  })
+}
+
+function archivedError(id: SessionId): Error {
+  return new Error(`fleet-world: session ${id} is archived, and its container was removed`)
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 export default FleetWorld
