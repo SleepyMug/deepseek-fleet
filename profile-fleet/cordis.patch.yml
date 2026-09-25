@@ -44,7 +44,7 @@
 
 # ChatGPT subscription through pi-ai's `openai-codex` provider. No `apiKeyEnv`:
 # the route authenticates with the stored sign-in `llm-pi-ai/openai-codex`,
-# which fleet-signin obtains once and llm-pi-ai refreshes afterwards.
+# which `fleet-setup signin` obtains once and llm-pi-ai refreshes afterwards.
 #
 # pi-ai's catalog sizes these models at 272,000 tokens. Overrides are checked
 # leniently at startup: a misspelled model id leaves the real model unchanged

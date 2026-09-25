@@ -1,5 +1,5 @@
 {
-  "name": "fbox",
+  "name": "fleet-box",
   "version": "0.0.1",
   "private": true,
   "description": "Docker execution world for the fleet profile: one container per root session with its folder bind-mounted at the same path",
@@ -21,13 +21,13 @@
       "types": "./lib/context.d.ts",
       "default": "./lib/context.js"
     },
+    "./image": {
+      "types": "./lib/image.d.ts",
+      "default": "./lib/image.js"
+    },
     "./package.json": "./package.json"
   },
-  "bin": {
-    "fleet-setup": "./bin.js"
-  },
   "files": [
-    "bin.js",
     "lib",
     "image",
     "cordis.patch.yml"

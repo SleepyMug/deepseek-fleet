@@ -3,16 +3,16 @@
 #
 # Every root session owns one container while it is unarchived: the session
 # folder is bind-mounted at the same path, /tmp is a private folder under
-# $XDG_RUNTIME_DIR/fbox (tmpfs, cleared at reboot), and processes run
+# $XDG_RUNTIME_DIR/fleet-box (tmpfs, cleared at reboot), and processes run
 # as the container's root (you, under rootless Docker). Subagent sessions
 # share their root's container; a fork gets its own. A container runs while
 # dsh has its helper connected: it starts before a model step needs it, stops
 # when dsh exits or the helper is lost, and is removed when its session is
 # archived; an unarchived session starts fresh, and the model is told once.
-# The session image is a prerequisite: build it with this package's
-# `fleet-setup` command, `node <fbox>/bin.js`, where <fbox> is the installed
-# package. Without it fbox does not start, dsh's startup warning gives the
-# exact command, and no session can run.
+# The session image is a prerequisite: build it with `fleet-setup image`
+# from the fleet-setup package, installed in the same profile
+# (`dsh plugin --profile fleet exec fleet-setup image`). Without it fleet-box
+# does not start, dsh's startup warning says so, and no session can run.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through the dsh-ssh helper and dsh's SSH providers. A call
@@ -30,19 +30,19 @@
   disabled: true
 
 - insert:
-    - id: fbox
-      name: fbox/world
+    - id: fleet-box
+      name: fleet-box/world
 
-    - id: fbox-fs
-      name: fbox/fs
+    - id: fleet-box-fs
+      name: fleet-box/fs
 
-    - id: fbox-subprocess
-      name: fbox/subprocess
+    - id: fleet-box-subprocess
+      name: fleet-box/subprocess
 
     # The container in the system prompt, and the notice when a session's
     # container is newer than its conversation.
-    - id: fbox-context
-      name: fbox/context
+    - id: fleet-box-context
+      name: fleet-box/context
 
 # ── Host details the model cannot use from its container ──
 

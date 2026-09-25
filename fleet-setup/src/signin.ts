@@ -1,10 +1,11 @@
 /**
- * One-shot terminal sign-in app for `ctx.authorization` flows. Mount it as its
- * own profile (`dsh-base` + this bundle) and run `dsh signin <provider>`: after
- * startup it runs one attempt, prints the flow's notices to stderr, answers its
- * prompts from stdin, and requests exit. The flow owns the credential write; a
- * running dsh sharing the same Harness home picks the record up without a restart.
- * @module fleet-signin
+ * One-shot terminal sign-in app for `ctx.authorization` flows, which
+ * `fleet-setup signin` boots in a minimal dsh profile of its own through
+ * `signin.patch.yml`: after startup it runs one attempt, prints the flow's
+ * notices to stderr, answers its prompts from stdin, and requests exit. The
+ * flow owns the credential write; a running dsh sharing the same Harness home
+ * picks the record up without a restart.
+ * @module fleet-setup/signin
  */
 
 import { createInterface } from 'node:readline'
@@ -20,11 +21,14 @@ export const name = 'fleet-signin'
 export const inject = ['authorization']
 
 export interface Config {
+  /** Provider signed in to when none is named: the fleet profile's ChatGPT subscription route. */
+  provider: string
   /** Credential scope for a bare provider argument, so `openai-codex` means `llm-pi-ai/openai-codex`. */
   defaultScope: string
 }
 
 export const Config: Schema<Config> = Schema.object({
+  provider: Schema.string().default('openai-codex').description('Provider signed in to when none is named.'),
   defaultScope: Schema.string().default('llm-pi-ai').description('Credential scope for a bare provider argument.'),
 })
 
@@ -37,7 +41,7 @@ export function apply(ctx: Context, config: Config): void {
   const exit = ctx.get('appExit')
   const ready = ctx.get('appReady')
   if (cmdline === undefined || exit === undefined || ready === undefined) {
-    throw new Error('fleet-signin: run it as its own profile (`dsh signin <provider>`); the launcher must provide ctx.cmdlineArgs, ctx.appExit and ctx.appReady')
+    throw new Error('fleet-signin: run it through `fleet-setup signin`; the launcher must provide ctx.cmdlineArgs, ctx.appExit and ctx.appReady')
   }
   const args = cmdline.get()
   ctx.effect(() => {
@@ -59,13 +63,13 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 /**
- * @param args - the app arguments after `dsh signin`.
+ * @param args - the arguments after `fleet-setup signin`.
  * @param signal - aborted when the app shuts down.
  * @returns the process exit code.
  */
 async function run(ctx: Context, config: Config, args: readonly string[], signal: AbortSignal): Promise<number> {
-  const [target, ...extra] = args
-  if (target === undefined || target === '--help' || target === '-h') {
+  const [target = config.provider, ...extra] = args
+  if (target === '--help' || target === '-h') {
     usage(ctx, config)
     return EXIT_OK
   }
@@ -103,7 +107,7 @@ function usage(ctx: Context, config: Config): void {
   const argument = (entry: AuthorizationEntry): string => entry.key.startsWith(scopePrefix) ? entry.key.slice(scopePrefix.length) : entry.key
   const width = Math.max(0, ...entries.map(entry => argument(entry).length))
   say([
-    `Usage: dsh signin <provider>   (a bare provider means ${scopePrefix}<provider>; <scope>/<id> names any flow)`,
+    `Usage: fleet-setup signin [provider]   (default ${config.provider}; a bare provider means ${scopePrefix}<provider>; <scope>/<id> names any flow)`,
     entries.length === 0 ? 'No sign-in flows are registered.' : 'Available sign-ins:',
     ...entries.map(entry => `  ${argument(entry).padEnd(width)}  ${entry.label}`),
   ].join('\n'))

@@ -176,7 +176,7 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
-  fbox:
+  fleet-box:
     dependencies:
       '@deepseek-ai/dsh-fs-ssh':
         specifier: 0.1.7-rc.2
@@ -237,7 +237,11 @@ importers:
         specifier: 3.18.4
         version: 3.18.4
 
-  fleet-signin:
+  fleet-setup:
+    dependencies:
+      fleet-box:
+        specifier: workspace:*
+        version: link:../fleet-box
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.4

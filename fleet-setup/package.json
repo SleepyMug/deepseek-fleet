@@ -1,28 +1,30 @@
 {
-  "name": "fleet-signin",
+  "name": "fleet-setup",
   "version": "0.0.1",
   "private": true,
-  "description": "One-shot terminal sign-in app for dsh authorization flows: `dsh signin <provider>`, e.g. a ChatGPT subscription through llm-pi-ai/openai-codex",
+  "description": "Setup for the fleet profile: `fleet-setup image` builds fleet-box's session image, `fleet-setup signin` signs in to a model provider",
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./lib/index.d.ts",
-      "default": "./lib/index.js"
+    "./signin": {
+      "types": "./lib/signin.d.ts",
+      "default": "./lib/signin.js"
     },
     "./package.json": "./package.json"
   },
+  "bin": {
+    "fleet-setup": "./bin.js"
+  },
   "files": [
+    "bin.js",
     "lib",
-    "cordis.patch.yml"
+    "signin.patch.yml"
   ],
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b"
   },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
+  "dependencies": {
+    "fleet-box": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",

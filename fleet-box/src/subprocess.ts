@@ -5,7 +5,7 @@
  * running on the host. `spawn` is synchronous, so it needs the session's world
  * open already: every model step opens it first, and a spawn while the world
  * reconnects fails.
- * @module fbox/subprocess
+ * @module fleet-box/subprocess
  */
 
 import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
@@ -14,8 +14,8 @@ import type {
 } from '@deepseek-ai/dsh-subprocess'
 import type {} from './world.ts'
 
-export class FboxSubprocessRuntime extends SubprocessRuntime {
-  static inject = ['fbox']
+export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
+  static inject = ['fleetBox']
 
   override async resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
     return (await this.world('ctx.subprocess.resolveExecutable')).resolveExecutable(command, env, signal)
@@ -26,7 +26,7 @@ export class FboxSubprocessRuntime extends SubprocessRuntime {
   }
 
   override spawn(spec: SubprocessSpawnSpec): SubprocessHandle {
-    return this.ctx.fbox.currentOpen('ctx.subprocess.spawn').subprocess.spawn(spec)
+    return this.ctx.fleetBox.currentOpen('ctx.subprocess.spawn').subprocess.spawn(spec)
   }
 
   override async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
@@ -34,8 +34,8 @@ export class FboxSubprocessRuntime extends SubprocessRuntime {
   }
 
   private async world(operation: string): Promise<SubprocessRuntime> {
-    return (await this.ctx.fbox.current(operation)).world.subprocess
+    return (await this.ctx.fleetBox.current(operation)).world.subprocess
   }
 }
 
-export default FboxSubprocessRuntime
+export default FleetBoxSubprocessRuntime

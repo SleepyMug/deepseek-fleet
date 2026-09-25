@@ -1,13 +1,13 @@
 /**
- * fbox, the fleet's container execution world (`ctx.fbox`). Every root session
- * owns one Docker container for as long as it is unarchived, and one dsh-ssh
- * helper inside it that serves the session's files and processes to dsh's SSH
- * providers. The session folder is bind-mounted at the same absolute path, and
- * the container's `/tmp` is a private host folder under the user's runtime
- * directory, kept short so the host can reach the helper's sockets there.
- * Processes run as the container's root, which rootless Docker maps to the
- * host user, so files in the workspace stay the user's. Subagent sessions
- * share their root's container; a fork is its own root.
+ * fleet-box, the fleet's container execution world (`ctx.fleetBox`). Every
+ * root session owns one Docker container for as long as it is unarchived, and
+ * one dsh-ssh helper inside it that serves the session's files and processes
+ * to dsh's SSH providers. The session folder is bind-mounted at the same
+ * absolute path, and the container's `/tmp` is a private host folder under the
+ * user's runtime directory, kept short so the host can reach the helper's
+ * sockets there. Processes run as the container's root, which rootless Docker
+ * maps to the host user, so files in the workspace stay the user's. Subagent
+ * sessions share their root's container; a fork is its own root.
  *
  * Lifetime: a container runs exactly while this process has its session's
  * world open, its helper connected and dsh's providers serving it. A world
@@ -18,10 +18,10 @@
  * removes this dsh home's containers whose session is archived, or gone and
  * stopped. A container keeps running without a helper only when dsh is
  * killed, or exits before the teardown finishes; its next use takes it over.
- * The image is a prerequisite, built by this package's `fleet-setup`
- * command; without it this service does not start, dsh's startup warning
- * says how to build it, and no session can run.
- * @module fbox/world
+ * The image is a prerequisite, built by `fleet-setup image` from the
+ * fleet-setup package; without it this service does not start, dsh's startup
+ * warning says how to build it, and no session can run.
+ * @module fleet-box/world
  */
 
 import { execFile } from 'node:child_process'
@@ -42,19 +42,19 @@ import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { SshSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-ssh'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { DockerConnection } from './connection.ts'
-import { HELPER_ENTRY, HELPER_NODE, SETUP_ENTRY, helperHash, imageTag } from './image.ts'
+import { HELPER_ENTRY, HELPER_NODE, helperHash, imageTag } from './image.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    fbox: Fbox
+    fleetBox: FleetBox
   }
 }
 
-const SESSION_LABEL = 'fbox.session'
+const SESSION_LABEL = 'fleet-box.session'
 /** The dsh home a container's session belongs to; startup clean-up touches only its own home's containers. */
-const HOME_LABEL = 'fbox.home'
+const HOME_LABEL = 'fleet-box.home'
 /** Digest of a container's `docker run` arguments; a mismatch means the container is out of date. */
-const SPEC_LABEL = 'fbox.spec'
+const SPEC_LABEL = 'fleet-box.spec'
 
 /** dsh-ssh's defaults for the helper's request deadline and heartbeat lease. */
 const HELPER_REQUEST_TIMEOUT_MS = 30_000
@@ -121,13 +121,13 @@ interface Root {
   open: OpenWorld | undefined
 }
 
-export class Fbox extends Service {
+export class FleetBox extends Service {
   static inject = ['sessions', 'agents', 'workspaceRegistry', 'sessionPersistence']
 
   static Config: Schema<Config> = Schema.object({
     docker: Schema.string().default('docker').description('Docker CLI executable.'),
     runtimeDir: Schema.string()
-      .default(process.env.XDG_RUNTIME_DIR === undefined ? '' : join(process.env.XDG_RUNTIME_DIR, 'fbox'))
+      .default(process.env.XDG_RUNTIME_DIR === undefined ? '' : join(process.env.XDG_RUNTIME_DIR, 'fleet-box'))
       .description("Host directory holding each session's private /tmp; short enough for the helper's socket paths."),
     dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call.'),
   })
@@ -147,12 +147,12 @@ export class Fbox extends Service {
   private helperHash = ''
 
   constructor(ctx: Context, config: Config) {
-    super(ctx, 'fbox')
-    if (config.runtimeDir === '') throw new Error('fbox: XDG_RUNTIME_DIR is not set; configure runtimeDir')
-    if (!isAbsolute(config.runtimeDir)) throw new Error(`fbox: runtimeDir must be absolute, got ${config.runtimeDir}`)
+    super(ctx, 'fleetBox')
+    if (config.runtimeDir === '') throw new Error('fleet-box: XDG_RUNTIME_DIR is not set; configure runtimeDir')
+    if (!isAbsolute(config.runtimeDir)) throw new Error(`fleet-box: runtimeDir must be absolute, got ${config.runtimeDir}`)
     const longest = join(config.runtimeDir, '0'.repeat(TMP_KEY_LENGTH)) + HELPER_SOCKET_TAIL
     if (Buffer.byteLength(longest) > MAX_SOCKET_PATH_BYTES) {
-      throw new Error(`fbox: runtimeDir ${config.runtimeDir} is too long; helper sockets under it would take ${Buffer.byteLength(longest)} of at most ${MAX_SOCKET_PATH_BYTES} bytes`)
+      throw new Error(`fleet-box: runtimeDir ${config.runtimeDir} is too long; helper sockets under it would take ${Buffer.byteLength(longest)} of at most ${MAX_SOCKET_PATH_BYTES} bytes`)
     }
     this.config = config
     this.archived = new Set(ctx.workspaceRegistry.archivedSessionIds)
@@ -182,7 +182,8 @@ export class Fbox extends Service {
         await this.docker(['image', 'inspect', '--format', '{{.Id}}', this.image])
       } catch (error) {
         if (!/no such image/iu.test(message(error))) throw error
-        throw new Error(`fbox: the session image ${this.image} is not built; run: node ${SETUP_ENTRY}`)
+        throw new Error(`fleet-box: the session image ${this.image} is not built; build it with \`fleet-setup image\`, `
+          + 'installed in this profile: `dsh plugin --profile <profile> exec fleet-setup image`')
       }
       await this.removeStale()
       this.started.resolve()
@@ -215,9 +216,9 @@ export class Fbox extends Service {
     const world = this.roots.get(root.id)?.open?.world
     if (world !== undefined) return world
     this.forRoot(root).catch((error: unknown) => {
-      this.ctx.logger.warn(`fbox: could not open the container of session ${root.id}: ${message(error)}`)
+      this.ctx.logger.warn(`fleet-box: could not open the container of session ${root.id}: ${message(error)}`)
     })
-    throw new Error(`fbox: ${operation} found the container of session ${root.id} still connecting; try again`)
+    throw new Error(`fleet-box: ${operation} found the container of session ${root.id} still connecting; try again`)
   }
 
   /**
@@ -265,7 +266,7 @@ export class Fbox extends Service {
 
   private initiator(operation: string): Agent {
     const agent = this.ctx.agents.currentInitiator()
-    if (agent === undefined) throw new Error(`fbox: ${operation} was called outside a session; the container world serves only session work`)
+    if (agent === undefined) throw new Error(`fleet-box: ${operation} was called outside a session; the container world serves only session work`)
     return agent
   }
 
@@ -280,7 +281,7 @@ export class Fbox extends Service {
       visited.add(current.id)
       const parent = this.ctx.sessions.get(current.parentSession)
       if (parent === undefined) {
-        throw new Error(`fbox: subagent session ${current.id} has parent ${current.parentSession}, which is not loaded, so its container is unknown`)
+        throw new Error(`fleet-box: subagent session ${current.id} has parent ${current.parentSession}, which is not loaded, so its container is unknown`)
       }
       current = parent.header
     }
@@ -305,7 +306,7 @@ export class Fbox extends Service {
     for (const id of this.archived) {
       if (previous.has(id)) continue
       this.remove(id).catch((error: unknown) => {
-        this.ctx.logger.warn(`fbox: could not remove the container of archived session ${id}: ${message(error)}`)
+        this.ctx.logger.warn(`fleet-box: could not remove the container of archived session ${id}: ${message(error)}`)
       })
     }
   }
@@ -373,7 +374,7 @@ export class Fbox extends Service {
     ]
     const stopped = Promise.withResolvers<void>()
     const stop = (): Promise<void> => this.stop(container.name).catch((error: unknown) => {
-      this.ctx.logger.warn(`fbox: could not stop ${container.name}: ${message(error)}`)
+      this.ctx.logger.warn(`fleet-box: could not stop ${container.name}: ${message(error)}`)
     }).finally(() => { stopped.resolve() })
     let opened: OpenWorld | undefined
     const detach = (): void => {
@@ -393,7 +394,7 @@ export class Fbox extends Service {
           yield fiber.dispose
         }
         yield detach
-      }, `fbox world of ${container.name}`)
+      }, `fleet-box world of ${container.name}`)
     } catch (error) {
       // This service is unloading; cordis undid whatever the effect had made.
       await stop()
@@ -401,7 +402,7 @@ export class Fbox extends Service {
     }
     const close = (): Promise<void> => {
       Promise.resolve(dispose()).catch((error: unknown) => {
-        this.ctx.logger.warn(`fbox: could not tear down the world of ${container.name}: ${message(error)}`)
+        this.ctx.logger.warn(`fleet-box: could not tear down the world of ${container.name}: ${message(error)}`)
       })
       return stopped.promise
     }
@@ -412,7 +413,7 @@ export class Fbox extends Service {
       const fs = scope.get('fs')
       const subprocess = scope.get('subprocess')
       if (!(connection instanceof DockerConnection) || fs === undefined || subprocess === undefined) {
-        throw new Error(`fbox: the providers for ${container.name} did not start`)
+        throw new Error(`fleet-box: the providers for ${container.name} did not start`)
       }
       const world: OpenWorld = { world: { container, fs, subprocess }, close }
       opened = world
@@ -432,7 +433,7 @@ export class Fbox extends Service {
   private lose(id: SessionId, owner: Root, opened: OpenWorld, error: Error): void {
     if (owner.open !== opened) return
     owner.open = undefined
-    this.ctx.logger.warn(`fbox: lost the helper in ${opened.world.container.name}, which ends its running commands; `
+    this.ctx.logger.warn(`fleet-box: lost the helper in ${opened.world.container.name}, which ends its running commands; `
       + `the container stops, and the next use starts it again: ${error.message}`)
     void this.enqueue(id, () => opened.close())
   }
@@ -441,11 +442,11 @@ export class Fbox extends Service {
   private async ensureContainer(root: SessionHeader): Promise<SessionContainer> {
     const workspace = root.cwd
     if (workspace === undefined || !isAbsolute(workspace)) {
-      throw new Error(`fbox: session ${root.id} has no absolute folder to mount (cwd: ${String(workspace)})`)
+      throw new Error(`fleet-box: session ${root.id} has no absolute folder to mount (cwd: ${String(workspace)})`)
     }
     // `--mount` parses comma-separated fields.
-    if (/[,\n]/u.test(workspace)) throw new Error(`fbox: cannot mount a folder whose path contains a comma or newline: ${workspace}`)
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(root.id)) throw new Error(`fbox: session id ${root.id} is not usable as a container name`)
+    if (/[,\n]/u.test(workspace)) throw new Error(`fleet-box: cannot mount a folder whose path contains a comma or newline: ${workspace}`)
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(root.id)) throw new Error(`fleet-box: session id ${root.id} is not usable as a container name`)
     const name = containerName(root.id)
     const tmp = this.tmpFolder(root.id)
     await mkdir(tmp, { recursive: true, mode: 0o700 })
@@ -464,13 +465,13 @@ export class Fbox extends Service {
       if (!existing.running) await this.docker(['start', name])
     } else {
       if (existing !== undefined) {
-        this.ctx.logger.warn(`fbox: recreating ${name}; its image or mounts changed, so changes outside ${workspace} and /tmp are lost`)
+        this.ctx.logger.warn(`fleet-box: recreating ${name}; its image or mounts changed, so changes outside ${workspace} and /tmp are lost`)
         await this.docker(['rm', '--force', name])
       }
       await this.docker(['run', '--detach', '--name', name, '--label', `${SPEC_LABEL}=${spec}`, ...runArgs])
     }
     const created = existing?.spec === spec ? existing : await this.inspect(name)
-    if (created === undefined) throw new Error(`fbox: ${name} disappeared right after it started`)
+    if (created === undefined) throw new Error(`fleet-box: ${name} disappeared right after it started`)
     return { name, id: created.id, created: created.created, workspace, tmp }
   }
 
@@ -509,14 +510,14 @@ export class Fbox extends Service {
     return new Promise((resolve, reject) => {
       execFile(this.config.docker, args, { timeout: this.config.dockerTimeoutMs, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
         if (error === null) resolve(stdout.trim())
-        else reject(new Error(`fbox: docker ${args[0]} failed: ${stderr.trim() || error.message}`, { cause: error }))
+        else reject(new Error(`fleet-box: docker ${args[0]} failed: ${stderr.trim() || error.message}`, { cause: error }))
       })
     })
   }
 }
 
 function containerName(id: SessionId): string {
-  return `fbox-${id}`
+  return `fleet-box-${id}`
 }
 
 function isNoSuchContainer(error: unknown): boolean {
@@ -534,11 +535,11 @@ function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 function archivedError(id: SessionId): Error {
-  return new Error(`fbox: session ${id} is archived, and its container was removed`)
+  return new Error(`fleet-box: session ${id} is archived, and its container was removed`)
 }
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export default Fbox
+export default FleetBox
