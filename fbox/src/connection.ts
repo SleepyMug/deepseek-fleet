@@ -8,7 +8,7 @@
  * folder, without forwarding, and authenticates it with TLS-PSK. Like
  * `SshConnection`, a connection never reconnects: losing the helper fails
  * every pending operation, and `ended` tells the owner to tear the world down.
- * @module fleet-world/connection
+ * @module fbox/connection
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -81,7 +81,7 @@ export class DockerConnection extends Service {
     this.markEnded = ended.resolve
     this.ready = this.start()
     void this.ready.catch((error: unknown) => { this.fail(asError(error)) })
-    ctx.effect(() => () => this.close(), 'fleet-world helper connection')
+    ctx.effect(() => () => this.close(), 'fbox helper connection')
   }
 
   /** Keep the providers that use this connection waiting until the helper is verified. */
@@ -118,7 +118,7 @@ export class DockerConnection extends Service {
     this.assertOpen()
     const combined = signal === undefined ? this.lifetime.signal : AbortSignal.any([signal, this.lifetime.signal])
     combined.throwIfAborted()
-    if (!endpoint.path.startsWith(`${hello.root}/`)) throw new Error('fleet-world: the helper returned a stream outside its socket folder')
+    if (!endpoint.path.startsWith(`${hello.root}/`)) throw new Error('fbox: the helper returned a stream outside its socket folder')
     const socket = await this.connectSocket(this.hostPath(endpoint.path), combined)
     const authenticated = await authenticateStream(socket, endpoint.capability, this.config.requestTimeoutMs, combined)
     this.track(authenticated)
@@ -132,7 +132,7 @@ export class DockerConnection extends Service {
    * connection and report it ended, so its owner tears the world down.
    */
   dispose(): Promise<void> {
-    this.fail(new Error('fleet-world: dsh\'s SSH providers gave up on the helper after it did not confirm that a process was stopped'))
+    this.fail(new Error('fbox: dsh\'s SSH providers gave up on the helper after it did not confirm that a process was stopped'))
     return this.close()
   }
 
@@ -144,7 +144,7 @@ export class DockerConnection extends Service {
 
   private async closeOnce(): Promise<void> {
     this.closed = true
-    this.lifetime.abort(new Error('fleet-world: the helper connection is closing'))
+    this.lifetime.abort(new Error('fbox: the helper connection is closing'))
     clearInterval(this.heartbeat)
     try {
       await this.ready.catch(() => {})
@@ -174,7 +174,7 @@ export class DockerConnection extends Service {
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-STDERR_TAIL) })
     child.once('error', (error) => { this.fail(error) })
-    child.once('close', () => { this.fail(new Error(`fleet-world: the helper in ${container} exited${this.stderrNote()}`)) })
+    child.once('close', () => { this.fail(new Error(`fbox: the helper in ${container} exited${this.stderrNote()}`)) })
     const rpc = new SshRpcPeer(child.stdout, child.stdin, MAX_FRAME_BYTES, MAX_PENDING)
     this.rpc = rpc
     rpc.once('closed', (error: Error) => { this.fail(error) })
@@ -188,10 +188,10 @@ export class DockerConnection extends Service {
       // Docker's or the helper's own message explains a failed start better than the closed pipe.
       await Promise.race([this.childClosed, delay(1000, undefined, { ref: false })])
       if (this.stderr.trim() === '') throw error
-      throw new Error(`fleet-world: the helper in ${container} did not start${this.stderrNote()}`, { cause: error })
+      throw new Error(`fbox: the helper in ${container} did not start${this.stderrNote()}`, { cause: error })
     }
     if (hello.hash !== this.config.helperHash) {
-      throw new Error(`fleet-world: the helper in ${container} differs from the host's @deepseek-ai/dsh-ssh; pin the same version in the image's helper/package.json`)
+      throw new Error(`fbox: the helper in ${container} differs from the host's @deepseek-ai/dsh-ssh; pin the same version in the image's helper/package.json`)
     }
     this.hostPath(hello.root)
 
@@ -209,7 +209,7 @@ export class DockerConnection extends Service {
   private hostPath(path: string): string {
     const relative = posix.relative('/tmp', path)
     if (posix.normalize(path) !== path || relative === '' || relative === '..' || relative.startsWith('../')) {
-      throw new Error(`fleet-world: the helper used ${JSON.stringify(path)}, which is not below the container's /tmp`)
+      throw new Error(`fbox: the helper used ${JSON.stringify(path)}, which is not below the container's /tmp`)
     }
     return join(this.config.tmp, relative)
   }
@@ -226,7 +226,7 @@ export class DockerConnection extends Service {
       }
       const connected = (): void => { cleanup(); resolve() }
       const failed = (error: Error): void => { cleanup(); reject(error) }
-      const closed = (): void => { failed(new Error('fleet-world: helper stream closed before it connected')) }
+      const closed = (): void => { failed(new Error('fbox: helper stream closed before it connected')) }
       const aborted = (): void => { socket.destroy(asError(signal.reason)) }
       socket.once('connect', connected)
       socket.once('error', failed)
@@ -242,7 +242,7 @@ export class DockerConnection extends Service {
   }
 
   private assertOpen(): void {
-    if (this.closed) throw new Error('fleet-world: the helper connection is closed')
+    if (this.closed) throw new Error('fbox: the helper connection is closed')
     if (this.failure !== undefined) throw this.failure
   }
 

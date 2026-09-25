@@ -7,12 +7,12 @@
  * since its container exists before its first message; an ordinary resume
  * never does either, since its container is the same.
  *
- * The notice is an ordinary `user/message` with a `fleet-world` source, added
+ * The notice is an ordinary `user/message` with an `fbox` source, added
  * to the next step that already sends messages, so it never makes a model
  * call of its own, and written to the session log once; a projection folds
  * the log back into when the conversation began and which container the last
  * notice described.
- * @module fleet-world/context
+ * @module fbox/context
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -24,12 +24,12 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { z } from 'zod'
 import type { SessionContainer } from './world.ts'
 
-const KIND = 'fleet-world'
+const KIND = 'fbox'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** A notice that the session's container is new; `container` is the Docker id it describes. */
-    'fleet-world': { kind: 'fleet-world'; container: string } & ContextFormed
+    'fbox': { kind: 'fbox'; container: string } & ContextFormed
   }
 }
 
@@ -42,7 +42,7 @@ const historySchema = z.object({
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
-    fleetWorldContainer: z.infer<typeof historySchema>
+    fboxContainer: z.infer<typeof historySchema>
   }
 }
 
@@ -50,15 +50,15 @@ const ENVIRONMENT = 'Your commands and file tools run inside this session\'s own
   + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages, '
   + 'persists from turn to turn, and you are told if the container is ever replaced; /tmp is emptied when the machine restarts.'
 
-export const name = 'fleet-world-context'
-export const inject = ['fleetWorld', 'systemPrompt', 'sessionProjections']
+export const name = 'fbox-context'
+export const inject = ['fbox', 'systemPrompt', 'sessionProjections']
 
 export function apply(ctx: Context): void {
   // The web surface's slot among the local paths and endpoints; this bundle turns that section off, since it describes the host.
-  ctx.systemPrompt.section({ name: 'fleet-world:environment', order: ctx.systemPrompt.getSectionOrder('WEB_SURFACE'), text: ENVIRONMENT })
+  ctx.systemPrompt.section({ name: 'fbox:environment', order: ctx.systemPrompt.getSectionOrder('WEB_SURFACE'), text: ENVIRONMENT })
 
   ctx.sessionProjections.register({
-    key: 'fleetWorldContainer',
+    key: 'fboxContainer',
     stateVersion: 1,
     stateSchema: historySchema,
     init: () => ({ since: null, noticed: null }),
@@ -73,8 +73,8 @@ export function apply(ctx: Context): void {
     const decision = await next()
     // dsh skips a step with nothing to send; a notice must not turn it into a model call.
     if (decision.kind === 'reject' || signal.aborted || decision.messages.length === 0) return decision
-    const { container } = await ctx.fleetWorld.forAgent(agent, signal)
-    const history = ctx.sessionProjections.stateOf(agent.session, 'fleetWorldContainer')
+    const { container } = await ctx.fbox.forAgent(agent, signal)
+    const history = ctx.sessionProjections.stateOf(agent.session, 'fboxContainer')
     if (history === undefined || history.since === null || history.since >= container.created || history.noticed === container.id) {
       return decision
     }

@@ -5,7 +5,7 @@
  * instead of reading the host. The world does not confine file access itself,
  * since the container is the boundary, so `sandboxMode` stays unset and the
  * file tools offer no sandbox escalation.
- * @module fleet-world/fs
+ * @module fbox/fs
  */
 
 import { posix } from 'node:path'
@@ -19,8 +19,8 @@ import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from './world.ts'
 
-export class FleetWorldFileSystem extends FileSystem {
-  static inject = ['fleetWorld', 'sandboxPolicy']
+export class FboxFileSystem extends FileSystem {
+  static inject = ['fbox', 'sandboxPolicy']
 
   override async resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<FsTarget> {
     return (await this.world('ctx.fs.resolve')).resolve(path, opts)
@@ -71,19 +71,19 @@ export class FleetWorldFileSystem extends FileSystem {
   override async writeText(
     target: FsTarget, content: string, expected?: FsWriteIntent, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsWriteOutcome> {
-    const { agent, world } = await this.ctx.fleetWorld.current('ctx.fs.writeText')
+    const { agent, world } = await this.ctx.fbox.current('ctx.fs.writeText')
     return world.fs.writeText(target, content, expected, signal, sandboxPolicy ?? this.policy(agent))
   }
 
   override async editText(
     target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsEditOutcome> {
-    const { agent, world } = await this.ctx.fleetWorld.current('ctx.fs.editText')
+    const { agent, world } = await this.ctx.fbox.current('ctx.fs.editText')
     return world.fs.editText(target, edit, expected, signal, sandboxPolicy ?? this.policy(agent))
   }
 
   private async world(operation: string): Promise<FileSystem> {
-    return (await this.ctx.fleetWorld.current(operation)).world.fs
+    return (await this.ctx.fbox.current(operation)).world.fs
   }
 
   /**
@@ -96,4 +96,4 @@ export class FleetWorldFileSystem extends FileSystem {
   }
 }
 
-export default FleetWorldFileSystem
+export default FboxFileSystem

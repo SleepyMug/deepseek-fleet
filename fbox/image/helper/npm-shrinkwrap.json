@@ -1,11 +1,11 @@
 {
-  "name": "fleet-world-helper",
+  "name": "fbox-helper",
   "version": "0.0.1",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "fleet-world-helper",
+      "name": "fbox-helper",
       "version": "0.0.1",
       "dependencies": {
         "@deepseek-ai/cordis": "4.0.4",

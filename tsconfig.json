@@ -1,8 +1,7 @@
 {
   "files": [],
   "references": [
-    { "path": "fleet-image" },
-    { "path": "fleet-signin" },
-    { "path": "fleet-world" }
+    { "path": "fbox" },
+    { "path": "fleet-signin" }
   ]
 }

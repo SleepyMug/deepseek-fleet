@@ -2,7 +2,7 @@
  * TLS-PSK authentication of one helper stream socket. This mirrors dsh-ssh's
  * private `stream-security` module, which the package does not export; the
  * helper's stream servers accept exactly these options.
- * @module fleet-world/stream-security
+ * @module fbox/stream-security
  */
 
 import type { Socket } from 'node:net'
@@ -42,8 +42,8 @@ export async function authenticateStream(socket: Socket, capability: string, tim
       }
       const secured = (): void => { cleanup(); stream.disableRenegotiation(); stream.pause(); resolve() }
       const failed = (error: Error): void => { cleanup(); reject(error) }
-      const closed = (): void => { failed(new Error('fleet-world: helper stream closed during authentication')) }
-      const timer = setTimeout(() => { failed(new Error('fleet-world: helper stream authentication timed out')) }, timeoutMs)
+      const closed = (): void => { failed(new Error('fbox: helper stream closed during authentication')) }
+      const timer = setTimeout(() => { failed(new Error('fbox: helper stream authentication timed out')) }, timeoutMs)
       stream.once('secureConnect', secured)
       stream.once('error', failed)
       stream.once('close', closed)

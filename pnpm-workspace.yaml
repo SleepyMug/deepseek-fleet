@@ -1,7 +1,6 @@
 packages:
-  - fleet-image
+  - fbox
   - fleet-signin
-  - fleet-world
   - profile-fleet
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
