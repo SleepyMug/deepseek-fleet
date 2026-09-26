@@ -47,8 +47,9 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 }
 
 const ENVIRONMENT = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, with {{cwd}} '
-  + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages, '
-  + 'persists from turn to turn, and you are told if the container is ever replaced; /tmp is emptied when the machine restarts.'
+  + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages and '
+  + 'files in /tmp, persists from turn to turn, and you are told if the container is ever replaced. When a command\'s '
+  + 'output is long, only its end is kept, so send output you need in full to a file and read that.'
 
 export const name = 'fleet-box-context'
 export const inject = ['fleetBox', 'systemPrompt', 'sessionProjections']

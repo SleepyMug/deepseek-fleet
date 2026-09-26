@@ -2,7 +2,7 @@
   "name": "fleet-box",
   "version": "0.0.1",
   "private": true,
-  "description": "Docker execution world for the fleet profile: one container per root session with its folder bind-mounted at the same path",
+  "description": "Docker execution world for the fleet profile: one container per root session, served by a helper inside it, with the session folder bind-mounted at the same path",
   "type": "module",
   "exports": {
     "./world": {
@@ -30,6 +30,7 @@
   "files": [
     "lib",
     "image",
+    "src/helper",
     "cordis.patch.yml"
   ],
   "scripts": {
@@ -42,9 +43,6 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-fs-ssh": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-ssh": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-subprocess-ssh": "0.1.7-rc.2",
     "zod": "4.6.5"
   },
   "peerDependencies": {
@@ -53,21 +51,22 @@
     "@deepseek-ai/dsh-home-paths": "0.1.7-rc.2",
     "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/schemastery": "3.18.4"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-home-paths": "0.1.7-rc.2",
     "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-sandbox": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-sandbox-policy": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session-persistence": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.1.7-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",
     "@deepseek-ai/dsh-workspace": "0.1.7-rc.2",
     "@deepseek-ai/schemastery": "3.18.4"

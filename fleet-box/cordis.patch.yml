@@ -1,25 +1,27 @@
 # Docker execution world, layered after profile-fleet: it replaces that
-# bundle's `fs-local` row, so list it later in the profile's bundles.
+# bundle's `fs-local` row and dsh-base's `subprocess` row, and turns off what
+# the world cannot serve, so list it later in the profile's bundles.
 #
 # Every root session owns one container while it is unarchived: the session
-# folder is bind-mounted at the same path, /tmp is a private folder under
-# $XDG_RUNTIME_DIR/fleet-box (tmpfs, cleared at reboot), and processes run
-# as the container's root (you, under rootless Docker). Subagent sessions
-# share their root's container; a fork gets its own. A container runs while
-# dsh has its helper connected: it starts before a model step needs it, stops
-# when dsh exits or the helper is lost, and is removed when its session is
-# archived; an unarchived session starts fresh, and the model is told once.
-# The session image is a prerequisite: build it with `fleet-setup image`
+# folder is bind-mounted at the same path, everything else (/tmp included)
+# is the container's own, and processes run as the container's root (you,
+# under rootless Docker). Subagent sessions share their root's container; a
+# fork gets its own. A container runs while dsh has its helper connected: it
+# starts before a model step needs it, stops when dsh exits or the helper is
+# lost, and is removed when its session is archived; an unarchived session
+# starts fresh, and the model is told once. The session image, with the
+# helper built into it, is a prerequisite: build it with `fleet-setup image`
 # from the fleet-setup package, installed in the same profile
 # (`dsh plugin --profile fleet exec fleet-setup image`). Without it fleet-box
 # does not start, dsh's startup warning says so, and no session can run.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
-# its container, through the dsh-ssh helper and dsh's SSH providers. A call
-# outside a session's work fails instead of touching the host, so features
-# that make such calls are disabled below until the world serves them. The
-# chat's file links (`/api/file`) are one too, but session-controller serves
-# them itself, so they stay and fail when opened.
+# its container, through fleet-box's helper. The subprocess side serves bash:
+# collected output without spill files, and no raw pipes, control channel or
+# terminals. A call outside a session's work fails instead of touching the
+# host, so features that make such calls are disabled below until the world
+# serves them. The chat's file links (`/api/file`) are one too, but
+# session-controller serves them itself, so they stay and fail when opened.
 
 # ── The world replaces the local execution providers ──
 
@@ -55,6 +57,16 @@
     printUrl: true
     surfaceContext: false
     trustedHosts: !!js ctx.webStartup.trustedHosts
+
+# ── Spill files: host files the model cannot open ──
+
+# Oversized tool results would be saved to a host file the model is told to
+# read, but its file tools read the container. Results stay inline instead;
+# bash and read bound their own output. Bash output is not spilled either:
+# ctx.subprocess keeps only its tail, and bash says the full output is
+# unavailable.
+- id: spill-policy
+  disabled: true
 
 # ── Not served by the world yet ──
 

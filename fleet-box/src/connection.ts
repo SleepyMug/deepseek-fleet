@@ -1,260 +1,289 @@
 /**
- * `ctx.ssh` for one session container, standing in for dsh-ssh's
- * `SshConnection` so the upstream SSH filesystem and subprocess providers run
- * unchanged. The dsh-ssh helper runs inside the container through
- * `docker exec`, and requests travel over that exec's stdin and stdout. Each
- * process stream is a Unix socket the helper creates under the container's
- * `/tmp`: the host reaches it through the session's bind-mounted `/tmp`
- * folder, without forwarding, and authenticates it with TLS-PSK. Like
- * `SshConnection`, a connection never reconnects: losing the helper fails
- * every pending operation, and `ended` tells the owner to tear the world down.
+ * The host's end of one session container's helper. It starts the helper
+ * with `docker exec --interactive`, sends it requests, and routes its answers
+ * and process events (./helper/protocol.ts). Everything the helper sends is
+ * bounded and validated, since the model is root in the same container.
+ *
+ * A connection never reconnects. When the helper or its Docker CLI ends
+ * without being asked to, every pending request fails, every running process
+ * is reported lost, and `ended` tells the world's owner to tear the world down.
  * @module fleet-box/connection
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { createConnection, type Socket } from 'node:net'
-import { join, posix } from 'node:path'
+import { constants } from 'node:os'
+import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
-import { Service } from '@deepseek-ai/cordis'
-import type { Context } from '@deepseek-ai/cordis'
-import { SshRpcPeer, SSH_PROTOCOL_VERSION } from '@deepseek-ai/dsh-ssh/protocol'
-import { helloSchema, type SshStreamEndpoint } from '@deepseek-ai/dsh-ssh/schemas'
 import { z } from 'zod'
-import { authenticateStream } from './stream-security.ts'
+import { MAX_MESSAGE_BYTES, PROTOCOL_VERSION, type HostMessage } from './helper/protocol.ts'
 
-type Hello = z.infer<typeof helloSchema>
-
-/** dsh-ssh's ceilings for one request or response, and for concurrent requests. */
-const MAX_FRAME_BYTES = 64 * 1024 * 1024
-const MAX_PENDING = 128
 /** Characters of the helper's stderr kept to explain a failed start. */
 const STDERR_TAIL = 4096
+/** How long the helper gets to answer its handshake, or a later check that it still answers. */
+const HELLO_TIMEOUT_MS = 30_000
+/** How long the helper gets to stop its processes and exit once its stdin ends. */
+const CLOSE_TIMEOUT_MS = 15_000
+const CLOSED = 'fleet-box: the helper connection is closed'
 
-export interface Config {
+export interface ConnectionOptions {
   /** Docker CLI executable. */
   docker: string
-  /** Name of the running container that runs the helper. */
+  /** Name of the running container. */
   container: string
-  /** Absolute folder, the same in the container and on the host, that relative paths resolve against. */
+  /** Folder the helper starts in, the same in the container and on the host. */
   workspace: string
-  /** Host folder mounted at the container's `/tmp`, where the helper creates its stream sockets. */
-  tmp: string
   /** Node executable inside the container. */
   node: string
   /** Helper entry inside the container. */
-  helper: string
-  /** SHA-256 of the host's copy of the helper entry; any other helper is refused. */
-  helperHash: string
-  /** Deadline for the handshake and for every request that is not a process wait. */
-  requestTimeoutMs: number
-  /** Without a heartbeat for this long, the helper stops everything it started. */
-  leaseMs: number
+  entry: string
 }
 
-export class DockerConnection extends Service {
-  /** The helper's handshake; operations wait for it. */
-  readonly ready: Promise<Hello>
-  /**
-   * Settles with what ended the connection when anything but its own teardown
-   * did: the helper failed, or dsh's providers gave up on it.
-   */
+/** A failure the helper reported for one request; `code` is a dsh-fs error code or the helper's own. */
+export class HelperError extends Error {
+  constructor(message: string, readonly code: string | undefined) {
+    super(message)
+    this.name = 'HelperError'
+  }
+}
+
+/** Receives one process's events. */
+export interface ProcessListener {
+  output(stream: 'stdout' | 'stderr', data: Buffer): void
+  exit(exitCode: number | null, signal: NodeJS.Signals | null): void
+  /** The connection ended before the process's exit arrived. */
+  lost(error: Error): void
+}
+
+const signalSchema = z.string().refine(name => name in constants.signals).transform(name => name as NodeJS.Signals)
+const messageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('result'), id: z.number().int(), value: z.unknown() }),
+  z.object({ type: z.literal('error'), id: z.number().int(), error: z.object({ name: z.string(), message: z.string(), code: z.string().optional() }) }),
+  z.object({ type: z.literal('output'), process: z.string(), stream: z.enum(['stdout', 'stderr']), data: z.base64() }),
+  z.object({ type: z.literal('exit'), process: z.string(), exitCode: z.number().int().nullable(), signal: signalSchema.nullable() }),
+])
+const helloSchema = z.object({ protocol: z.number(), node: z.string() })
+
+interface Pending {
+  method: string
+  schema: z.ZodType
+  resolve(value: unknown): void
+  reject(error: unknown): void
+}
+
+export class HelperConnection {
+  /** Settles with what ended the connection when anything but {@link close} did. */
   readonly ended: Promise<Error>
 
-  private readonly config: Config
+  private readonly options: ConnectionOptions
   private readonly markEnded: (error: Error) => void
-  private readonly lifetime = new AbortController()
-  private readonly sockets = new Set<Socket>()
-  private rpc: SshRpcPeer | undefined
+  private readonly pending = new Map<number, Pending>()
+  private readonly processes = new Map<string, ProcessListener>()
+  private nextId = 1
   private child: ChildProcessWithoutNullStreams | undefined
-  private childClosed: Promise<void> | undefined
-  private heartbeat: NodeJS.Timeout | undefined
+  private childClosed: Promise<void> = Promise.resolve()
   private stderr = ''
-  private closed = false
   private failure: Error | undefined
   private closing: Promise<void> | undefined
 
-  constructor(ctx: Context, config: Config) {
-    super(ctx, 'ssh')
-    this.config = config
+  constructor(options: ConnectionOptions) {
+    this.options = options
     const ended = Promise.withResolvers<Error>()
     this.ended = ended.promise
     this.markEnded = ended.resolve
-    this.ready = this.start()
-    void this.ready.catch((error: unknown) => { this.fail(asError(error)) })
-    ctx.effect(() => () => this.close(), 'fleet-box helper connection')
   }
 
-  /** Keep the providers that use this connection waiting until the helper is verified. */
-  async [Service.init](): Promise<void> {
-    await this.ready
-  }
-
-  /**
-   * Send one helper operation; cancellation does not undo an operation the helper already performed.
-   * @param method - the helper operation.
-   * @param params - request fields, validated by the helper.
-   * @param result - validation of the helper's answer.
-   * @param signal - cancellation.
-   * @param wait - lift the request deadline, for process observations.
-   * @returns the validated answer.
-   */
-  async request<T>(method: string, params: unknown, result: z.ZodType<T>, signal?: AbortSignal, wait = false): Promise<T> {
-    this.assertOpen()
-    await this.ready
-    this.assertOpen()
-    const deadline = AbortSignal.timeout(this.config.requestTimeoutMs)
-    const bounded = wait ? signal : signal === undefined ? deadline : AbortSignal.any([signal, deadline])
-    return (this.rpc as SshRpcPeer).request(method, params, result, bounded)
-  }
-
-  /**
-   * Connect to one stream socket the helper published, through the host side of the container's `/tmp`.
-   * @param endpoint - the socket path in the container and its key.
-   * @param signal - cancels the connection and the resulting stream.
-   * @returns the authenticated stream, paused; attach a consumer before resuming it.
-   */
-  async connectStream(endpoint: SshStreamEndpoint, signal?: AbortSignal): Promise<Socket> {
-    const hello = await this.ready
-    this.assertOpen()
-    const combined = signal === undefined ? this.lifetime.signal : AbortSignal.any([signal, this.lifetime.signal])
-    combined.throwIfAborted()
-    if (!endpoint.path.startsWith(`${hello.root}/`)) throw new Error('fleet-box: the helper returned a stream outside its socket folder')
-    const socket = await this.connectSocket(this.hostPath(endpoint.path), combined)
-    const authenticated = await authenticateStream(socket, endpoint.capability, this.config.requestTimeoutMs, combined)
-    this.track(authenticated)
-    authenticated.on('error', () => { authenticated.destroy() })
-    return authenticated
-  }
-
-  /**
-   * What dsh's SSH providers call when they can no longer vouch for the
-   * helper, after it did not confirm that a process was stopped: end the
-   * connection and report it ended, so its owner tears the world down.
-   */
-  dispose(): Promise<void> {
-    this.fail(new Error('fleet-box: dsh\'s SSH providers gave up on the helper after it did not confirm that a process was stopped'))
-    return this.close()
-  }
-
-  /** Stop everything the helper started, then end the helper; this service's own teardown, which reports nothing. */
-  private close(): Promise<void> {
-    this.closing ??= this.closeOnce()
-    return this.closing
-  }
-
-  private async closeOnce(): Promise<void> {
-    this.closed = true
-    this.lifetime.abort(new Error('fleet-box: the helper connection is closing'))
-    clearInterval(this.heartbeat)
-    try {
-      await this.ready.catch(() => {})
-      if (this.failure === undefined) await this.rpc?.request('close', {}, z.null(), AbortSignal.timeout(this.config.requestTimeoutMs))
-    } finally {
-      // Ending the exec's stdin ends the helper; the signal only stops the Docker CLI if it lingers.
-      this.rpc?.close()
-      // TLS streams close before the sockets under them.
-      const closures = [...this.sockets].reverse().map(socket => new Promise<void>((resolve) => {
-        if (socket.closed) resolve()
-        else { socket.once('close', () => { resolve() }); socket.destroy() }
-      }))
-      this.child?.kill('SIGTERM')
-      const force = setTimeout(() => { this.child?.kill('SIGKILL') }, this.config.requestTimeoutMs)
-      try { await this.childClosed } finally { clearTimeout(force) }
-      await Promise.all(closures)
-    }
-  }
-
-  private async start(): Promise<Hello> {
-    const { docker, container, workspace, node, helper } = this.config
-    const child = spawn(docker, ['exec', '--interactive', '--workdir', workspace, container, node, '--disable-sigusr1', helper], {
+  /** Start the helper and check that it speaks this protocol. */
+  async start(): Promise<void> {
+    const { docker, container, workspace, node, entry } = this.options
+    // A stray SIGUSR1 in the container would open Node's inspector in the helper.
+    const child = spawn(docker, ['exec', '--interactive', '--workdir', workspace, container, node, '--disable-sigusr1', entry], {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     this.child = child
     this.childClosed = new Promise((resolve) => { child.once('close', () => { resolve() }) })
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-STDERR_TAIL) })
+    // A write after the helper is gone fails here; its exit reports the loss.
+    child.stdin.on('error', () => {})
     child.once('error', (error) => { this.fail(error) })
-    child.once('close', () => { this.fail(new Error(`fleet-box: the helper in ${container} exited${this.stderrNote()}`)) })
-    const rpc = new SshRpcPeer(child.stdout, child.stdin, MAX_FRAME_BYTES, MAX_PENDING)
-    this.rpc = rpc
-    rpc.once('closed', (error: Error) => { this.fail(error) })
+    child.once('close', () => {
+      this.fail(new Error(this.closing === undefined ? `fleet-box: the helper in ${container} exited${this.stderrNote()}` : CLOSED))
+    })
+    this.read(child.stdout)
 
-    let hello: Hello
+    let hello: z.infer<typeof helloSchema>
     try {
-      hello = await rpc.request('hello', {
-        protocol: SSH_PROTOCOL_VERSION, workspace, leaseMs: this.config.leaseMs,
-      }, helloSchema, AbortSignal.timeout(this.config.requestTimeoutMs))
+      hello = await this.request('hello', {}, helloSchema, AbortSignal.timeout(HELLO_TIMEOUT_MS))
     } catch (error) {
       // Docker's or the helper's own message explains a failed start better than the closed pipe.
       await Promise.race([this.childClosed, delay(1000, undefined, { ref: false })])
-      if (this.stderr.trim() === '') throw error
-      throw new Error(`fleet-box: the helper in ${container} did not start${this.stderrNote()}`, { cause: error })
+      throw new Error(`fleet-box: the helper in ${container} did not start${this.stderrNote() || `: ${message(error)}`}`)
     }
-    if (hello.hash !== this.config.helperHash) {
-      throw new Error(`fleet-box: the helper in ${container} differs from the host's @deepseek-ai/dsh-ssh; pin the same version in the image's helper/package.json`)
+    if (hello.protocol !== PROTOCOL_VERSION) {
+      throw new Error(`fleet-box: the helper in ${container} speaks protocol ${hello.protocol}, not ${PROTOCOL_VERSION}; rebuild the image with \`fleet-setup image\``)
     }
-    this.hostPath(hello.root)
-
-    let pending: Promise<unknown> | undefined
-    this.heartbeat = setInterval(() => {
-      pending ??= rpc.request('heartbeat', {}, z.null(), AbortSignal.timeout(this.config.leaseMs / 2))
-        .catch((error: unknown) => { this.fail(asError(error)) })
-        .finally(() => { pending = undefined })
-    }, Math.floor(this.config.leaseMs / 3))
-    this.heartbeat.unref()
-    return hello
   }
 
-  /** The host path of a helper path below the container's `/tmp`. */
-  private hostPath(path: string): string {
-    const relative = posix.relative('/tmp', path)
-    if (posix.normalize(path) !== path || relative === '' || relative === '..' || relative.startsWith('../')) {
-      throw new Error(`fleet-box: the helper used ${JSON.stringify(path)}, which is not below the container's /tmp`)
-    }
-    return join(this.config.tmp, relative)
-  }
-
-  private async connectSocket(path: string, signal: AbortSignal): Promise<Socket> {
-    const socket = createConnection({ path, allowHalfOpen: true })
-    this.track(socket)
-    await new Promise<void>((resolve, reject) => {
-      const cleanup = (): void => {
-        signal.removeEventListener('abort', aborted)
-        socket.off('connect', connected)
-        socket.off('error', failed)
-        socket.off('close', closed)
+  /**
+   * Send one request; cancelling it does not undo what the helper already did.
+   * @param method - the helper operation.
+   * @param params - its fields, as JSON.
+   * @param schema - validation of the answer.
+   * @param signal - stops waiting and asks the helper to stop.
+   * @returns the validated answer.
+   */
+  request<T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    if (this.failure !== undefined) return Promise.reject(this.failure)
+    if (signal?.aborted === true) return Promise.reject(signal.reason)
+    const id = this.nextId++
+    return new Promise<T>((resolve, reject) => {
+      const abort = (): void => {
+        this.pending.delete(id)
+        this.send({ type: 'cancel', id })
+        reject(signal?.reason)
       }
-      const connected = (): void => { cleanup(); resolve() }
-      const failed = (error: Error): void => { cleanup(); reject(error) }
-      const closed = (): void => { failed(new Error('fleet-box: helper stream closed before it connected')) }
-      const aborted = (): void => { socket.destroy(asError(signal.reason)) }
-      socket.once('connect', connected)
-      socket.once('error', failed)
-      socket.once('close', closed)
-      signal.addEventListener('abort', aborted, { once: true })
+      signal?.addEventListener('abort', abort, { once: true })
+      this.pending.set(id, {
+        method,
+        schema,
+        resolve: (value) => {
+          signal?.removeEventListener('abort', abort)
+          resolve(value as T)
+        },
+        reject: (error) => {
+          signal?.removeEventListener('abort', abort)
+          reject(error)
+        },
+      })
+      this.send({ type: 'request', id, method, params })
     })
-    return socket
   }
 
-  private track(socket: Socket): void {
-    this.sockets.add(socket)
-    socket.once('close', () => { this.sockets.delete(socket) })
-  }
-
-  private assertOpen(): void {
-    if (this.closed) throw new Error('fleet-box: the helper connection is closed')
+  /**
+   * Receive a process's events until its exit; register before spawning it.
+   * @returns a function that stops the events.
+   */
+  watch(process: string, listener: ProcessListener): () => void {
     if (this.failure !== undefined) throw this.failure
+    this.processes.set(process, listener)
+    return () => {
+      if (this.processes.get(process) === listener) this.processes.delete(process)
+    }
+  }
+
+  /**
+   * Check that the helper still answers, as when a process it was asked to
+   * stop has not ended long after its grace. A helper that does not answer,
+   * such as in a paused container, is lost like one that exited.
+   */
+  async probe(): Promise<void> {
+    try {
+      await this.request('hello', {}, helloSchema, AbortSignal.timeout(HELLO_TIMEOUT_MS))
+    } catch {
+      this.fail(new Error(`fleet-box: the helper in ${this.options.container} stopped answering`))
+    }
+  }
+
+  /** End the helper, which stops every process it started; the world's teardown, which reports nothing. */
+  close(): Promise<void> {
+    this.closing ??= this.closeOnce()
+    return this.closing
+  }
+
+  private async closeOnce(): Promise<void> {
+    const child = this.child
+    if (child !== undefined) {
+      child.stdin.end()
+      const exited = await Promise.race([this.childClosed.then(() => true), delay(CLOSE_TIMEOUT_MS, false, { ref: false })])
+      if (!exited) {
+        child.kill('SIGKILL')
+        await this.childClosed
+      }
+    }
+    this.fail(new Error(CLOSED))
+  }
+
+  private send(message: HostMessage): void {
+    if (this.failure !== undefined || this.child === undefined) return
+    this.child.stdin.write(`${JSON.stringify(message)}\n`)
+  }
+
+  /** Split the helper's stdout into lines, refusing any longer than a message may be. */
+  private read(stdout: Readable): void {
+    let parts: Buffer[] = []
+    let size = 0
+    const tooLong = (length: number): boolean => {
+      if (length <= MAX_MESSAGE_BYTES) return false
+      this.fail(new Error(`fleet-box: the helper in ${this.options.container} sent a message over ${MAX_MESSAGE_BYTES} bytes`))
+      stdout.destroy()
+      return true
+    }
+    stdout.on('data', (chunk: Buffer) => {
+      let start = 0
+      for (let newline = chunk.indexOf(0x0a); newline !== -1; newline = chunk.indexOf(0x0a, start)) {
+        if (tooLong(size + newline - start)) return
+        parts.push(chunk.subarray(start, newline))
+        const line = Buffer.concat(parts).toString('utf8')
+        parts = []
+        size = 0
+        start = newline + 1
+        this.receive(line)
+        if (this.failure !== undefined) return
+      }
+      size += chunk.length - start
+      if (tooLong(size)) return
+      if (start < chunk.length) parts.push(chunk.subarray(start))
+    })
+  }
+
+  private receive(line: string): void {
+    let parsed: z.infer<typeof messageSchema>
+    try {
+      parsed = messageSchema.parse(JSON.parse(line))
+    } catch {
+      this.fail(new Error(`fleet-box: the helper in ${this.options.container} sent an unreadable message`))
+      return
+    }
+    switch (parsed.type) {
+      case 'result':
+      case 'error': {
+        // A cancelled request can still be answered.
+        const pending = this.pending.get(parsed.id)
+        if (pending === undefined) return
+        this.pending.delete(parsed.id)
+        if (parsed.type === 'error') {
+          pending.reject(new HelperError(parsed.error.message, parsed.error.code))
+          return
+        }
+        const value = pending.schema.safeParse(parsed.value)
+        if (value.success) pending.resolve(value.data)
+        else {
+          const error = new Error(`fleet-box: the helper in ${this.options.container} answered ${pending.method} with an unexpected value`)
+          pending.reject(error)
+          this.fail(error)
+        }
+        return
+      }
+      case 'output':
+        this.processes.get(parsed.process)?.output(parsed.stream, Buffer.from(parsed.data, 'base64'))
+        return
+      case 'exit': {
+        const listener = this.processes.get(parsed.process)
+        this.processes.delete(parsed.process)
+        listener?.exit(parsed.exitCode, parsed.signal)
+      }
+    }
   }
 
   private fail(error: Error): void {
     if (this.failure !== undefined) return
     this.failure = error
-    this.lifetime.abort(error)
-    clearInterval(this.heartbeat)
-    this.rpc?.close(error)
-    for (const socket of [...this.sockets].reverse()) socket.destroy(error)
+    for (const pending of this.pending.values()) pending.reject(error)
+    this.pending.clear()
+    for (const listener of this.processes.values()) listener.lost(error)
+    this.processes.clear()
     this.child?.kill('SIGTERM')
-    if (!this.closed) this.markEnded(error)
+    if (this.closing === undefined) this.markEnded(error)
   }
 
   private stderrNote(): string {
@@ -263,8 +292,6 @@ export class DockerConnection extends Service {
   }
 }
 
-function asError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value))
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
-
-export default DockerConnection
