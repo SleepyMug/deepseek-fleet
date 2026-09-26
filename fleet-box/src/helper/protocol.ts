@@ -15,7 +15,7 @@
  */
 
 /** Wire version; the host refuses a helper that answers with another. */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 /**
  * Longest message line the helper sends, newline excluded. A request whose
@@ -37,6 +37,28 @@ export const OUTPUT_CHUNK_BYTES = 64 * 1024
 
 /** Error code of an executable lookup that found nothing. */
 export const EXECUTABLE_NOT_FOUND = 'EXECUTABLE_NOT_FOUND'
+
+/**
+ * Environment variable that marks a terminal's processes. The host starts a
+ * terminal's shell with `docker exec`, outside the helper, and sets it to the
+ * terminal's id; everything the shell starts inherits it, so the helper finds
+ * the terminal's processes by it.
+ */
+export const TERMINAL_MARKER = 'FLEET_BOX_TERMINAL'
+
+/** What `terminal.state` reports about one terminal. */
+export interface TerminalState {
+  /** Whether the terminal's shell still runs. */
+  shell: boolean
+  /** The terminal's processes, the shell included (./terminals.ts). */
+  members: number
+  /**
+   * The shell waits at its prompt, as far as the process table tells: it is
+   * the terminal's only process, holds the foreground of its terminal, and
+   * sleeps. A loop of shell builtins that sleeps looks the same.
+   */
+  prompt: boolean
+}
 
 /** Host to helper. */
 export type HostMessage =

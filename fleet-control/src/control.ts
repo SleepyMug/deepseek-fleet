@@ -103,7 +103,7 @@ export class FleetControl {
     return {}
   }
 
-  /** Stop a session's container, which its next use starts again, unless something of the session runs. */
+  /** Stop a session's container now, which its next use starts again, unless something occupies it. */
   async stop(request: RequestOf<'stop'>, signal: AbortSignal): Promise<Results['stop']> {
     const sessionId = request.session as SessionId
     await this.known(sessionId, signal)
@@ -112,7 +112,7 @@ export class FleetControl {
       throw new ControlError('fleet/subagent-session', `${sessionId} is a subagent session, which shares the container of ${header.parentSession ?? 'its root'}; stop that one`)
     }
     const outcome = await this.ctx.fleetBox.stopSession(sessionId)
-    return outcome.stopped ? { stopped: true } : { stopped: false, activity: outcome.activity.map(activity => activity.kind) }
+    return outcome.stopped ? { stopped: true } : { stopped: false, activity: [...new Set(outcome.occupants.map(occupant => occupant.kind))] }
   }
 
   /** Archive a session; fleet-box removes its container. */

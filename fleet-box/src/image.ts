@@ -37,7 +37,7 @@ export const HELPER_ENTRY = '/opt/fleet-box/helper/main.js'
  * is an npm-shrinkwrap.json because packing drops package-lock.json.
  */
 export async function imageInputs(): Promise<string[]> {
-  const sources = (await readdir(join(PACKAGE_DIR, HELPER_SOURCES))).filter(name => name.endsWith('.ts')).sort()
+  const sources = (await readdir(join(PACKAGE_DIR, HELPER_SOURCES))).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts')).sort()
   return [
     DOCKERFILE, 'image/helper/npm-shrinkwrap.json', 'image/helper/package.json', 'image/helper/tsconfig.json',
     ...sources.map(name => `${HELPER_SOURCES}/${name}`),

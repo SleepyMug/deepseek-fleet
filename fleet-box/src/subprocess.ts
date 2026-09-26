@@ -1,34 +1,54 @@
 /**
  * `ctx.subprocess` for the fleet execution world: every process runs in the
  * container of the session whose agent started it, in a process group of its
- * own that the helper terminates and watches. A spawn outside any session's
- * work fails instead of running on the host.
+ * own that the helper terminates and watches, and so do a user's terminals
+ * (./terminal.ts). A call is the session's when that session's turn makes it,
+ * or when it comes through the session agent's own context, as dsh's
+ * terminal controller calls; any other fails instead of running on the host.
+ * Processes, terminals and executable lookups occupy their container
+ * (./occupancy.ts), so one made outside a turn keeps it running too: a
+ * process until it exits, a terminal until none of its processes is left,
+ * and a lookup while it runs. What a process leaves running in its group
+ * does not count, since bash runs in the foreground only; it ends when the
+ * container stops.
  *
  * It serves what dsh's bash executor asks for: stdin ignored or given as
  * data, and stdout and stderr collected. Collected output keeps only its
  * in-memory tail, with no spill file, since the model reads files in its
  * container and a spill would sit on the host; bash then reports the full
- * output as unavailable. Raw pipes, the fd 7 control channel and terminals
- * are refused; their consumers are off in the fleet profile.
+ * output as unavailable. Raw pipes and the fd 7 control channel are refused;
+ * their consumers are off in the fleet profile. Open terminals are session
+ * activity, so archiving a session is refused while one is open, and ends
+ * them when forced.
  *
- * Unloading this service terminates every process it started that is still
- * running and waits for their groups to empty.
+ * Unloading this service terminates every process and terminal it started
+ * that is still running and waits for them to end.
  * @module fleet-box/subprocess
  */
 
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { SubprocessExecutableNotFoundError, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type {
   SubprocessCollect, SubprocessCollectedOutputs, SubprocessHandle, SubprocessOutcome, SubprocessOutputMode, SubprocessSpawnSpec,
-  SubprocessTerminalEnvironment, SubprocessTerminalHandle,
+  SubprocessTerminalEnvironment, SubprocessTerminalHandle, SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { z } from 'zod'
 import { HelperError, type HelperConnection } from './connection.ts'
 import { EXECUTABLE_NOT_FOUND, type SpawnParams } from './helper/protocol.ts'
+import { ContainerTerminal } from './terminal.ts'
 import type { FleetBox } from './world.ts'
+
+declare module '@deepseek-ai/dsh-workspace/types' {
+  interface SessionActivityKindMap {
+    /** A user's terminal runs in the session's container, which archiving the session removes. */
+    terminal: true
+  }
+}
 
 /** Node's timer ceiling, which bounds a grace period. */
 const MAX_TIMER_DELAY_MS = 2_147_483_647
@@ -41,34 +61,62 @@ const TERMINATE_MARGIN_MS = 10_000
 export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
   static inject = ['fleetBox']
 
+  /**
+   * This service's own context; a caller that reaches this service makes
+   * `this.ctx` its own, which is how a call names its session.
+   */
+  private readonly self: Context
   /** Processes whose group may still have members. */
   private readonly live = new Set<ContainerProcess>()
+  /** Terminals with processes left, by root session. */
+  private readonly terminals = new Map<SessionId, Set<ContainerTerminal>>()
   private disposed = false
 
   constructor(ctx: Context) {
     super(ctx)
+    this.self = ctx
     ctx.effect(() => async () => {
       this.disposed = true
       const live = [...this.live]
       for (const handle of live) handle.terminate()
+      const terminals = [...this.terminals.values()].flatMap(open => [...open])
       // A process on a lost helper cannot be observed; its container stops with the world.
-      await Promise.allSettled(live.map(handle => handle.waitForExit()))
+      await Promise.allSettled([...live.map(handle => handle.waitForExit()), ...terminals.map(terminal => terminal.terminate())])
     }, 'fleet-box processes')
+
+    ctx.on('workspace/session-activity', async ({ sessionId }, next) => {
+      const activity = await next()
+      const open = [...this.terminals.get(sessionId) ?? []]
+      if (open.length === 0) return activity
+      return [{ kind: 'terminal', items: open.map(terminal => ({ id: terminal.id, label: terminal.label })) }, ...activity]
+    })
+    ctx.on('workspace/session-stop', ({ sessionId }) => {
+      for (const terminal of this.terminals.get(sessionId) ?? []) {
+        terminal.terminate().catch((error: unknown) => {
+          ctx.logger.warn(`fleet-box: could not end terminal ${terminal.id} of ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      }
+    })
   }
 
   override async resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
-    const { world } = await this.ctx.fleetBox.current('ctx.subprocess.resolveExecutable', signal)
+    const fleetBox = this.self.fleetBox
+    const agent = fleetBox.agentOf('ctx.subprocess.resolveExecutable', this.ctx)
+    const release = fleetBox.occupy(fleetBox.rootOf(agent), { kind: 'call', id: randomUUID() })
     try {
+      const world = await fleetBox.forAgent(agent, signal)
       return await world.connection.request('executable', { command, env: env ?? null }, z.string(), signal)
     } catch (error) {
       if (error instanceof HelperError && error.code === EXECUTABLE_NOT_FOUND) {
         throw new SubprocessExecutableNotFoundError(error.message, { cause: error })
       }
       throw error
+    } finally {
+      release()
     }
   }
 
-  /** The image's shell; its terminals are not served yet. */
+  /** The image's shell. */
   override terminalEnvironment(): Promise<SubprocessTerminalEnvironment> {
     return Promise.resolve({ platform: 'posix', defaultShell: '/bin/bash' })
   }
@@ -83,17 +131,67 @@ export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
     if (spec.stdio.stdin === 'pipe') throw new Error('fleet-box: the container world gives stdin only as data; \'pipe\' is not served')
     const stdout = collected(spec.stdio.stdout, 'stdout')
     const stderr = collected(spec.stdio.stderr, 'stderr')
-    const agent = this.ctx.fleetBox.agentOf('ctx.subprocess.spawn')
-    const handle = new ContainerProcess(this.ctx.fleetBox, agent, spec, stdout, stderr)
+    const fleetBox = this.self.fleetBox
+    const agent = fleetBox.agentOf('ctx.subprocess.spawn', this.ctx)
+    const release = fleetBox.occupy(fleetBox.rootOf(agent), { kind: 'process', id: randomUUID() })
+    let handle: ContainerProcess
+    try {
+      handle = new ContainerProcess(fleetBox, agent, spec, stdout, stderr)
+    } catch (error) {
+      release()
+      throw error
+    }
     this.live.add(handle)
+    // Bash runs in the foreground only, so what a command leaves behind in its group does not keep the container.
+    void handle.done.then(release, release)
     void handle.gone.then(() => { this.live.delete(handle) })
     return handle
   }
 
-  override spawnTerminal(): Promise<SubprocessTerminalHandle> {
-    return Promise.reject(new Error('fleet-box: the container world does not run terminals yet'))
+  /**
+   * Start a user's shell in the session's container. It occupies the
+   * container from before it starts until none of its processes is left.
+   */
+  override async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
+    if (this.disposed) throw new Error('fleet-box: ctx.subprocess is unloading')
+    spec.signal?.throwIfAborted()
+    if (spec.argv.length === 0 || spec.argv[0] === '') throw new Error('fleet-box: a terminal needs a program')
+    if (!spec.cwd.startsWith('/')) throw new Error(`fleet-box: a terminal needs an absolute working folder, got ${spec.cwd}`)
+    if (!(spec.graceMs > 0 && spec.graceMs <= MAX_TIMER_DELAY_MS)) throw new Error(`fleet-box: a terminal needs a positive grace period, got ${spec.graceMs}`)
+    for (const key of Object.keys(spec.env ?? {})) {
+      if (key === '' || key.includes('=')) throw new Error(`fleet-box: ${JSON.stringify(key)} is not an environment variable name`)
+    }
+    const fleetBox = this.self.fleetBox
+    const agent = fleetBox.agentOf('ctx.subprocess.spawnTerminal', this.ctx)
+    const root = fleetBox.rootOf(agent)
+    const id = randomUUID()
+    const release = fleetBox.occupy(root, { kind: 'terminal', id })
+    let terminal: ContainerTerminal
+    try {
+      const world = await fleetBox.forAgent(agent, spec.signal)
+      if (this.disposed) throw new Error('fleet-box: ctx.subprocess is unloading')
+      spec.signal?.throwIfAborted()
+      terminal = new ContainerTerminal(id, world, spec)
+    } catch (error) {
+      release()
+      throw error
+    }
+    let open = this.terminals.get(root)
+    if (open === undefined) {
+      open = new Set()
+      this.terminals.set(root, open)
+    }
+    const held = open
+    held.add(terminal)
+    void terminal.gone.then(() => {
+      held.delete(terminal)
+      if (held.size === 0 && this.terminals.get(root) === held) this.terminals.delete(root)
+      release()
+    })
+    return terminal
   }
 }
+
 
 function collected(mode: SubprocessOutputMode, name: string): SubprocessCollect {
   if (typeof mode !== 'object') throw new Error(`fleet-box: the container world only collects ${name}; '${mode}' is not served`)

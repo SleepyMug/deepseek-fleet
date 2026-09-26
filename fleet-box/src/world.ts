@@ -10,18 +10,23 @@
  * own root.
  *
  * Lifetime: a container runs exactly while this process has its session's
- * world open and its helper connected. A world opens before a model step
- * needs it, and its teardown always ends with the container stopped, whether
- * its helper was lost, dsh exits, or a caller stopped the session while
- * nothing of it ran (`stopSession`); the next use starts it again. Archiving a
- * session removes its container, and an unarchived session gets a fresh one
- * on its next use. Startup removes this dsh home's containers whose session
- * is archived, or gone and stopped. A container keeps running without a
- * helper only when dsh is killed, or exits before the teardown finishes; its
- * next use takes it over. The image is a prerequisite, built by
- * `fleet-setup image` from the fleet-setup package; without it this service
- * does not start, dsh's startup warning says how to build it, and no session
- * can run.
+ * world open and its helper connected. A world opens when something of its
+ * session needs it: a model step, a process, or a user's terminal. It stays
+ * open while anything occupies it (./occupancy.ts): a running turn of the
+ * session or its subagents, a user's terminal, or a process or call fleet-box
+ * runs there. Once nothing does, it closes after `idleStopMs`, or at once
+ * when a caller done with the session asks (`stopSession`); it never closes
+ * on its own while occupied. Its teardown always ends with the container
+ * stopped, whether it closed idle, its helper was lost, or dsh exits, and
+ * everything still running in the container ends with it; the next use
+ * starts it again. Archiving a session removes its container, and an
+ * unarchived session gets a fresh one on its next use. Startup removes this
+ * dsh home's containers whose session is archived, or gone and stopped. A
+ * container keeps running without a helper only when dsh is killed, or exits
+ * before the teardown finishes; its next use takes it over. The image is a
+ * prerequisite, built by `fleet-setup image` from the fleet-setup package;
+ * without it this service does not start, dsh's startup warning says how to
+ * build it, and no session can run.
  * @module fleet-box/world
  */
 
@@ -33,12 +38,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
-import type { SessionActivity } from '@deepseek-ai/dsh-workspace'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { HelperConnection } from './connection.ts'
 import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
+import { Occupancy, type Occupant } from './occupancy.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -59,11 +66,16 @@ const SPEC_LABEL = 'fleet-box.spec'
  */
 const STOP_GRACE_SECONDS = 1
 
+/** Node's timer ceiling. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647
+
 export interface Config {
   /** Docker CLI executable. */
   docker: string
   /** Deadline for one Docker CLI call. */
   dockerTimeoutMs: number
+  /** How long a container keeps running once nothing occupies it. */
+  idleStopMs: number
 }
 
 /** One root session's container. */
@@ -82,13 +94,17 @@ export interface SessionContainer {
 export interface SessionWorld {
   container: SessionContainer
   connection: HelperConnection
+  /** Docker CLI executable that drives the container. */
+  docker: string
+  /** Settles once this world's teardown has stopped the container, which ends everything in it. */
+  stopped: Promise<void>
 }
 
 /** What {@link FleetBox.stopSession} did. */
 export type StopOutcome =
   | { stopped: true }
-  /** Something of the session runs, so its container keeps running. */
-  | { stopped: false; activity: readonly SessionActivity[] }
+  /** Something occupies the container, so it keeps running. */
+  | { stopped: false; occupants: readonly Occupant[] }
 
 /** An open world and its teardown. */
 interface OpenWorld {
@@ -103,6 +119,8 @@ interface Root {
   queue: Promise<unknown>
   /** The open world; detached as soon as its teardown begins, so no call gets a closing world. */
   open: OpenWorld | undefined
+  /** The pending idle stop; every vacancy re-arms it. */
+  idle: NodeJS.Timeout | undefined
 }
 
 export class FleetBox extends Service {
@@ -111,6 +129,8 @@ export class FleetBox extends Service {
   static Config: Schema<Config> = Schema.object({
     docker: Schema.string().default('docker').description('Docker CLI executable.'),
     dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call.'),
+    idleStopMs: Schema.number().min(0).max(MAX_TIMER_DELAY_MS).default(60_000)
+      .description('How long a container keeps running once nothing occupies it; 0 stops it as soon as it is vacant.'),
   })
 
   private readonly config: Config
@@ -122,6 +142,7 @@ export class FleetBox extends Service {
   private readonly self: Context
   private readonly home = resolveDshHome()
   private readonly roots = new Map<SessionId, Root>()
+  private readonly occupancy: Occupancy
   /** Sessions archived in the workspace registry, as of its latest write. */
   private archived: ReadonlySet<SessionId>
   /**
@@ -143,8 +164,26 @@ export class FleetBox extends Service {
     this.config = config
     this.self = ctx
     this.archived = new Set(ctx.workspaceRegistry.archivedSessionIds)
+    this.occupancy = new Occupancy({
+      agents: () => ctx.agents.list(),
+      rootOf: (header) => {
+        try {
+          return this.rootHeader(header).id
+        } catch {
+          // Its lineage is not loaded, so it cannot occupy a container here.
+          return undefined
+        }
+      },
+      vacated: (id) => { this.vacated(id) },
+    })
     this.started.promise.catch(() => {})
-    ctx.effect(() => () => { this.closed = true }, 'fleet-box lifetime')
+    ctx.effect(() => () => {
+      this.closed = true
+      for (const root of this.roots.values()) clearTimeout(root.idle)
+    }, 'fleet-box lifetime')
+
+    ctx.on('agent/status', ({ agent, status }) => { if (status !== 'running') this.occupancy.settled(agent) })
+    ctx.on('agent/disposed', ({ agent }) => { this.occupancy.settled(agent) })
 
     // Every step opens its world first: a session unarchived while its agent stayed live gets a
     // fresh container, and a Docker failure fails the step rather than a tool call. A step in the
@@ -190,16 +229,39 @@ export class FleetBox extends Service {
     return { agent, world: await this.forAgent(agent, signal) }
   }
 
+  /** The agent whose turn the current call belongs to, or undefined outside any turn. */
+  initiator(): Agent | undefined {
+    return this.self.agents.currentInitiator()
+  }
+
   /**
    * The agent whose work the current call is, read synchronously so a
-   * synchronous call can open that agent's world afterwards.
+   * synchronous call can open that agent's world afterwards: the agent whose
+   * turn made the call, or else the agent whose scoped context the caller
+   * reached the provider through, as dsh's terminal controller reaches
+   * `ctx.subprocess` through `agent.ctx`.
    * @param operation - the provider method, named in the error for a call outside any session.
-   * @returns the initiating agent.
+   * @param caller - the context the provider was reached through, its traced `this.ctx`.
+   * @returns the agent.
    */
-  agentOf(operation: string): Agent {
-    const agent = this.self.agents.currentInitiator()
+  agentOf(operation: string, caller?: Context): Agent {
+    const agent = this.initiator() ?? (caller === undefined ? undefined : this.scopedAgent(caller))
     if (agent === undefined) throw new Error(`fleet-box: ${operation} was called outside a session; the container world serves only session work`)
     return agent
+  }
+
+  /** The root session whose container an agent's work uses. */
+  rootOf(agent: Agent): SessionId {
+    return this.rootHeader(agent.session.header).id
+  }
+
+  /**
+   * Occupy a root session's container (./occupancy.ts). Call this before
+   * asking for the world; a turn occupies it without this.
+   * @returns the release, to call once nothing of the occupant can reach the container.
+   */
+  occupy(root: SessionId, occupant: Occupant): () => void {
+    return this.occupancy.occupy(root, occupant)
   }
 
   /**
@@ -235,15 +297,14 @@ export class FleetBox extends Service {
   }
 
   /**
-   * Stop a root session's container while nothing of the session runs, as a
-   * caller does once it is done with the session for now. The world is torn
-   * down as on exit and the container stays; the next use starts it again.
-   * What runs is what dsh asks before archiving a session: its turn, its
-   * background jobs and its subagent descendants. Only a container this
-   * process drives is stopped: without a world here, one another dsh process
-   * drives, or a killed dsh left running, is left alone.
+   * Stop a root session's container now if nothing occupies it, as a caller
+   * does once it is done with the session for now, instead of waiting for its
+   * idle stop. The world is torn down as on exit and the container stays; the
+   * next use starts it again. Only a container this process drives is
+   * stopped: without a world here, one another dsh process drives, or a
+   * killed dsh left running, is left alone.
    * @param id - a root session; a subagent session shares its root's container, so it is refused.
-   * @returns whether no container of the session runs here, or the activity that keeps it running.
+   * @returns whether no container of the session runs here, or what occupies it.
    */
   stopSession(id: SessionId): Promise<StopOutcome> {
     if (this.closed) return Promise.reject(closedError())
@@ -252,45 +313,65 @@ export class FleetBox extends Service {
     }
     // This process never opened the session's world.
     if (!this.roots.has(id)) return Promise.resolve({ stopped: true })
+    return this.closeIfVacant(id)
+  }
+
+  /**
+   * The voluntary close, for an idle stop or a caller done with the session:
+   * in the root's queue, and only while nothing occupies the container.
+   * Nothing awaits between the check and the detach, so an occupant that
+   * appears later finds no open world and queues a fresh one behind this close.
+   */
+  private closeIfVacant(id: SessionId): Promise<StopOutcome> {
     return this.enqueue(id, async (state): Promise<StopOutcome> => {
       if (this.closed) throw closedError()
       if (state.open === undefined) return { stopped: true }
-      const activity = await this.self.waterfall('workspace/session-activity', { sessionId: id }, () => Promise.resolve([]))
-      if (activity.length > 0) return { stopped: false, activity }
-      // A turn that started while the providers answered may already hold the open world.
-      if (this.running(id)) return { stopped: false, activity: [{ kind: 'turn' }] }
-      // The world may have been lost while they answered; its teardown is queued behind this.
+      const occupants = this.occupancy.of(id)
+      if (occupants.length > 0) return { stopped: false, occupants }
       const opened = state.open
       state.open = undefined
-      await opened?.close()
+      await opened.close()
       return { stopped: true }
     })
   }
 
-  /** Whether a live agent of the root session or its subagents is running. */
-  private running(id: SessionId): boolean {
-    return this.self.agents.list().some((agent) => {
-      if (agent.status !== 'running') return false
-      try {
-        return this.rootHeader(agent.session.header).id === id
-      } catch {
-        // Its lineage is not loaded, so it cannot be this session's.
-        return false
-      }
-    })
+  /**
+   * A root session's container may have lost its last occupant: look again
+   * after the idle grace, and stop it if it is still vacant then.
+   */
+  private vacated(id: SessionId): void {
+    const root = this.roots.get(id)
+    if (this.closed || root?.open === undefined) return
+    clearTimeout(root.idle)
+    root.idle = setTimeout(() => {
+      root.idle = undefined
+      if (this.closed) return
+      this.closeIfVacant(id).catch((error: unknown) => {
+        this.self.logger.warn(`fleet-box: could not stop the idle container of ${id}: ${message(error)}`)
+      })
+    }, this.config.idleStopMs)
+    root.idle.unref()
   }
 
   /** Run one container operation of a root session after the ones before it. */
   private enqueue<T>(id: SessionId, operation: (root: Root) => Promise<T>): Promise<T> {
     let root = this.roots.get(id)
     if (root === undefined) {
-      root = { queue: Promise.resolve(), open: undefined }
+      root = { queue: Promise.resolve(), open: undefined, idle: undefined }
       this.roots.set(id, root)
     }
     const state = root
     const result = state.queue.then(() => operation(state))
     state.queue = result.catch(() => {})
     return result
+  }
+
+  /** The live agent a context is scoped to (@deepseek-ai/dsh-scope), if any. */
+  private scopedAgent(caller: Context): Agent | undefined {
+    const key = scopeOf(caller)
+    if (typeof key !== 'object' || key === null || !('id' in key)) return undefined
+    const agent = this.self.agents.get((key as Agent).id)
+    return agent === key ? agent : undefined
   }
 
   /**
@@ -397,6 +478,9 @@ export class FleetBox extends Service {
     }).finally(() => { stopped.resolve() })
     let opened: OpenWorld | undefined
     const detach = (): void => {
+      // A newer world opens only after this teardown, in the root's queue, so the pending idle stop is this one's.
+      clearTimeout(owner.idle)
+      owner.idle = undefined
       if (opened !== undefined && owner.open === opened) owner.open = undefined
     }
 
@@ -422,10 +506,12 @@ export class FleetBox extends Service {
 
     try {
       await connection.start()
-      const world: OpenWorld = { world: { container, connection }, close }
+      const world: OpenWorld = { world: { container, connection, docker: this.config.docker, stopped: stopped.promise }, close }
       opened = world
       owner.open = world
       void connection.ended.then((error) => { this.lose(root.id, owner, world, error) })
+      // Whatever opened it may have ended while it opened, and its vacancy found no world then.
+      this.vacated(root.id)
       return world
     } catch (error) {
       await close()

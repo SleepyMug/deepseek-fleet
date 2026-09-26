@@ -4,7 +4,9 @@
  * processes over its stdin and stdout (./protocol.ts) until stdin ends, which
  * happens when the host closes the world or goes away; then it stops every
  * process it started and exits. Files go through dsh's own local file system,
- * so the model's file tools behave exactly as they do on a local machine.
+ * so the model's file tools behave exactly as they do on a local machine. It
+ * also watches and ends the terminals the host runs with `docker exec`
+ * (./terminals.ts), which are not its processes.
  *
  * The image build compiles this directory on its own (image/helper), so it
  * imports nothing from the rest of fleet-box.
@@ -24,6 +26,7 @@ import {
   type HelperMessage, type HostMessage, type SpawnParams, type WireError,
 } from './protocol.ts'
 import { Processes, type Channel } from './processes.ts'
+import { endTerminal, terminalState, waitTerminal } from './terminals.ts'
 
 // Node names its main thread `node-MainThread`, which a `pkill node` in the container would match.
 process.title = 'fleet-box'
@@ -114,6 +117,16 @@ const handlers: Record<string, (params: Params, signal: AbortSignal) => Promise<
   },
   'process.wait': (p, signal) => processes.wait(text(p.process), signal),
   executable: p => findExecutable(text(p.command), (p.env ?? null) as Record<string, string> | null),
+
+  'terminal.state': p => terminalState(terminalId(p.terminal)),
+  'terminal.end': async (p, signal) => {
+    await endTerminal(terminalId(p.terminal), count(p.graceMs), signal)
+    return null
+  },
+  'terminal.wait': async (p, signal) => {
+    await waitTerminal(terminalId(p.terminal), signal)
+    return null
+  },
 }
 
 function handle(message: HostMessage): void {
@@ -266,6 +279,13 @@ function optionalText(value: unknown): string | undefined {
 function count(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('expected a non-negative integer')
   return value
+}
+
+/** A terminal id as the host makes them; it is matched against environment entries. */
+function terminalId(value: unknown): string {
+  const id = text(value)
+  if (!/^[\w-]{1,128}$/u.test(id)) throw new Error('expected a terminal id')
+  return id
 }
 
 function target(value: unknown): FsTarget {

@@ -69,7 +69,7 @@ export interface Results {
   wait: { outcome: Outcome }
   list: { sessions: SessionRow[] }
   cancel: Record<string, never>
-  /** `activity` names what keeps the container running, such as `turn` or `job`. */
+  /** `activity` names what keeps the container running, such as `turn` or `terminal`. */
   stop: { stopped: true } | { stopped: false; activity: string[] }
   archive: Record<string, never>
 }

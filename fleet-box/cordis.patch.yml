@@ -7,23 +7,28 @@
 # is the container's own, and processes run as the container's root (you,
 # under rootless Docker). Subagent sessions share their root's container; a
 # fork gets its own. A container runs while dsh has its helper connected: it
-# starts before a model step needs it, stops when dsh exits, the helper is
-# lost, or it is stopped while nothing of its session runs (fleet-control's
-# `fleet` command does that when it finishes waiting), and is removed when
-# its session is archived; an unarchived session starts fresh, and the model
-# is told once. The session image, with the helper built into it, is a
-# prerequisite: build it with `fleet-setup image` from the fleet-setup
-# package, installed in the same profile
-# (`dsh plugin --profile fleet exec fleet-setup image`). Without it fleet-box
-# does not start, dsh's startup warning says so, and no session can run.
+# starts when something of its session needs it, keeps running while
+# anything occupies it (a running turn, a sidebar terminal, a process), stops
+# once nothing has for a minute (`idleStopMs` on the fleet-box row), at once
+# when fleet-control's `fleet` command finishes waiting and nothing occupies
+# it, or when dsh exits or the helper is lost, and is removed when its session
+# is archived; an unarchived session starts fresh, and the model is told
+# once. The session image, with the helper built into it, is a prerequisite:
+# build it with `fleet-setup image` from the fleet-setup package, installed in
+# the same profile (`dsh plugin --profile fleet exec fleet-setup image`).
+# Without it fleet-box does not start, dsh's startup warning says so, and no
+# session can run.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
-# its container, through fleet-box's helper. The subprocess side serves bash:
-# collected output without spill files, and no raw pipes, control channel or
-# terminals. A call outside a session's work fails instead of touching the
-# host, so features that make such calls are disabled below until the world
-# serves them. The chat's file links (`/api/file`) are one too, but
-# session-controller serves them itself, so they stay and fail when opened.
+# its container, through fleet-box's helper. The subprocess side serves bash,
+# with collected output without spill files and no raw pipes or control
+# channel, and the sidebar's terminals, as shells in the session's container.
+# A file call outside any session's turn, like the sidebar's file tree and
+# previews or the chat's file links (`/api/file`), reads the host, but only
+# the registered workspace folders, which the containers mount at the same
+# paths; what exists only in a container is not shown. Any other call outside
+# a session's work fails instead of touching the host, so features that make
+# such calls are disabled below until the world serves them.
 
 # ── The world replaces the local execution providers ──
 
@@ -70,28 +75,9 @@
 - id: spill-policy
   disabled: true
 
-# ── Not served by the world yet ──
+# ── Views that run processes, or read files, outside any session ──
 
-# Sidebar terminal: it spawns outside any agent turn, so the world cannot
-# tell its session yet.
-- id: terminal-controller
-  disabled: true
-
-- id: ui-sidebar-terminal
-  disabled: true
-
-# ── Views that read files or run processes without a session ──
-
-# Sidebar file tree and document preview read through ctx.fs with no session attached.
-- id: workspace-files
-  disabled: true
-
-- id: ui-sidebar-files
-  disabled: true
-
-- id: ui-sidebar-documentpreview
-  disabled: true
-
+# Office previews convert documents with LibreOffice through ctx.subprocess.
 - id: office-to-pdf
   disabled: true
 
