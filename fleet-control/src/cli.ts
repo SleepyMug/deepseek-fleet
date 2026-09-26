@@ -1,0 +1,334 @@
+/**
+ * `fleet`: run agents in the fleet host's containers from the command line,
+ * through the host's control socket. An agent is a directory, as for
+ * pi-run: `fleet run <agent-dir> [args...]` fills its PROMPT.md with the
+ * arguments and gives it to a new session in the current folder, or the one
+ * `--cwd` names, which the session's container mounts. `fleet run -p
+ * <prompt>` gives it a prompt as it is, without an agent directory. The
+ * session is an ordinary one of the fleet host, so the web UI lists it and a
+ * person can follow or steer it there.
+ *
+ * `run`, `send` and `wait` wait until the session is idle, print only the
+ * last answer, exit 0 when the last turn completed and 1 otherwise, and stop
+ * the session's container, which its next use starts again. The session id
+ * is never printed: `run --sid-file <file>` writes it to a file once its
+ * task is accepted. With `--async`, `run` and `send` return once their
+ * message is accepted. Ctrl-C cancels the turn being waited on; a second one
+ * leaves it.
+ * @module fleet-control/cli
+ */
+
+import { accessSync, constants, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { createConnection } from 'node:net'
+import { homedir } from 'node:os'
+import { dirname, resolve } from 'node:path'
+import { loadAgent, requiredArgs, substituteArgs } from './agent-dir.ts'
+import { UsageError, parseOptions } from './options.ts'
+import { PROTOCOL_VERSION, dshHome, lineReader, socketPath } from './protocol.ts'
+import type { Frame, Op, Outcome, Request, Results } from './protocol.ts'
+
+const EXIT_OK = 0
+const EXIT_FAILED = 1
+const EXIT_USAGE = 2
+const EXIT_INTERRUPTED = 130
+
+const USAGE = [
+  'Usage: fleet <command>',
+  '  run [options] <agent-dir> [args...]         run an agent in a new session',
+  '  run [options] -p <prompt>                   run a new session on a prompt, without an agent directory',
+  '      --cwd <dir>                             the session\'s folder, which its container mounts; default: this one',
+  '      --sid-file <file>                       write the session id to <file> once the task is accepted',
+  '      --async                                 return once the task is accepted',
+  '  send [--async] [--steer] <session> <text>   send a session a message, or steer its running turn',
+  '  wait <session>                              wait until a session is idle and print its last answer',
+  '  ls                                          list the sessions',
+  '  cancel <session>                            cancel a session\'s running turn',
+  '  stop <session>                              stop a session\'s container unless the session is busy',
+  '  rm [--force] <session>                      archive a session and remove its container;',
+  '                                              --force stops what it still runs',
+  '',
+  'Options come before the other arguments. run, send and wait print only the answer, exit 0',
+  'when the turn completed and 1 otherwise, and stop the session\'s container. Ctrl-C cancels',
+  'the turn they wait on.',
+].join('\n')
+
+const SOCKET = socketPath(dshHome())
+
+/** A failure the fleet host reported. */
+class HostError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message)
+  }
+}
+
+async function main(args: readonly string[]): Promise<number> {
+  const [command, ...rest] = args
+  switch (command) {
+    case 'run': return run(rest)
+    case 'send': return send(rest)
+    case 'wait': {
+      const session = only(rest, 'wait')
+      return attend({ op: 'wait', session }, { session })
+    }
+    case 'ls': return list(rest)
+    case 'cancel':
+      await call({ op: 'cancel', session: only(rest, 'cancel') })
+      return EXIT_OK
+    case 'stop': return stop(only(rest, 'stop'))
+    case 'rm': {
+      const { flags, positional } = parseOptions(rest, { '--force': 'flag' })
+      await call({ op: 'archive', session: only(positional, 'rm'), force: flags.has('--force') })
+      return EXIT_OK
+    }
+    case '--help':
+    case '-h':
+      say(USAGE)
+      return EXIT_OK
+    default:
+      throw new UsageError(command === undefined ? '' : `unknown command ${command}`)
+  }
+}
+
+async function run(args: readonly string[]): Promise<number> {
+  const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--cwd': 'value', '--sid-file': 'value', '-p': 'value' })
+  const { prompt, title } = task(positional, values.get('-p'))
+  const cwd = sessionFolder(values.get('--cwd') ?? process.cwd())
+  const sidFile = sidFilePath(values.get('--sid-file'))
+  if (flags.has('--async')) {
+    const { session } = await call({ op: 'run', cwd, prompt, title, wait: false })
+    if (sidFile !== undefined) writeSid(sidFile, session)
+    return EXIT_OK
+  }
+  return attend({ op: 'run', cwd, prompt, title, wait: true }, { sidFile })
+}
+
+async function send(args: readonly string[]): Promise<number> {
+  const kinds = { '--async': 'flag', '--steer': 'flag' } as const
+  const { flags, positional } = parseOptions(args, kinds)
+  const [session, ...words] = positional
+  const text = words.join(' ')
+  if (session === undefined || text.trim() === '') throw new UsageError('send needs a session and a message')
+  // An option right after the session would be sent as the message.
+  if (Object.hasOwn(kinds, words[0]!)) throw new UsageError(`${words[0]} goes before the session`)
+  const request = { op: 'send', session, prompt: text, steer: flags.has('--steer') } as const
+  if (flags.has('--async')) {
+    await call({ ...request, wait: false })
+    return EXIT_OK
+  }
+  return attend({ ...request, wait: true }, { session })
+}
+
+/**
+ * What a run asks: `-p`'s prompt as it is, which dsh titles from its words,
+ * or an agent directory's PROMPT.md filled with the arguments after it,
+ * titled with the directory's name and those arguments.
+ */
+function task(positional: readonly string[], prompt: string | undefined): { prompt: string; title?: string } {
+  if (prompt !== undefined) {
+    if (positional.length > 0) throw new UsageError(`-p takes the whole prompt as one argument; quote it (${positional[0]} follows it)`)
+    if (prompt.trim() === '') throw new Error('fleet: the prompt is empty')
+    return { prompt }
+  }
+  const [dir, ...agentArgs] = positional
+  if (dir === undefined) throw new UsageError('run needs an agent directory, or -p and a prompt')
+  const agent = loadAgent(resolve(dir))
+  const need = requiredArgs(agent.template)
+  if (agentArgs.length < need) throw new UsageError(`${dir} needs ${need} argument(s), got ${agentArgs.length}`)
+  if (agent.skillsDir !== undefined) say(`fleet: ${agent.skillsDir} is not loaded; fleet does not support skills yet`)
+  const filled = substituteArgs(agent.template, agentArgs)
+  if (filled.trim() === '') throw new Error(`fleet: ${dir}/PROMPT.md gives an empty prompt`)
+  return { prompt: filled, title: [agent.name, ...agentArgs].join(' ') }
+}
+
+/**
+ * The real path of a session's folder, where its workspace is registered.
+ * The container mounts the whole folder, so `/` and the home folder are refused.
+ */
+function sessionFolder(dir: string): string {
+  let path: string
+  try {
+    path = realpathSync(resolve(dir))
+  } catch {
+    throw new Error(`fleet: there is no folder ${dir}`)
+  }
+  if (!statSync(path).isDirectory()) throw new Error(`fleet: ${dir} is not a folder`)
+  if (path === '/' || path === realpathSync(homedir())) {
+    throw new Error(`fleet: refusing to run in ${path}, since the session's container mounts its whole folder; choose a project folder`)
+  }
+  return path
+}
+
+/** Where to write the session id, checked before any session starts. */
+function sidFilePath(file: string | undefined): string | undefined {
+  if (file === undefined) return undefined
+  const path = resolve(file)
+  try {
+    accessSync(dirname(path), constants.W_OK)
+  } catch {
+    throw new Error(`fleet: cannot write the session id to ${file}, since its folder is missing or not writable`)
+  }
+  return path
+}
+
+function writeSid(path: string, session: string): void {
+  try {
+    writeFileSync(path, `${session}\n`)
+  } catch (error) {
+    throw new Error(`fleet: could not write the session id to ${path}: ${describe(error)}`)
+  }
+}
+
+async function list(args: readonly string[]): Promise<number> {
+  if (args.length > 0) throw new UsageError('ls takes no arguments')
+  const { sessions } = await call({ op: 'list' })
+  for (const row of sessions) {
+    const fields = [row.session, row.running ? 'running' : 'idle   ', formatTime(row.updatedAt), row.title ?? '-', row.cwd ?? '-']
+    process.stdout.write(`${fields.join('  ')}\n`)
+  }
+  return EXIT_OK
+}
+
+async function stop(session: string): Promise<number> {
+  const result = await call({ op: 'stop', session })
+  if (result.stopped) return EXIT_OK
+  say(`fleet: ${session} is busy (${result.activity.join(', ')}), so its container keeps running`)
+  return EXIT_FAILED
+}
+
+/**
+ * Make a request that waits until a session is idle, report the outcome, and
+ * stop the session's container. Ctrl-C cancels the turn being waited on, and
+ * a second one leaves without waiting.
+ * @param known.session - the session, when the request names it; a `run` learns it from the host.
+ * @param known.sidFile - where to write the session a `run` learns, as soon as it does.
+ */
+async function attend(request: Extract<Request, { op: 'run' | 'send' | 'wait' }>, known: { session?: string; sidFile?: string }): Promise<number> {
+  let session = known.session
+  let interrupted = false
+  let unrecorded = false
+  const cancel = (id: string): void => {
+    call({ op: 'cancel', session: id }).catch((error: unknown) => { say(`fleet: could not cancel ${id}: ${describe(error)}`) })
+  }
+  const interrupt = (): void => {
+    if (interrupted) process.exit(EXIT_INTERRUPTED)
+    interrupted = true
+    say('fleet: cancelling; press Ctrl-C again to leave it running')
+    if (session !== undefined) cancel(session)
+  }
+  process.on('SIGINT', interrupt)
+  try {
+    const result = await call(request, (id) => {
+      session = id
+      if (known.sidFile !== undefined) {
+        try {
+          writeSid(known.sidFile, id)
+        } catch (error) {
+          // The run goes on, and the caller learns from the exit code that the id is missing.
+          unrecorded = true
+          say(describe(error))
+        }
+      }
+      if (interrupted) cancel(id)
+    })
+    const outcome = (result as { outcome?: Outcome }).outcome
+    if (outcome === undefined) throw new Error('fleet: the host answered without an outcome')
+    // The answer first: stopping waits its turn behind the container's other operations.
+    report(outcome)
+    if (session !== undefined) await stopQuietly(session)
+    if (interrupted) return EXIT_INTERRUPTED
+    return outcome.reason === 'completed' && !unrecorded ? EXIT_OK : EXIT_FAILED
+  } finally {
+    process.off('SIGINT', interrupt)
+  }
+}
+
+/** Stop a session's container once done with it; a failure only warns, since the outcome stands. */
+async function stopQuietly(session: string): Promise<void> {
+  try {
+    const result = await call({ op: 'stop', session })
+    if (!result.stopped) say(`fleet: ${session} is busy again (${result.activity.join(', ')}), so its container keeps running`)
+  } catch (error) {
+    say(`fleet: could not stop the container of ${session}: ${describe(error)}`)
+  }
+}
+
+function report(outcome: Outcome): void {
+  if (outcome.text !== '') process.stdout.write(`${outcome.text}\n`)
+  if (outcome.error !== undefined) say(`fleet: ${outcome.error.code}: ${outcome.error.message}`)
+  else if (outcome.reason === null) say('fleet: the session has not finished a turn')
+  else if (outcome.reason !== 'completed') say(`fleet: the turn ended ${outcome.reason}`)
+}
+
+/**
+ * Send one request to the fleet host and read its answer.
+ * @param onSession - told the session of a `session` frame.
+ */
+function call<K extends Op>(request: Extract<Request, { op: K }>, onSession?: (session: string) => void): Promise<Results[K]> {
+  return new Promise((resolvePromise, reject) => {
+    let settled = false
+    const settle = (finish: () => void): void => {
+      if (settled) return
+      settled = true
+      finish()
+      socket.destroy()
+    }
+    const socket = createConnection(SOCKET)
+    socket.once('connect', () => { socket.write(`${JSON.stringify({ v: PROTOCOL_VERSION, ...request })}\n`) })
+    const read = lineReader((line) => {
+      const frame = JSON.parse(line) as Frame
+      if (frame.type === 'session') onSession?.(frame.session)
+      else if (frame.type === 'result') settle(() => { resolvePromise(frame.value as Results[K]) })
+      else settle(() => { reject(new HostError(frame.code, frame.message)) })
+    }, Number.POSITIVE_INFINITY)
+    socket.on('data', (chunk: Buffer) => {
+      try {
+        read(chunk)
+      } catch (error) {
+        settle(() => { reject(new Error(`fleet: the fleet host sent an unreadable answer: ${describe(error)}`)) })
+      }
+    })
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      settle(() => {
+        reject(error.code === 'ENOENT' || error.code === 'ECONNREFUSED'
+          ? new Error(`fleet: the fleet host is not running, since nothing serves ${SOCKET}; start it with \`dsh --profile fleet\``)
+          : error)
+      })
+    })
+    socket.once('close', () => { settle(() => { reject(new Error('fleet: the fleet host closed the connection without answering')) }) })
+  })
+}
+
+/** The one session argument of a command. */
+function only(args: readonly string[], command: string): string {
+  if (args.length !== 1 || args[0] === '') throw new UsageError(`${command} needs one session`)
+  return args[0]!
+}
+
+function formatTime(epochMs: number): string {
+  const date = new Date(epochMs)
+  const two = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`
+}
+
+function describe(error: unknown): string {
+  if (error instanceof HostError) return `${error.message} (${error.code})`
+  return error instanceof Error ? error.message : String(error)
+}
+
+function say(line: string): void {
+  process.stderr.write(`${line}\n`)
+}
+
+try {
+  process.exitCode = await main(process.argv.slice(2))
+} catch (error) {
+  if (error instanceof UsageError) {
+    if (error.message !== '') say(`fleet: ${error.message}`)
+    say(USAGE)
+    process.exitCode = EXIT_USAGE
+  } else {
+    const text = describe(error)
+    say(text.startsWith('fleet: ') ? text : `fleet: ${text}`)
+    process.exitCode = EXIT_FAILED
+  }
+}

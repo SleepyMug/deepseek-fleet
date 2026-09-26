@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "fleet-box" },
+    { "path": "fleet-control" },
     { "path": "fleet-setup" }
   ]
 }

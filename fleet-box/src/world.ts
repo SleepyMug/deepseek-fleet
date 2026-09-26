@@ -12,7 +12,8 @@
  * Lifetime: a container runs exactly while this process has its session's
  * world open and its helper connected. A world opens before a model step
  * needs it, and its teardown always ends with the container stopped, whether
- * its helper was lost or dsh exits; the next use starts it again. Archiving a
+ * its helper was lost, dsh exits, or a caller stopped the session while
+ * nothing of it ran (`stopSession`); the next use starts it again. Archiving a
  * session removes its container, and an unarchived session gets a fresh one
  * on its next use. Startup removes this dsh home's containers whose session
  * is archived, or gone and stopped. A container keeps running without a
@@ -35,7 +36,7 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
-import type {} from '@deepseek-ai/dsh-workspace'
+import type { SessionActivity } from '@deepseek-ai/dsh-workspace'
 import { HelperConnection } from './connection.ts'
 import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
 
@@ -82,6 +83,12 @@ export interface SessionWorld {
   container: SessionContainer
   connection: HelperConnection
 }
+
+/** What {@link FleetBox.stopSession} did. */
+export type StopOutcome =
+  | { stopped: true }
+  /** Something of the session runs, so its container keeps running. */
+  | { stopped: false; activity: readonly SessionActivity[] }
 
 /** An open world and its teardown. */
 interface OpenWorld {
@@ -227,6 +234,52 @@ export class FleetBox extends Service {
     return signal === undefined ? opening : abortable(opening, signal)
   }
 
+  /**
+   * Stop a root session's container while nothing of the session runs, as a
+   * caller does once it is done with the session for now. The world is torn
+   * down as on exit and the container stays; the next use starts it again.
+   * What runs is what dsh asks before archiving a session: its turn, its
+   * background jobs and its subagent descendants. Only a container this
+   * process drives is stopped: without a world here, one another dsh process
+   * drives, or a killed dsh left running, is left alone.
+   * @param id - a root session; a subagent session shares its root's container, so it is refused.
+   * @returns whether no container of the session runs here, or the activity that keeps it running.
+   */
+  stopSession(id: SessionId): Promise<StopOutcome> {
+    if (this.closed) return Promise.reject(closedError())
+    if (this.self.sessions.get(id)?.header.origin === 'subagent') {
+      return Promise.reject(new Error(`fleet-box: ${id} is a subagent session, which shares its root's container`))
+    }
+    // This process never opened the session's world.
+    if (!this.roots.has(id)) return Promise.resolve({ stopped: true })
+    return this.enqueue(id, async (state): Promise<StopOutcome> => {
+      if (this.closed) throw closedError()
+      if (state.open === undefined) return { stopped: true }
+      const activity = await this.self.waterfall('workspace/session-activity', { sessionId: id }, () => Promise.resolve([]))
+      if (activity.length > 0) return { stopped: false, activity }
+      // A turn that started while the providers answered may already hold the open world.
+      if (this.running(id)) return { stopped: false, activity: [{ kind: 'turn' }] }
+      // The world may have been lost while they answered; its teardown is queued behind this.
+      const opened = state.open
+      state.open = undefined
+      await opened?.close()
+      return { stopped: true }
+    })
+  }
+
+  /** Whether a live agent of the root session or its subagents is running. */
+  private running(id: SessionId): boolean {
+    return this.self.agents.list().some((agent) => {
+      if (agent.status !== 'running') return false
+      try {
+        return this.rootHeader(agent.session.header).id === id
+      } catch {
+        // Its lineage is not loaded, so it cannot be this session's.
+        return false
+      }
+    })
+  }
+
   /** Run one container operation of a root session after the ones before it. */
   private enqueue<T>(id: SessionId, operation: (root: Root) => Promise<T>): Promise<T> {
     let root = this.roots.get(id)
@@ -339,7 +392,7 @@ export class FleetBox extends Service {
       docker: this.config.docker, container: container.name, workspace: container.workspace, node: HELPER_NODE, entry: HELPER_ENTRY,
     })
     const stopped = Promise.withResolvers<void>()
-    const stop = (): Promise<void> => this.stop(container.name).catch((error: unknown) => {
+    const stop = (): Promise<void> => this.stopContainer(container.name).catch((error: unknown) => {
       this.self.logger.warn(`fleet-box: could not stop ${container.name}: ${message(error)}`)
     }).finally(() => { stopped.resolve() })
     let opened: OpenWorld | undefined
@@ -438,7 +491,7 @@ export class FleetBox extends Service {
   }
 
   /** Stop a container, which stays until its session is archived. */
-  private async stop(name: string): Promise<void> {
+  private async stopContainer(name: string): Promise<void> {
     try {
       await this.docker(['stop', '--timeout', String(STOP_GRACE_SECONDS), name])
     } catch (error) {

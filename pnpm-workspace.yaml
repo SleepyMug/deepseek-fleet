@@ -1,5 +1,6 @@
 packages:
   - fleet-box
+  - fleet-control
   - fleet-setup
   - profile-fleet
 allowBuilds:

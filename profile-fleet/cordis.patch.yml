@@ -40,6 +40,23 @@
     - id: fs-local
       name: '@deepseek-ai/dsh-fs-local'
 
+# ── Nothing waits on a person: runs go unattended until someone steers ──
+
+# Approval only ever widens a sandbox, and nothing here is confined, so every
+# action already runs with full access. `never` answers any request at once
+# with a rejection instead of waiting for a person; dsh pairs it with
+# danger-full-access, but dsh-base keeps `ask` unless DSH_PERMISSION_MODE says so.
+- id: approval
+  config:
+    policy: never
+
+# ask_user's service; the tool cannot load without it.
+- id: user-questions
+  disabled: true
+
+- id: ui-user-questions
+  disabled: true
+
 # ── Models ──
 
 # ChatGPT subscription through pi-ai's `openai-codex` provider. No `apiKeyEnv`:
@@ -97,13 +114,17 @@
               prefix: You are a coding agent powered by the {{model}} model.
               suffix: Your working directory is {{cwd}}.
 
-          # bash
+          # bash, foreground only: nothing it starts outlives its call, so an
+          # idle agent has finished its work and its container can stop. A
+          # command past its timeout (bash-local's default, raised per call up
+          # to its cap) is killed rather than moved to the background, and
+          # without background jobs the job_* tools have nothing to act on.
+          # Background jobs are a todo in docs/todos.md.
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'
-
-          # job_output / job_kill for background and timed-out bash commands
-          - id: tool-jobs
-            name: '@deepseek-ai/dsh-tool-jobs'
+            config:
+              enableRunInBackground: false
+              promoteOnTimeout: false
 
           # read / write / edit
           - id: tool-fs

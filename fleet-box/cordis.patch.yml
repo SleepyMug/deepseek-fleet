@@ -7,11 +7,13 @@
 # is the container's own, and processes run as the container's root (you,
 # under rootless Docker). Subagent sessions share their root's container; a
 # fork gets its own. A container runs while dsh has its helper connected: it
-# starts before a model step needs it, stops when dsh exits or the helper is
-# lost, and is removed when its session is archived; an unarchived session
-# starts fresh, and the model is told once. The session image, with the
-# helper built into it, is a prerequisite: build it with `fleet-setup image`
-# from the fleet-setup package, installed in the same profile
+# starts before a model step needs it, stops when dsh exits, the helper is
+# lost, or it is stopped while nothing of its session runs (fleet-control's
+# `fleet` command does that when it finishes waiting), and is removed when
+# its session is archived; an unarchived session starts fresh, and the model
+# is told once. The session image, with the helper built into it, is a
+# prerequisite: build it with `fleet-setup image` from the fleet-setup
+# package, installed in the same profile
 # (`dsh plugin --profile fleet exec fleet-setup image`). Without it fleet-box
 # does not start, dsh's startup warning says so, and no session can run.
 #
