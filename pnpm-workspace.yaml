@@ -288,6 +288,3 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/libreoffice-kit-win32-arm64@0.1.1'
   - '@deepseek-ai/libreoffice-kit-win32-x64@0.1.1'
   - '@deepseek-ai/libreoffice-kit@0.1.1'
-  - '@deepseek-ai/dsh-fs-ssh@0.1.7-rc.2'
-  - '@deepseek-ai/dsh-ssh@0.1.7-rc.2'
-  - '@deepseek-ai/dsh-subprocess-ssh@0.1.7-rc.2'
