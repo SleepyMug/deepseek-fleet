@@ -269,6 +269,15 @@ export class FleetBox extends Service {
   }
 
   /**
+   * A session's header, for a session that need not be loaded: from the
+   * loaded sessions or else from storage.
+   * @returns the header, or undefined for a session not known.
+   */
+  async sessionHeader(id: SessionId): Promise<SessionHeader | undefined> {
+    return this.self.sessions.get(id)?.header ?? (await this.self.sessionPersistence.stat(id))?.header
+  }
+
+  /**
    * Occupy a root session's container (./occupancy.ts). Call this before
    * asking for the world; a turn occupies it without this.
    * @returns the release, to call once nothing of the occupant can reach the container.
@@ -386,7 +395,7 @@ export class FleetBox extends Service {
 
   /** A session's header, loaded or else stored. */
   private async headerOf(id: SessionId): Promise<SessionHeader> {
-    const header = this.self.sessions.get(id)?.header ?? (await this.self.sessionPersistence.stat(id))?.header
+    const header = await this.sessionHeader(id)
     if (header === undefined) throw new Error(`fleet-box: session ${id} is not known, so neither is its container`)
     return header
   }
@@ -562,7 +571,7 @@ export class FleetBox extends Service {
     if (workspace === undefined || !isAbsolute(workspace)) {
       throw new Error(`fleet-box: session ${root.id} has no absolute folder to mount (cwd: ${String(workspace)})`)
     }
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(root.id)) throw new Error(`fleet-box: session id ${root.id} is not usable as a container name`)
+    if (!usableAsContainerName(root.id)) throw new Error(`fleet-box: session id ${root.id} is not usable as a container name`)
     const name = containerName(root.id)
 
     const runArgs = [
@@ -626,6 +635,11 @@ export class FleetBox extends Service {
 
 function containerName(id: SessionId): string {
   return `fleet-box-${id}`
+}
+
+/** Whether a root session's id can name its container, as Docker allows container names. */
+export function usableAsContainerName(id: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(id)
 }
 
 /** One field of a `--mount` value, which Docker parses as a CSV record; a plain path stays as it is, so its container's spec does too. */

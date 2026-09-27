@@ -20,7 +20,6 @@
 
 import { accessSync, constants, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
-import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { loadAgent, requiredArgs, substituteArgs } from './agent-dir.ts'
 import { UsageError, parseOptions } from './options.ts'
@@ -140,10 +139,7 @@ function task(positional: readonly string[], prompt: string | undefined): { prom
   return { prompt: filled, title: [agent.name, ...agentArgs].join(' ') }
 }
 
-/**
- * The real path of a session's folder, where its workspace is registered.
- * The container mounts the whole folder, so `/` and the home folder are refused.
- */
+/** The real path of a session's folder, where its workspace is registered. */
 function sessionFolder(dir: string): string {
   let path: string
   try {
@@ -152,9 +148,6 @@ function sessionFolder(dir: string): string {
     throw new Error(`fleet: there is no folder ${dir}`)
   }
   if (!statSync(path).isDirectory()) throw new Error(`fleet: ${dir} is not a folder`)
-  if (path === '/' || path === realpathSync(homedir())) {
-    throw new Error(`fleet: refusing to run in ${path}, since the session's container mounts its whole folder; choose a project folder`)
-  }
   return path
 }
 

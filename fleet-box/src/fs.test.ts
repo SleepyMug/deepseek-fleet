@@ -4,8 +4,11 @@ import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { FsTargetKey } from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session/types'
+import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import { FleetBoxFileSystem } from './fs.ts'
 import type { Occupant } from './occupancy.ts'
+import type { FleetBox } from './world.ts'
 
 interface Request {
   /** The root session whose container got the request. */
@@ -21,7 +24,8 @@ type Answer = (method: string, params: Record<string, unknown>) => unknown
 const helper: Answer = (method, params) => {
   switch (method) {
     case 'fs.resolve': return { targetKey: posix.resolve(String(params.cwd ?? '/'), String(params.path)), displayPath: String(params.path) }
-    case 'fs.stat': return { version: 'v1', type: 'file', size: 3 }
+    case 'fs.stat':
+    case 'fs.lstat': return { version: 'v1', type: 'file', size: 3 }
     case 'fs.listDir': return [{ name: 'a', type: 'file', target: { targetKey: '/tmp/d/a', displayPath: '/tmp/d/a' } }]
     case 'fs.writeText': return { operation: 'create', version: 'v2', before: null, after: String(params.content) }
     case 'fs.streamOpen': return 7
@@ -31,28 +35,55 @@ const helper: Answer = (method, params) => {
   }
 }
 
+function header(id: string, fields: Partial<SessionHeader> = {}): SessionHeader {
+  return { version: SESSION_FORMAT_VERSION, id: id as SessionId, createdAt: 0, isSeeded: false, ...fields }
+}
+
+/**
+ * The stub world's sessions: s1 and s2 are root sessions, s1-sub a subagent of
+ * s1 in a folder of its own, s1-fork a fork of s1, and so a root session of
+ * its own, s0 has no folder, and orphan is a subagent whose parent is not recorded.
+ */
+const headers: Record<string, SessionHeader> = {
+  s0: header('s0'),
+  s1: header('s1', { cwd: '/w/s1' }),
+  's1-sub': header('s1-sub', { cwd: '/w/s1/sub', origin: 'subagent', parentSession: 's1' as SessionId }),
+  's1-fork': header('s1-fork', { cwd: '/w/s1', parentSession: 's1' as SessionId }),
+  s2: header('s2', { cwd: '/w/s2' }),
+  orphan: header('orphan', { cwd: '/w/orphan', origin: 'subagent' }),
+}
+
+/** The world's lookups over the stub sessions, walking up subagents only, as the world does. */
+const lineage = {
+  sessionHeader: (id: SessionId) => Promise.resolve(headers[id]),
+  rootHeaderOf: (id: SessionId) => {
+    let current = headers[id]
+    while (current?.origin === 'subagent' && current.parentSession !== undefined) current = headers[current.parentSession]
+    return current === undefined ? Promise.reject(new Error(`unknown session ${id}`)) : Promise.resolve(current)
+  },
+} satisfies Pick<FleetBox, 'sessionHeader' | 'rootHeaderOf'>
+
 /**
  * `ctx.fs` over a stub fleet-box, reached from a plugin's context as dsh's
- * plugins reach it: every session is its own root, named `<session>-root`,
+ * plugins reach it, with a stub `typert` whose configured lookups are kept:
  * requests are recorded, and so are the occupants held now.
  * @param options.agent - the session whose own work every call is, if any.
- * @param options.accessor - whether `ctx.invocation` is defined, as dsh does once a Remote service loads;
- *   without it, a plugin's context throws on reading it.
  */
-async function setup(options: { agent?: string; accessor?: boolean; answer?: Answer } = {}) {
+async function setup(options: { agent?: string; answer?: Answer } = {}) {
   const ctx = new Context()
-  if (options.accessor !== false) ctx.accessor('invocation', { get: () => undefined })
   const answer = options.answer ?? helper
   const requests: Request[] = []
   const occupants = new Map<symbol, { root: string; occupant: Occupant }>()
+  const lookups = new Map<string, (id: string) => Promise<unknown>>()
+  const occupy = (root: SessionId, occupant: Occupant) => {
+    const token = Symbol(occupant.id)
+    occupants.set(token, { root, occupant })
+    return () => { occupants.delete(token) }
+  }
   ctx.provide('fleetBox', {
     sessionAgent: () => options.agent === undefined ? undefined : { session: { header: { id: options.agent } } },
-    rootHeaderOf: (id: string) => Promise.resolve({ id: `${id}-root` }),
-    occupy: (root: string, occupant: Occupant) => {
-      const token = Symbol(occupant.id)
-      occupants.set(token, { root, occupant })
-      return () => { occupants.delete(token) }
-    },
+    ...lineage,
+    occupy: occupy satisfies FleetBox['occupy'],
     forRoot: (header: { id: string }) => Promise.resolve({
       connection: {
         request: async (method: string, params: Record<string, unknown>, schema: { parse(value: unknown): unknown }) => {
@@ -62,88 +93,152 @@ async function setup(options: { agent?: string; accessor?: boolean; answer?: Ans
       },
     }),
   })
+  ctx.provide('typert', {
+    lookups: {
+      configure: (key: string, resolver: (id: string) => Promise<unknown>) => {
+        lookups.set(key, resolver)
+        return () => { lookups.delete(key) }
+      },
+    },
+  })
   await ctx.plugin(FleetBoxFileSystem)
   let caller: Context | undefined
   await ctx.plugin({ name: 'caller', inject: ['fs'], apply: (inner: Context) => { caller = inner } })
   assert.ok(caller !== undefined)
-  const plugin = caller
-  /** The context of a Remote call, as dsh's Gateway derives it from the receiving plugin's. */
-  const call = (service: string, args: Record<string, unknown>) =>
-    plugin.extend({ invocation: { service, request: { namespace: service, method: 'read', args } } })
-  const viewer = (session: string) => call('workspaceFiles', { workspaceFileScopeId: session })
   const held = () => [...occupants.values()].map(({ root, occupant }) => ({ root, kind: occupant.kind }))
-  return { fs: plugin.fs, requests, held, call, viewer }
+  return { fs: caller.fs, requests, held, lookups }
 }
 
 function target(root: string, path: string): FsTarget {
   return { targetKey: FsTargetKey(`fleet-box://${root}${path}`), displayPath: path }
 }
 
-test('a call no session makes is refused, and reaches no container', async () => {
-  for (const accessor of [true, false]) {
-    const { fs, requests, held } = await setup({ accessor })
-    await assert.rejects(fs.resolve('/tmp/out.txt'), { code: 'FS_PERMISSION_DENIED' })
-    await assert.rejects(fs.stat(target('s1-root', '/tmp/out.txt')), { code: 'FS_PERMISSION_DENIED' })
-    assert.deepEqual(requests, [])
-    assert.deepEqual(held(), [])
-  }
-})
+const edit = { oldString: 'a', newString: 'b', replaceAll: false }
 
-test('another Remote service\'s call, or one without the session, is no file-viewer call', async () => {
-  const { call, requests } = await setup()
-  await assert.rejects(call('session', { workspaceFileScopeId: 's1' }).fs.resolve('/tmp/out.txt'), { code: 'FS_PERMISSION_DENIED' })
-  await assert.rejects(call('workspaceFiles', {}).fs.resolve('/tmp/out.txt'), { code: 'FS_PERMISSION_DENIED' })
-  assert.deepEqual(requests, [])
-})
-
-test('a file-viewer call reads in its session\'s root container, and its targets name that container', async () => {
-  const { viewer, requests } = await setup()
-  const fs = viewer('s1').fs
-  const resolved = await fs.resolve('out.txt', { cwd: '/tmp' })
-  assert.deepEqual(resolved, { targetKey: 'fleet-box://s1-root/tmp/out.txt', displayPath: 'out.txt' })
-  assert.equal(fs.processPath(resolved), '/tmp/out.txt')
-  assert.equal(fs.fileUrl(resolved), 'file:///tmp/out.txt')
-  assert.deepEqual(await fs.stat(resolved), { version: 'v1', type: 'file', size: 3 })
-  assert.deepEqual(requests.map(({ root, method }) => [root, method]), [['s1-root', 'fs.resolve'], ['s1-root', 'fs.stat']])
-  assert.deepEqual(requests[1]?.params, { target: { targetKey: '/tmp/out.txt', displayPath: 'out.txt' } })
-
-  const [entry] = await fs.listDir(target('s1-root', '/tmp/d'))
-  assert.deepEqual(entry?.target, target('s1-root', '/tmp/d/a'))
-})
-
-test('the file viewer only reads; a session\'s own work writes', async () => {
-  const viewed = await setup()
-  await assert.rejects(viewed.viewer('s1').fs.writeText(target('s1-root', '/tmp/out.txt'), 'hi'), { code: 'FS_PERMISSION_DENIED' })
-  assert.deepEqual(viewed.requests, [])
-
-  const own = await setup({ agent: 's1' })
-  const outcome = await own.fs.writeText(target('s1-root', '/tmp/out.txt'), 'hi')
-  assert.equal(outcome.after, 'hi')
-  assert.deepEqual(own.requests.map(({ root, method }) => [root, method]), [['s1-root', 'fs.writeText']])
-})
-
-test('a target of another session\'s container is refused, and is inside no target of this one', async () => {
-  const { viewer, requests } = await setup()
-  const fs = viewer('s1').fs
-  await assert.rejects(fs.stat(target('s2-root', '/tmp/out.txt')), { code: 'FS_PERMISSION_DENIED' })
+test('outside a session\'s work, a plain path or a target of no container is refused, and reaches no container', async () => {
+  const { fs, requests, held } = await setup()
+  await assert.rejects(fs.resolve('/tmp/out.txt'), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.resolve('out.txt', { cwd: '/tmp' }), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.lstat('out.txt', { cwd: '/tmp' }), { code: 'FS_PERMISSION_DENIED' })
   await assert.rejects(fs.stat({ targetKey: FsTargetKey('/tmp/out.txt'), displayPath: '/tmp/out.txt' }), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.resolve('fleet-box://s1'), { code: 'FS_PERMISSION_DENIED' })
   assert.deepEqual(requests, [])
-  assert.equal(fs.contains(target('s1-root', '/tmp'), target('s1-root', '/tmp/out.txt')), true)
-  assert.equal(fs.contains(target('s1-root', '/tmp'), target('s2-root', '/tmp/out.txt')), false)
-  assert.equal(fs.contains(target('s1-root', '/tmp'), target('s1-root', '/tmpx')), false)
+  assert.deepEqual(held(), [])
+})
+
+test('a path, a cwd or a target that names a container is served in it, and its targets name it', async () => {
+  const { fs, requests } = await setup()
+  const root = await fs.resolve('fleet-box://s1/w/s1')
+  assert.deepEqual(root, target('s1', '/w/s1'))
+  const relative = await fs.resolve('src/a.ts', { cwd: 'fleet-box://s1/w/s1' })
+  assert.deepEqual(relative, { targetKey: 'fleet-box://s1/w/s1/src/a.ts', displayPath: 'src/a.ts' })
+  assert.equal(fs.processPath(relative), '/w/s1/src/a.ts')
+  assert.equal(fs.fileUrl(relative), 'file:///w/s1/src/a.ts')
+  assert.deepEqual(await fs.resolve('/etc/hosts', { cwd: 'fleet-box://s1/w/s1' }), target('s1', '/etc/hosts'))
+  assert.deepEqual(await fs.lstat('src/a.ts', { cwd: 'fleet-box://s1/w/s1' }), { version: 'v1', type: 'file', size: 3 })
+  assert.deepEqual(await fs.stat(relative), { version: 'v1', type: 'file', size: 3 })
+  const [entry] = await fs.listDir(target('s1', '/tmp/d'))
+  assert.deepEqual(entry?.target, target('s1', '/tmp/d/a'))
+  assert.deepEqual(requests.map(({ root, method, params }) => [root, method, params]), [
+    ['s1', 'fs.resolve', { path: '/w/s1', cwd: null }],
+    ['s1', 'fs.resolve', { path: 'src/a.ts', cwd: '/w/s1' }],
+    ['s1', 'fs.resolve', { path: '/etc/hosts', cwd: '/w/s1' }],
+    ['s1', 'fs.lstat', { path: 'src/a.ts', cwd: '/w/s1' }],
+    ['s1', 'fs.stat', { target: { targetKey: '/w/s1/src/a.ts', displayPath: 'src/a.ts' } }],
+    ['s1', 'fs.listDir', { target: { targetKey: '/tmp/d', displayPath: '/tmp/d' } }],
+  ])
+})
+
+test('outside a session\'s work, a named container is only read', async () => {
+  const { fs, requests } = await setup()
+  await assert.rejects(fs.writeText(target('s1', '/w/s1/out.txt'), 'hi'), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.editText(target('s1', '/w/s1/out.txt'), edit), { code: 'FS_PERMISSION_DENIED' })
+  assert.deepEqual(requests, [])
+})
+
+test('a session\'s work reads and writes in its root\'s container, where its plain paths are', async () => {
+  const { fs, requests } = await setup({ agent: 's1-sub' })
+  const resolved = await fs.resolve('out.txt', { cwd: '/w/s1/sub' })
+  assert.deepEqual(resolved, { targetKey: 'fleet-box://s1/w/s1/sub/out.txt', displayPath: 'out.txt' })
+  assert.equal((await fs.writeText(resolved, 'hi')).after, 'hi')
+  assert.deepEqual(await fs.resolve('fleet-box://s1/w/s1/a.ts'), target('s1', '/w/s1/a.ts'))
+  assert.deepEqual(requests.map(({ root, method }) => [root, method]), [['s1', 'fs.resolve'], ['s1', 'fs.writeText'], ['s1', 'fs.resolve']])
+})
+
+test('a session\'s work is refused another session\'s container', async () => {
+  const { fs, requests, held } = await setup({ agent: 's1' })
+  await assert.rejects(fs.resolve('fleet-box://s2/w/s2/a.ts'), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.resolve('a.ts', { cwd: 'fleet-box://s2/w/s2' }), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.lstat('/w/s2/a.ts', { cwd: 'fleet-box://s2/w/s2' }), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.stat(target('s2', '/w/s2/a.ts')), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.writeText(target('s2', '/w/s2/a.ts'), 'hi'), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.editText(target('s2', '/w/s2/a.ts'), edit), { code: 'FS_PERMISSION_DENIED' })
+  assert.deepEqual(requests, [])
+  assert.deepEqual(held(), [])
+})
+
+test('a call naming two containers, one no session id could name, or a session without a container of its own is refused', async () => {
+  const { fs, requests, held } = await setup()
+  await assert.rejects(fs.resolve('fleet-box://s1/w/s1/a.ts', { cwd: 'fleet-box://s2/w/s2' }), { code: 'FS_PERMISSION_DENIED' })
+  for (const path of ['fleet-box:///w/a.ts', 'fleet-box://../w/a.ts', 'fleet-box://-s1/w/a.ts', 'fleet-box://s 1/w/a.ts']) {
+    await assert.rejects(fs.resolve(path), { code: 'FS_PERMISSION_DENIED' }, path)
+    await assert.rejects(fs.resolve('a.ts', { cwd: path }), { code: 'FS_PERMISSION_DENIED' }, path)
+    await assert.rejects(fs.stat({ targetKey: FsTargetKey(path), displayPath: path }), { code: 'FS_PERMISSION_DENIED' }, path)
+  }
+  await assert.rejects(fs.stat(target('s1-sub', '/w/s1/sub/a.ts')), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(fs.stat(target('orphan', '/w/orphan/a.ts')), { code: 'FS_PERMISSION_DENIED' })
+  assert.deepEqual(requests, [])
+  assert.deepEqual(held(), [])
+})
+
+test('a fork is a root session with its own container, which its source\'s work does not reach', async () => {
+  const viewed = await setup()
+  assert.deepEqual(await viewed.fs.stat(target('s1-fork', '/w/s1/a.ts')), { version: 'v1', type: 'file', size: 3 })
+  assert.deepEqual(viewed.requests.map(({ root, method }) => [root, method]), [['s1-fork', 'fs.stat']])
+
+  const source = await setup({ agent: 's1' })
+  await assert.rejects(source.fs.stat(target('s1-fork', '/w/s1/a.ts')), { code: 'FS_PERMISSION_DENIED' })
+  assert.deepEqual(source.requests, [])
+})
+
+test('a target is inside no target of another container', async () => {
+  const { fs } = await setup()
+  assert.equal(fs.contains(target('s1', '/tmp'), target('s1', '/tmp/out.txt')), true)
+  assert.equal(fs.contains(target('s1', '/tmp'), target('s2', '/tmp/out.txt')), false)
+  assert.equal(fs.contains(target('s1', '/tmp'), target('s1', '/tmpx')), false)
+})
+
+test('the file viewer\'s scope of a session is its folder in its root\'s container, where its calls are served', async () => {
+  const { fs, lookups, requests } = await setup()
+  const resolve = lookups.get('workspaceFileScope')
+  assert.ok(resolve !== undefined)
+  assert.deepEqual(await resolve('s1'), { sessionId: 's1', workspaceRoot: 'fleet-box://s1/w/s1' })
+  assert.deepEqual(await resolve('s1-fork'), { sessionId: 's1-fork', workspaceRoot: 'fleet-box://s1-fork/w/s1' })
+  assert.deepEqual(await resolve('s0'), undefined)
+  assert.deepEqual(await resolve('orphan'), undefined)
+  assert.deepEqual(await resolve('s9'), undefined)
+
+  const scope = await resolve('s1-sub')
+  assert.deepEqual(scope, { sessionId: 's1-sub', workspaceRoot: 'fleet-box://s1/w/s1/sub' })
+  const { workspaceRoot } = scope as { workspaceRoot: string }
+  const root = await fs.resolve(workspaceRoot)
+  const file = await fs.resolve('a.ts', { cwd: workspaceRoot })
+  assert.equal(fs.contains(root, file), true)
+  assert.equal(fs.processPath(file), '/w/s1/sub/a.ts')
+  assert.deepEqual(requests.map(({ root, method }) => [root, method]), [['s1', 'fs.resolve'], ['s1', 'fs.resolve']])
 })
 
 test('a call occupies its container until it is answered', async () => {
   const answered = Promise.withResolvers<void>()
-  const { viewer, held } = await setup({
+  const { fs, held } = await setup({
     answer: async (method, params) => {
       await answered.promise
       return helper(method, params)
     },
   })
-  const pending = viewer('s1').fs.stat(target('s1-root', '/tmp/out.txt'))
+  const pending = fs.stat(target('s1', '/tmp/out.txt'))
   await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(held(), [{ root: 's1-root', kind: 'file' }])
+  assert.deepEqual(held(), [{ root: 's1', kind: 'file' }])
   answered.resolve()
   await pending
   assert.deepEqual(held(), [])
@@ -151,11 +246,11 @@ test('a call occupies its container until it is answered', async () => {
 
 test('a text stream occupies its container until it ends, which the helper closes itself', async () => {
   let chunks = 0
-  const { viewer, held, requests } = await setup({
+  const { fs, held, requests } = await setup({
     answer: (method, params) => method === 'fs.streamNext' ? { done: chunks++ > 0, value: chunks > 1 ? '' : 'abc' } : helper(method, params),
   })
-  const stream = await viewer('s1').fs.streamText(target('s1-root', '/tmp/out.txt'))
-  assert.deepEqual(held(), [{ root: 's1-root', kind: 'file' }])
+  const stream = await fs.streamText(target('s1', '/tmp/out.txt'))
+  assert.deepEqual(held(), [{ root: 's1', kind: 'file' }])
   const text: string[] = []
   for await (const chunk of stream) text.push(chunk)
   assert.deepEqual(text, ['abc'])
@@ -165,7 +260,7 @@ test('a text stream occupies its container until it ends, which the helper close
 
 test('a text stream closed before it is read, or whose signal aborts, releases its container and closes', async () => {
   const closed = await setup()
-  const stream = await closed.viewer('s1').fs.streamText(target('s1-root', '/tmp/out.txt'))
+  const stream = await closed.fs.streamText(target('s1', '/tmp/out.txt'))
   const iterator = stream[Symbol.asyncIterator]()
   await iterator.return?.()
   assert.deepEqual(closed.held(), [])
@@ -174,7 +269,7 @@ test('a text stream closed before it is read, or whose signal aborts, releases i
 
   const aborted = await setup()
   const controller = new AbortController()
-  await aborted.viewer('s1').fs.streamText(target('s1-root', '/tmp/out.txt'), controller.signal)
+  await aborted.fs.streamText(target('s1', '/tmp/out.txt'), controller.signal)
   controller.abort()
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(aborted.held(), [])

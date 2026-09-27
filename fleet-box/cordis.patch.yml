@@ -23,15 +23,17 @@
 # its container, through fleet-box's helper. The subprocess side serves bash,
 # with collected output without spill files and no raw pipes or control
 # channel, and the sidebar's terminals, as shells in the session's container.
-# The file side serves the session's own work and its file viewer: the
-# sidebar's file tree and previews, which the chat's file links open, read
-# the session's container, never the host. A call no session makes is
-# refused, so these do not work: images of local paths in the chat or in a
-# Markdown preview (`/api/file`), whose requests name no session, and live
-# refresh of the file tree and previews, since the helper has no watches; the
-# file tree shows a read failure under each open folder. Any other call
-# outside a session's work fails instead of touching the host, so features
-# that make such calls are disabled below until the world serves them.
+# The file side serves a session's own work, which reads and writes, and
+# any other call only when it names a session's container, which reads.
+# That covers the file viewer: dsh looks up each session's folder through
+# fleet-box as a path in its container, so the sidebar's file tree and
+# previews, which the chat's file links open, read the container, never the
+# host. These do not work: images of local paths in the chat or in a
+# Markdown preview (`/api/file`), whose requests name no container, so they
+# are refused, and live refresh of the file tree and previews, since the
+# helper has no watches. Any other call outside a session's work names no
+# container and fails instead of touching the host, so features that make
+# such calls are disabled below until the world serves them.
 
 # ── The world replaces the local execution providers ──
 
