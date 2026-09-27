@@ -13,8 +13,8 @@
  * `running` synchronously when woken, before its first step opens the
  * container, and leaves it once no driver remains, which it reports with
  * `agent/status`. Everything else is fleet-box's own and kept here: the
- * user's terminals, and the processes and calls fleet-box runs in the
- * container.
+ * user's terminals, and the processes, calls and file calls fleet-box runs
+ * in the container.
  * @module fleet-box/occupancy
  */
 
@@ -28,9 +28,10 @@ export interface Occupant {
    * `terminal`: a user's shell, until none of its processes is left.
    * `process`: a process fleet-box started, until it exits; what it leaves in its group does not count.
    * `call`: a request fleet-box makes to the helper for a caller, such as an executable lookup, while it runs.
+   * `file`: a file call fleet-box serves in the container, while it runs; a text stream until it is closed.
    */
-  kind: 'turn' | 'terminal' | 'process' | 'call'
-  /** The agent's session id, or the terminal's, process's or call's own id. */
+  kind: 'turn' | 'terminal' | 'process' | 'call' | 'file'
+  /** The agent's session id, or the terminal's, process's, call's or file call's own id. */
   id: string
 }
 

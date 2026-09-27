@@ -8,27 +8,30 @@
 # under rootless Docker). Subagent sessions share their root's container; a
 # fork gets its own. A container runs while dsh has its helper connected: it
 # starts when something of its session needs it, keeps running while
-# anything occupies it (a running turn, a sidebar terminal, a process), stops
-# once nothing has for a minute (`idleStopMs` on the fleet-box row), at once
-# when fleet-control's `fleet` command finishes waiting and nothing occupies
-# it, or when dsh exits or the helper is lost, and is removed when its session
-# is archived; an unarchived session starts fresh, and the model is told
-# once. The session image, with the helper built into it, is a prerequisite:
-# build it with `fleet-setup image` from the fleet-setup package, installed in
-# the same profile (`dsh plugin --profile fleet exec fleet-setup image`).
-# Without it fleet-box does not start, dsh's startup warning says so, and no
-# session can run.
+# anything occupies it (a running turn, a sidebar terminal, a process, a file
+# access), stops once nothing has for a minute (`idleStopMs` on the
+# fleet-box row), at once when fleet-control's `fleet` command finishes
+# waiting and nothing occupies it, or when dsh exits or the helper is lost,
+# and is removed when its session is archived; an unarchived session starts
+# fresh, and the model is told once. The session image, with the helper
+# built into it, is a prerequisite: build it with `fleet-setup image` from
+# the fleet-setup package, installed in the same profile
+# (`dsh plugin --profile fleet exec fleet-setup image`). Without it fleet-box
+# does not start, dsh's startup warning says so, and no session can run.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through fleet-box's helper. The subprocess side serves bash,
 # with collected output without spill files and no raw pipes or control
 # channel, and the sidebar's terminals, as shells in the session's container.
-# A file call outside any session's turn, like the sidebar's file tree and
-# previews or the chat's file links (`/api/file`), reads the host, but only
-# the registered workspace folders, which the containers mount at the same
-# paths; what exists only in a container is not shown. Any other call outside
-# a session's work fails instead of touching the host, so features that make
-# such calls are disabled below until the world serves them.
+# The file side serves the session's own work and its file viewer: the
+# sidebar's file tree and previews, which the chat's file links open, read
+# the session's container, never the host. A call no session makes is
+# refused, so these do not work: images of local paths in the chat or in a
+# Markdown preview (`/api/file`), whose requests name no session, and live
+# refresh of the file tree and previews, since the helper has no watches; the
+# file tree shows a read failure under each open folder. Any other call
+# outside a session's work fails instead of touching the host, so features
+# that make such calls are disabled below until the world serves them.
 
 # ── The world replaces the local execution providers ──
 
@@ -75,6 +78,12 @@
 - id: spill-policy
   disabled: true
 
+# Referencing another session saves its full transcript the same way, to a
+# host temp file the model is told to read; without a spill store the
+# reference says the full transcript is unavailable.
+- id: spill-local
+  disabled: true
+
 # ── Views that run processes, or read files, outside any session ──
 
 # Office previews convert documents with LibreOffice through ctx.subprocess.
@@ -98,3 +107,10 @@
 
 - id: ui-open-in-app
   disabled: true
+
+# Opening or revealing a path with the host's desktop apps: fleet-box maps no
+# host path into a container, so these requests are refused anyway, and this
+# tells the web client they are unavailable.
+- id: session-controller
+  config:
+    nativeOpen: false

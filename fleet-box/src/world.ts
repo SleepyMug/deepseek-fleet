@@ -11,12 +11,13 @@
  *
  * Lifetime: a container runs exactly while this process has its session's
  * world open and its helper connected. A world opens when something of its
- * session needs it: a model step, a process, or a user's terminal. It stays
- * open while anything occupies it (./occupancy.ts): a running turn of the
- * session or its subagents, a user's terminal, or a process or call fleet-box
- * runs there. Once nothing does, it closes after `idleStopMs`, or at once
- * when a caller done with the session asks (`stopSession`); it never closes
- * on its own while occupied. Its teardown always ends with the container
+ * session needs it: a model step, a process, a user's terminal, or a file
+ * access, such as the file viewer's. It stays open while anything occupies
+ * it (./occupancy.ts): a running turn of the session or its subagents, a
+ * user's terminal, or a process, call or file access fleet-box serves there.
+ * Once nothing does, it closes after `idleStopMs`, or at once when a caller
+ * done with the session asks (`stopSession`); it never closes on its own
+ * while occupied. Its teardown always ends with the container
  * stopped, whether it closed idle, its helper was lost, or dsh exits, and
  * everything still running in the container ends with it; the next use
  * starts it again. Archiving a session removes its container, and an
@@ -219,33 +220,27 @@ export class FleetBox extends Service {
   }
 
   /**
-   * The world of the session whose agent initiated the current call.
-   * @param operation - the provider method, named in the error for a call outside any session.
-   * @param signal - stops waiting; the open goes on for the session's other agents.
-   * @returns the initiating agent and its root session's open world.
-   */
-  async current(operation: string, signal?: AbortSignal): Promise<{ agent: Agent; world: SessionWorld }> {
-    const agent = this.agentOf(operation)
-    return { agent, world: await this.forAgent(agent, signal) }
-  }
-
-  /** The agent whose turn the current call belongs to, or undefined outside any turn. */
-  initiator(): Agent | undefined {
-    return this.self.agents.currentInitiator()
-  }
-
-  /**
    * The agent whose work the current call is, read synchronously so a
    * synchronous call can open that agent's world afterwards: the agent whose
    * turn made the call, or else the agent whose scoped context the caller
    * reached the provider through, as dsh's terminal controller reaches
    * `ctx.subprocess` through `agent.ctx`.
+   * @param caller - the context the provider was reached through, its traced `this.ctx`.
+   * @returns the agent, or undefined for a call that is no session's work.
+   */
+  sessionAgent(caller?: Context): Agent | undefined {
+    return this.initiator() ?? (caller === undefined ? undefined : this.scopedAgent(caller))
+  }
+
+  /**
+   * The agent whose work the current call is ({@link sessionAgent}), for a
+   * call that serves only session work.
    * @param operation - the provider method, named in the error for a call outside any session.
    * @param caller - the context the provider was reached through, its traced `this.ctx`.
    * @returns the agent.
    */
   agentOf(operation: string, caller?: Context): Agent {
-    const agent = this.initiator() ?? (caller === undefined ? undefined : this.scopedAgent(caller))
+    const agent = this.sessionAgent(caller)
     if (agent === undefined) throw new Error(`fleet-box: ${operation} was called outside a session; the container world serves only session work`)
     return agent
   }
@@ -253,6 +248,24 @@ export class FleetBox extends Service {
   /** The root session whose container an agent's work uses. */
   rootOf(agent: Agent): SessionId {
     return this.rootHeader(agent.session.header).id
+  }
+
+  /**
+   * The root session whose container a session uses, for a session that
+   * need not be loaded, such as one whose files the web client shows: each
+   * header in its lineage comes from the loaded sessions or else from storage.
+   * @param id - any session, a subagent's included.
+   * @returns the header of its root session.
+   * @throws when the session or one of its parents is not known.
+   */
+  async rootHeaderOf(id: SessionId): Promise<SessionHeader> {
+    const visited = new Set<SessionId>()
+    let current = await this.headerOf(id)
+    while (current.origin === 'subagent' && current.parentSession !== undefined && !visited.has(current.id)) {
+      visited.add(current.id)
+      current = await this.headerOf(current.parentSession)
+    }
+    return current
   }
 
   /**
@@ -364,6 +377,18 @@ export class FleetBox extends Service {
     const result = state.queue.then(() => operation(state))
     state.queue = result.catch(() => {})
     return result
+  }
+
+  /** The agent whose turn the current call belongs to, or undefined outside any turn. */
+  private initiator(): Agent | undefined {
+    return this.self.agents.currentInitiator()
+  }
+
+  /** A session's header, loaded or else stored. */
+  private async headerOf(id: SessionId): Promise<SessionHeader> {
+    const header = this.self.sessions.get(id)?.header ?? (await this.self.sessionPersistence.stat(id))?.header
+    if (header === undefined) throw new Error(`fleet-box: session ${id} is not known, so neither is its container`)
+    return header
   }
 
   /** The live agent a context is scoped to (@deepseek-ai/dsh-scope), if any. */
