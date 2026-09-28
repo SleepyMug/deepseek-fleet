@@ -15,6 +15,7 @@ async function setup(specOf: () => Promise<unknown>) {
   ctx.provide('fleetBox', { rootHeaderOf: () => Promise.reject(new Error('no lineage')) })
   ctx.provide('agents', { list: () => [] })
   ctx.provide('skills', { register: () => () => {} })
+  for (const service of ['tools', 'subprocess', 'systemPrompt']) ctx.provide(service, {})
   ctx.logger.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
   await ctx.plugin(AgentPlugin)
   return { ctx, warnings }

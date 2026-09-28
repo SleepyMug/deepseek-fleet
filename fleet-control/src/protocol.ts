@@ -46,8 +46,12 @@ const taskSchema = z.union([
 export type Task = z.infer<typeof taskSchema>
 
 export const requestSchema = z.discriminatedUnion('op', [
-  /** Start a session in `cwd` with a task; `wait` stays until it is idle. */
-  z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
+  /**
+   * Start a session in `cwd` with a task; `wait` stays until it is idle. `ts`
+   * gives it the TypeScript tools, which an agent declaring services or
+   * shipping modules gets anyway.
+   */
+  z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, ts: z.boolean(), wait: z.boolean() }),
   /** Send `prompt` to a session, queued as a later turn or, with `steer`, into the running one. */
   z.object({ op: z.literal('send'), session, prompt, steer: z.boolean(), wait: z.boolean() }),
   /** Wait until a session is idle, and report its last turn. */

@@ -43,7 +43,7 @@ test('the command finds the home the host serves, which dsh resolves', () => {
 })
 
 test('a run carries a prompt or an agent directory, never both or neither', () => {
-  const run = { v: 2, op: 'run', cwd: '/w', wait: true }
+  const run = { v: 2, op: 'run', cwd: '/w', ts: false, wait: true }
   assert.ok(requestSchema.safeParse({ ...run, task: { prompt: 'hi' } }).success)
   assert.ok(requestSchema.safeParse({ ...run, task: { agent: '/a', args: ['x'], callerCwd: '/c', env: { LANG: 'C' } } }).success)
   assert.ok(!requestSchema.safeParse({ ...run, task: { prompt: '  ' } }).success)

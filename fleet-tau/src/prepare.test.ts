@@ -81,16 +81,48 @@ test('declared services must be provided and fit, and are recorded with their fu
     const provided = { name: 'notes', declarations: 'export declare function addNote(text: string, tags?: string[]): Promise<number>;\n', functions: ['addNote'] }
     const prepared = prepare(request(dir, [], true, [provided]))
     assert.ok(prepared.ok, JSON.stringify(prepared))
-    assert.deepEqual(prepared.spec.services, { notes: ['addNote'] })
+    assert.deepEqual(Object.keys(prepared.spec.services), ['notes'])
+    assert.deepEqual(prepared.spec.services.notes?.functions, ['addNote'])
+    assert.equal(prepared.spec.services.notes?.description, 'Notes.')
+    assert.match(prepared.spec.services.notes?.declarations ?? '', /addNote\(text: string\): Promise<number>/u)
+    assert.equal(prepared.spec.ts, true, 'an agent with services gets the TypeScript tools')
   })
 })
 
-test('a manifest tau refuses, and modules, are problems', async () => {
+test('a manifest tau refuses, and a module that is no package, are problems', async () => {
   await withAgent({ 'PROMPT.md': 'x', 'services/bad.d.ts': 'export declare function f(when: Date): Promise<void>;\n', 'modules/m/package.json': '{}' }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.equal(prepared.problems.length, 2)
-    assert.match(prepared.problems[0]!, /modules: fleet does not give agents their modules yet/u)
+    assert.match(prepared.problems[0]!, /modules\/m/u)
     assert.match(prepared.problems[1]!, /bad\.d\.ts/u)
+  })
+})
+
+test('modules are recorded by name and folder, with a module whose imports do not resolve refused', async () => {
+  const shout = {
+    'modules/shout/package.json': JSON.stringify({ name: 'shout', description: 'Loud.', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
+    'modules/shout/index.js': 'export const shout = (text) => text.toUpperCase()\n',
+    'modules/shout/index.d.ts': 'export declare const shout: (text: string) => string;\n',
+  }
+  await withAgent({ 'PROMPT.md': 'x', ...shout }, (dir) => {
+    const prepared = prepare(request(dir, []))
+    assert.ok(prepared.ok, JSON.stringify(prepared))
+    assert.deepEqual(prepared.spec.modules, [{ name: 'shout', description: 'Loud.', dir: 'shout' }])
+    assert.equal(prepared.spec.ts, true)
+  })
+  await withAgent({ 'PROMPT.md': 'x', ...shout, 'modules/shout/index.js': 'import "not-installed"\n' }, (dir) => {
+    const prepared = prepare(request(dir, []))
+    assert.ok(!prepared.ok)
+    assert.match(prepared.problems.join('\n'), /not-installed/u)
+  })
+})
+
+test('the TypeScript tools come only when asked for or needed', async () => {
+  await withAgent({ 'PROMPT.md': 'x' }, (dir) => {
+    const plain = prepare(request(dir, []))
+    assert.ok(plain.ok && !plain.spec.ts)
+    const asked = prepare({ ...request(dir, []), ts: true })
+    assert.ok(asked.ok && asked.spec.ts)
   })
 })

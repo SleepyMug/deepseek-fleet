@@ -1,7 +1,8 @@
 /**
  * Gives each agent of a session the `fleet` command started from an agent
- * directory what the session's spec holds (./store.ts): today the agent's
- * skills, with dsh's `skill` tool to load them. Everything is registered in
+ * directory what the session's spec holds (./store.ts): the agent's skills,
+ * with dsh's `skill` tool to load them, and the TypeScript tools
+ * (./ts-tools.ts) when the spec asks for them. Everything is registered in
  * a scope of that agent alone, so other sessions, such as those the web UI
  * starts, keep the fleet preset as it is. It happens as dsh announces the
  * agent, for a new session and for every resume, so a session keeps its
@@ -24,9 +25,10 @@ import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import type {} from 'fleet-box/world'
 import { AGENT_VIEW, type Skill } from './spec.ts'
 import type {} from './store.ts'
+import { registerTsTools } from './ts-tools.ts'
 
 export const name = 'fleet-tau-agent'
-export const inject = ['fleetTau', 'fleetBox', 'agents', 'skills']
+export const inject = ['fleetTau', 'fleetBox', 'agents', 'skills', 'tools', 'subprocess', 'systemPrompt']
 
 export function apply(ctx: Context): void {
   /** Each agent's install, once begun; it settles to the agent's scope, or undefined when there is nothing to give it. */
@@ -79,12 +81,15 @@ async function customize(ctx: Context, agent: Agent): Promise<Scope | undefined>
   if (found === undefined) return undefined
   // A fork's container takes its source's snapshot; set before the fork's first step opens the container.
   if (found.owner !== root.id) await ctx.fleetTau.configureFork(root.id, found)
-  const { skills } = found.spec
-  if (skills.length === 0) return undefined
+  const { skills, ts } = found.spec
+  if (skills.length === 0 && !ts) return undefined
   const scope = createScope(ctx, agent)
   try {
-    await scope.ctx.plugin(ToolSkill)
-    for (const skill of skills) scope.ctx.skills.register(registration(skill))
+    if (skills.length > 0) {
+      await scope.ctx.plugin(ToolSkill)
+      for (const skill of skills) scope.ctx.skills.register(registration(skill))
+    }
+    if (ts) registerTsTools(scope.ctx, found.spec)
     return scope
   } catch (error) {
     await scope.dispose()

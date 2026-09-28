@@ -5,8 +5,9 @@
 #
 # `fleet run <agent-dir> [args...]` runs an agent directory in the tau format
 # (@sleepymug/tau's SPEC.md): PROMPT.md filled with the arguments tau.json
-# declares, the agent's skills, and the services its services/*.d.ts
-# declare. fleet-tau reads the directory in a worker, refuses one with
+# declares, the agent's skills, the services its services/*.d.ts declare,
+# and the modules in its modules/. fleet-tau reads the directory in a
+# worker, checking its modules and services, refuses one with
 # problems before any session exists, and keeps a snapshot of it per session
 # in $DSH_HOME/fleet/sessions/<id>/, which the session's container sees
 # read-only at /opt/fleet/agent. The session's agents get the snapshot's
@@ -19,8 +20,15 @@
 # of time); programs in its container then call them through $TAU_SOCKET,
 # fleet-box's service socket, and only the functions the agent declares.
 #
-# Status: prompts, skills and services. Path arguments, environment
-# variables and modules of an agent directory are refused for now.
+# An agent that declares services or ships modules, or a run with --ts, gets
+# TypeScript tools: ts_modules, ts_execute and ts_install, which run
+# programs in the session's container with fleet-box's runner. Programs
+# import the agent's services as @svc/<name>, its modules by name, and the
+# npm packages ts_install adds to /opt/fleet/ts.
+#
+# Status: prompts, skills, services, modules and TypeScript tools. Path
+# arguments and environment variables of an agent directory are refused for
+# now.
 
 - insert:
     - id: fleet-tau-services

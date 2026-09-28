@@ -4,7 +4,9 @@ import { Context } from '@deepseek-ai/cordis'
 import type { ServiceHandler } from 'fleet-box/world'
 import * as Relay from './relay.ts'
 
-async function setup(services: Record<string, string[]> | undefined) {
+async function setup(declared: Record<string, string[]> | undefined) {
+  const services = declared === undefined ? undefined
+    : Object.fromEntries(Object.entries(declared).map(([name, functions]) => [name, { declarations: '', functions }]))
   const ctx = new Context()
   let handler: ServiceHandler | undefined
   const served: unknown[] = []

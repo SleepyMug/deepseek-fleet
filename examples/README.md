@@ -6,3 +6,5 @@ Agent directories in the tau format (../../agent_fleet_project/tau/SPEC.md), for
 |---|---|---|
 | `hello` | arguments, a skill | `fleet run examples/hello World "and everyone else"` |
 | `skilled` | a skill with a script, run from the session's container | `fleet run examples/skilled "one two three"` |
+| `notes` | a service, called from a TypeScript program; its manifest links to the example provider's, which fleet-tau's patch lists disabled | `fleet check examples/notes`, then `fleet run examples/notes "buy milk" shopping,errands` |
+| `text-stats` | a module a TypeScript program imports | `fleet run examples/text-stats "the cat and the hat and the bat"` |

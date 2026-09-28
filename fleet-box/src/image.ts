@@ -1,8 +1,8 @@
 /**
  * The session image every container runs: its definition, what the world
- * relies on inside it, and how it is built. The build owns the helper: it
- * compiles the helper's sources and installs them, with their dependencies and
- * a Node of their own, under /opt/fleet-box. Building is a setup step of its
+ * relies on inside it, and how it is built. The build owns the helper and the
+ * TypeScript runner: it compiles their sources and installs them, with their
+ * dependencies and a Node of their own, under /opt/fleet-box. Building is a setup step of its
  * own, run by `fleet-setup image` from the fleet-setup package; fleet-box only
  * looks the image up when it starts.
  * @module fleet-box/image
@@ -10,7 +10,7 @@
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { access, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PROTOCOL_VERSION } from './helper/protocol.ts'
@@ -20,8 +20,14 @@ export const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
 const DOCKERFILE = 'image/Dockerfile'
 /** How long a newly built helper gets to answer its handshake. */
 const CHECK_TIMEOUT_MS = 60_000
-/** The helper's TypeScript sources, which the image build compiles. */
+/** The helper's and the runner's TypeScript sources, which the image build compiles. */
 const HELPER_SOURCES = 'src/helper'
+const RUNNER_SOURCES = 'src/runner'
+/**
+ * The runner's dependency on @sleepymug/ts-executor, packed from the linked
+ * checkout by scripts/stage-runner.mjs until that version is on npm.
+ */
+const RUNNER_VENDOR = 'image/runner/vendor/sleepymug-ts-executor-0.4.0.tgz'
 /**
  * The helper's Node, a copy of the image's, so a Node the model installs or
  * removes does not change it. The helper names its process `fleet-box`, so a
@@ -37,10 +43,16 @@ export const HELPER_ENTRY = '/opt/fleet-box/helper/main.js'
  * is an npm-shrinkwrap.json because packing drops package-lock.json.
  */
 export async function imageInputs(): Promise<string[]> {
-  const sources = (await readdir(join(PACKAGE_DIR, HELPER_SOURCES))).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts')).sort()
+  const sources = async (folder: string): Promise<string[]> =>
+    (await readdir(join(PACKAGE_DIR, folder))).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts')).sort().map(name => `${folder}/${name}`)
+  await access(join(PACKAGE_DIR, RUNNER_VENDOR)).catch(() => {
+    throw new Error(`fleet-box: ${RUNNER_VENDOR} is missing; stage it from the linked ts-executor checkout with \`node ${join(PACKAGE_DIR, 'scripts', 'stage-runner.mjs')}\``)
+  })
   return [
     DOCKERFILE, 'image/helper/npm-shrinkwrap.json', 'image/helper/package.json', 'image/helper/tsconfig.json',
-    ...sources.map(name => `${HELPER_SOURCES}/${name}`),
+    ...await sources(HELPER_SOURCES),
+    'image/runner/npm-shrinkwrap.json', 'image/runner/package.json', 'image/runner/tsconfig.json', RUNNER_VENDOR,
+    ...await sources(RUNNER_SOURCES),
   ]
 }
 

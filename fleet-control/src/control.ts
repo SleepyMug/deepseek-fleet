@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {} from 'fleet-box/world'
 import type {} from 'fleet-tau/services'
+import { promptSpec } from 'fleet-tau/spec'
 import type { Spec } from 'fleet-tau/store'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
 import type { Outcome, Request, Results } from './protocol.ts'
@@ -50,24 +51,28 @@ export class FleetControl {
     if (!isAbsolute(request.cwd)) throw new ControlError('fleet/bad-request', `the folder must be an absolute path: ${request.cwd}`)
     const { task } = request
     let prompt: string
-    let agent: { spec: Spec; title: string } | undefined
+    // What the session gets beyond its prompt, and its title; neither for a plain prompt run.
+    let spec: Spec | undefined
+    let title: string | undefined
     if ('prompt' in task) {
       prompt = task.prompt
+      if (request.ts) spec = promptSpec(prompt)
     } else {
       if (!isAbsolute(task.agent) || !isAbsolute(task.callerCwd)) {
         throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
       }
-      const prepared = await this.ctx.fleetTau.prepare({ agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, env: task.env })
+      const prepared = await this.ctx.fleetTau.prepare({ agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, env: task.env, ts: request.ts })
       if (!prepared.ok) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${prepared.problems.join('\n  ')}`)
       prompt = prepared.spec.prompt
-      agent = { spec: prepared.spec, title: prepared.title }
+      spec = prepared.spec
+      title = prepared.title
     }
     const workspace = await this.ctx.workspaceRegistry.create(request.cwd)
-    const sessionId = await this.create(workspace.id, agent?.spec, signal)
+    const sessionId = await this.create(workspace.id, spec, signal)
     try {
-      if (agent !== undefined) {
+      if (title !== undefined) {
         // A title only helps people find the run in the web UI; the run goes on without it.
-        await this.ctx.sessionController.rename({ sessionId, title: agent.title }).catch((error: unknown) => {
+        await this.ctx.sessionController.rename({ sessionId, title }).catch((error: unknown) => {
           this.ctx.logger.warn(`fleet-control: could not title ${sessionId}: ${message(error)}`)
         })
       }

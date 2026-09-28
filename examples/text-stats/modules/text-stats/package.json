@@ -1,0 +1,12 @@
+{
+  "name": "text-stats",
+  "version": "1.0.0",
+  "description": "Word counts of a text.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  }
+}

@@ -6,7 +6,7 @@
  * exists, so nothing of the session ever runs without it. A session's folder
  * in the store, `$DSH_HOME/fleet/sessions/<id>/`, holds `spec.json`
  * (./spec.ts) and `agent/`, a snapshot of the agent's PROMPT.md, tau.json,
- * skills and service manifests, with symlinks followed, which the session's container sees
+ * skills, service manifests and modules, with symlinks followed, which the session's container sees
  * read-only at {@link AGENT_VIEW} through fleet-box's container additions.
  * fleet-tau's agent plugin (./agent.ts) gives the session's agents what the
  * spec holds, whenever an agent is created or resumed.
@@ -39,7 +39,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** What of an agent directory the snapshot keeps. */
-const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills', 'services']
+const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills', 'services', 'modules']
 
 /** A session's spec, and the session whose folder holds it, which for a fork is its source. */
 export interface Found {
@@ -98,9 +98,13 @@ export class FleetTau extends Service {
     // Fails if the folder exists, so a spec is never mixed with another's.
     await mkdir(folder, { mode: 0o700 })
     try {
-      for (const part of AGENT_PARTS) {
-        await cp(join(spec.agent.source, part), join(folder, 'agent', part), { recursive: true, dereference: true, force: false, errorOnExist: true })
-          .catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
+      // A prompt run has no agent, and its container sees an empty snapshot.
+      await mkdir(join(folder, 'agent'), { mode: 0o700 })
+      if (spec.agent !== undefined) {
+        for (const part of AGENT_PARTS) {
+          await cp(join(spec.agent.source, part), join(folder, 'agent', part), { recursive: true, dereference: true, force: false, errorOnExist: true })
+            .catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
+        }
       }
       await writeFile(join(folder, 'spec.json'), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 })
       await this.self.fleetBox.configure(session, this.additions(session))

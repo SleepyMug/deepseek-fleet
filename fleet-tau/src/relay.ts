@@ -20,7 +20,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.fleetBox.serveCalls(async (root, call, signal) => {
     const found = await ctx.fleetTau.specOf(await ctx.fleetBox.rootHeaderOf(root))
     const services = found?.spec.services ?? {}
-    if (!Object.hasOwn(services, call.service) || !services[call.service]!.includes(call.function)) {
+    if (!Object.hasOwn(services, call.service) || !services[call.service]!.functions.includes(call.function)) {
       throw new Error(`this session's agent does not declare ${call.service}.${call.function}`)
     }
     return ctx.fleetServices.call(root, call, signal)
