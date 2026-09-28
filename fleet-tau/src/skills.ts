@@ -14,22 +14,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import type { Skill } from './spec.ts'
 
 /** Kebab-case, as `isSkillName` in @deepseek-ai/dsh-skill requires. */
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
-
-/** One skill of an agent. */
-export interface Skill {
-  name: string
-  description: string
-  whenToUse?: string
-  modelInvocable: boolean
-  userInvocable: boolean
-  /** The skill's folder, relative to the agent's `skills/` folder, with `/` separators; `.` for `skills/` itself. */
-  dir: string
-  /** The instructions: SKILL.md after its frontmatter, trimmed. */
-  content: string
-}
 
 /**
  * Find and read an agent's skills.

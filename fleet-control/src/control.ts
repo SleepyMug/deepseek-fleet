@@ -20,6 +20,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {} from 'fleet-box/world'
+import type {} from 'fleet-tau/services'
 import type { Spec } from 'fleet-tau/store'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
 import type { Outcome, Request, Results } from './protocol.ts'
@@ -153,6 +154,23 @@ export class FleetControl {
     }
     const outcome = await this.ctx.fleetBox.stopSession(sessionId)
     return outcome.stopped ? { stopped: true } : { stopped: false, activity: [...new Set(outcome.occupants.map(occupant => occupant.kind))] }
+  }
+
+  /** Read an agent directory as a run would, and report every problem; nothing is made. */
+  async check(request: RequestOf<'check'>): Promise<Results['check']> {
+    if (!isAbsolute(request.agent) || !isAbsolute(request.callerCwd)) {
+      throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
+    }
+    const prepared = await this.ctx.fleetTau.prepare({ agent: request.agent, args: request.args, bind: request.bind, callerCwd: request.callerCwd, env: request.env })
+    return { problems: prepared.ok ? [] : prepared.problems }
+  }
+
+  services(): Results['services'] {
+    return {
+      services: this.ctx.fleetServices.list().map(({ name, description, declarations, functions }) => ({
+        name, ...description === undefined ? {} : { description }, declarations, functions: [...functions],
+      })),
+    }
   }
 
   /** Archive a session; fleet-box removes its container. */

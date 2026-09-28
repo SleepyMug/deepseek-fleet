@@ -3,7 +3,8 @@
  * `docker exec --interactive`, and it serves that container's files and
  * processes over its stdin and stdout (./protocol.ts) until stdin ends, which
  * happens when the host closes the world or goes away; then it stops every
- * process it started and exits. Files go through dsh's own local file system,
+ * process it started and exits. It also relays the service calls programs in
+ * the container make on its service socket to the host (./services.ts). Files go through dsh's own local file system,
  * so the model's file tools behave exactly as they do on a local machine. It
  * also watches and ends the terminals the host runs with `docker exec`
  * (./terminals.ts), which are not its processes.
@@ -26,6 +27,7 @@ import {
   type HelperMessage, type HostMessage, type SpawnParams, type WireError,
 } from './protocol.ts'
 import { Processes, type Channel } from './processes.ts'
+import { ServiceSocket } from './services.ts'
 import { endTerminal, terminalState, waitTerminal } from './terminals.ts'
 
 // Node names its main thread `node-MainThread`, which a `pkill node` in the container would match.
@@ -53,6 +55,11 @@ await ctx.plugin(LocalFileSystem, { cwd: process.cwd(), diffBasisMaxBytes: MAX_W
 const fs: FileSystem = ctx.fs
 
 const processes = new Processes(channel)
+const services = new ServiceSocket(channel)
+// Listening before the first request is read, so the socket is there once the host has its hello.
+await services.listen().catch((error: unknown) => {
+  process.stderr.write(`fleet-box helper: no service socket: ${error instanceof Error ? error.message : String(error)}\n`)
+})
 /** Open text streams, read one chunk per request. */
 const streams = new Map<number, { iterator: AsyncIterator<string>; controller: AbortController }>()
 let nextStream = 1
@@ -134,6 +141,10 @@ function handle(message: HostMessage): void {
     active.get(message.id)?.abort(new Error('the host cancelled the request'))
     return
   }
+  if (message.type === 'call-result' || message.type === 'call-error') {
+    services.answer(message)
+    return
+  }
   const controller = new AbortController()
   active.set(message.id, controller)
   const handler = Object.hasOwn(handlers, message.method) ? handlers[message.method] : undefined
@@ -208,6 +219,7 @@ let stopping: Promise<void> | undefined
 /** Stop everything this helper started, then exit. */
 function shutdown(): Promise<void> {
   stopping ??= (async () => {
+    services.close()
     for (const controller of active.values()) controller.abort(new Error('the host went away'))
     for (const stream of streams.values()) stream.controller.abort(new Error('the host went away'))
     await Promise.allSettled([...streams.values()].map(stream => stream.iterator.return?.()))

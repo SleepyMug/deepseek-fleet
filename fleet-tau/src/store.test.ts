@@ -44,6 +44,7 @@ async function setup() {
     'session-fork-of-sub': header('session-fork-of-sub', { cwd: '/w', parentSession: 'session-sub' as SessionId }),
     'session-web': header('session-web', { cwd: '/w' }),
   }
+  ctx.provide('fleetServices', { list: () => [] })
   ctx.provide('fleetBox', {
     configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
     unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },

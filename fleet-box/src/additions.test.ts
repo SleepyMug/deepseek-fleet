@@ -23,8 +23,15 @@ test('mounts become bind mounts, read-only when asked', () => {
   ])
 })
 
+test('variables are passed in name order, and none adds nothing', () => {
+  assert.deepEqual(additionArgs({ mounts: [], env: { TZ: 'UTC', LANG: 'C.UTF-8' } }, '/work'), [
+    '--env', 'LANG=C.UTF-8', '--env', 'TZ=UTC',
+  ])
+  assert.deepEqual(additionArgs({ mounts: [], env: {} }, '/work'), [])
+})
+
 test('a mount may not cover the session folder or fleet-box\'s own folders', () => {
-  for (const target of ['/work', '/work/sub', '/', '/opt', '/opt/fleet-box', '/opt/fleet-box/bin']) {
+  for (const target of ['/work', '/work/sub', '/', '/opt', '/opt/fleet-box', '/opt/fleet-box/bin', '/run', '/run/fleet-box']) {
     assert.throws(() => additionArgs({ mounts: [{ source: '/src', target, readonly: true }] }, '/work'), /overlaps/u, target)
   }
   assert.doesNotThrow(() => additionArgs({ mounts: [{ source: '/src', target: '/workshop', readonly: true }] }, '/work'))
@@ -53,6 +60,8 @@ test('an unreadable or invalid file fails rather than dropping the additions', a
     await writeFile(additionsFile(home, 'session-1'), 'not json')
     await assert.rejects(readAdditions(home, 'session-1'), /not valid/u)
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [{ source: '/s', target: 'relative', readonly: true }] }))
+    await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { 'NOT-A-NAME': 'x' } }))
+    await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { TAU_SOCKET: '/elsewhere' } }), /set by fleet-box/u)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

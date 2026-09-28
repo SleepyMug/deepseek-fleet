@@ -28,17 +28,19 @@ const prompt = z.string().refine(text => text.trim() !== '', 'the prompt is empt
  * in the tau format, which the host reads, fills with the arguments and
  * titles the session after.
  */
+const agentFields = {
+  /** The agent directory, absolute. */
+  agent: z.string().min(1),
+  args: z.array(z.string()),
+  /** The command's working folder, which relative path arguments are resolved against. */
+  callerCwd: z.string().min(1),
+  /** The command's values of the variables the agent's tau.json lists; the command reads that list itself. */
+  env: z.record(z.string(), z.string()),
+}
+
 const taskSchema = z.union([
   z.object({ prompt }).strict(),
-  z.object({
-    /** The agent directory, absolute. */
-    agent: z.string().min(1),
-    args: z.array(z.string()),
-    /** The command's working folder, which relative path arguments are resolved against. */
-    callerCwd: z.string().min(1),
-    /** The command's values of the variables the agent's tau.json lists; the command reads that list itself. */
-    env: z.record(z.string(), z.string()),
-  }).strict(),
+  z.object(agentFields).strict(),
 ])
 
 export type Task = z.infer<typeof taskSchema>
@@ -57,6 +59,10 @@ export const requestSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('stop'), session }),
   /** Archive a session, which removes its container; `force` stops what runs instead of refusing. */
   z.object({ op: z.literal('archive'), session, force: z.boolean() }),
+  /** Read an agent directory as a run would, and report its problems; the arguments are bound only when `bind`. */
+  z.object({ op: z.literal('check'), ...agentFields, bind: z.boolean() }),
+  /** The services fleet's plugins provide. */
+  z.object({ op: z.literal('services') }),
 ])
 
 export type Request = z.infer<typeof requestSchema>
@@ -82,6 +88,15 @@ export interface SessionRow {
   updatedAt: number
 }
 
+/** A service fleet's plugins provide. */
+export interface ServiceRow {
+  name: string
+  description?: string
+  /** The service's manifest in its canonical form, to copy into an agent's services/<name>.d.ts. */
+  declarations: string
+  functions: string[]
+}
+
 /** The result of each request. */
 export interface Results {
   run: { session: string; outcome?: Outcome }
@@ -92,6 +107,9 @@ export interface Results {
   /** `activity` names what keeps the container running, such as `turn` or `terminal`. */
   stop: { stopped: true } | { stopped: false; activity: string[] }
   archive: Record<string, never>
+  /** Every problem that would refuse a run; none when it would start. */
+  check: { problems: string[] }
+  services: { services: ServiceRow[] }
 }
 
 /** One line the host writes. */

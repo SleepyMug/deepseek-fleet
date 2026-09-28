@@ -1,22 +1,41 @@
 # The fleet's tau runtime, layered after fleet-box, whose containers it adds
-# to, and before fleet-control, whose `fleet run` stores each session's spec
-# here: list it between them in the profile's bundles.
+# to and whose service calls it serves, and before fleet-control, whose
+# `fleet run` stores each session's spec here: list it between them in the
+# profile's bundles.
 #
 # `fleet run <agent-dir> [args...]` runs an agent directory in the tau format
 # (@sleepymug/tau's SPEC.md): PROMPT.md filled with the arguments tau.json
-# declares, and the agent's skills. fleet-tau reads the directory in a
-# worker, refuses one with problems before any session exists, and keeps a
-# snapshot of it per session in $DSH_HOME/fleet/sessions/<id>/, which the
-# session's container sees read-only at /opt/fleet/agent. The session's
-# agents get the snapshot's skills, with dsh's `skill` tool, in a scope of
-# their own; sessions started any other way keep the fleet preset unchanged.
+# declares, the agent's skills, and the services its services/*.d.ts
+# declare. fleet-tau reads the directory in a worker, refuses one with
+# problems before any session exists, and keeps a snapshot of it per session
+# in $DSH_HOME/fleet/sessions/<id>/, which the session's container sees
+# read-only at /opt/fleet/agent. The session's agents get the snapshot's
+# skills, with dsh's `skill` tool, in a scope of their own; sessions started
+# any other way keep the fleet preset unchanged.
 #
-# Status: prompts and skills. Path arguments, environment variables,
-# services and modules of an agent directory are refused for now.
+# Services are what fleet's own plugins provide (`ctx.fleetServices`), each
+# a tau manifest and its functions. An agent runs only when every service it
+# declares is provided and fits its declaration (`fleet check` tells ahead
+# of time); programs in its container then call them through $TAU_SOCKET,
+# fleet-box's service socket, and only the functions the agent declares.
+#
+# Status: prompts, skills and services. Path arguments, environment
+# variables and modules of an agent directory are refused for now.
 
 - insert:
+    - id: fleet-tau-services
+      name: fleet-tau/services
+
     - id: fleet-tau
       name: fleet-tau/store
 
     - id: fleet-tau-agent
       name: fleet-tau/agent
+
+    - id: fleet-tau-relay
+      name: fleet-tau/relay
+
+    # An example provider: a per-session notebook, for examples/notes.
+    - id: fleet-tau-notes
+      name: fleet-tau/examples/notes
+      disabled: true

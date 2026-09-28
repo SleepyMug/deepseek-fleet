@@ -5,8 +5,8 @@
  * (./prepare.ts), then stores what the session needs before the session
  * exists, so nothing of the session ever runs without it. A session's folder
  * in the store, `$DSH_HOME/fleet/sessions/<id>/`, holds `spec.json`
- * (./spec.ts) and `agent/`, a snapshot of the agent's PROMPT.md, tau.json and
- * skills with symlinks followed, which the session's container sees
+ * (./spec.ts) and `agent/`, a snapshot of the agent's PROMPT.md, tau.json,
+ * skills and service manifests, with symlinks followed, which the session's container sees
  * read-only at {@link AGENT_VIEW} through fleet-box's container additions.
  * fleet-tau's agent plugin (./agent.ts) gives the session's agents what the
  * spec holds, whenever an agent is created or resumed.
@@ -25,12 +25,12 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { ContainerAdditions } from 'fleet-box/world'
 import type { Prepared, PrepareRequest } from './prepare.ts'
+import type {} from './services.ts'
 import { AGENT_VIEW, specSchema, type Spec } from './spec.ts'
 import type { Answer, Job } from './worker.ts'
 
 export type { Prepared, PrepareRequest } from './prepare.ts'
-export type { Skill } from './skills.ts'
-export type { Spec } from './spec.ts'
+export type { Skill, Spec } from './spec.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -39,7 +39,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** What of an agent directory the snapshot keeps. */
-const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills']
+const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills', 'services']
 
 /** A session's spec, and the session whose folder holds it, which for a fork is its source. */
 export interface Found {
@@ -49,7 +49,7 @@ export interface Found {
 }
 
 export class FleetTau extends Service {
-  static inject = ['fleetBox']
+  static inject = ['fleetBox', 'fleetServices']
 
   private readonly home = resolveDshHome()
   /** This service's own context, whichever plugin calls it. */
@@ -72,17 +72,18 @@ export class FleetTau extends Service {
   }
 
   /**
-   * Read an agent directory for a run or a check, in a worker.
+   * Read an agent directory for a run or a check, in a worker, its services
+   * checked against those provided now.
    * @returns the session's spec and title, or every problem found.
    */
-  prepare(request: PrepareRequest): Promise<Prepared> {
+  prepare(request: Omit<PrepareRequest, 'providers'>): Promise<Prepared> {
     const job = Promise.withResolvers<Prepared>()
     const id = this.nextJob++
     this.jobs.set(id, job)
     const worker = this.startWorker()
     // Held only while it has work, so an idle worker never keeps a process alive.
     worker.ref()
-    worker.postMessage({ id, request } satisfies Job)
+    worker.postMessage({ id, request: { ...request, providers: this.self.fleetServices.list() } } satisfies Job)
     return job.promise
   }
 

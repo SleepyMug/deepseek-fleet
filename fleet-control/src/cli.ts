@@ -46,6 +46,10 @@ const USAGE = [
   '  stop <session>                              stop a session\'s container unless the session is busy',
   '  rm [--force] <session>                      archive a session and remove its container;',
   '                                              --force stops what it still runs',
+  '  check <agent-dir> [args...]                 report what would keep an agent directory from running,',
+  '                                              its services checked against those provided; with',
+  '                                              arguments, bind them too',
+  '  services [name]                             list the services fleet provides, or print one\'s manifest',
   '',
   'Options come before the other arguments. run, send and wait print only the answer, exit 0',
   'when the turn completed and 1 otherwise, and stop the session\'s container. Ctrl-C cancels',
@@ -80,6 +84,8 @@ async function main(args: readonly string[]): Promise<number> {
       await call({ op: 'archive', session: only(positional, 'rm'), force: flags.has('--force') })
       return EXIT_OK
     }
+    case 'check': return check(rest)
+    case 'services': return services(rest)
     case '--help':
     case '-h':
       say(USAGE)
@@ -132,6 +138,44 @@ function task(positional: readonly string[], prompt: string | undefined): Task {
   if (dir === undefined) throw new UsageError('run needs an agent directory, or -p and a prompt')
   const agent = resolve(dir)
   return { agent, args, callerCwd: process.cwd(), env: agentEnv(agent, process.env) }
+}
+
+async function check(args: readonly string[]): Promise<number> {
+  const { positional } = parseOptions(args, {})
+  const [dir, ...agentArgs] = positional
+  if (dir === undefined) throw new UsageError('check needs an agent directory')
+  const agent = resolve(dir)
+  const { problems } = await call({
+    op: 'check', agent, args: agentArgs, bind: agentArgs.length > 0, callerCwd: process.cwd(), env: agentEnv(agent, process.env),
+  })
+  if (problems.length === 0) {
+    process.stdout.write('ok\n')
+    return EXIT_OK
+  }
+  for (const problem of problems) process.stdout.write(`${problem}\n`)
+  return EXIT_FAILED
+}
+
+async function services(args: readonly string[]): Promise<number> {
+  if (args.length > 1) throw new UsageError('services takes at most one service name')
+  const { services: rows } = await call({ op: 'services' })
+  const [name] = args
+  if (name === undefined) {
+    for (const row of rows) process.stdout.write(`${row.name}  ${row.description?.replace(/\s+/gu, ' ').trim() ?? '-'}\n`)
+    return EXIT_OK
+  }
+  const row = rows.find(candidate => candidate.name === name)
+  if (row === undefined) throw new Error(`fleet: no fleet plugin provides the service ${name}`)
+  process.stdout.write(manifest(row))
+  return EXIT_OK
+}
+
+/** A service's manifest to copy into an agent's services/<name>.d.ts: its declarations, after its description as tau reads one. */
+function manifest(row: { description?: string; declarations: string }): string {
+  const declarations = row.declarations.endsWith('\n') ? row.declarations : `${row.declarations}\n`
+  if (row.description === undefined || row.description.trim() === '') return declarations
+  const lines = row.description.trim().split('\n').map(line => ` * ${line}`.trimEnd())
+  return `/**\n${lines.join('\n')}\n *\n * @packageDocumentation\n */\n\n${declarations}`
 }
 
 /** The real path of a session's folder, where its workspace is registered. */

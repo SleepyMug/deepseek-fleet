@@ -2,9 +2,13 @@
   "name": "fleet-tau",
   "version": "0.0.1",
   "private": true,
-  "description": "The fleet's tau runtime: runs agent directories in the tau format as sessions of the fleet host, each with its agent's skills, from a spec the `fleet` command stores per session",
+  "description": "The fleet's tau runtime: runs agent directories in the tau format as sessions of the fleet host, each with its agent's skills and the services fleet's plugins provide, from a spec the `fleet` command stores per session",
   "type": "module",
   "exports": {
+    "./services": {
+      "types": "./lib/services.d.ts",
+      "default": "./lib/services.js"
+    },
     "./store": {
       "types": "./lib/store.d.ts",
       "default": "./lib/store.js"
@@ -13,11 +17,20 @@
       "types": "./lib/agent.d.ts",
       "default": "./lib/agent.js"
     },
+    "./relay": {
+      "types": "./lib/relay.d.ts",
+      "default": "./lib/relay.js"
+    },
+    "./examples/notes": {
+      "types": "./lib/examples/notes.d.ts",
+      "default": "./lib/examples/notes.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
     "!lib/**/*.test.*",
+    "manifests",
     "cordis.patch.yml"
   ],
   "scripts": {
@@ -32,6 +45,7 @@
   },
   "dependencies": {
     "@sleepymug/tau": "link:../../agent_fleet_project/tau",
+    "typescript": "6.0.3",
     "yaml": "2.9.1",
     "zod": "4.6.5"
   },

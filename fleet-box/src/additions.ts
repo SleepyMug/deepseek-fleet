@@ -1,7 +1,7 @@
 /**
  * What a root session's container gets beyond fleet-box's own: bind mounts
- * that another plugin asks for, such as fleet-tau's snapshot of the agent a
- * `fleet run` started. They are kept in one file per session in the dsh
+ * and environment variables that another plugin asks for, such as fleet-tau's
+ * snapshot of the agent a `fleet run` started. They are kept in one file per session in the dsh
  * home, and the world reads that file itself each time it creates or starts
  * the container, so a container never loses them because the plugin that
  * asked is not loaded, or not loaded yet. The additions are part of the
@@ -17,7 +17,9 @@ import { isAbsolute, join, posix } from 'node:path'
 import { z } from 'zod'
 
 /** Folders of the container that fleet-box itself fills; no addition may cover them. */
-const RESERVED = ['/opt/fleet-box']
+const RESERVED = ['/opt/fleet-box', '/run/fleet-box']
+/** Variables fleet-box itself sets in every container; no addition may set them. */
+const RESERVED_ENV = ['TAU_SOCKET']
 
 /** A host path bind-mounted into the container. */
 export interface Mount {
@@ -31,6 +33,8 @@ export interface Mount {
 /** What a root session's container gets beyond the session folder. */
 export interface ContainerAdditions {
   mounts: Mount[]
+  /** Variables every process in the container sees, the helper's and a terminal's included. */
+  env?: Record<string, string>
 }
 
 const containerPath = z.string().refine(path => posix.isAbsolute(path) && posix.normalize(path) === path && path !== '/' && !path.endsWith('/'),
@@ -42,6 +46,10 @@ const additionsSchema = z.object({
     target: containerPath,
     readonly: z.boolean(),
   }).strict()),
+  env: z.record(
+    z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u, 'must be a variable name').refine(name => !RESERVED_ENV.includes(name), 'is set by fleet-box itself'),
+    z.string().refine(value => !value.includes('\0'), 'must not hold a NUL'),
+  ).optional(),
 }).strict()
 
 /** The file that holds a root session's additions. */
@@ -103,9 +111,11 @@ export function additionArgs(additions: ContainerAdditions | undefined, workspac
       if (overlaps(target, taken)) throw new Error(`fleet-box: a container addition mounts ${target}, which overlaps ${taken}`)
     }
   }
-  return additions.mounts.flatMap(mount => [
+  const mounts = additions.mounts.flatMap(mount => [
     '--mount', `type=bind,${mountField(`src=${mount.source}`)},${mountField(`dst=${mount.target}`)}${mount.readonly ? ',readonly' : ''}`,
   ])
+  const env = Object.entries(additions.env ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).flatMap(([name, value]) => ['--env', `${name}=${value}`])
+  return [...mounts, ...env]
 }
 
 /** One field of a `--mount` value, which Docker parses as a CSV record; a plain path stays as it is, so its container's spec does too. */

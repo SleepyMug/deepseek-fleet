@@ -46,11 +46,22 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { additionArgs, mountField, readAdditions, removeAdditions, writeAdditions, type ContainerAdditions } from './additions.ts'
-import { HelperConnection } from './connection.ts'
+import { HelperConnection, type ServiceCallRequest } from './connection.ts'
+import { SERVICE_SOCKET } from './helper/protocol.ts'
 import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
 
 export type { ContainerAdditions, Mount } from './additions.ts'
+export type { ServiceCallRequest } from './calls.ts'
+
+/**
+ * Serves the service calls programs in a root session's container make
+ * (./helper/services.ts), for the session the container belongs to.
+ * @param root - the root session whose container the call came from, as the connection knows it.
+ * @param signal - aborts when the program goes away or the container's world ends.
+ * @returns the call's result, JSON; a throw's message goes back to the program.
+ */
+export type ServiceHandler = (root: SessionId, call: ServiceCallRequest, signal: AbortSignal) => Promise<unknown>
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -148,6 +159,8 @@ export class FleetBox extends Service {
   private readonly home = resolveDshHome()
   private readonly roots = new Map<SessionId, Root>()
   private readonly occupancy: Occupancy
+  /** Who serves the containers' service calls; every world's connection reads it for each call. */
+  private readonly services: { handler: ServiceHandler | undefined } = { handler: undefined }
   /** Sessions archived in the workspace registry, as of its latest write. */
   private archived: ReadonlySet<SessionId>
   /**
@@ -296,6 +309,19 @@ export class FleetBox extends Service {
   async unconfigure(root: SessionId): Promise<void> {
     if (!usableAsContainerName(root)) throw new Error(`fleet-box: session id ${root} is not usable as a container name`)
     await removeAdditions(this.home, root)
+  }
+
+  /**
+   * Serve every container's service calls, which fail until something does.
+   * A call does not occupy its container: it comes from a program that a
+   * turn or a terminal keeps running, and one that outlived them must not
+   * keep the container running by calling.
+   * @returns the removal, which leaves the calls unserved again.
+   */
+  serveCalls(handler: ServiceHandler): () => void {
+    if (this.services.handler !== undefined) throw new Error('fleet-box: something already serves the containers\' service calls')
+    this.services.handler = handler
+    return () => { if (this.services.handler === handler) this.services.handler = undefined }
   }
 
   /**
@@ -527,6 +553,11 @@ export class FleetBox extends Service {
     const connection = new HelperConnection({
       docker: this.config.docker, container: container.name, workspace: container.workspace, node: HELPER_NODE, entry: HELPER_ENTRY,
     })
+    const services = this.services
+    connection.serveCalls((call, signal) => {
+      const handler = services.handler
+      return handler === undefined ? Promise.reject(new Error('no services are provided here')) : handler(root.id, call, signal)
+    })
     const stopped = Promise.withResolvers<void>()
     const stop = (): Promise<void> => this.stopContainer(container.name).catch((error: unknown) => {
       this.self.logger.warn(`fleet-box: could not stop ${container.name}: ${message(error)}`)
@@ -600,6 +631,8 @@ export class FleetBox extends Service {
       '--label', `${SESSION_LABEL}=${root.id}`, '--label', `${HOME_LABEL}=${this.home}`,
       '--init',
       '--mount', `type=bind,${mountField(`src=${workspace}`)},${mountField(`dst=${workspace}`)}`,
+      // Every process in the container finds the service socket, as tau's runtimes look for it.
+      '--env', `TAU_SOCKET=${SERVICE_SOCKET}`,
       ...additionArgs(additions, workspace),
       '--workdir', workspace,
       this.image, 'sleep', 'infinity',

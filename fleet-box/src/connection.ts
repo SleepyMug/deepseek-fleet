@@ -1,8 +1,10 @@
 /**
  * The host's end of one session container's helper. It starts the helper
  * with `docker exec --interactive`, sends it requests, and routes its answers
- * and process events (./helper/protocol.ts). Everything the helper sends is
- * bounded and validated, since the model is root in the same container.
+ * and process events (./helper/protocol.ts), and the service calls it relays
+ * to whoever serves them ({@link HelperConnection.serveCalls}). Everything
+ * the helper sends is bounded and validated, since the model is root in the
+ * same container.
  *
  * A connection never reconnects. When the helper or its Docker CLI ends
  * without being asked to, every pending request fails, every running process
@@ -15,6 +17,7 @@ import { constants } from 'node:os'
 import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
+import { ServiceCalls, type CallHandler } from './calls.ts'
 import { MAX_MESSAGE_BYTES, PROTOCOL_VERSION, type HostMessage } from './helper/protocol.ts'
 
 /** Characters of the helper's stderr kept to explain a failed start. */
@@ -46,6 +49,8 @@ export class HelperError extends Error {
   }
 }
 
+export type { CallHandler, ServiceCallRequest } from './calls.ts'
+
 /** Receives one process's events. */
 export interface ProcessListener {
   output(stream: 'stdout' | 'stderr', data: Buffer): void
@@ -60,6 +65,8 @@ const messageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('error'), id: z.number().int(), error: z.object({ name: z.string(), message: z.string(), code: z.string().optional() }) }),
   z.object({ type: z.literal('output'), process: z.string(), stream: z.enum(['stdout', 'stderr']), data: z.base64() }),
   z.object({ type: z.literal('exit'), process: z.string(), exitCode: z.number().int().nullable(), signal: signalSchema.nullable() }),
+  z.object({ type: z.literal('call'), call: z.number().int(), service: z.string(), function: z.string(), args: z.array(z.unknown()) }),
+  z.object({ type: z.literal('call-cancel'), call: z.number().int() }),
 ])
 const helloSchema = z.object({ protocol: z.number(), node: z.string() })
 
@@ -78,6 +85,7 @@ export class HelperConnection {
   private readonly markEnded: (error: Error) => void
   private readonly pending = new Map<number, Pending>()
   private readonly processes = new Map<string, ProcessListener>()
+  private readonly calls = new ServiceCalls((line) => { this.sendLine(line) })
   private nextId = 1
   private child: ChildProcessWithoutNullStreams | undefined
   private childClosed: Promise<void> = Promise.resolve()
@@ -171,6 +179,11 @@ export class HelperConnection {
     }
   }
 
+  /** Serve the service calls the helper relays; until then, and without one, every call fails. */
+  serveCalls(handler: CallHandler): void {
+    this.calls.serve(handler)
+  }
+
   /**
    * Check that the helper still answers, as when a process it was asked to
    * stop has not ended long after its grace. A helper that does not answer,
@@ -204,8 +217,12 @@ export class HelperConnection {
   }
 
   private send(message: HostMessage): void {
+    this.sendLine(JSON.stringify(message))
+  }
+
+  private sendLine(line: string): void {
     if (this.failure !== undefined || this.child === undefined) return
-    this.child.stdin.write(`${JSON.stringify(message)}\n`)
+    this.child.stdin.write(`${line}\n`)
   }
 
   /** Split the helper's stdout into lines, refusing any longer than a message may be. */
@@ -271,7 +288,13 @@ export class HelperConnection {
         const listener = this.processes.get(parsed.process)
         this.processes.delete(parsed.process)
         listener?.exit(parsed.exitCode, parsed.signal)
+        return
       }
+      case 'call':
+        this.calls.receive(parsed, Buffer.byteLength(line))
+        return
+      case 'call-cancel':
+        this.calls.cancel(parsed.call)
     }
   }
 
@@ -282,6 +305,7 @@ export class HelperConnection {
     this.pending.clear()
     for (const listener of this.processes.values()) listener.lost(error)
     this.processes.clear()
+    this.calls.abortAll(error)
     this.child?.kill('SIGTERM')
     if (this.closing === undefined) this.markEnded(error)
   }

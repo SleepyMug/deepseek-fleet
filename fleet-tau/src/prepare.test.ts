@@ -18,7 +18,8 @@ async function withAgent(files: Record<string, string>, check: (dir: string) => 
   }
 }
 
-const request = (agent: string, args: string[], bind = true): PrepareRequest => ({ agent, args, bind, callerCwd: '/caller', env: {} })
+const request = (agent: string, args: string[], bind = true, providers: PrepareRequest['providers'] = []): PrepareRequest =>
+  ({ agent, args, bind, callerCwd: '/caller', env: {}, providers })
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
@@ -68,5 +69,28 @@ test('a check without arguments does not bind them, and an empty prompt is refus
     const prepared = prepare(request(dir, ['  ']))
     assert.ok(!prepared.ok)
     assert.match(prepared.problems[0]!, /empty prompt/u)
+  })
+})
+
+test('declared services must be provided and fit, and are recorded with their functions', async () => {
+  const manifest = '/** Notes. @packageDocumentation */\nexport declare function addNote(text: string): Promise<number>;\n'
+  await withAgent({ 'PROMPT.md': 'Take notes.', 'services/notes.d.ts': manifest }, (dir) => {
+    const missing = prepare(request(dir, []))
+    assert.ok(!missing.ok)
+    assert.deepEqual(missing.problems, ['no fleet plugin provides the service notes'])
+    const provided = { name: 'notes', declarations: 'export declare function addNote(text: string, tags?: string[]): Promise<number>;\n', functions: ['addNote'] }
+    const prepared = prepare(request(dir, [], true, [provided]))
+    assert.ok(prepared.ok, JSON.stringify(prepared))
+    assert.deepEqual(prepared.spec.services, { notes: ['addNote'] })
+  })
+})
+
+test('a manifest tau refuses, and modules, are problems', async () => {
+  await withAgent({ 'PROMPT.md': 'x', 'services/bad.d.ts': 'export declare function f(when: Date): Promise<void>;\n', 'modules/m/package.json': '{}' }, (dir) => {
+    const prepared = prepare(request(dir, []))
+    assert.ok(!prepared.ok)
+    assert.equal(prepared.problems.length, 2)
+    assert.match(prepared.problems[0]!, /modules: fleet does not give agents their modules yet/u)
+    assert.match(prepared.problems[1]!, /bad\.d\.ts/u)
   })
 })

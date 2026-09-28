@@ -22,7 +22,10 @@
 # does not start, dsh's startup warning says so, and no session can run.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
-# its container, through fleet-box's helper. The subprocess side serves bash,
+# its container, through fleet-box's helper. The helper also serves tau's
+# service protocol at $TAU_SOCKET (/run/fleet-box/tau.sock) and relays each
+# call to whatever serves them on the host (fleet-tau), for the session the
+# container belongs to; without it, every call fails. The subprocess side serves bash,
 # with collected output without spill files and no raw pipes or control
 # channel, and the sidebar's terminals, as shells in the session's container.
 # The file side serves a session's own work, which reads and writes, and
