@@ -2,6 +2,7 @@ packages:
   - fleet-box
   - fleet-control
   - fleet-setup
+  - fleet-tau
   - profile-fleet
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true

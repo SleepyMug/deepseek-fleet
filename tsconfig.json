@@ -3,6 +3,7 @@
   "references": [
     { "path": "fleet-box" },
     { "path": "fleet-control" },
-    { "path": "fleet-setup" }
+    { "path": "fleet-setup" },
+    { "path": "fleet-tau" }
   ]
 }

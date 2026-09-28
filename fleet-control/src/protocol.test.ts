@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { dshHome, lineReader } from './protocol.ts'
+import { dshHome, lineReader, requestSchema } from './protocol.ts'
 
 test('lines split across and within chunks', () => {
   const lines: string[] = []
@@ -40,4 +40,14 @@ test('the command finds the home the host serves, which dsh resolves', () => {
     const env = home === undefined ? {} : { DSH_HOME: home }
     assert.equal(dshHome(env), resolveDshHome(undefined, env), `DSH_HOME=${String(home)}`)
   }
+})
+
+test('a run carries a prompt or an agent directory, never both or neither', () => {
+  const run = { v: 2, op: 'run', cwd: '/w', wait: true }
+  assert.ok(requestSchema.safeParse({ ...run, task: { prompt: 'hi' } }).success)
+  assert.ok(requestSchema.safeParse({ ...run, task: { agent: '/a', args: ['x'], callerCwd: '/c', env: { LANG: 'C' } } }).success)
+  assert.ok(!requestSchema.safeParse({ ...run, task: { prompt: '  ' } }).success)
+  assert.ok(!requestSchema.safeParse({ ...run, task: { prompt: 'hi', agent: '/a' } }).success)
+  assert.ok(!requestSchema.safeParse({ ...run, task: {} }).success)
+  assert.ok(!requestSchema.safeParse({ ...run, prompt: 'hi' }).success)
 })

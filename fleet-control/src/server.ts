@@ -18,7 +18,7 @@ import { MAX_REQUEST_BYTES, PROTOCOL_VERSION, lineReader, requestSchema, socketP
 import type { Frame, Request } from './protocol.ts'
 
 export const name = 'fleet-control'
-export const inject = ['sessionController', 'workspaceRegistry', 'agents', 'sessions', 'sessionPersistence', 'fleetBox']
+export const inject = ['sessionController', 'workspaceRegistry', 'agents', 'sessions', 'sessionPersistence', 'fleetBox', 'fleetTau']
 
 export async function apply(ctx: Context): Promise<void> {
   const path = socketPath(resolveDshHome())

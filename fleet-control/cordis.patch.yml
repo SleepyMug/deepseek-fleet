@@ -1,8 +1,8 @@
 # The fleet host's control socket for the `fleet` command, layered after
-# fleet-box, whose containers it stops: list it after fleet-box in the
-# profile's bundles. It listens at $DSH_HOME/fleet/control.sock, which only
-# the owner can open, and refuses to start while another dsh process serves
-# that socket.
+# fleet-box, whose containers it stops, and fleet-tau, which reads and stores
+# the agent directories it runs: list it after both in the profile's bundles.
+# It listens at $DSH_HOME/fleet/control.sock, which only the owner can open,
+# and refuses to start while another dsh process serves that socket.
 
 - insert:
     - id: fleet-control

@@ -1,0 +1,22 @@
+# The fleet's tau runtime, layered after fleet-box, whose containers it adds
+# to, and before fleet-control, whose `fleet run` stores each session's spec
+# here: list it between them in the profile's bundles.
+#
+# `fleet run <agent-dir> [args...]` runs an agent directory in the tau format
+# (@sleepymug/tau's SPEC.md): PROMPT.md filled with the arguments tau.json
+# declares, and the agent's skills. fleet-tau reads the directory in a
+# worker, refuses one with problems before any session exists, and keeps a
+# snapshot of it per session in $DSH_HOME/fleet/sessions/<id>/, which the
+# session's container sees read-only at /opt/fleet/agent. The session's
+# agents get the snapshot's skills, with dsh's `skill` tool, in a scope of
+# their own; sessions started any other way keep the fleet preset unchanged.
+#
+# Status: prompts and skills. Path arguments, environment variables,
+# services and modules of an agent directory are refused for now.
+
+- insert:
+    - id: fleet-tau
+      name: fleet-tau/store
+
+    - id: fleet-tau-agent
+      name: fleet-tau/agent

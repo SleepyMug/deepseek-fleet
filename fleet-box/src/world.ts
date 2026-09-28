@@ -3,7 +3,8 @@
  * root session owns one Docker container for as long as it is unarchived, and
  * one fleet-box helper inside it that serves the session's files and
  * processes to this bundle's `ctx.fs` and `ctx.subprocess`. The session
- * folder is bind-mounted at the same absolute path; everything else, `/tmp`
+ * folder is bind-mounted at the same absolute path, beside any mounts another
+ * plugin configured for the session (./additions.ts); everything else, `/tmp`
  * included, is the container's own. Processes run as the container's root,
  * which rootless Docker maps to the host user, so files in the workspace stay
  * the user's. Subagent sessions share their root's container; a fork is its
@@ -44,9 +45,12 @@ import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
+import { additionArgs, mountField, readAdditions, removeAdditions, writeAdditions, type ContainerAdditions } from './additions.ts'
 import { HelperConnection } from './connection.ts'
 import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
+
+export type { ContainerAdditions, Mount } from './additions.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -275,6 +279,23 @@ export class FleetBox extends Service {
    */
   async sessionHeader(id: SessionId): Promise<SessionHeader | undefined> {
     return this.self.sessions.get(id)?.header ?? (await this.self.sessionPersistence.stat(id))?.header
+  }
+
+  /**
+   * Set what a root session's container gets beyond the session folder
+   * (./additions.ts), before or after the session exists. The container gets
+   * them from its next use on, which recreates it if it exists.
+   * @param root - a root session's id; a subagent shares its root's container.
+   */
+  async configure(root: SessionId, additions: ContainerAdditions): Promise<void> {
+    if (!usableAsContainerName(root)) throw new Error(`fleet-box: session id ${root} is not usable as a container name`)
+    await writeAdditions(this.home, root, additions)
+  }
+
+  /** Remove what {@link configure} set for a root session, such as one that was never made. */
+  async unconfigure(root: SessionId): Promise<void> {
+    if (!usableAsContainerName(root)) throw new Error(`fleet-box: session id ${root} is not usable as a container name`)
+    await removeAdditions(this.home, root)
   }
 
   /**
@@ -574,10 +595,12 @@ export class FleetBox extends Service {
     if (!usableAsContainerName(root.id)) throw new Error(`fleet-box: session id ${root.id} is not usable as a container name`)
     const name = containerName(root.id)
 
+    const additions = await readAdditions(this.home, root.id)
     const runArgs = [
       '--label', `${SESSION_LABEL}=${root.id}`, '--label', `${HOME_LABEL}=${this.home}`,
       '--init',
       '--mount', `type=bind,${mountField(`src=${workspace}`)},${mountField(`dst=${workspace}`)}`,
+      ...additionArgs(additions, workspace),
       '--workdir', workspace,
       this.image, 'sleep', 'infinity',
     ]
@@ -640,11 +663,6 @@ function containerName(id: SessionId): string {
 /** Whether a root session's id can name its container, as Docker allows container names. */
 export function usableAsContainerName(id: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(id)
-}
-
-/** One field of a `--mount` value, which Docker parses as a CSV record; a plain path stays as it is, so its container's spec does too. */
-function mountField(field: string): string {
-  return /[",\r\n]/u.test(field) ? `"${field.replaceAll('"', '""')}"` : field
 }
 
 function isNoSuchContainer(error: unknown): boolean {

@@ -14,7 +14,7 @@ import { join, resolve } from 'node:path'
 import { z } from 'zod'
 
 /** Bumped when a request or result changes shape; the host refuses other versions. */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 /** Longest request line the host reads. */
 export const MAX_REQUEST_BYTES = 16 * 1024 * 1024
@@ -23,9 +23,29 @@ const session = z.string().min(1)
 /** A session refuses a prompt without text, and a `run` would already have made its session. */
 const prompt = z.string().refine(text => text.trim() !== '', 'the prompt is empty')
 
+/**
+ * What a `run` asks of its session: a prompt as it is, or an agent directory
+ * in the tau format, which the host reads, fills with the arguments and
+ * titles the session after.
+ */
+const taskSchema = z.union([
+  z.object({ prompt }).strict(),
+  z.object({
+    /** The agent directory, absolute. */
+    agent: z.string().min(1),
+    args: z.array(z.string()),
+    /** The command's working folder, which relative path arguments are resolved against. */
+    callerCwd: z.string().min(1),
+    /** The command's values of the variables the agent's tau.json lists; the command reads that list itself. */
+    env: z.record(z.string(), z.string()),
+  }).strict(),
+])
+
+export type Task = z.infer<typeof taskSchema>
+
 export const requestSchema = z.discriminatedUnion('op', [
-  /** Start a session in `cwd` with `prompt` as its task; `wait` stays until it is idle. */
-  z.object({ op: z.literal('run'), cwd: z.string().min(1), prompt, title: z.string().optional(), wait: z.boolean() }),
+  /** Start a session in `cwd` with a task; `wait` stays until it is idle. */
+  z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
   /** Send `prompt` to a session, queued as a later turn or, with `steer`, into the running one. */
   z.object({ op: z.literal('send'), session, prompt, steer: z.boolean(), wait: z.boolean() }),
   /** Wait until a session is idle, and report its last turn. */

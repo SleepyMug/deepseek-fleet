@@ -3,7 +3,9 @@
 # the world cannot serve, so list it later in the profile's bundles.
 #
 # Every root session owns one container while it is unarchived: the session
-# folder is bind-mounted at the same path, everything else (/tmp included)
+# folder is bind-mounted at the same path, beside any mounts another plugin
+# configured for the session (fleet-tau's agent snapshot), which fleet-box
+# keeps in $DSH_HOME/fleet/containers/<id>.json; everything else (/tmp included)
 # is the container's own, and processes run as the container's root (you,
 # under rootless Docker). Subagent sessions share their root's container; a
 # fork gets its own. A container runs while dsh has its helper connected: it

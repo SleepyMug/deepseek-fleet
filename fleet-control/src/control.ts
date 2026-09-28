@@ -3,7 +3,9 @@
  * goes through dsh's session controller, as the web client's own calls do,
  * so a session the `fleet` command starts is one the web UI lists, follows
  * and can steer; a human message queued there while a run waits becomes
- * part of that run. Waiting follows dsh's headless runner: the agent is idle
+ * part of that run. A run of an agent directory has fleet-tau read and store
+ * the agent before its session exists (fleet-tau/store), so every agent of
+ * the session gets the agent's customization from the first step on. Waiting follows dsh's headless runner: the agent is idle
  * once no turn runs and none is queued, and the outcome is the last turn's
  * end and the last assistant text.
  * @module fleet-control/control
@@ -16,8 +18,9 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError } from '@deepseek-ai/dsh-workspace'
+import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {} from 'fleet-box/world'
+import type { Spec } from 'fleet-tau/store'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
 import type { Outcome, Request, Results } from './protocol.ts'
 
@@ -38,22 +41,37 @@ export class FleetControl {
 
   /**
    * Start a session in a folder, registered as a workspace so the web UI
-   * lists it there, and give it its task.
+   * lists it there, and give it its task: a prompt, or an agent directory,
+   * which is read first, so one with problems is refused before anything exists.
    * @param started - told the session once its task is accepted, so its turn can be cancelled, before the wait.
    */
   async run(request: RequestOf<'run'>, signal: AbortSignal, started: (session: string) => void): Promise<Results['run']> {
     if (!isAbsolute(request.cwd)) throw new ControlError('fleet/bad-request', `the folder must be an absolute path: ${request.cwd}`)
+    const { task } = request
+    let prompt: string
+    let agent: { spec: Spec; title: string } | undefined
+    if ('prompt' in task) {
+      prompt = task.prompt
+    } else {
+      if (!isAbsolute(task.agent) || !isAbsolute(task.callerCwd)) {
+        throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
+      }
+      const prepared = await this.ctx.fleetTau.prepare({ agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, env: task.env })
+      if (!prepared.ok) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${prepared.problems.join('\n  ')}`)
+      prompt = prepared.spec.prompt
+      agent = { spec: prepared.spec, title: prepared.title }
+    }
     const workspace = await this.ctx.workspaceRegistry.create(request.cwd)
-    const { sessionId } = await this.ctx.sessionController.create({ workspaceId: workspace.id })
+    const sessionId = await this.create(workspace.id, agent?.spec, signal)
     try {
-      if (request.title !== undefined && request.title.trim() !== '') {
+      if (agent !== undefined) {
         // A title only helps people find the run in the web UI; the run goes on without it.
-        await this.ctx.sessionController.rename({ sessionId, title: request.title }).catch((error: unknown) => {
+        await this.ctx.sessionController.rename({ sessionId, title: agent.title }).catch((error: unknown) => {
           this.ctx.logger.warn(`fleet-control: could not title ${sessionId}: ${message(error)}`)
         })
       }
       // Once the session exists it gets its task even if the client has gone, which then only stops the wait.
-      await this.prompt(sessionId, request.prompt, 'queue', UNCANCELLED)
+      await this.prompt(sessionId, prompt, 'queue', UNCANCELLED)
     } catch (error) {
       // Without its task the session would sit empty in the web UI, and the client never learns it.
       await this.ctx.workspaceRegistry.archiveSession(sessionId).catch((archiveError: unknown) => {
@@ -64,6 +82,28 @@ export class FleetControl {
     started(sessionId)
     if (!request.wait) return { session: sessionId }
     return { session: sessionId, outcome: await this.settle(sessionId, 0, signal) }
+  }
+
+  /**
+   * Make a session in a workspace, its agent's spec stored first under the
+   * id it will have. A spec stays with a session that was made, even if
+   * creating it failed later on, and goes with one that was not.
+   */
+  private async create(workspaceId: WorkspaceId, spec: Spec | undefined, signal: AbortSignal): Promise<SessionId> {
+    // The session controller's own format for new sessions.
+    const sessionId = `session-${randomUUID()}` as SessionId
+    if (spec !== undefined) await this.ctx.fleetTau.create(sessionId, spec)
+    try {
+      await this.ctx.sessionController.create({ sessionId, workspaceId })
+    } catch (error) {
+      if (spec !== undefined && !await this.exists(sessionId, signal).catch(() => true)) {
+        await this.ctx.fleetTau.remove(sessionId).catch((removeError: unknown) => {
+          this.ctx.logger.warn(`fleet-control: could not remove the spec of ${sessionId}, which was never made: ${message(removeError)}`)
+        })
+      }
+      throw error
+    }
+    return sessionId
   }
 
   /** Send a message to a session, a later turn or steering for the running one. */
@@ -150,10 +190,12 @@ export class FleetControl {
   }
 
   private async known(sessionId: SessionId, signal: AbortSignal): Promise<void> {
-    if (this.ctx.agents.get(sessionId) !== undefined) return
-    if (await this.ctx.sessionPersistence.stat(sessionId, { signal }) === undefined) {
-      throw new ControlError('session/not-found', `there is no session ${sessionId}`)
-    }
+    if (!await this.exists(sessionId, signal)) throw new ControlError('session/not-found', `there is no session ${sessionId}`)
+  }
+
+  private async exists(sessionId: SessionId, signal: AbortSignal): Promise<boolean> {
+    if (this.ctx.agents.get(sessionId) !== undefined) return true
+    return await this.ctx.sessionPersistence.stat(sessionId, { signal }) !== undefined
   }
 }
 

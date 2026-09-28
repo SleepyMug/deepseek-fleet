@@ -1,12 +1,13 @@
 /**
  * `fleet`: run agents in the fleet host's containers from the command line,
- * through the host's control socket. An agent is a directory, as for
- * pi-run: `fleet run <agent-dir> [args...]` fills its PROMPT.md with the
- * arguments and gives it to a new session in the current folder, or the one
- * `--cwd` names, which the session's container mounts. `fleet run -p
- * <prompt>` gives it a prompt as it is, without an agent directory. The
- * session is an ordinary one of the fleet host, so the web UI lists it and a
- * person can follow or steer it there.
+ * through the host's control socket. An agent is a directory in the tau
+ * format, as for pi-run (@sleepymug/tau's SPEC.md): `fleet run <agent-dir>
+ * [args...]` has the host fill its PROMPT.md with the arguments its tau.json
+ * declares and give it to a new session in the current folder, or the one
+ * `--cwd` names, which the session's container mounts; the session gets the
+ * agent's skills too. `fleet run -p <prompt>` gives a session a prompt as it
+ * is, without an agent directory. The session is an ordinary one of the fleet
+ * host, so the web UI lists it and a person can follow or steer it there.
  *
  * `run`, `send` and `wait` wait until the session is idle, print only the
  * last answer, exit 0 when the last turn completed and 1 otherwise, and stop
@@ -21,10 +22,10 @@
 import { accessSync, constants, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { dirname, resolve } from 'node:path'
-import { loadAgent, requiredArgs, substituteArgs } from './agent-dir.ts'
+import { agentEnv } from './agent-env.ts'
 import { UsageError, parseOptions } from './options.ts'
 import { PROTOCOL_VERSION, dshHome, lineReader, socketPath } from './protocol.ts'
-import type { Frame, Op, Outcome, Request, Results } from './protocol.ts'
+import type { Frame, Op, Outcome, Request, Results, Task } from './protocol.ts'
 
 const EXIT_OK = 0
 const EXIT_FAILED = 1
@@ -33,7 +34,7 @@ const EXIT_INTERRUPTED = 130
 
 const USAGE = [
   'Usage: fleet <command>',
-  '  run [options] <agent-dir> [args...]         run an agent in a new session',
+  '  run [options] <agent-dir> [args...]         run an agent directory (tau format) in a new session',
   '  run [options] -p <prompt>                   run a new session on a prompt, without an agent directory',
   '      --cwd <dir>                             the session\'s folder, which its container mounts; default: this one',
   '      --sid-file <file>                       write the session id to <file> once the task is accepted',
@@ -90,15 +91,14 @@ async function main(args: readonly string[]): Promise<number> {
 
 async function run(args: readonly string[]): Promise<number> {
   const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--cwd': 'value', '--sid-file': 'value', '-p': 'value' })
-  const { prompt, title } = task(positional, values.get('-p'))
-  const cwd = sessionFolder(values.get('--cwd') ?? process.cwd())
+  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: sessionFolder(values.get('--cwd') ?? process.cwd()) } as const
   const sidFile = sidFilePath(values.get('--sid-file'))
   if (flags.has('--async')) {
-    const { session } = await call({ op: 'run', cwd, prompt, title, wait: false })
+    const { session } = await call({ ...request, wait: false })
     if (sidFile !== undefined) writeSid(sidFile, session)
     return EXIT_OK
   }
-  return attend({ op: 'run', cwd, prompt, title, wait: true }, { sidFile })
+  return attend({ ...request, wait: true }, { sidFile })
 }
 
 async function send(args: readonly string[]): Promise<number> {
@@ -119,24 +119,19 @@ async function send(args: readonly string[]): Promise<number> {
 
 /**
  * What a run asks: `-p`'s prompt as it is, which dsh titles from its words,
- * or an agent directory's PROMPT.md filled with the arguments after it,
- * titled with the directory's name and those arguments.
+ * or an agent directory with its arguments, which the host reads and checks,
+ * and the values of the variables the agent's tau.json lists.
  */
-function task(positional: readonly string[], prompt: string | undefined): { prompt: string; title?: string } {
+function task(positional: readonly string[], prompt: string | undefined): Task {
   if (prompt !== undefined) {
     if (positional.length > 0) throw new UsageError(`-p takes the whole prompt as one argument; quote it (${positional[0]} follows it)`)
     if (prompt.trim() === '') throw new Error('fleet: the prompt is empty')
     return { prompt }
   }
-  const [dir, ...agentArgs] = positional
+  const [dir, ...args] = positional
   if (dir === undefined) throw new UsageError('run needs an agent directory, or -p and a prompt')
-  const agent = loadAgent(resolve(dir))
-  const need = requiredArgs(agent.template)
-  if (agentArgs.length < need) throw new UsageError(`${dir} needs ${need} argument(s), got ${agentArgs.length}`)
-  if (agent.skillsDir !== undefined) say(`fleet: ${agent.skillsDir} is not loaded; fleet does not support skills yet`)
-  const filled = substituteArgs(agent.template, agentArgs)
-  if (filled.trim() === '') throw new Error(`fleet: ${dir}/PROMPT.md gives an empty prompt`)
-  return { prompt: filled, title: [agent.name, ...agentArgs].join(' ') }
+  const agent = resolve(dir)
+  return { agent, args, callerCwd: process.cwd(), env: agentEnv(agent, process.env) }
 }
 
 /** The real path of a session's folder, where its workspace is registered. */
