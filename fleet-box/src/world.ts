@@ -33,7 +33,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { isAbsolute } from 'node:path'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
@@ -47,6 +47,7 @@ import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { additionArgs, mountField, readAdditions, removeAdditions, writeAdditions, type ContainerAdditions } from './additions.ts'
 import { HelperConnection, type ServiceCallRequest } from './connection.ts'
+import { copyOut as copyOutOf } from './copy-out.ts'
 import { SERVICE_SOCKET } from './helper/protocol.ts'
 import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
@@ -305,6 +306,29 @@ export class FleetBox extends Service {
     await writeAdditions(this.home, root, additions)
   }
 
+  /**
+   * Copy a path out of a root session's container to a host path that does
+   * not exist yet, as plain files and folders (./copy-out.ts), starting the
+   * container if it is stopped; the copy occupies it while it runs.
+   * @param root - a root session.
+   * @param source - an absolute path in the container.
+   * @param target - where the copy goes on the host.
+   * @param maxBytes - the most the copy may hold.
+   * @returns whether there was anything at `source` to copy.
+   * @throws when something there is refused, or cannot be read.
+   */
+  async copyOut(root: SessionId, source: string, target: string, maxBytes: number): Promise<boolean> {
+    if (!source.startsWith('/') || !isAbsolute(target)) throw new Error('fleet-box: copying out takes absolute paths')
+    const header = await this.rootHeaderOf(root)
+    const release = this.occupy(header.id, { kind: 'file', id: randomUUID() })
+    try {
+      const world = await this.forRoot(header)
+      return await copyOutOf(world.connection, source, target, maxBytes)
+    } finally {
+      release()
+    }
+  }
+
   /** Remove what {@link configure} set for a root session, such as one that was never made. */
   async unconfigure(root: SessionId): Promise<void> {
     if (!usableAsContainerName(root)) throw new Error(`fleet-box: session id ${root} is not usable as a container name`)
@@ -549,7 +573,7 @@ export class FleetBox extends Service {
    * when the open fails halfway.
    */
   private async openWorld(root: SessionHeader, owner: Root): Promise<OpenWorld> {
-    const container = await this.ensureContainer(root)
+    const { container, directories } = await this.ensureContainer(root)
     const connection = new HelperConnection({
       docker: this.config.docker, container: container.name, workspace: container.workspace, node: HELPER_NODE, entry: HELPER_ENTRY,
     })
@@ -591,6 +615,7 @@ export class FleetBox extends Service {
     }
 
     try {
+      if (directories.length > 0) await this.docker(['exec', container.name, 'mkdir', '-p', '--', ...directories])
       await connection.start()
       const world: OpenWorld = { world: { container, connection, docker: this.config.docker, stopped: stopped.promise }, close }
       opened = world
@@ -617,8 +642,11 @@ export class FleetBox extends Service {
     void this.enqueue(id, () => opened.close())
   }
 
-  /** Create, recreate, or start the root session's container. */
-  private async ensureContainer(root: SessionHeader): Promise<SessionContainer> {
+  /**
+   * Create, recreate, or start the root session's container.
+   * @returns the container, and the folders its additions ask to be made in it.
+   */
+  private async ensureContainer(root: SessionHeader): Promise<{ container: SessionContainer; directories: string[] }> {
     const workspace = root.cwd
     if (workspace === undefined || !isAbsolute(workspace)) {
       throw new Error(`fleet-box: session ${root.id} has no absolute folder to mount (cwd: ${String(workspace)})`)
@@ -650,7 +678,7 @@ export class FleetBox extends Service {
     }
     const created = existing?.spec === spec ? existing : await this.inspect(name)
     if (created === undefined) throw new Error(`fleet-box: ${name} disappeared right after it started`)
-    return { name, id: created.id, created: created.created, workspace }
+    return { container: { name, id: created.id, created: created.created, workspace }, directories: additions?.directories ?? [] }
   }
 
   /** @returns the container's identity and state, or undefined when no such container exists. */

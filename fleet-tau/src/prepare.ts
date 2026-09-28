@@ -1,8 +1,10 @@
 /**
  * Read an agent directory for a run or a check: its tau metadata and prompt,
- * the command's arguments bound to them, its skills, its modules, checked as
- * tau checks them, and its service manifests, checked against the services
- * fleet provides (./compat.ts), with every problem found reported together. tau's library loads
+ * the command's arguments bound to them, with its path arguments checked as
+ * tau checks a run's inputs and where the container can give them
+ * (./paths.ts), its skills, its modules, checked as tau checks them, and its
+ * service manifests, checked against the services fleet provides
+ * (./compat.ts), with every problem found reported together. tau's library loads
  * TypeScript as it is imported, so this runs in a worker (./worker.ts), never
  * in the fleet host's own thread.
  * @module fleet-tau/prepare
@@ -10,8 +12,9 @@
 
 import { existsSync, readdirSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
-import { checkModule, loadModules, loadService, loadTau, type Module, type Service, type Tau } from '@sleepymug/tau'
+import { checkInputs, checkModule, loadModules, loadService, loadTau, TAU_SOCKET, type Module, type Run, type Service, type Tau } from '@sleepymug/tau'
 import { checkServices, type Declared } from './compat.ts'
+import { pathProblems } from './paths.ts'
 import { loadSkills } from './skills.ts'
 import { SPEC_VERSION, type Spec } from './spec.ts'
 
@@ -24,6 +27,8 @@ export interface PrepareRequest {
   bind: boolean
   /** The command's working folder, which relative path arguments are resolved against. */
   callerCwd: string
+  /** The session folder, as its real path, which no path argument may be, hold or lie in. */
+  cwd: string
   /** The command's values of the variables the agent's tau.json lists. */
   env: Record<string, string>
   /** The services fleet's plugins provide now. */
@@ -44,18 +49,27 @@ export function prepare(request: PrepareRequest): Prepared {
     return { ok: false, problems: [message(error)] }
   }
   const problems: string[] = []
-  const metadata = `${tau.dir}/tau.json`
-  for (const arg of tau.args) {
-    if (arg.kind !== 'text') problems.push(`${metadata}: ${arg.name} is a ${arg.kind === 'dir' ? 'folder' : 'file'} argument, which fleet does not provide yet`)
-  }
-  if (tau.env.length > 0) problems.push(`${metadata}: env lists ${tau.env.join(', ')}, and fleet does not pass environment variables to its agents yet`)
+  if (tau.env.includes(TAU_SOCKET)) problems.push(`${tau.dir}/tau.json: env lists ${TAU_SOCKET}, which fleet sets itself`)
   let prompt = tau.prompt
+  let run: Run | undefined
   if (request.bind) {
     try {
-      prompt = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }).prompt
+      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env })
+      prompt = run.prompt
       if (prompt.trim() === '') problems.push(`${tau.dir}/PROMPT.md gives an empty prompt`)
     } catch (error) {
       problems.push(`${tau.dir}: ${message(error)}`)
+    }
+  }
+  if (run !== undefined) {
+    const placed = pathProblems(run.paths, request.cwd)
+    problems.push(...placed)
+    if (placed.length === 0) {
+      try {
+        checkInputs(run)
+      } catch (error) {
+        problems.push(message(error))
+      }
     }
   }
   const skills = loadSkills(tau.dir)
@@ -84,6 +98,8 @@ export function prepare(request: PrepareRequest): Prepared {
         dir: relative(join(tau.dir, 'modules'), module.root),
       })),
       ts: request.ts === true || services.length > 0 || modules.length > 0,
+      env: { ...run?.env },
+      paths: (run?.paths ?? []).map(({ name, kind, mode, host, view }) => ({ name, kind, mode, host, view })),
     },
     title: [name, ...request.args].join(' '),
   }

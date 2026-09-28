@@ -61,7 +61,9 @@ export class FleetControl {
       if (!isAbsolute(task.agent) || !isAbsolute(task.callerCwd)) {
         throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
       }
-      const prepared = await this.ctx.fleetTau.prepare({ agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, env: task.env, ts: request.ts })
+      const prepared = await this.ctx.fleetTau.prepare({
+        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, cwd: request.cwd, env: task.env, ts: request.ts,
+      })
       if (!prepared.ok) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${prepared.problems.join('\n  ')}`)
       prompt = prepared.spec.prompt
       spec = prepared.spec
@@ -163,10 +165,12 @@ export class FleetControl {
 
   /** Read an agent directory as a run would, and report every problem; nothing is made. */
   async check(request: RequestOf<'check'>): Promise<Results['check']> {
-    if (!isAbsolute(request.agent) || !isAbsolute(request.callerCwd)) {
-      throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
+    if (!isAbsolute(request.agent) || !isAbsolute(request.callerCwd) || !isAbsolute(request.cwd)) {
+      throw new ControlError('fleet/bad-request', 'the agent directory, the command\'s folder and the session folder must be absolute paths')
     }
-    const prepared = await this.ctx.fleetTau.prepare({ agent: request.agent, args: request.args, bind: request.bind, callerCwd: request.callerCwd, env: request.env })
+    const prepared = await this.ctx.fleetTau.prepare({
+      agent: request.agent, args: request.args, bind: request.bind, callerCwd: request.callerCwd, cwd: request.cwd, env: request.env,
+    })
     return { problems: prepared.ok ? [] : prepared.problems }
   }
 
@@ -201,7 +205,9 @@ export class FleetControl {
   }
 
   /**
-   * Wait until the session's agent, if one holds it, is idle, then read the outcome from its log.
+   * Wait until the session's agent, if one holds it, is idle, then read the
+   * outcome from its log. After a completed turn, the agent's copy-out paths
+   * are published, once per turn, whoever waits (fleet-tau/store).
    * @param from - the first event the outcome covers, or the start of the last turn.
    */
   private async settle(sessionId: SessionId, from: number | 'last-turn', signal: AbortSignal): Promise<Outcome> {
@@ -209,7 +215,11 @@ export class FleetControl {
     const agent = this.ctx.agents.get(sessionId)
     if (agent !== undefined) await abortable(agent.whenIdle(), signal)
     const { events } = await this.ctx.sessionController.inspect(sessionId, signal)
-    return summarize(events, from === 'last-turn' ? lastTurnStart(events) : from)
+    const outcome = summarize(events, from === 'last-turn' ? lastTurnStart(events) : from)
+    if (outcome.reason !== 'completed') return outcome
+    const outputs = await this.ctx.fleetTau.publish(sessionId, events.findLastIndex(event => event.type === 'turn/end'))
+      .catch((error: unknown) => [`could not publish the outputs: ${message(error)}`])
+    return outputs.length === 0 ? outcome : { ...outcome, outputs }
   }
 
   private async known(sessionId: SessionId, signal: AbortSignal): Promise<void> {

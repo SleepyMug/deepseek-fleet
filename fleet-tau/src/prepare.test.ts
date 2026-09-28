@@ -19,7 +19,7 @@ async function withAgent(files: Record<string, string>, check: (dir: string) => 
 }
 
 const request = (agent: string, args: string[], bind = true, providers: PrepareRequest['providers'] = []): PrepareRequest =>
-  ({ agent, args, bind, callerCwd: '/caller', env: {}, providers })
+  ({ agent, args, bind, callerCwd: '/caller', cwd: '/session', env: {}, providers })
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
@@ -39,17 +39,48 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
 test('every problem is reported together', async () => {
   await withAgent({
     'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "dir": "mount-rw"}], "env": ["LANG"]}',
+    'tau.json': '{"args": [{"name": "src", "dir": "mount-rw"}], "env": ["TAU_SOCKET"]}',
     'skills/bad/SKILL.md': 'no frontmatter',
   }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
-    assert.equal(prepared.problems.length, 4)
-    assert.match(prepared.problems[0]!, /src is a folder argument, which fleet does not provide yet/u)
-    assert.match(prepared.problems[1]!, /env lists LANG/u)
-    assert.match(prepared.problems[2]!, /expected 1 argument/u)
-    assert.match(prepared.problems[3]!, /bad\/SKILL\.md/u)
+    assert.equal(prepared.problems.length, 3)
+    assert.match(prepared.problems[0]!, /env lists TAU_SOCKET, which fleet sets itself/u)
+    assert.match(prepared.problems[1]!, /expected 1 argument/u)
+    assert.match(prepared.problems[2]!, /bad\/SKILL\.md/u)
   })
+})
+
+test('path arguments and variables are bound, outside the session folder only', async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'fleet-tau-outside-'))
+  try {
+    await mkdir(join(outside, 'src'))
+    await withAgent({
+      'PROMPT.md': 'Edit ${src} into ${report} with ${rules}',
+      'tau.json': JSON.stringify({
+        args: [{ name: 'src', dir: 'mount-rw' }, { name: 'report', file: 'copy-out' }, { name: 'rules', file: 'copy-in', at: '/work/rules.md' }],
+        env: ['LANG', 'UNSET'],
+      }),
+    }, (dir) => {
+      const args = [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'PROMPT.md')]
+      const prepared = prepare({ ...request(dir, args), env: { LANG: 'C.UTF-8' } })
+      assert.ok(prepared.ok, JSON.stringify(prepared))
+      assert.deepEqual(prepared.spec.env, { LANG: 'C.UTF-8' })
+      assert.deepEqual(prepared.spec.paths.map(({ name, mode, view }) => [name, mode, view]), [
+        ['src', 'mount-rw', join(outside, 'src')], ['report', 'copy-out', join(outside, 'report.md')], ['rules', 'copy-in', '/work/rules.md'],
+      ])
+      assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into ${join(outside, 'report.md')} with /work/rules.md`)
+      // The same paths inside the session folder are refused, and so is a missing input.
+      const inside = prepare({ ...request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'PROMPT.md')]), cwd: outside })
+      assert.ok(!inside.ok)
+      assert.equal(inside.problems.filter(problem => /the session folder/u.test(problem)).length, 2)
+      const missing = prepare(request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'missing.md')]))
+      assert.ok(!missing.ok)
+      assert.match(missing.problems.join('\n'), /rules: .*missing\.md/u)
+    })
+  } finally {
+    await rm(outside, { recursive: true, force: true })
+  }
 })
 
 test('a directory that is no tau, or whose tau.json breaks the spec, is refused', async () => {

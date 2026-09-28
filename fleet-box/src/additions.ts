@@ -1,7 +1,8 @@
 /**
- * What a root session's container gets beyond fleet-box's own: bind mounts
- * and environment variables that another plugin asks for, such as fleet-tau's
- * snapshot of the agent a `fleet run` started. They are kept in one file per session in the dsh
+ * What a root session's container gets beyond fleet-box's own: bind mounts,
+ * environment variables and folders that another plugin asks for, such as
+ * fleet-tau's snapshot of the agent a `fleet run` started and the paths its
+ * arguments name. They are kept in one file per session in the dsh
  * home, and the world reads that file itself each time it creates or starts
  * the container, so a container never loses them because the plugin that
  * asked is not loaded, or not loaded yet. The additions are part of the
@@ -35,6 +36,8 @@ export interface ContainerAdditions {
   mounts: Mount[]
   /** Variables every process in the container sees, the helper's and a terminal's included. */
   env?: Record<string, string>
+  /** Folders made in the container, with their parents, whenever it starts; they are not part of its spec. */
+  directories?: string[]
 }
 
 const containerPath = z.string().refine(path => posix.isAbsolute(path) && posix.normalize(path) === path && path !== '/' && !path.endsWith('/'),
@@ -50,6 +53,7 @@ const additionsSchema = z.object({
     z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u, 'must be a variable name').refine(name => !RESERVED_ENV.includes(name), 'is set by fleet-box itself'),
     z.string().refine(value => !value.includes('\0'), 'must not hold a NUL'),
   ).optional(),
+  directories: z.array(containerPath).optional(),
 }).strict()
 
 /** The file that holds a root session's additions. */

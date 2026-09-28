@@ -23,6 +23,10 @@ test('mounts become bind mounts, read-only when asked', () => {
   ])
 })
 
+test('folders to make are not docker run arguments, so they leave a container\'s spec alone', () => {
+  assert.deepEqual(additionArgs({ mounts: [], directories: ['/home/u/out'] }, '/work'), [])
+})
+
 test('variables are passed in name order, and none adds nothing', () => {
   assert.deepEqual(additionArgs({ mounts: [], env: { TZ: 'UTC', LANG: 'C.UTF-8' } }, '/work'), [
     '--env', 'LANG=C.UTF-8', '--env', 'TZ=UTC',
@@ -62,6 +66,7 @@ test('an unreadable or invalid file fails rather than dropping the additions', a
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [{ source: '/s', target: 'relative', readonly: true }] }))
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { 'NOT-A-NAME': 'x' } }))
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { TAU_SOCKET: '/elsewhere' } }), /set by fleet-box/u)
+    await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], directories: ['relative/dir'] }))
   } finally {
     await rm(home, { recursive: true, force: true })
   }

@@ -11,23 +11,32 @@
  * fleet-tau's agent plugin (./agent.ts) gives the session's agents what the
  * spec holds, whenever an agent is created or resumed.
  *
+ * The container gets the agent's path arguments too: a `mount-ro` or
+ * `mount-rw` path mounted from the caller, a `copy-in` path mounted from a
+ * copy taken into the session's folder when the session is made, and the
+ * folder a `copy-out` path goes in; and the caller's values of the variables
+ * tau.json lists. After a completed turn, the command that waited on it has
+ * the store publish the `copy-out` paths ({@link FleetTau.publish}).
+ *
  * A fork of such a session has no folder of its own: it takes its source's
- * spec, and its container the same snapshot.
+ * spec, and its container the same snapshot, but none of its paths or
+ * variables, which belong to the run that started the source.
  * @module fleet-tau/store
  */
 
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type { ContainerAdditions } from 'fleet-box/world'
+import type { ContainerAdditions, Mount } from 'fleet-box/world'
+import { MAX_OUTPUT_BYTES, copyProblems, replace } from './outputs.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
 import type {} from './services.ts'
 import { AGENT_VIEW, specSchema, type Spec } from './spec.ts'
-import type { Answer, Job } from './worker.ts'
+import type { Answer, Job, Work } from './worker.ts'
 
 export type { Prepared, PrepareRequest } from './prepare.ts'
 export type { Skill, Spec } from './spec.ts'
@@ -55,7 +64,7 @@ export class FleetTau extends Service {
   /** This service's own context, whichever plugin calls it. */
   private readonly self: Context
   private worker: Worker | undefined
-  private readonly jobs = new Map<number, PromiseWithResolvers<Prepared>>()
+  private readonly jobs = new Map<number, PromiseWithResolvers<unknown>>()
   private nextJob = 1
   /** Specs by session, read once; a failed read is tried again. */
   private readonly specs = new Map<SessionId, Promise<Found | undefined>>()
@@ -77,14 +86,7 @@ export class FleetTau extends Service {
    * @returns the session's spec and title, or every problem found.
    */
   prepare(request: Omit<PrepareRequest, 'providers'>): Promise<Prepared> {
-    const job = Promise.withResolvers<Prepared>()
-    const id = this.nextJob++
-    this.jobs.set(id, job)
-    const worker = this.startWorker()
-    // Held only while it has work, so an idle worker never keeps a process alive.
-    worker.ref()
-    worker.postMessage({ id, request: { ...request, providers: this.self.fleetServices.list() } } satisfies Job)
-    return job.promise
+    return this.job({ kind: 'prepare', request: { ...request, providers: this.self.fleetServices.list() } }) as Promise<Prepared>
   }
 
   /**
@@ -100,6 +102,9 @@ export class FleetTau extends Service {
     try {
       // A prompt run has no agent, and its container sees an empty snapshot.
       await mkdir(join(folder, 'agent'), { mode: 0o700 })
+      for (const path of spec.paths.filter(path => path.mode === 'copy-in')) {
+        await cp(path.host, join(folder, 'paths', path.name), { recursive: true, dereference: true, errorOnExist: true, force: false })
+      }
       if (spec.agent !== undefined) {
         for (const part of AGENT_PARTS) {
           await cp(join(spec.agent.source, part), join(folder, 'agent', part), { recursive: true, dereference: true, force: false, errorOnExist: true })
@@ -107,10 +112,60 @@ export class FleetTau extends Service {
         }
       }
       await writeFile(join(folder, 'spec.json'), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 })
-      await this.self.fleetBox.configure(session, this.additions(session))
+      await this.self.fleetBox.configure(session, this.additions(session, spec))
     } catch (error) {
       await this.remove(session)
       throw error
+    }
+  }
+
+  /**
+   * Publish a session's `copy-out` paths after a completed turn, once per
+   * turn: copy each out of the container into the session's folder, check
+   * the copies (./outputs.ts) and, with tau, that the run left what the tau
+   * declares, and only then replace the caller's paths. A fork publishes
+   * nothing; its source's paths belong to the source's run.
+   * @param turn - the turn's place in the session's log.
+   * @returns the problems that kept the outputs from being published, none when they were, or there was nothing to publish.
+   */
+  async publish(session: SessionId, turn: number): Promise<string[]> {
+    const root = await this.self.fleetBox.rootHeaderOf(session)
+    const found = await this.specOf(root)
+    if (found === undefined || found.owner !== root.id) return []
+    const { paths } = found.spec
+    const outputs = paths.filter(path => path.mode === 'copy-out')
+    if (outputs.length === 0 && !paths.some(path => path.mode === 'mount-rw')) return []
+    const folder = this.folder(root.id)
+    const record = join(folder, 'published.json')
+    const published = await readFile(record, 'utf8').then(text => JSON.parse(text) as { turn: number; problems: string[] }, () => undefined)
+    if (published !== undefined && published.turn >= turn) return published.problems
+    const staging = join(folder, 'out')
+    await rm(staging, { recursive: true, force: true })
+    await mkdir(staging, { mode: 0o700 })
+    try {
+      const copies: Record<string, string> = {}
+      const problems: string[] = []
+      for (const path of outputs) {
+        const copy = join(staging, path.name)
+        copies[path.view] = copy
+        // Nothing left there makes no copy, which tau's check reports.
+        try {
+          await this.self.fleetBox.copyOut(root.id, path.view, copy, MAX_OUTPUT_BYTES)
+          problems.push(...await copyProblems(copy, path.name, path.view))
+        } catch (error) {
+          problems.push(`${path.name}: ${message(error)}`)
+        }
+      }
+      if (problems.length === 0) problems.push(...await this.job({ kind: 'outputs', paths, copies }) as string[])
+      for (const path of problems.length === 0 ? outputs : []) {
+        await replace(path.host, copies[path.view]!).catch((error: unknown) => {
+          problems.push(`${path.name}: could not replace ${path.host}: ${message(error)}`)
+        })
+      }
+      await writeFile(record, `${JSON.stringify({ turn, problems })}\n`, { mode: 0o600 })
+      return problems
+    } finally {
+      await rm(staging, { recursive: true, force: true })
     }
   }
 
@@ -137,13 +192,25 @@ export class FleetTau extends Service {
     return found
   }
 
-  /** A fork's container additions: its source's snapshot, since a fork has no folder of its own. */
+  /** A fork's container additions: its source's snapshot, since a fork has no folder of its own, and none of its paths or variables. */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
     await this.self.fleetBox.configure(fork, this.additions(found.owner))
   }
 
-  private additions(owner: SessionId): ContainerAdditions {
-    return { mounts: [{ source: join(this.folder(owner), 'agent'), target: AGENT_VIEW, readonly: true }] }
+  /** A session's container additions: its agent's snapshot, and with its spec, its paths and variables. */
+  private additions(owner: SessionId, spec?: Spec): ContainerAdditions {
+    const folder = this.folder(owner)
+    const mounts: Mount[] = [{ source: join(folder, 'agent'), target: AGENT_VIEW, readonly: true }]
+    const directories: string[] = []
+    for (const path of spec?.paths ?? []) {
+      if (path.mode === 'copy-out') directories.push(posix.dirname(path.view))
+      else mounts.push({ source: path.mode === 'copy-in' ? join(folder, 'paths', path.name) : path.host, target: path.view, readonly: path.mode === 'mount-ro' })
+    }
+    return {
+      mounts,
+      ...Object.keys(spec?.env ?? {}).length === 0 ? {} : { env: spec!.env },
+      ...directories.length === 0 ? {} : { directories: [...new Set(directories)] },
+    }
   }
 
   private async find(root: SessionHeader): Promise<Found | undefined> {
@@ -175,6 +242,18 @@ export class FleetTau extends Service {
     return join(this.home, 'fleet', 'sessions', session)
   }
 
+  /** Run one job in the worker. */
+  private job(work: Work): Promise<unknown> {
+    const pending = Promise.withResolvers<unknown>()
+    const id = this.nextJob++
+    this.jobs.set(id, pending)
+    const worker = this.startWorker()
+    // Held only while it has work, so an idle worker never keeps a process alive.
+    worker.ref()
+    worker.postMessage({ ...work, id } satisfies Job)
+    return pending.promise
+  }
+
   private startWorker(): Worker {
     if (this.worker !== undefined) return this.worker
     const worker = new Worker(new URL('./worker.js', import.meta.url))
@@ -183,7 +262,7 @@ export class FleetTau extends Service {
       if (job === undefined) return
       this.jobs.delete(answer.id)
       if (this.jobs.size === 0) worker.unref()
-      if ('error' in answer) job.reject(new Error(`fleet-tau: could not read the agent directory: ${answer.error}`))
+      if ('error' in answer) job.reject(new Error(`fleet-tau: ${answer.error}`))
       else job.resolve(answer.result)
     })
     // A worker that fails ends every job it holds; the next job starts a new one.

@@ -49,9 +49,9 @@ const USAGE = [
   '  stop <session>                              stop a session\'s container unless the session is busy',
   '  rm [--force] <session>                      archive a session and remove its container;',
   '                                              --force stops what it still runs',
-  '  check <agent-dir> [args...]                 report what would keep an agent directory from running,',
-  '                                              its services checked against those provided; with',
-  '                                              arguments, bind them too',
+  '  check [--cwd <dir>] <agent-dir> [args...]   report what would keep an agent directory from running',
+  '                                              in a session in <dir>, its services checked against',
+  '                                              those provided; with arguments, bind them too',
   '  services [name]                             list the services fleet provides, or print one\'s manifest',
   '',
   'Options come before the other arguments. run, send and wait print only the answer, exit 0',
@@ -146,12 +146,13 @@ function task(positional: readonly string[], prompt: string | undefined): Task {
 }
 
 async function check(args: readonly string[]): Promise<number> {
-  const { positional } = parseOptions(args, {})
+  const { values, positional } = parseOptions(args, { '--cwd': 'value' })
   const [dir, ...agentArgs] = positional
   if (dir === undefined) throw new UsageError('check needs an agent directory')
   const agent = resolve(dir)
   const { problems } = await call({
-    op: 'check', agent, args: agentArgs, bind: agentArgs.length > 0, callerCwd: process.cwd(), env: agentEnv(agent, process.env),
+    op: 'check', agent, args: agentArgs, bind: agentArgs.length > 0, callerCwd: process.cwd(),
+    cwd: sessionFolder(values.get('--cwd') ?? process.cwd()), env: agentEnv(agent, process.env),
   })
   if (problems.length === 0) {
     process.stdout.write('ok\n')
@@ -273,7 +274,7 @@ async function attend(request: Extract<Request, { op: 'run' | 'send' | 'wait' }>
     report(outcome)
     if (session !== undefined) await stopQuietly(session)
     if (interrupted) return EXIT_INTERRUPTED
-    return outcome.reason === 'completed' && !unrecorded ? EXIT_OK : EXIT_FAILED
+    return outcome.reason === 'completed' && outcome.outputs === undefined && !unrecorded ? EXIT_OK : EXIT_FAILED
   } finally {
     process.off('SIGINT', interrupt)
   }
@@ -294,6 +295,7 @@ function report(outcome: Outcome): void {
   if (outcome.error !== undefined) say(`fleet: ${outcome.error.code}: ${outcome.error.message}`)
   else if (outcome.reason === null) say('fleet: the session has not finished a turn')
   else if (outcome.reason !== 'completed') say(`fleet: the turn ended ${outcome.reason}`)
+  if (outcome.outputs !== undefined) say(`fleet: the agent's outputs were not published:\n  ${outcome.outputs.join('\n  ')}`)
 }
 
 /**

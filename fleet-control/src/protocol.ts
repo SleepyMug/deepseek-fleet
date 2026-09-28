@@ -63,8 +63,11 @@ export const requestSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('stop'), session }),
   /** Archive a session, which removes its container; `force` stops what runs instead of refusing. */
   z.object({ op: z.literal('archive'), session, force: z.boolean() }),
-  /** Read an agent directory as a run would, and report its problems; the arguments are bound only when `bind`. */
-  z.object({ op: z.literal('check'), ...agentFields, bind: z.boolean() }),
+  /**
+   * Read an agent directory as a run in `cwd` would, and report its problems;
+   * the arguments are bound only when `bind`.
+   */
+  z.object({ op: z.literal('check'), ...agentFields, cwd: z.string().min(1), bind: z.boolean() }),
   /** The services fleet's plugins provide. */
   z.object({ op: z.literal('services') }),
 ])
@@ -80,6 +83,8 @@ export interface Outcome {
   text: string
   /** The failure of a turn that ended in `error`. */
   error?: { code: string; message: string }
+  /** Why the agent's copy-out paths were not published after its completed turn; absent when they were, or it has none. */
+  outputs?: string[]
 }
 
 /** One session in a list. */

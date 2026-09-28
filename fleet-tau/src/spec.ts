@@ -34,6 +34,17 @@ const serviceSchema = z.object({
   functions: z.array(z.string()),
 })
 
+const pathSchema = z.object({
+  /** The argument's name in tau.json. */
+  name: z.string(),
+  kind: z.enum(['file', 'dir']),
+  mode: z.enum(['mount-ro', 'mount-rw', 'copy-in', 'copy-out']),
+  /** The caller's path, absolute. */
+  host: z.string(),
+  /** Where the container sees it. */
+  view: z.string(),
+})
+
 const moduleSchema = z.object({
   /** The package name programs import it by. */
   name: z.string(),
@@ -56,14 +67,19 @@ export const specSchema = z.object({
   modules: z.array(moduleSchema),
   /** Whether the session's agents get the TypeScript tools (./ts-tools.ts). */
   ts: z.boolean(),
+  /** The caller's values of the variables tau.json lists, which every process in the container sees. */
+  env: z.record(z.string(), z.string()),
+  /** The path arguments, as tau binds them. */
+  paths: z.array(pathSchema),
 })
 
 export type Spec = z.output<typeof specSchema>
 export type Skill = z.output<typeof skillSchema>
 export type SpecService = z.output<typeof serviceSchema>
 export type SpecModule = z.output<typeof moduleSchema>
+export type SpecPath = z.output<typeof pathSchema>
 
 /** The spec of a prompt run that asked for the TypeScript tools: no agent, nothing else. */
 export function promptSpec(prompt: string): Spec {
-  return { version: SPEC_VERSION, args: [], prompt, skills: [], services: {}, modules: [], ts: true }
+  return { version: SPEC_VERSION, args: [], prompt, skills: [], services: {}, modules: [], ts: true, env: {}, paths: [] }
 }

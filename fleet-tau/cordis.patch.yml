@@ -26,9 +26,12 @@
 # import the agent's services as @svc/<name>, its modules by name, and the
 # npm packages ts_install adds to /opt/fleet/ts.
 #
-# Status: prompts, skills, services, modules and TypeScript tools. Path
-# arguments and environment variables of an agent directory are refused for
-# now.
+# Path arguments reach the container as tau declares them: mount-ro and
+# mount-rw mounted from the caller, copy-in mounted from a snapshot taken
+# when the session is made, and copy-out published to the caller after a
+# completed turn a `fleet` command waited on. The session folder counts as
+# an implicit mount-rw, so a path that is, holds or lies in it is refused.
+# The variables tau.json lists are passed from the caller's environment.
 
 - insert:
     - id: fleet-tau-services

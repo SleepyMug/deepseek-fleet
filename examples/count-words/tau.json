@@ -1,0 +1,7 @@
+{
+  "args": [
+    { "name": "text", "file": "mount-ro" },
+    { "name": "report", "file": "copy-out" }
+  ],
+  "env": ["LANG"]
+}
