@@ -1,9 +1,9 @@
 {
   "files": [],
   "references": [
-    { "path": "fleet-box" },
-    { "path": "fleet-control" },
-    { "path": "fleet-setup" },
-    { "path": "fleet-tau" }
+    { "path": "packages/fleet-box" },
+    { "path": "packages/fleet-control" },
+    { "path": "packages/fleet-setup" },
+    { "path": "packages/fleet-tau" }
   ]
 }

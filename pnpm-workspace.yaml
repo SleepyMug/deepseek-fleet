@@ -1,9 +1,5 @@
 packages:
-  - fleet-box
-  - fleet-control
-  - fleet-setup
-  - fleet-tau
-  - profile-fleet
+  - packages/*
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true

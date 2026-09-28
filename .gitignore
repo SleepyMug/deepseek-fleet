@@ -2,7 +2,7 @@
 node_modules/
 
 # Build output of each package (tsc -b)
-/*/lib/
+/packages/*/lib/
 *.tsbuildinfo
 
 # pnpm pack output
