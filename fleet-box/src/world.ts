@@ -314,19 +314,25 @@ export class FleetBox extends Service {
    * @param source - an absolute path in the container.
    * @param target - where the copy goes on the host.
    * @param maxBytes - the most the copy may hold.
+   * @param signal - stops the copy, which leaves what it made so far.
    * @returns whether there was anything at `source` to copy.
    * @throws when something there is refused, or cannot be read.
    */
-  async copyOut(root: SessionId, source: string, target: string, maxBytes: number): Promise<boolean> {
+  async copyOut(root: SessionId, source: string, target: string, maxBytes: number, signal?: AbortSignal): Promise<boolean> {
     if (!source.startsWith('/') || !isAbsolute(target)) throw new Error('fleet-box: copying out takes absolute paths')
     const header = await this.rootHeaderOf(root)
     const release = this.occupy(header.id, { kind: 'file', id: randomUUID() })
     try {
-      const world = await this.forRoot(header)
-      return await copyOutOf(world.connection, source, target, maxBytes)
+      const world = await this.forRoot(header, signal)
+      return await copyOutOf(world.connection, source, target, maxBytes, signal)
     } finally {
       release()
     }
+  }
+
+  /** Whether a turn of a root session, or of one of its subagents, runs now. */
+  turnRunning(root: SessionId): boolean {
+    return this.occupancy.of(root).some(occupant => occupant.kind === 'turn')
   }
 
   /** Remove what {@link configure} set for a root session, such as one that was never made. */

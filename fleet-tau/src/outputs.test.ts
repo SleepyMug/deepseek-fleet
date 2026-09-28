@@ -3,7 +3,7 @@ import { link, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { copyProblems, replace } from './outputs.ts'
+import { copyProblems, outputProblems, replace } from './outputs.ts'
 
 async function withDir(check: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-tau-outputs-'))
@@ -54,5 +54,21 @@ test('a copy replaces a file at once, and a folder whole, leaving nothing beside
     assert.deepEqual(await readdir(join(dir, 'site')), ['fresh'])
     await replace(join(dir, 'created'), join(dir, 'copy.txt'))
     assert.deepEqual((await readdir(dir)).sort(), ['copy', 'copy.txt', 'created', 'report.txt', 'site'])
+  })
+})
+
+test('outputs are checked as tau checks them: each copy-out and mount-rw of the declared kind', async () => {
+  await withDir(async (dir) => {
+    await writeFile(join(dir, 'copy.md'), 'x')
+    await mkdir(join(dir, 'data'))
+    const paths = [
+      { name: 'report', kind: 'file' as const, mode: 'copy-out' as const, host: '/h/report.md', view: '/v/report.md' },
+      { name: 'data', kind: 'dir' as const, mode: 'mount-rw' as const, host: join(dir, 'data'), view: join(dir, 'data') },
+      { name: 'in', kind: 'file' as const, mode: 'mount-ro' as const, host: '/missing', view: '/missing' },
+    ]
+    assert.deepEqual(await outputProblems(paths, { '/v/report.md': join(dir, 'copy.md') }), [])
+    assert.deepEqual(await outputProblems(paths, { '/v/report.md': join(dir, 'data') }), ['report: /v/report.md is a folder, not a file'])
+    await rm(join(dir, 'data'), { recursive: true })
+    assert.deepEqual(await outputProblems(paths, {}), ['report: the agent left nothing at /v/report.md', `data: ${join(dir, 'data')} is gone`])
   })
 })

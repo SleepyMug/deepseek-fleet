@@ -39,13 +39,13 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
 test('every problem is reported together', async () => {
   await withAgent({
     'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "dir": "mount-rw"}], "env": ["TAU_SOCKET"]}',
+    'tau.json': '{"args": [{"name": "src", "dir": "mount-rw"}], "env": ["TAU_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
     'skills/bad/SKILL.md': 'no frontmatter',
   }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.equal(prepared.problems.length, 3)
-    assert.match(prepared.problems[0]!, /env lists TAU_SOCKET, which fleet sets itself/u)
+    assert.match(prepared.problems[0]!, /env lists TAU_SOCKET, NODE_OPTIONS, LD_PRELOAD, which the container keeps as its own/u)
     assert.match(prepared.problems[1]!, /expected 1 argument/u)
     assert.match(prepared.problems[2]!, /bad\/SKILL\.md/u)
   })

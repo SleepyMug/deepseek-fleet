@@ -9,6 +9,10 @@
       "types": "./lib/world.d.ts",
       "default": "./lib/world.js"
     },
+    "./additions": {
+      "types": "./lib/additions.d.ts",
+      "default": "./lib/additions.js"
+    },
     "./fs": {
       "types": "./lib/fs.d.ts",
       "default": "./lib/fs.js"
@@ -35,13 +39,15 @@
     "lib",
     "!lib/**/*.test.*",
     "image",
+    "scripts",
     "src/helper",
+    "src/runner",
     "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
-    "test": "tsc -b && node --test \"lib/**/*.test.js\""
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dsh": {
     "bundle": {

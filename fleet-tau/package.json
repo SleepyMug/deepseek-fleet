@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
-    "test": "tsc -b && node --test \"lib/**/*.test.js\""
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dsh": {
     "bundle": {
@@ -62,6 +62,7 @@
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tool-skill": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tools": "0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4",
     "fleet-box": "workspace:*"
   },
   "devDependencies": {
@@ -76,6 +77,7 @@
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tool-skill": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tools": "0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4",
     "fleet-box": "workspace:*"
   }
 }

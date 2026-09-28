@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { HELPER_NODE } from 'fleet-box/image'
 import { MAX_REPLY_BYTES, RUNNER_ENTRY, TS_ROOT, isPackageSpec, type RunnerFailure, type RunnerReply, type RunnerRequest } from 'fleet-box/runner'
+import { parseRunnerReply } from './runner-reply.ts'
 import { AGENT_VIEW, type Spec } from './spec.ts'
 
 /** How long a program may run, type-checking included. */
@@ -191,14 +192,11 @@ async function runner(ctx: Context, exec: ToolRunContext, request: RunnerRequest
   } satisfies SubprocessSpawnSpec)
   const outcome = await handle.done
   exec.signal.throwIfAborted()
-  const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
-  try {
-    return JSON.parse(stdout) as RunnerReply
-  } catch {
-    const stderr = handle.collected.stderr?.readFrom(0).text.trim() ?? ''
-    const ended = outcome.signal === null ? `exit ${String(outcome.exitCode)}` : outcome.signal
-    throw new Error(`the TypeScript runner failed (${ended})${stderr === '' ? '' : `: ${stderr.slice(-4096)}`}`)
-  }
+  const reply = parseRunnerReply(handle.collected.stdout?.readFrom(0).text ?? '')
+  if (reply !== undefined) return reply
+  const stderr = handle.collected.stderr?.readFrom(0).text.trim() ?? ''
+  const ended = outcome.signal === null ? `exit ${String(outcome.exitCode)}` : outcome.signal
+  throw new Error(`the TypeScript runner failed or answered something else (${ended})${stderr === '' ? '' : `: ${stderr.slice(-4096)}`}`)
 }
 
 function sessionFolder(exec: ToolRunContext): string {

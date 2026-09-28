@@ -24,19 +24,20 @@
  * @module fleet-tau/store
  */
 
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
+import Schema from '@deepseek-ai/schemastery'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { ContainerAdditions, Mount } from 'fleet-box/world'
-import { MAX_OUTPUT_BYTES, copyProblems, replace } from './outputs.ts'
+import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, replace } from './outputs.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
 import type {} from './services.ts'
 import { AGENT_VIEW, specSchema, type Spec } from './spec.ts'
-import type { Answer, Job, Work } from './worker.ts'
+import type { Answer, Job } from './worker.ts'
 
 export type { Prepared, PrepareRequest } from './prepare.ts'
 export type { Skill, Spec } from './spec.ts'
@@ -49,6 +50,16 @@ declare module '@deepseek-ai/cordis' {
 
 /** What of an agent directory the snapshot keeps. */
 const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills', 'services', 'modules']
+/** How long copying a turn's outputs out of the container may take. */
+const PUBLISH_TIMEOUT_MS = 10 * 60_000
+const BUSY = 'the session started another turn before its outputs were copied, so they were not published; `fleet wait` publishes them once it is idle'
+
+/** A job the worker has not answered yet. */
+interface PendingJob {
+  request: PrepareRequest
+  result: PromiseWithResolvers<Prepared>
+  timer: NodeJS.Timeout
+}
 
 /** A session's spec, and the session whose folder holds it, which for a fork is its source. */
 export interface Found {
@@ -57,19 +68,30 @@ export interface Found {
   owner: SessionId
 }
 
+export interface Config {
+  /** How long reading an agent directory may take before the worker is replaced. */
+  prepareTimeoutMs: number
+}
+
 export class FleetTau extends Service {
   static inject = ['fleetBox', 'fleetServices']
+
+  static Config: Schema<Config> = Schema.object({
+    prepareTimeoutMs: Schema.number().min(1).default(120_000).description('How long reading an agent directory may take before the worker is replaced.'),
+  })
 
   private readonly home = resolveDshHome()
   /** This service's own context, whichever plugin calls it. */
   private readonly self: Context
   private worker: Worker | undefined
-  private readonly jobs = new Map<number, PromiseWithResolvers<unknown>>()
+  private readonly jobs = new Map<number, PendingJob>()
   private nextJob = 1
+  /** Each session's latest publish, which the next one waits for. */
+  private readonly publishing = new Map<SessionId, Promise<unknown>>()
   /** Specs by session, read once; a failed read is tried again. */
   private readonly specs = new Map<SessionId, Promise<Found | undefined>>()
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'fleetTau')
     this.self = ctx
     ctx.effect(() => () => {
@@ -86,7 +108,13 @@ export class FleetTau extends Service {
    * @returns the session's spec and title, or every problem found.
    */
   prepare(request: Omit<PrepareRequest, 'providers'>): Promise<Prepared> {
-    return this.job({ kind: 'prepare', request: { ...request, providers: this.self.fleetServices.list() } }) as Promise<Prepared>
+    const result = Promise.withResolvers<Prepared>()
+    const id = this.nextJob++
+    const timer = setTimeout(() => { this.timedOut(id) }, this.config.prepareTimeoutMs)
+    timer.unref()
+    this.jobs.set(id, { request: { ...request, providers: this.self.fleetServices.list() }, result, timer })
+    this.post(id)
+    return result.promise
   }
 
   /**
@@ -121,14 +149,24 @@ export class FleetTau extends Service {
 
   /**
    * Publish a session's `copy-out` paths after a completed turn, once per
-   * turn: copy each out of the container into the session's folder, check
-   * the copies (./outputs.ts) and, with tau, that the run left what the tau
-   * declares, and only then replace the caller's paths. A fork publishes
-   * nothing; its source's paths belong to the source's run.
+   * turn: copy each out of the container into a staging folder of this
+   * publish's own, check the copies (./outputs.ts) and that the run left
+   * what the tau declares, and only then replace the caller's paths. A
+   * session's publishes run one at a time, so two commands waiting on it
+   * never copy over each other, and none happens while a turn runs, since
+   * the agent could be changing what is copied. A fork publishes nothing;
+   * its source's paths belong to the source's run.
    * @param turn - the turn's place in the session's log.
    * @returns the problems that kept the outputs from being published, none when they were, or there was nothing to publish.
    */
-  async publish(session: SessionId, turn: number): Promise<string[]> {
+  publish(session: SessionId, turn: number): Promise<string[]> {
+    const next = (this.publishing.get(session) ?? Promise.resolve()).catch(() => {}).then(() => this.publishOnce(session, turn))
+    this.publishing.set(session, next)
+    void next.catch(() => {}).finally(() => { if (this.publishing.get(session) === next) this.publishing.delete(session) })
+    return next
+  }
+
+  private async publishOnce(session: SessionId, turn: number): Promise<string[]> {
     const root = await this.self.fleetBox.rootHeaderOf(session)
     const found = await this.specOf(root)
     if (found === undefined || found.owner !== root.id) return []
@@ -139,30 +177,34 @@ export class FleetTau extends Service {
     const record = join(folder, 'published.json')
     const published = await readFile(record, 'utf8').then(text => JSON.parse(text) as { turn: number; problems: string[] }, () => undefined)
     if (published !== undefined && published.turn >= turn) return published.problems
-    const staging = join(folder, 'out')
-    await rm(staging, { recursive: true, force: true })
-    await mkdir(staging, { mode: 0o700 })
+    if (this.self.fleetBox.turnRunning(root.id)) return [BUSY]
+    const staging = await mkdtemp(join(folder, 'out-'))
     try {
+      const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS)
       const copies: Record<string, string> = {}
       const problems: string[] = []
       for (const path of outputs) {
         const copy = join(staging, path.name)
         copies[path.view] = copy
-        // Nothing left there makes no copy, which tau's check reports.
+        // Nothing left there makes no copy, which the output check reports.
         try {
-          await this.self.fleetBox.copyOut(root.id, path.view, copy, MAX_OUTPUT_BYTES)
+          await this.self.fleetBox.copyOut(root.id, path.view, copy, MAX_OUTPUT_BYTES, signal)
           problems.push(...await copyProblems(copy, path.name, path.view))
         } catch (error) {
-          problems.push(`${path.name}: ${message(error)}`)
+          problems.push(`${path.name}: ${signal.aborted ? `copying took longer than ${PUBLISH_TIMEOUT_MS / 60_000} minutes` : message(error)}`)
         }
       }
-      if (problems.length === 0) problems.push(...await this.job({ kind: 'outputs', paths, copies }) as string[])
+      if (problems.length === 0) problems.push(...await outputProblems(paths, copies))
+      // A turn that started while copying may have changed what was copied.
+      if (this.self.fleetBox.turnRunning(root.id)) return [BUSY]
       for (const path of problems.length === 0 ? outputs : []) {
         await replace(path.host, copies[path.view]!).catch((error: unknown) => {
           problems.push(`${path.name}: could not replace ${path.host}: ${message(error)}`)
         })
       }
-      await writeFile(record, `${JSON.stringify({ turn, problems })}\n`, { mode: 0o600 })
+      const written = `${record}.${turn}.tmp`
+      await writeFile(written, `${JSON.stringify({ turn, problems })}\n`, { mode: 0o600 })
+      await rename(written, record)
       return problems
     } finally {
       await rm(staging, { recursive: true, force: true })
@@ -203,7 +245,10 @@ export class FleetTau extends Service {
     const mounts: Mount[] = [{ source: join(folder, 'agent'), target: AGENT_VIEW, readonly: true }]
     const directories: string[] = []
     for (const path of spec?.paths ?? []) {
-      if (path.mode === 'copy-out') directories.push(posix.dirname(path.view))
+      // The folder a copy-out path goes in, unless it is the container's root, which is always there.
+      if (path.mode === 'copy-out') {
+        if (posix.dirname(path.view) !== '/') directories.push(posix.dirname(path.view))
+      }
       else mounts.push({ source: path.mode === 'copy-in' ? join(folder, 'paths', path.name) : path.host, target: path.view, readonly: path.mode === 'mount-ro' })
     }
     return {
@@ -242,16 +287,29 @@ export class FleetTau extends Service {
     return join(this.home, 'fleet', 'sessions', session)
   }
 
-  /** Run one job in the worker. */
-  private job(work: Work): Promise<unknown> {
-    const pending = Promise.withResolvers<unknown>()
-    const id = this.nextJob++
-    this.jobs.set(id, pending)
+  /** Send a job to the worker, starting one if none runs. */
+  private post(id: number): void {
+    const job = this.jobs.get(id)
+    if (job === undefined) return
     const worker = this.startWorker()
     // Held only while it has work, so an idle worker never keeps a process alive.
     worker.ref()
-    worker.postMessage({ ...work, id } satisfies Job)
-    return pending.promise
+    worker.postMessage({ id, request: job.request } satisfies Job)
+  }
+
+  /**
+   * A job ran past its time: it fails, and the worker, which may be stuck on
+   * it, is replaced by a new one, which takes the jobs still waiting.
+   */
+  private timedOut(id: number): void {
+    const job = this.jobs.get(id)
+    if (job === undefined) return
+    this.jobs.delete(id)
+    job.result.reject(new Error(`fleet-tau: reading ${job.request.agent} took longer than ${this.config.prepareTimeoutMs / 1000} s`))
+    const worker = this.worker
+    this.worker = undefined
+    void worker?.terminate()
+    for (const waiting of this.jobs.keys()) this.post(waiting)
   }
 
   private startWorker(): Worker {
@@ -261,11 +319,12 @@ export class FleetTau extends Service {
       const job = this.jobs.get(answer.id)
       if (job === undefined) return
       this.jobs.delete(answer.id)
+      clearTimeout(job.timer)
       if (this.jobs.size === 0) worker.unref()
-      if ('error' in answer) job.reject(new Error(`fleet-tau: ${answer.error}`))
-      else job.resolve(answer.result)
+      if ('error' in answer) job.result.reject(new Error(`fleet-tau: could not read ${job.request.agent}: ${answer.error}`))
+      else job.result.resolve(answer.result)
     })
-    // A worker that fails ends every job it holds; the next job starts a new one.
+    // A worker that fails ends every job it holds; the next job starts a new one. One replaced for its time ends none.
     const lost = (error: Error): void => {
       if (this.worker !== worker) return
       this.worker = undefined
@@ -278,7 +337,10 @@ export class FleetTau extends Service {
   }
 
   private fail(error: Error): void {
-    for (const job of this.jobs.values()) job.reject(error)
+    for (const job of this.jobs.values()) {
+      clearTimeout(job.timer)
+      job.result.reject(error)
+    }
     this.jobs.clear()
   }
 }

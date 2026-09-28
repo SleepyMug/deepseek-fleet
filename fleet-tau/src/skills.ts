@@ -11,13 +11,15 @@
  * @module fleet-tau/skills
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import type { Skill } from './spec.ts'
 
 /** Kebab-case, as `isSkillName` in @deepseek-ai/dsh-skill requires. */
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
+/** Folders searched for skills at most, so a symlink to a large tree fails fast rather than walking it. */
+const MAX_FOLDERS = 10_000
 
 /**
  * Find and read an agent's skills.
@@ -30,7 +32,7 @@ export function loadSkills(agentDir: string): { skills: Skill[]; problems: strin
   const problems: string[] = []
   if (!existsSync(root)) return { skills, problems }
   if (!statSync(root).isDirectory()) return { skills, problems: [`${root}: skills must be a folder`] }
-  for (const dir of skillFolders(root)) {
+  for (const dir of skillFolders(root, problems)) {
     const file = join(dir, 'SKILL.md')
     try {
       skills.push({ ...parseSkill(readFileSync(file, 'utf8')), dir: relative(root, dir).split(sep).join('/') || '.' })
@@ -47,15 +49,54 @@ export function loadSkills(agentDir: string): { skills: Skill[]; problems: strin
   return { skills, problems }
 }
 
-/** The folders holding a SKILL.md, in a stable order; hidden folders and node_modules are skipped. */
-function skillFolders(dir: string): string[] {
-  if (existsSync(join(dir, 'SKILL.md'))) return [dir]
-  return readdirSync(dir, { withFileTypes: true })
-    .filter(entry => !entry.name.startsWith('.') && entry.name !== 'node_modules')
-    .filter(entry => entry.isDirectory() || (entry.isSymbolicLink() && statSync(join(dir, entry.name)).isDirectory()))
-    .map(entry => entry.name)
-    .sort()
-    .flatMap(name => skillFolders(join(dir, name)))
+/**
+ * The folders holding a SKILL.md, in a stable order; hidden folders and
+ * node_modules are skipped. Symlinked folders are followed, each real folder
+ * once, so a link back up the tree ends the walk there instead of looping.
+ * @param problems - where a folder that cannot be read, or too many folders, are reported.
+ */
+function skillFolders(root: string, problems: string[]): string[] {
+  const found: string[] = []
+  const visited = new Set<string>()
+  const walk = (dir: string): void => {
+    let real: string
+    try {
+      real = realpathSync(dir)
+    } catch (error) {
+      problems.push(`${dir}: ${message(error)}`)
+      return
+    }
+    if (visited.has(real)) return
+    if (visited.size === MAX_FOLDERS) {
+      problems.push(`${root}: more than ${MAX_FOLDERS} folders to search for skills`)
+      return
+    }
+    visited.add(real)
+    if (existsSync(join(dir, 'SKILL.md'))) {
+      found.push(dir)
+      return
+    }
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch (error) {
+      problems.push(`${dir}: ${message(error)}`)
+      return
+    }
+    for (const entry of entries.filter(entry => !entry.name.startsWith('.') && entry.name !== 'node_modules').sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const path = join(dir, entry.name)
+      let folder: boolean
+      try {
+        folder = entry.isDirectory() || (entry.isSymbolicLink() && statSync(path).isDirectory())
+      } catch (error) {
+        problems.push(`${path}: ${message(error)}`)
+        continue
+      }
+      if (folder) walk(path)
+    }
+  }
+  walk(root)
+  return found
 }
 
 /**

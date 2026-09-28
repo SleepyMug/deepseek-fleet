@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -64,5 +64,18 @@ test('a skills folder that is itself a skill, no skills folder, and broken or cl
     assert.equal(problems.length, 2)
     assert.match(problems[0]!, /c\/SKILL\.md: .*frontmatter/u)
     assert.match(problems[1]!, /a and b are both named same/u)
+  })
+})
+
+test('a symlink back up the tree, or a broken one, ends the walk there with a problem at most', async () => {
+  await withFiles({ 'skills/a/SKILL.md': skill('a'), 'skills/group/b/SKILL.md': skill('b') }, async (dir) => {
+    await symlink(join(dir, 'skills'), join(dir, 'skills', 'group', 'loop'))
+    await symlink(join(dir, 'nowhere'), join(dir, 'skills', 'broken'))
+    await symlink(join(dir, 'skills', 'cycle'), join(dir, 'skills', 'cycle'))
+    const { skills, problems } = loadSkills(dir)
+    assert.deepEqual(skills.map(({ name }) => name), ['a', 'b'])
+    assert.equal(problems.length, 2)
+    assert.match(problems.join('\n'), /broken: ENOENT/u)
+    assert.match(problems.join('\n'), /cycle: ELOOP/u)
   })
 })

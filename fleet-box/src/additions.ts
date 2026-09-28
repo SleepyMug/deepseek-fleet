@@ -19,8 +19,17 @@ import { z } from 'zod'
 
 /** Folders of the container that fleet-box itself fills; no addition may cover them. */
 const RESERVED = ['/opt/fleet-box', '/run/fleet-box']
-/** Variables fleet-box itself sets in every container; no addition may set them. */
-const RESERVED_ENV = ['TAU_SOCKET']
+/**
+ * Variables fleet-box itself sets in every container, or that the helper,
+ * its Node and what they start rely on the image for; no addition may set
+ * them, nor any `LD_` variable of the dynamic linker.
+ */
+const RESERVED_ENV = ['TAU_SOCKET', 'PATH', 'HOME', 'NODE_OPTIONS', 'NODE_PATH']
+
+/** Whether a variable is fleet-box's or the container's own, which no addition may set. */
+export function reservedVariable(name: string): boolean {
+  return RESERVED_ENV.includes(name) || name.startsWith('LD_')
+}
 
 /** A host path bind-mounted into the container. */
 export interface Mount {
@@ -50,7 +59,7 @@ const additionsSchema = z.object({
     readonly: z.boolean(),
   }).strict()),
   env: z.record(
-    z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u, 'must be a variable name').refine(name => !RESERVED_ENV.includes(name), 'is set by fleet-box itself'),
+    z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u, 'must be a variable name').refine(name => !reservedVariable(name), 'is the container\'s own'),
     z.string().refine(value => !value.includes('\0'), 'must not hold a NUL'),
   ).optional(),
   directories: z.array(containerPath).optional(),

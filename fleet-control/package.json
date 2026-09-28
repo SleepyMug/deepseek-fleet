@@ -23,7 +23,7 @@
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
-    "test": "tsc -b && node --test \"lib/**/*.test.js\""
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dsh": {
     "bundle": {

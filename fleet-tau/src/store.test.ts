@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { cp, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -48,6 +48,7 @@ async function setup() {
   ctx.provide('fleetBox', {
     configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
     unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
+    turnRunning: () => false,
     rootHeaderOf: (id: string) => {
       let current = headers[id]
       while (current?.origin === 'subagent' && current.parentSession !== undefined) current = headers[current.parentSession]
@@ -125,16 +126,20 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const configured = new Map<string, ContainerAdditions>()
     const container = join(dir, 'container')
     const copied: string[] = []
+    let running = false
     ctx.provide('fleetServices', { list: () => [] })
     ctx.provide('fleetBox', {
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: () => Promise.resolve(),
+      turnRunning: () => running,
       rootHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', ...id === 'session-p-fork' ? { parentSession: 'session-p' as SessionId } : {} })),
       // The container's files are under `container`, at their view paths; fleet-box refuses a symlink as it copies.
       copyOut: async (_root: string, view: string, target: string) => {
         copied.push(view)
         const source = join(container, view)
         if ((await lstat(source).catch(() => undefined))?.isSymbolicLink() === true) throw new Error(`${view} is a symlink, which is not copied out`)
+        // Slow enough for a second publish to start meanwhile.
+        await new Promise((resolve) => { setTimeout(resolve, 20) })
         await cp(source, target, { recursive: true }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
         return true
       },
@@ -155,6 +160,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
         { name: 'rules', kind: 'file', mode: 'copy-in', host: join(dir, 'rules.md'), view: '/work/rules.md' },
         { name: 'data', kind: 'dir', mode: 'mount-rw', host: join(dir, 'data'), view: join(dir, 'data') },
         { name: 'report', kind: 'file', mode: 'copy-out', host: report, view: report },
+        { name: 'summary', kind: 'file', mode: 'copy-out', host: join(dir, 'summary.md'), view: '/summary.md' },
       ],
     }
     await tau.create('session-p' as SessionId, spec)
@@ -166,29 +172,40 @@ test('a run\'s paths reach its container, and its outputs are published once per
         { source: join(dir, 'data'), target: join(dir, 'data'), readonly: false },
       ],
       env: { LANG: 'C.UTF-8' },
+      // The container's root is always there, so /summary.md needs no folder made.
       directories: [join(dir, 'out')],
     })
     assert.equal(await readFile(join(folder, 'paths', 'rules'), 'utf8'), 'be kind')
 
-    // The agent left nothing: tau's check says so, and the caller's file stays.
+    // The agent left nothing: the check says so, and the caller's file stays.
     const nothing = await tau.publish('session-p' as SessionId, 3)
-    assert.equal(nothing.length, 1)
-    assert.match(nothing[0]!, /report/u)
+    assert.deepEqual(nothing, [`report: the agent left nothing at ${report}`, 'summary: the agent left nothing at /summary.md'])
     assert.equal(await readFile(report, 'utf8'), 'old report')
 
-    // The agent's report replaces the caller's, once for its turn.
+    // A turn running now keeps the outputs where they are, and the turn unpublished.
     await mkdir(join(container, dir, 'out'), { recursive: true })
     await writeFile(join(container, report), 'new report')
-    assert.deepEqual(await tau.publish('session-p' as SessionId, 7), [])
+    await writeFile(join(container, 'summary.md'), 'short')
+    running = true
+    assert.match((await tau.publish('session-p' as SessionId, 7))[0]!, /started another turn/u)
+    running = false
+
+    // The agent's report replaces the caller's, once for its turn, however many wait on it at once.
+    const before = copied.length
+    const [first, second] = await Promise.all([tau.publish('session-p' as SessionId, 7), tau.publish('session-p' as SessionId, 7)])
+    assert.deepEqual([first, second], [[], []])
+    assert.equal(copied.length - before, 2, 'one publish copied both outputs; the other found the turn published')
     assert.equal(await readFile(report, 'utf8'), 'new report')
+    assert.equal(await readFile(join(dir, 'summary.md'), 'utf8'), 'short')
     await writeFile(join(container, report), 'later')
     assert.deepEqual(await tau.publish('session-p' as SessionId, 7), [])
     assert.equal(await readFile(report, 'utf8'), 'new report')
-    assert.equal(copied.length, 2)
+    assert.deepEqual((await readdir(join(home, 'fleet', 'sessions', 'session-p'))).sort(), ['agent', 'paths', 'published.json', 'spec.json'])
 
     // A fork of the session takes its spec but publishes nothing: the paths belong to the source's run.
+    const copiedBefore = copied.length
     assert.deepEqual(await tau.publish('session-p-fork' as SessionId, 11), [])
-    assert.equal(copied.length, 2)
+    assert.equal(copied.length, copiedBefore)
 
     // A symlink left there is refused.
     await rm(join(container, report))
@@ -199,4 +216,22 @@ test('a run\'s paths reach its container, and its outputs are published once per
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('an agent directory that takes too long to read fails, and the next is read by a new worker', async () => {
+  const ctx = new Context()
+  ctx.provide('fleetServices', { list: () => [] })
+  ctx.provide('fleetBox', {})
+  await ctx.plugin(FleetTau, { prepareTimeoutMs: 1 })
+  let tau: FleetTau | undefined
+  await ctx.plugin({ name: 'caller', inject: ['fleetTau'], apply: (inner: Context) => { tau = inner.fleetTau } })
+  assert.ok(tau !== undefined)
+  await assert.rejects(tau.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} }), /took longer than 0\.001 s/u)
+  const patient = new Context()
+  patient.provide('fleetServices', { list: () => [] })
+  patient.provide('fleetBox', {})
+  await patient.plugin(FleetTau, { prepareTimeoutMs: 60_000 })
+  let other: FleetTau | undefined
+  await patient.plugin({ name: 'caller', inject: ['fleetTau'], apply: (inner: Context) => { other = inner.fleetTau } })
+  assert.ok((await other!.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} })).ok)
 })

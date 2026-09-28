@@ -65,7 +65,9 @@ test('an unreadable or invalid file fails rather than dropping the additions', a
     await assert.rejects(readAdditions(home, 'session-1'), /not valid/u)
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [{ source: '/s', target: 'relative', readonly: true }] }))
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { 'NOT-A-NAME': 'x' } }))
-    await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { TAU_SOCKET: '/elsewhere' } }), /set by fleet-box/u)
+    for (const name of ['TAU_SOCKET', 'PATH', 'HOME', 'NODE_OPTIONS', 'LD_PRELOAD']) {
+      await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { [name]: '/elsewhere' } }), /the container's own/u, name)
+    }
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], directories: ['relative/dir'] }))
   } finally {
     await rm(home, { recursive: true, force: true })

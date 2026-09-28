@@ -1,8 +1,8 @@
 /**
  * Publishing an agent's `copy-out` paths: what the agent left in its
  * container, copied out to the store by fleet-box, which copies plain files
- * and folders only, is checked again here, and then replaces the caller's
- * path. The copy comes from the container, which the model controls, so it
+ * and folders only, is checked again here, and as tau checks a run's
+ * outputs, and then replaces the caller's path. The copy comes from the container, which the model controls, so it
  * is taken only as plain files and folders of bounded size: a symlink, a
  * hard link, a device, a pipe or a socket in it refuses it, so nothing
  * published points elsewhere on the host or shares its data.
@@ -10,8 +10,9 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, readdir, rename, rm } from 'node:fs/promises'
+import { cp, lstat, readdir, rename, rm, stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
+import type { SpecPath } from './spec.ts'
 
 /** Most bytes one output may hold. */
 export const MAX_OUTPUT_BYTES = 1024 * 1024 * 1024
@@ -43,6 +44,28 @@ export async function copyProblems(copy: string, name: string, view: string, lim
   }
   await visit(copy)
   if (bytes > limit) problems.push(`${name}: ${view} holds ${bytes} bytes, over the ${limit}-byte limit for an output`)
+  return problems
+}
+
+/**
+ * What tau's `checkOutputs` checks after a run: each `copy-out` path, here
+ * its copy, and each `mount-rw` path is a file or a folder as declared,
+ * symlinks followed.
+ * @param copies - each copy-out's copy, by the path the agent left it at.
+ * @returns a problem for each path that is missing or of the other kind.
+ */
+export async function outputProblems(paths: readonly SpecPath[], copies: Readonly<Record<string, string>>): Promise<string[]> {
+  const problems: string[] = []
+  for (const path of paths) {
+    if (path.mode !== 'copy-out' && path.mode !== 'mount-rw') continue
+    const at = path.mode === 'copy-out' ? copies[path.view] : path.host
+    const info = at === undefined ? undefined : await stat(at).catch(() => undefined)
+    const where = path.mode === 'copy-out' ? `the agent left nothing at ${path.view}` : `${path.host} is gone`
+    if (info === undefined) problems.push(`${path.name}: ${where}`)
+    else if (info.isDirectory() !== (path.kind === 'dir')) {
+      problems.push(`${path.name}: ${path.mode === 'copy-out' ? path.view : path.host} is a ${info.isDirectory() ? 'folder' : 'file'}, not a ${path.kind === 'dir' ? 'folder' : 'file'}`)
+    }
+  }
   return problems
 }
 

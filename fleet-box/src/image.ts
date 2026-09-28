@@ -11,7 +11,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { access, readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PROTOCOL_VERSION } from './helper/protocol.ts'
 
@@ -23,11 +23,7 @@ const CHECK_TIMEOUT_MS = 60_000
 /** The helper's and the runner's TypeScript sources, which the image build compiles. */
 const HELPER_SOURCES = 'src/helper'
 const RUNNER_SOURCES = 'src/runner'
-/**
- * The runner's dependency on @sleepymug/ts-executor, packed from the linked
- * checkout by scripts/stage-runner.mjs until that version is on npm.
- */
-const RUNNER_VENDOR = 'image/runner/vendor/sleepymug-ts-executor-0.4.0.tgz'
+const RUNNER_MANIFEST = 'image/runner/package.json'
 /**
  * The helper's Node, a copy of the image's, so a Node the model installs or
  * removes does not change it. The helper names its process `fleet-box`, so a
@@ -45,15 +41,30 @@ export const HELPER_ENTRY = '/opt/fleet-box/helper/main.js'
 export async function imageInputs(): Promise<string[]> {
   const sources = async (folder: string): Promise<string[]> =>
     (await readdir(join(PACKAGE_DIR, folder))).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts')).sort().map(name => `${folder}/${name}`)
-  await access(join(PACKAGE_DIR, RUNNER_VENDOR)).catch(() => {
-    throw new Error(`fleet-box: ${RUNNER_VENDOR} is missing; stage it from the linked ts-executor checkout with \`node ${join(PACKAGE_DIR, 'scripts', 'stage-runner.mjs')}\``)
-  })
+  const vendor = await runnerVendor()
   return [
     DOCKERFILE, 'image/helper/npm-shrinkwrap.json', 'image/helper/package.json', 'image/helper/tsconfig.json',
     ...await sources(HELPER_SOURCES),
-    'image/runner/npm-shrinkwrap.json', 'image/runner/package.json', 'image/runner/tsconfig.json', RUNNER_VENDOR,
+    'image/runner/npm-shrinkwrap.json', RUNNER_MANIFEST, 'image/runner/tsconfig.json', ...vendor === undefined ? [] : [vendor],
     ...await sources(RUNNER_SOURCES),
   ]
+}
+
+/**
+ * The runner's dependency on @sleepymug/ts-executor as a packed tarball,
+ * which scripts/stage-runner.mjs makes from the linked checkout while that
+ * version is not on npm; none once the runner depends on a registry version.
+ * @throws when the runner depends on a tarball that is not staged.
+ */
+async function runnerVendor(): Promise<string | undefined> {
+  const manifest = JSON.parse(await readFile(join(PACKAGE_DIR, RUNNER_MANIFEST), 'utf8')) as { dependencies?: Record<string, string> }
+  const spec = manifest.dependencies?.['@sleepymug/ts-executor']
+  if (spec === undefined || !spec.startsWith('file:')) return undefined
+  const vendor = posix.join('image/runner', spec.slice('file:'.length))
+  await access(join(PACKAGE_DIR, vendor)).catch(() => {
+    throw new Error(`fleet-box: ${vendor} is missing; stage it from the linked ts-executor checkout with \`node ${join(PACKAGE_DIR, 'scripts', 'stage-runner.mjs')}\``)
+  })
+  return vendor
 }
 
 /** @returns the image's tag, a digest of its inputs. */

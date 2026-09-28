@@ -12,7 +12,8 @@
 
 import { existsSync, readdirSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
-import { checkInputs, checkModule, loadModules, loadService, loadTau, TAU_SOCKET, type Module, type Run, type Service, type Tau } from '@sleepymug/tau'
+import { checkInputs, checkModule, loadModules, loadService, loadTau, type Module, type Run, type Service, type Tau } from '@sleepymug/tau'
+import { reservedVariable } from 'fleet-box/additions'
 import { checkServices, type Declared } from './compat.ts'
 import { pathProblems } from './paths.ts'
 import { loadSkills } from './skills.ts'
@@ -49,7 +50,8 @@ export function prepare(request: PrepareRequest): Prepared {
     return { ok: false, problems: [message(error)] }
   }
   const problems: string[] = []
-  if (tau.env.includes(TAU_SOCKET)) problems.push(`${tau.dir}/tau.json: env lists ${TAU_SOCKET}, which fleet sets itself`)
+  const reserved = tau.env.filter(reservedVariable)
+  if (reserved.length > 0) problems.push(`${tau.dir}/tau.json: env lists ${reserved.join(', ')}, which the container keeps as its own`)
   let prompt = tau.prompt
   let run: Run | undefined
   if (request.bind) {
