@@ -1,10 +1,9 @@
 /**
- * Gives each agent of a session the `fleet` command started from an agent
- * directory what the session's spec holds (./store.ts): the agent's skills,
- * with dsh's `skill` tool to load them, and the TypeScript tools
- * (./ts-tools.ts) when the spec asks for them. Everything is registered in
- * a scope of that agent alone, so other sessions, such as those the web UI
- * starts, keep the fleet preset as it is. It happens as dsh announces the
+ * Gives each agent of a session the `fleet` command started what the
+ * session's spec holds (./store.ts): the agent's skills, with dsh's `skill`
+ * tool to load them, and the TypeScript tools (./ts-tools.ts). Everything is
+ * registered in a scope of that agent alone, so other sessions, such as those
+ * the web UI starts, keep the fleet preset as it is. It happens as dsh announces the
  * agent, for a new session and for every resume, so a session keeps its
  * skills across host restarts; agents already running when this plugin
  * loads get theirs before their next step.
@@ -72,7 +71,7 @@ export function apply(ctx: Context): void {
 
 /**
  * Give an agent what its root session's spec holds.
- * @returns the agent's scope, or undefined when its session has no spec or nothing to give.
+ * @returns the agent's scope, or undefined when its session has no spec.
  */
 async function customize(ctx: Context, agent: Agent): Promise<Scope | undefined> {
   const header = agent.session.header
@@ -81,15 +80,14 @@ async function customize(ctx: Context, agent: Agent): Promise<Scope | undefined>
   if (found === undefined) return undefined
   // A fork's container takes its source's snapshot; set before the fork's first step opens the container.
   if (found.owner !== root.id) await ctx.fleetTau.configureFork(root.id, found)
-  const { skills, ts } = found.spec
-  if (skills.length === 0 && !ts) return undefined
+  const { skills } = found.spec
   const scope = createScope(ctx, agent)
   try {
     if (skills.length > 0) {
       await scope.ctx.plugin(ToolSkill)
       for (const skill of skills) scope.ctx.skills.register(registration(skill))
     }
-    if (ts) registerTsTools(scope.ctx, found.spec)
+    registerTsTools(scope.ctx, found.spec)
     return scope
   } catch (error) {
     await scope.dispose()

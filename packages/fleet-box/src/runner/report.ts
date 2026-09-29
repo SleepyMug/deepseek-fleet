@@ -166,6 +166,5 @@ function shrink(reply: RunnerReply, chars: number): RunnerReply {
     const serialized = JSON.stringify(reply.value)
     return { ...reply, value: serialized.length > chars ? tooLarge(serialized) : reply.value, stdout: capText(reply.stdout, chars), stderr: capText(reply.stderr, chars) }
   }
-  if ('installed' in reply) return { ...reply, log: capText(reply.log, chars) }
   return { ...reply, modules: reply.modules.slice(0, chars / 16).map(module => ({ ...module, description: cut(module.description) })) }
 }

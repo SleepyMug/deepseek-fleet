@@ -5,9 +5,10 @@
  * processes to this bundle's `ctx.fs` and `ctx.subprocess`. The session
  * folder is bind-mounted at the same absolute path, beside any mounts another
  * plugin configured for the session (./additions.ts); everything else, `/tmp`
- * included, is the container's own. Processes run as the container's root,
- * which rootless Docker maps to the host user, so files in the workspace stay
- * the user's. Subagent sessions share their root's container; a fork is its
+ * included, is the container's own, as are the host paths such a plugin has
+ * copied in when the container was created (./copy-in.ts). Processes run as
+ * the container's root, which rootless Docker maps to the host user, so files
+ * in the workspace stay the user's. Subagent sessions share their root's container; a fork is its
  * own root.
  *
  * Lifetime: a container runs exactly while this process has its session's
@@ -45,14 +46,17 @@ import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
-import { additionArgs, mountField, readAdditions, removeAdditions, writeAdditions, type ContainerAdditions } from './additions.ts'
+import {
+  additionArgs, mountField, readAdditions, readCopied, removeAdditions, writeAdditions, writeCopied, type ContainerAdditions, type Copy,
+} from './additions.ts'
 import { HelperConnection, type ServiceCallRequest } from './connection.ts'
+import { copyIn } from './copy-in.ts'
 import { copyOut as copyOutOf } from './copy-out.ts'
 import { SERVICE_SOCKET } from './helper/protocol.ts'
 import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
 
-export type { ContainerAdditions, Mount } from './additions.ts'
+export type { ContainerAdditions, Copy, Mount } from './additions.ts'
 export type { ServiceCallRequest } from './calls.ts'
 
 /**
@@ -298,7 +302,8 @@ export class FleetBox extends Service {
   /**
    * Set what a root session's container gets beyond the session folder
    * (./additions.ts), before or after the session exists. The container gets
-   * them from its next use on, which recreates it if it exists.
+   * them from its next use on, which recreates it if it exists; a container
+   * gets its copies when it is created.
    * @param root - a root session's id; a subagent shares its root's container.
    */
   async configure(root: SessionId, additions: ContainerAdditions): Promise<void> {
@@ -579,7 +584,7 @@ export class FleetBox extends Service {
    * when the open fails halfway.
    */
   private async openWorld(root: SessionHeader, owner: Root): Promise<OpenWorld> {
-    const { container, directories } = await this.ensureContainer(root)
+    const { container, directories, copies } = await this.ensureContainer(root)
     const connection = new HelperConnection({
       docker: this.config.docker, container: container.name, workspace: container.workspace, node: HELPER_NODE, entry: HELPER_ENTRY,
     })
@@ -623,6 +628,11 @@ export class FleetBox extends Service {
     try {
       if (directories.length > 0) await this.docker(['exec', container.name, 'mkdir', '-p', '--', ...directories])
       await connection.start()
+      // Once per container, before anything uses it; a copy cut short is made again on the next open.
+      if (copies.length > 0 && await readCopied(this.home, root.id) !== container.id) {
+        for (const { source, target } of copies) await copyIn(connection, source, target)
+        await writeCopied(this.home, root.id, container.id)
+      }
       const world: OpenWorld = { world: { container, connection, docker: this.config.docker, stopped: stopped.promise }, close }
       opened = world
       owner.open = world
@@ -649,10 +659,11 @@ export class FleetBox extends Service {
   }
 
   /**
-   * Create, recreate, or start the root session's container.
-   * @returns the container, and the folders its additions ask to be made in it.
+   * Create, recreate, or start the root session's container. Its spec is its
+   * `docker run` arguments and its copies, so a change to either recreates it.
+   * @returns the container, and the folders and copies its additions ask for.
    */
-  private async ensureContainer(root: SessionHeader): Promise<{ container: SessionContainer; directories: string[] }> {
+  private async ensureContainer(root: SessionHeader): Promise<{ container: SessionContainer; directories: string[]; copies: Copy[] }> {
     const workspace = root.cwd
     if (workspace === undefined || !isAbsolute(workspace)) {
       throw new Error(`fleet-box: session ${root.id} has no absolute folder to mount (cwd: ${String(workspace)})`)
@@ -671,7 +682,9 @@ export class FleetBox extends Service {
       '--workdir', workspace,
       this.image, 'sleep', 'infinity',
     ]
-    const spec = createHash('sha256').update(JSON.stringify(runArgs)).digest('hex').slice(0, 16)
+    const copies = additions?.copies ?? []
+    // Without copies, the spec is what it was before containers had any.
+    const spec = createHash('sha256').update(JSON.stringify(runArgs)).update(copies.length === 0 ? '' : JSON.stringify(copies)).digest('hex').slice(0, 16)
     const existing = await this.inspect(name)
     if (existing?.spec === spec) {
       if (!existing.running) await this.docker(['start', name])
@@ -684,7 +697,7 @@ export class FleetBox extends Service {
     }
     const created = existing?.spec === spec ? existing : await this.inspect(name)
     if (created === undefined) throw new Error(`fleet-box: ${name} disappeared right after it started`)
-    return { container: { name, id: created.id, created: created.created, workspace }, directories: additions?.directories ?? [] }
+    return { container: { name, id: created.id, created: created.created, workspace }, directories: additions?.directories ?? [], copies }
   }
 
   /** @returns the container's identity and state, or undefined when no such container exists. */

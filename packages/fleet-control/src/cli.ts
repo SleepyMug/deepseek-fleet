@@ -5,11 +5,11 @@
  * [args...]` has the host fill its PROMPT.md with the arguments its tau.json
  * declares and give it to a new session in the current folder, or the one
  * `--cwd` names, which the session's container mounts; the session gets the
- * agent's skills, and the services it declares. With `--ts`, or when the
- * agent declares services or ships modules, it gets TypeScript tools that
- * run programs in its container. `fleet run -p <prompt>` gives a session a prompt as it
- * is, without an agent directory. The session is an ordinary one of the fleet
- * host, so the web UI lists it and a person can follow or steer it there.
+ * agent's skills, and the services it declares. `fleet run -p <prompt>`
+ * gives a session a prompt as it is, without an agent directory. Either way
+ * the session gets TypeScript tools that run programs in its container. The
+ * session is an ordinary one of the fleet host, so the web UI lists it and a
+ * person can follow or steer it there.
  *
  * `run`, `send` and `wait` wait until the session is idle, print only the
  * last answer, exit 0 when the last turn completed and 1 otherwise, and stop
@@ -41,7 +41,6 @@ const USAGE = [
   '      --cwd <dir>                             the session\'s folder, which its container mounts; default: this one',
   '      --sid-file <file>                       write the session id to <file> once the task is accepted',
   '      --async                                 return once the task is accepted',
-  '      --ts                                    give the session the TypeScript tools (ts_execute, ...)',
   '  send [--async] [--steer] <session> <text>   send a session a message, or steer its running turn',
   '  wait <session>                              wait until a session is idle and print its last answer',
   '  ls                                          list the sessions',
@@ -99,10 +98,8 @@ async function main(args: readonly string[]): Promise<number> {
 }
 
 async function run(args: readonly string[]): Promise<number> {
-  const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--cwd': 'value', '--sid-file': 'value', '--ts': 'flag', '-p': 'value' })
-  const request = {
-    op: 'run', task: task(positional, values.get('-p')), cwd: sessionFolder(values.get('--cwd') ?? process.cwd()), ts: flags.has('--ts'),
-  } as const
+  const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--cwd': 'value', '--sid-file': 'value', '-p': 'value' })
+  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: sessionFolder(values.get('--cwd') ?? process.cwd()) } as const
   const sidFile = sidFilePath(values.get('--sid-file'))
   if (flags.has('--async')) {
     const { session } = await call({ ...request, wait: false })

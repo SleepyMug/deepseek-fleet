@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { additionArgs, additionsFile, readAdditions, writeAdditions } from './additions.ts'
+import { additionArgs, additionsFile, readAdditions, readCopied, removeAdditions, writeAdditions, writeCopied } from './additions.ts'
 
 test('no additions add no arguments, so a container keeps its spec', () => {
   assert.deepEqual(additionArgs(undefined, '/work'), [])
@@ -41,6 +41,30 @@ test('a mount may not cover the session folder or fleet-box\'s own folders', () 
   assert.doesNotThrow(() => additionArgs({ mounts: [{ source: '/src', target: '/workshop', readonly: true }] }, '/work'))
 })
 
+test('copies are not docker run arguments, and may overlap no mount, copy, session folder or fleet-box folder', () => {
+  const agent = { source: '/store/agent', target: '/opt/fleet/agent', readonly: true }
+  assert.deepEqual(additionArgs({ mounts: [], copies: [{ source: '/store/in/rules', target: '/home/u/rules.md' }] }, '/work'), [])
+  for (const target of ['/work/rules.md', '/opt/fleet-box/x', '/opt/fleet/agent/x', '/opt']) {
+    assert.throws(() => additionArgs({ mounts: [agent], copies: [{ source: '/s', target }] }, '/work'), /copies to .*overlaps/u, target)
+  }
+  assert.throws(() => additionArgs({ mounts: [], copies: [{ source: '/a', target: '/data' }, { source: '/b', target: '/data/b' }] }, '/work'), /overlaps/u)
+})
+
+test('the container a session\'s copies went into is recorded, and removed with its additions', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'fleet-box-additions-'))
+  try {
+    await writeAdditions(home, 'session-1', { mounts: [], copies: [{ source: '/store/in/rules', target: '/home/u/rules.md' }] })
+    assert.equal(await readCopied(home, 'session-1'), undefined)
+    await writeCopied(home, 'session-1', 'abc123')
+    assert.equal(await readCopied(home, 'session-1'), 'abc123')
+    await removeAdditions(home, 'session-1')
+    assert.equal(await readCopied(home, 'session-1'), undefined)
+    assert.equal(await readAdditions(home, 'session-1'), undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('additions round-trip through their file, which only the owner can read', async () => {
   const home = await mkdtemp(join(tmpdir(), 'fleet-box-additions-'))
   try {
@@ -69,6 +93,8 @@ test('an unreadable or invalid file fails rather than dropping the additions', a
       await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], env: { [name]: '/elsewhere' } }), /the container's own/u, name)
     }
     await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], directories: ['relative/dir'] }))
+    await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], copies: [{ source: 'relative', target: '/x' }] }))
+    await assert.rejects(writeAdditions(home, 'session-2', { mounts: [], copies: [{ source: '/s', target: '/' }] }))
   } finally {
     await rm(home, { recursive: true, force: true })
   }

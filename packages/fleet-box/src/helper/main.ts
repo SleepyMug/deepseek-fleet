@@ -15,8 +15,8 @@
  */
 
 import { constants } from 'node:fs'
-import { access, stat } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { access, appendFile, chmod, mkdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, posix } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
@@ -114,6 +114,35 @@ const handlers: Record<string, (params: Params, signal: AbortSignal) => Promise<
     streams.delete(id)
     stream?.controller.abort(new Error('the host closed the stream'))
     await stream?.iterator.return?.()
+    return null
+  },
+
+  // Copying a host path in (../copy-in.ts), before anything else uses the container: plain operations on
+  // absolute paths, outside dsh's file system, which has no folders, symlinks or modes to make.
+  'copyIn.begin': async (p) => {
+    const path = absolutePath(p.path)
+    await rm(path, { recursive: true, force: true })
+    await mkdir(dirname(path), { recursive: true })
+    return null
+  },
+  'copyIn.dir': async (p) => {
+    const path = absolutePath(p.path)
+    await mkdir(path)
+    await chmod(path, fileMode(p.mode))
+    return null
+  },
+  'copyIn.file': async (p) => {
+    const path = absolutePath(p.path)
+    await writeFile(path, Buffer.from(text(p.data), 'base64'), { flag: 'wx' })
+    await chmod(path, fileMode(p.mode))
+    return null
+  },
+  'copyIn.append': async (p) => {
+    await appendFile(absolutePath(p.path), Buffer.from(text(p.data), 'base64'))
+    return null
+  },
+  'copyIn.symlink': async (p) => {
+    await symlink(text(p.link), absolutePath(p.path))
     return null
   },
 
@@ -291,6 +320,20 @@ function optionalText(value: unknown): string | undefined {
 function count(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('expected a non-negative integer')
   return value
+}
+
+/** An absolute, normalized path other than the root. */
+function absolutePath(value: unknown): string {
+  const path = text(value)
+  if (!isAbsolute(path) || posix.normalize(path) !== path || path === '/' || path.endsWith('/')) throw new Error('expected an absolute path other than /')
+  return path
+}
+
+/** A file's permission bits. */
+function fileMode(value: unknown): number {
+  const mode = count(value)
+  if (mode > 0o777) throw new Error('expected permission bits')
+  return mode
 }
 
 /** A terminal id as the host makes them; it is matched against environment entries. */

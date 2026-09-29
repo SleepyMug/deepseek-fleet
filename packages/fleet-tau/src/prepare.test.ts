@@ -116,7 +116,6 @@ test('declared services must be provided and fit, and are recorded with their fu
     assert.deepEqual(prepared.spec.services.notes?.functions, ['addNote'])
     assert.equal(prepared.spec.services.notes?.description, 'Notes.')
     assert.match(prepared.spec.services.notes?.declarations ?? '', /addNote\(text: string\): Promise<number>/u)
-    assert.equal(prepared.spec.ts, true, 'an agent with services gets the TypeScript tools')
   })
 })
 
@@ -140,20 +139,10 @@ test('modules are recorded by name and folder, with a module whose imports do no
     const prepared = prepare(request(dir, []))
     assert.ok(prepared.ok, JSON.stringify(prepared))
     assert.deepEqual(prepared.spec.modules, [{ name: 'shout', description: 'Loud.', dir: 'shout' }])
-    assert.equal(prepared.spec.ts, true)
   })
   await withAgent({ 'PROMPT.md': 'x', ...shout, 'modules/shout/index.js': 'import "not-installed"\n' }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.match(prepared.problems.join('\n'), /not-installed/u)
-  })
-})
-
-test('the TypeScript tools come only when asked for or needed', async () => {
-  await withAgent({ 'PROMPT.md': 'x' }, (dir) => {
-    const plain = prepare(request(dir, []))
-    assert.ok(plain.ok && !plain.spec.ts)
-    const asked = prepare({ ...request(dir, []), ts: true })
-    assert.ok(asked.ok && asked.spec.ts)
   })
 })

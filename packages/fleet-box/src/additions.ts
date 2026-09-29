@@ -1,8 +1,8 @@
 /**
  * What a root session's container gets beyond fleet-box's own: bind mounts,
- * environment variables and folders that another plugin asks for, such as
- * fleet-tau's snapshot of the agent a `fleet run` started and the paths its
- * arguments name. They are kept in one file per session in the dsh
+ * copies, environment variables and folders that another plugin asks for,
+ * such as fleet-tau's snapshot of the agent a `fleet run` started and the
+ * paths its arguments name. They are kept in one file per session in the dsh
  * home, and the world reads that file itself each time it creates or starts
  * the container, so a container never loses them because the plugin that
  * asked is not loaded, or not loaded yet. The additions are part of the
@@ -40,9 +40,23 @@ export interface Mount {
   readonly: boolean
 }
 
+/** A host path copied into the container. */
+export interface Copy {
+  /** Absolute host path: a file, or a folder with its files, folders and symlinks. */
+  source: string
+  /** Absolute, normalized path in the container, which the copy replaces. */
+  target: string
+}
+
 /** What a root session's container gets beyond the session folder. */
 export interface ContainerAdditions {
   mounts: Mount[]
+  /**
+   * Host paths copied into the container, through its helper, when it is
+   * created, and again whenever it is recreated; from then on each copy is
+   * the container's own. A copy may not overlap a mount or another copy.
+   */
+  copies?: Copy[]
   /** Variables every process in the container sees, the helper's and a terminal's included. */
   env?: Record<string, string>
   /** Folders made in the container, with their parents, whenever it starts; they are not part of its spec. */
@@ -58,6 +72,10 @@ const additionsSchema = z.object({
     target: containerPath,
     readonly: z.boolean(),
   }).strict()),
+  copies: z.array(z.object({
+    source: z.string().refine(isAbsolute, 'must be an absolute host path'),
+    target: containerPath,
+  }).strict()).optional(),
   env: z.record(
     z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u, 'must be a variable name').refine(name => !reservedVariable(name), 'is the container\'s own'),
     z.string().refine(value => !value.includes('\0'), 'must not hold a NUL'),
@@ -68,6 +86,21 @@ const additionsSchema = z.object({
 /** The file that holds a root session's additions. */
 export function additionsFile(home: string, session: string): string {
   return join(home, 'fleet', 'containers', `${session}.json`)
+}
+
+/** The file that names the container a root session's copies went into last. */
+function copiedFile(home: string, session: string): string {
+  return join(home, 'fleet', 'containers', `${session}.copied`)
+}
+
+/** @returns the id of the container a root session's copies went into last, if any did. */
+export async function readCopied(home: string, session: string): Promise<string | undefined> {
+  return (await readFile(copiedFile(home, session), 'utf8').catch(() => '')).trim() || undefined
+}
+
+/** Record that a root session's copies are all in a container. */
+export async function writeCopied(home: string, session: string, container: string): Promise<void> {
+  await writeFile(copiedFile(home, session), `${container}\n`, { mode: 0o600 })
 }
 
 /**
@@ -109,19 +142,29 @@ export async function writeAdditions(home: string, session: string, additions: C
 /** Remove a root session's additions, if it has any. */
 export async function removeAdditions(home: string, session: string): Promise<void> {
   await rm(additionsFile(home, session), { force: true })
+  await rm(copiedFile(home, session), { force: true })
 }
 
 /**
  * The `docker run` arguments of a container's additions, none without any,
  * so a container without additions keeps its spec.
  * @param workspace - the session folder, which no addition may cover or lie in.
- * @throws when an addition would cover the session folder or fleet-box's own folders.
+ * @throws when an addition would cover the session folder or fleet-box's own
+ * folders, or a copy would overlap a mount, whose host files it would write,
+ * or another copy.
  */
 export function additionArgs(additions: ContainerAdditions | undefined, workspace: string): string[] {
   if (additions === undefined) return []
-  for (const { target } of additions.mounts) {
+  const copies = additions.copies ?? []
+  const targets = [...additions.mounts.map(({ target }) => ({ verb: 'mounts', target })), ...copies.map(({ target }) => ({ verb: 'copies to', target }))]
+  for (const { verb, target } of targets) {
     for (const taken of [workspace, ...RESERVED]) {
-      if (overlaps(target, taken)) throw new Error(`fleet-box: a container addition mounts ${target}, which overlaps ${taken}`)
+      if (overlaps(target, taken)) throw new Error(`fleet-box: a container addition ${verb} ${target}, which overlaps ${taken}`)
+    }
+  }
+  for (const [index, { target }] of copies.entries()) {
+    for (const other of [...additions.mounts, ...copies.slice(index + 1)]) {
+      if (overlaps(target, other.target)) throw new Error(`fleet-box: a container addition copies to ${target}, which overlaps ${other.target}`)
     }
   }
   const mounts = additions.mounts.flatMap(mount => [

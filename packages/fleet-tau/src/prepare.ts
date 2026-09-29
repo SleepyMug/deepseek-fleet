@@ -34,8 +34,6 @@ export interface PrepareRequest {
   env: Record<string, string>
   /** The services fleet's plugins provide now. */
   providers: Declared[]
-  /** Whether the session gets the TypeScript tools even when the agent declares no services and ships no modules. */
-  ts?: boolean
 }
 
 export type Prepared =
@@ -99,7 +97,6 @@ export function prepare(request: PrepareRequest): Prepared {
         ...module.description === undefined ? {} : { description: module.description },
         dir: relative(join(tau.dir, 'modules'), module.root),
       })),
-      ts: request.ts === true || services.length > 0 || modules.length > 0,
       env: { ...run?.env },
       paths: (run?.paths ?? []).map(({ name, type, role, host }) => ({ name, type, role, host })),
     },

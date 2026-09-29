@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import type { RunnerReply, RunnerRequest, ServiceModule } from './protocol.ts'
-import { isPackageSpec } from './protocol.ts'
 import { replyLine } from './report.ts'
 
 const RUNNER = fileURLToPath(new URL('./main.js', import.meta.url))
@@ -32,16 +31,11 @@ before(async () => {
     })
   })
   await new Promise<void>((resolve) => { server.listen(socketPath, resolve) })
-  // An agent module, and a package as `install` would have left it.
+  // An agent module.
   await mkdir(join(dir, 'modules', 'shout'), { recursive: true })
   await writeFile(join(dir, 'modules', 'shout', 'package.json'), JSON.stringify({ name: 'shout', description: 'Loud text.', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }))
   await writeFile(join(dir, 'modules', 'shout', 'index.js'), 'export function shout(text) { return `${text.toUpperCase()}!!!` }\n')
   await writeFile(join(dir, 'modules', 'shout', 'index.d.ts'), 'export declare function shout(text: string): string;\n')
-  await mkdir(join(dir, 'root', 'node_modules', 'tiny'), { recursive: true })
-  await writeFile(join(dir, 'root', 'package.json'), JSON.stringify({ private: true, dependencies: { tiny: '^1.0.0', '@types/tiny': '^1.0.0' } }))
-  await writeFile(join(dir, 'root', 'node_modules', 'tiny', 'package.json'), JSON.stringify({ name: 'tiny', version: '1.0.0', description: 'Tiny.', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }))
-  await writeFile(join(dir, 'root', 'node_modules', 'tiny', 'index.js'), 'export const answer = 42\n')
-  await writeFile(join(dir, 'root', 'node_modules', 'tiny', 'index.d.ts'), 'export declare const answer: number;\n')
 })
 
 after(async () => {
@@ -78,29 +72,27 @@ function runner(request: RunnerRequest, options: { terminateAfterMs?: number } =
   })
 }
 
-test('a program imports its services, the agent\'s modules and installed packages, and returns JSON', async () => {
+test('a program imports its services and the agent\'s modules, and returns JSON', async () => {
   const reply = await runner({
     command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, input: { text: 'milk' },
     source: [
       'import { addNote } from "@svc/notes"',
       'import { shout } from "shout"',
-      'import { answer } from "tiny"',
       'export async function main(input: { text: string }) {',
       '  console.log("adding")',
       '  const note = await addNote(input.text)',
-      '  return { note, loud: shout(note.text), answer }',
+      '  return { note, loud: shout(note.text) }',
       '}',
     ].join('\n'),
   })
-  assert.deepEqual(reply, { ok: true, value: { note: { id: 7, text: 'milk' }, loud: 'MILK!!!', answer: 42 }, stdout: 'adding\n', stderr: '', durationMs: (reply as { durationMs: number }).durationMs })
+  assert.deepEqual(reply, { ok: true, value: { note: { id: 7, text: 'milk' }, loud: 'MILK!!!' }, stdout: 'adding\n', stderr: '', durationMs: (reply as { durationMs: number }).durationMs })
   assert.deepEqual(calls.at(-1), { service: 'notes', function: 'addNote', args: ['milk'] })
 })
 
-test('the packages a program may import are listed, type packages left out', async () => {
+test('the packages a program may import are listed', async () => {
   const reply = await runner({ command: 'modules', ...packages() })
   assert.ok(reply.ok && 'modules' in reply)
-  assert.deepEqual(reply.modules.map(module => module.specifier), ['@svc/notes', 'shout', 'tiny'])
-  assert.equal(reply.modules.find(module => module.specifier === 'tiny')?.packageRoot, join(dir, 'root', 'node_modules', 'tiny'))
+  assert.deepEqual(reply.modules.map(module => module.specifier), ['@svc/notes', 'shout'])
   // A service's package stays readable after the run, unlike the one ts-executor wrote for it.
   const notesRoot = reply.modules.find(module => module.specifier === '@svc/notes')?.packageRoot
   assert.equal(notesRoot, join(dir, 'root', 'svc', 'notes'))
@@ -127,16 +119,6 @@ test('a program past its time, or whose call is cancelled, is killed and reporte
   assert.ok(!cancelled.ok)
   assert.equal(cancelled.error.name, 'ExecutionAbortedError')
   assert.ok(Date.now() - started < 20_000)
-})
-
-test('install takes registry packages only', async () => {
-  for (const spec of ['lodash', 'lodash@4.17.21', '@types/node@^26', 'left-pad@latest', 'react@>=18 <19']) assert.ok(isPackageSpec(spec), spec)
-  for (const spec of ['-g', '../x', '/tmp/x', 'file:x', 'npm:lodash', 'user/repo', 'git+https://x', 'https://x/y.tgz', 'x.tgz', 'lodash@github:x/y', '']) {
-    assert.ok(!isPackageSpec(spec), spec)
-  }
-  const reply = await runner({ command: 'install', root: join(dir, 'root'), packages: ['../evil'], timeoutMs: 1000 })
-  assert.ok(!reply.ok)
-  assert.match(reply.error.message, /not a registry package: \.\.\/evil/u)
 })
 
 test('a reply over the limit is shrunk until it fits', () => {

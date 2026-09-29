@@ -50,22 +50,19 @@ export class FleetControl {
   async run(request: RequestOf<'run'>, signal: AbortSignal, started: (session: string) => void): Promise<Results['run']> {
     if (!isAbsolute(request.cwd)) throw new ControlError('fleet/bad-request', `the folder must be an absolute path: ${request.cwd}`)
     const { task } = request
-    let prompt: string
-    // What the session gets beyond its prompt, and its title; neither for a plain prompt run.
-    let spec: Spec | undefined
+    // What the session gets, its prompt included, and its title, which only an agent directory gives.
+    let spec: Spec
     let title: string | undefined
     if ('prompt' in task) {
-      prompt = task.prompt
-      if (request.ts) spec = promptSpec(prompt)
+      spec = promptSpec(task.prompt)
     } else {
       if (!isAbsolute(task.agent) || !isAbsolute(task.callerCwd)) {
         throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
       }
       const prepared = await this.ctx.fleetTau.prepare({
-        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, cwd: request.cwd, env: task.env, ts: request.ts,
+        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, cwd: request.cwd, env: task.env,
       })
       if (!prepared.ok) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${prepared.problems.join('\n  ')}`)
-      prompt = prepared.spec.prompt
       spec = prepared.spec
       title = prepared.title
     }
@@ -82,7 +79,7 @@ export class FleetControl {
         })
       }
       // Once the session exists it gets its task even if the client has gone, which then only stops the wait.
-      await this.prompt(sessionId, prompt, 'queue', UNCANCELLED)
+      await this.prompt(sessionId, spec.prompt, 'queue', UNCANCELLED)
     } catch (error) {
       // Without its task the session would sit empty in the web UI, and the client never learns it.
       await this.ctx.workspaceRegistry.archiveSession(sessionId).catch((archiveError: unknown) => {
@@ -96,20 +93,20 @@ export class FleetControl {
   }
 
   /**
-   * Make a session in a workspace, its agent's spec stored first under the
-   * id it will have. A spec stays with a session that was made, even if
-   * creating it failed later on, and goes with one that was not. A command
-   * that has gone stops the spec from being stored, which can take a while
-   * for large `in` paths.
+   * Make a session in a workspace, its spec stored first under the id it
+   * will have. A spec stays with a session that was made, even if creating
+   * it failed later on, and goes with one that was not. A command that has
+   * gone stops the spec from being stored, which can take a while for large
+   * `in` paths.
    */
-  private async create(workspaceId: WorkspaceId, spec: Spec | undefined, signal: AbortSignal): Promise<SessionId> {
+  private async create(workspaceId: WorkspaceId, spec: Spec, signal: AbortSignal): Promise<SessionId> {
     // The session controller's own format for new sessions.
     const sessionId = `session-${randomUUID()}` as SessionId
-    if (spec !== undefined) await this.ctx.fleetTau.create(sessionId, spec, signal)
+    await this.ctx.fleetTau.create(sessionId, spec, signal)
     try {
       await this.ctx.sessionController.create({ sessionId, workspaceId })
     } catch (error) {
-      if (spec !== undefined && !await this.exists(sessionId, signal).catch(() => true)) {
+      if (!await this.exists(sessionId, signal).catch(() => true)) {
         await this.ctx.fleetTau.remove(sessionId).catch((removeError: unknown) => {
           this.ctx.logger.warn(`fleet-control: could not remove the spec of ${sessionId}, which was never made: ${message(removeError)}`)
         })

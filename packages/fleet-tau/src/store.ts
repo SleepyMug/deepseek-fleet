@@ -5,26 +5,28 @@
  * (./prepare.ts), then stores what the session needs before the session
  * exists, so nothing of the session ever runs without it. A session's folder
  * in the store, `$DSH_HOME/fleet/sessions/<id>/`, holds `spec.json`
- * (./spec.ts) and `agent/`, a snapshot of the agent's PROMPT.md, tau.json,
- * skills, service manifests and modules, with symlinks followed, which the session's container sees
- * read-only at {@link AGENT_VIEW} through fleet-box's container additions,
- * and `in/`, a snapshot of each `in` path (./inputs.ts).
+ * (./spec.ts), `agent/`, a snapshot of the agent's PROMPT.md, tau.json,
+ * skills, service manifests and modules, with symlinks followed, and `in/`,
+ * a snapshot of each `in` path (./inputs.ts). Nothing of it is mounted:
+ * fleet-box copies the snapshots into each container of the session when it
+ * creates the container (fleet-box's container additions), the agent's at
+ * {@link AGENT_VIEW}, and whatever the agent does to its copies stays there.
  * fleet-tau's agent plugin (./agent.ts) gives the session's agents what the
  * spec holds, whenever an agent is created or resumed.
  *
  * The container gets the agent's path arguments too, where the caller has
  * them, each according to its role; tau leaves how to the runtime. An `in`
- * path is its snapshot, mounted read-only, so the agent sees the input as it
- * was when it was given, however long the session lasts; an `inout` path is
- * mounted from the caller; and the folder an `out` path goes in is made. The
- * container gets the caller's values of the variables tau.json lists as
- * well. After a completed turn, the command that waited on it has the store
- * publish the `out` paths ({@link FleetTau.publish}).
+ * path is its snapshot, so the agent sees the input as it was when it was
+ * given, however long the session lasts; an `inout` path is mounted from
+ * the caller; and the folder an `out` path goes in is made. The container
+ * gets the caller's values of the variables tau.json lists as well. After a
+ * completed turn, the command that waited on it has the store publish the
+ * `out` paths ({@link FleetTau.publish}).
  *
  * A fork of such a session has no folder of its own: it takes its source's
- * spec, and its container the same snapshots, of the agent and the `in`
- * paths, which never change; but none of its other paths or its variables,
- * which belong to the run that started the source.
+ * spec, and its container copies of the source's snapshots, which never
+ * change; but none of its other paths or its variables, which belong to the
+ * run that started the source.
  * @module fleet-tau/store
  */
 
@@ -36,7 +38,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type { ContainerAdditions, Mount } from 'fleet-box/world'
+import type { ContainerAdditions, Copy, Mount } from 'fleet-box/world'
 import { z } from 'zod'
 import { InputError, snapshot } from './inputs.ts'
 import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, replace } from './outputs.ts'
@@ -247,25 +249,26 @@ export class FleetTau extends Service {
   }
 
   /**
-   * A fork's container additions: its source's snapshots, of the agent and
-   * of its `in` paths, since a fork has no folder of its own; but none of
-   * its other paths or its variables.
+   * A fork's container additions: copies of its source's snapshots, since a
+   * fork has no folder of its own; but none of its other paths or its
+   * variables.
    */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
     await this.self.fleetBox.configure(fork, this.additions(found.owner, found.spec, true))
   }
 
   /**
-   * A session's container additions: the snapshots of its agent and its
-   * `in` paths, and, unless it is a fork's, its other paths and variables.
-   * The container sees each path where the caller has it.
+   * A session's container additions: copies of its snapshots, of the agent
+   * and its `in` paths, and, unless it is a fork's, its other paths and
+   * variables. The container sees each path where the caller has it.
    */
   private additions(owner: SessionId, spec: Spec, fork = false): ContainerAdditions {
     const folder = this.folder(owner)
-    const mounts: Mount[] = [{ source: join(folder, 'agent'), target: AGENT_VIEW, readonly: true }]
+    const mounts: Mount[] = []
+    const copies: Copy[] = [{ source: join(folder, 'agent'), target: AGENT_VIEW }]
     const directories: string[] = []
     for (const path of spec.paths) {
-      if (path.role === 'in') mounts.push({ source: join(folder, 'in', path.name), target: path.host, readonly: true })
+      if (path.role === 'in') copies.push({ source: join(folder, 'in', path.name), target: path.host })
       else if (fork) continue
       else if (path.role === 'inout') mounts.push({ source: path.host, target: path.host, readonly: false })
       // The folder an out path goes in, unless it is the container's root, which is always there.
@@ -274,6 +277,7 @@ export class FleetTau extends Service {
     const env = fork ? {} : spec.env
     return {
       mounts,
+      copies,
       ...Object.keys(env).length === 0 ? {} : { env },
       ...directories.length === 0 ? {} : { directories: [...new Set(directories)] },
     }

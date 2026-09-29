@@ -7,8 +7,7 @@
  * Node process of its own, and it imports:
  * - each service the agent declares as `@svc/<name>`, whose calls go to
  *   fleet-box's service socket at $TAU_SOCKET, and from there to the host;
- * - each module the agent ships, by its package name;
- * - each package `install` added to the package root, by its name.
+ * - each module the agent ships, by its package name.
  *
  * A SIGTERM, which the host sends when a call is cancelled or runs out of
  * time, ends the program, and every process in its process group, before
@@ -16,21 +15,12 @@
  * @module fleet-box/runner/main
  */
 
-import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ExecutionAbortedError, TSFuncExecutor, hostModule, packageModule, type HostModule, type JsonValue } from '@sleepymug/ts-executor'
-import { isPackageSpec, packageName, type Installed, type ModuleSummary, type RunnerReply, type RunnerRequest } from './protocol.ts'
-import { OutputCapture, capText, outputCaptures, replyLine, reportFailure, reportResult } from './report.ts'
+import type { ModuleSummary, RunnerReply, RunnerRequest } from './protocol.ts'
+import { outputCaptures, replyLine, reportFailure, reportResult } from './report.ts'
 import { callService } from './tau-client.ts'
-
-type Packages = Extract<RunnerRequest, { command: 'modules' | 'execute' }>
-
-/** Characters of npm's output an install reports. */
-const INSTALL_LOG_CHARS = 8 * 1024
-/** Time npm gets to stop once asked to. */
-const NPM_GRACE_MS = 2000
 
 const cancelled = new AbortController()
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => { cancelled.abort(new Error(`the runner got ${signal}`)) })
@@ -51,7 +41,6 @@ async function run(request: RunnerRequest): Promise<RunnerReply> {
       return { ok: true, modules: listed.map(module => ({ ...summary(module), packageRoot: readable.get(module.specifier) ?? module.packageRoot })) }
     })
     case 'execute': return withExecutor(request, executor => execute(executor, request))
-    case 'install': return install(request)
   }
 }
 
@@ -77,11 +66,12 @@ async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest,
 }
 
 /**
- * An executor over the package root with every package a program may import
- * registered, for one operation; the service modules it wrote are removed after.
+ * An executor over the TypeScript root with every package a program may
+ * import registered, for one operation; the service modules it wrote are
+ * removed after.
  */
-async function withExecutor(request: Packages, operation: (executor: TSFuncExecutor) => Promise<RunnerReply>): Promise<RunnerReply> {
-  await ensureRoot(request.root)
+async function withExecutor(request: RunnerRequest, operation: (executor: TSFuncExecutor) => Promise<RunnerReply>): Promise<RunnerReply> {
+  await mkdir(request.root, { recursive: true })
   const executor = new TSFuncExecutor({ resolutionRoot: request.root })
   const services: HostModule[] = []
   try {
@@ -101,13 +91,7 @@ async function withExecutor(request: Packages, operation: (executor: TSFuncExecu
       services.push(module)
       executor.modules.register(module)
     }
-    const taken = new Set(request.services.map(service => `@svc/${service.name}`))
     for (const module of request.modules) {
-      taken.add(module.name)
-      executor.modules.register(packageModule({ specifier: module.name, root: module.root, ...module.description === undefined ? {} : { description: module.description } }))
-    }
-    for (const module of await installedPackages(request.root)) {
-      if (taken.has(module.name)) continue
       executor.modules.register(packageModule({ specifier: module.name, root: module.root, ...module.description === undefined ? {} : { description: module.description } }))
     }
     return await operation(executor)
@@ -121,7 +105,7 @@ async function withExecutor(request: Packages, operation: (executor: TSFuncExecu
  * the one ts-executor imports is written for one run and removed after it.
  * @returns each service's folder, by specifier.
  */
-async function servicePackages(request: Packages): Promise<Map<string, string>> {
+async function servicePackages(request: RunnerRequest): Promise<Map<string, string>> {
   const folders = new Map<string, string>()
   for (const service of request.services) {
     const folder = join(request.root, 'svc', service.name)
@@ -132,106 +116,6 @@ async function servicePackages(request: Packages): Promise<Map<string, string>> 
     folders.set(`@svc/${service.name}`, folder)
   }
   return folders
-}
-
-/** The package root, with a package.json of its own for npm to add to. */
-async function ensureRoot(root: string): Promise<void> {
-  await mkdir(root, { recursive: true })
-  const manifest = join(root, 'package.json')
-  if (!existsSync(manifest)) await writeFile(manifest, `${JSON.stringify({ private: true, description: 'Packages installed with ts_install' }, null, 2)}\n`)
-}
-
-/** The packages the root's package.json depends on and node_modules holds, but not type packages, which nothing imports. */
-async function installedPackages(root: string): Promise<{ name: string; root: string; description?: string }[]> {
-  let dependencies: Record<string, unknown>
-  try {
-    dependencies = (JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { dependencies?: Record<string, unknown> }).dependencies ?? {}
-  } catch {
-    return []
-  }
-  const packages: { name: string; root: string; description?: string }[] = []
-  for (const name of Object.keys(dependencies).sort()) {
-    if (name.startsWith('@types/')) continue
-    const folder = join(root, 'node_modules', name)
-    const manifest = await readManifest(folder)
-    if (manifest === undefined) continue
-    packages.push({ name, root: folder, ...typeof manifest.description === 'string' ? { description: manifest.description } : {} })
-  }
-  return packages
-}
-
-/** Add packages to the root with npm, and say what each one is now. */
-async function install(request: Extract<RunnerRequest, { command: 'install' }>): Promise<RunnerReply> {
-  const refused = request.packages.filter(spec => !isPackageSpec(spec))
-  if (request.packages.length === 0 || refused.length > 0) {
-    return { ok: false, error: { name: 'TypeError', message: request.packages.length === 0 ? 'name at least one package' : `not a registry package: ${refused.join(', ')}` } }
-  }
-  await ensureRoot(request.root)
-  const log = new OutputCapture(INSTALL_LOG_CHARS)
-  const outcome = await npm(['install', '--no-audit', '--no-fund', '--no-update-notifier', '--save', ...request.packages], request.root, log, request.timeoutMs)
-  if (outcome !== 0) {
-    const reason = outcome === 'timeout' ? `npm ran longer than ${request.timeoutMs / 1000} s and was stopped` : `npm install failed (${outcome})`
-    return { ok: false, error: { name: 'InstallError', message: reason, stderr: log.text() } }
-  }
-  const installed: Installed[] = []
-  for (const name of request.packages.map(packageName)) {
-    const manifest = await readManifest(join(request.root, 'node_modules', name))
-    const version = typeof manifest?.version === 'string' ? manifest.version : 'unknown'
-    installed.push({ name, version, typed: manifest !== undefined && await typed(request.root, name, manifest) })
-  }
-  return { ok: true, installed, log: capText(log.text(), INSTALL_LOG_CHARS) }
-}
-
-/**
- * Run npm in its own process group, its output into `log`.
- * @returns its exit code, `timeout`, or the signal that ended it.
- */
-function npm(args: string[], cwd: string, log: OutputCapture, timeoutMs: number): Promise<number | string> {
-  return new Promise((resolve) => {
-    const child = spawn('npm', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
-    child.stdout.setEncoding('utf8').on('data', log.push)
-    child.stderr.setEncoding('utf8').on('data', log.push)
-    let timedOut = false
-    const stop = (): void => {
-      const group = child.pid
-      if (group === undefined) return
-      try {
-        process.kill(-group, 'SIGTERM')
-      } catch {}
-      setTimeout(() => { try { process.kill(-group, 'SIGKILL') } catch {} }, NPM_GRACE_MS).unref()
-    }
-    const timer = setTimeout(() => {
-      timedOut = true
-      stop()
-    }, timeoutMs)
-    cancelled.signal.addEventListener('abort', stop, { once: true })
-    child.once('error', (error) => {
-      clearTimeout(timer)
-      log.push(`${error.message}\n`)
-      resolve(`could not start npm: ${error.message}`)
-    })
-    child.once('close', (code, signal) => {
-      clearTimeout(timer)
-      resolve(timedOut ? 'timeout' : code ?? signal ?? 'unknown')
-    })
-  })
-}
-
-/** Whether a package brings type declarations, of its own or as its `@types/` package. */
-async function typed(root: string, name: string, manifest: Record<string, unknown>): Promise<boolean> {
-  if (typeof manifest.types === 'string' || typeof manifest.typings === 'string') return true
-  if (JSON.stringify(manifest.exports ?? null).includes('"types"')) return true
-  if (existsSync(join(root, 'node_modules', name, 'index.d.ts'))) return true
-  const typesName = name.startsWith('@') ? name.slice(1).replace('/', '__') : name
-  return existsSync(join(root, 'node_modules', '@types', typesName, 'package.json'))
-}
-
-async function readManifest(folder: string): Promise<Record<string, unknown> | undefined> {
-  try {
-    return JSON.parse(await readFile(join(folder, 'package.json'), 'utf8')) as Record<string, unknown>
-  } catch {
-    return undefined
-  }
 }
 
 function summary(module: { specifier: string; packageRoot: string; description?: string }): ModuleSummary {

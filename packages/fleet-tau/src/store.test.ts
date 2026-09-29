@@ -75,7 +75,8 @@ test('a run is read in a worker, and its spec is stored with a snapshot of the a
   assert.equal(await readFile(join(folder, 'agent', 'PROMPT.md'), 'utf8'), 'Greet ${name}.')
   assert.ok((await stat(join(folder, 'agent', 'skills', 'shout', 'SKILL.md'))).isFile())
   await assert.rejects(stat(join(folder, 'agent', 'notes.txt')))
-  assert.deepEqual(configured.get('session-a'), { mounts: [{ source: join(folder, 'agent'), target: '/opt/fleet/agent', readonly: true }] })
+  // Nothing of the store is mounted: fleet-box copies the snapshot into the container.
+  assert.deepEqual(configured.get('session-a'), { mounts: [], copies: [{ source: join(folder, 'agent'), target: '/opt/fleet/agent' }] })
 
   assert.deepEqual((await tau.specOf(headers['session-a']!))?.spec, prepared.spec)
   assert.equal(await tau.specOf(headers['session-web']!), undefined)
@@ -161,7 +162,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await writeFile(report, 'old report')
     const summary = join(dir, 'summary.md')
     const spec: Spec = {
-      version: 3, args: [], prompt: 'x', skills: [], services: {}, modules: [], ts: false, env: { LANG: 'C.UTF-8' },
+      version: 3, args: [], prompt: 'x', skills: [], services: {}, modules: [], env: { LANG: 'C.UTF-8' },
       paths: [
         { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md') },
         { name: 'data', type: 'dir', role: 'inout', host: join(dir, 'data') },
@@ -171,11 +172,12 @@ test('a run\'s paths reach its container, and its outputs are published once per
     }
     await tau.create('session-p' as SessionId, spec)
     const folder = join(home, 'fleet', 'sessions', 'session-p')
-    const agentMount = { source: join(folder, 'agent'), target: '/opt/fleet/agent', readonly: true }
-    // An in path is its snapshot, which the agent cannot change.
-    const rulesMount = { source: join(folder, 'in', 'rules'), target: join(dir, 'rules.md'), readonly: true }
+    const agentCopy = { source: join(folder, 'agent'), target: '/opt/fleet/agent' }
+    // An in path is its snapshot, which fleet-box copies into the container as it does the agent's.
+    const rulesCopy = { source: join(folder, 'in', 'rules'), target: join(dir, 'rules.md') }
     assert.deepEqual(configured.get('session-p'), {
-      mounts: [agentMount, rulesMount, { source: join(dir, 'data'), target: join(dir, 'data'), readonly: false }],
+      mounts: [{ source: join(dir, 'data'), target: join(dir, 'data'), readonly: false }],
+      copies: [agentCopy, rulesCopy],
       env: { LANG: 'C.UTF-8' },
       directories: [join(dir, 'out'), dir],
     })
@@ -207,11 +209,11 @@ test('a run\'s paths reach its container, and its outputs are published once per
     assert.equal(await readFile(report, 'utf8'), 'new report')
     assert.deepEqual((await readdir(join(home, 'fleet', 'sessions', 'session-p'))).sort(), ['agent', 'in', 'published.json', 'spec.json'])
 
-    // A fork of the session takes its spec and its snapshots, but none of its other paths or its variables, and publishes nothing.
+    // A fork of the session takes its spec and copies of its snapshots, but none of its other paths or its variables, and publishes nothing.
     const found = await tau.specOf(header('session-p-fork', { cwd: '/w', parentSession: 'session-p' as SessionId }))
     assert.equal(found?.owner, 'session-p')
     await tau.configureFork('session-p-fork' as SessionId, found!)
-    assert.deepEqual(configured.get('session-p-fork'), { mounts: [agentMount, rulesMount] })
+    assert.deepEqual(configured.get('session-p-fork'), { mounts: [], copies: [agentCopy, rulesCopy] })
     const copiedBefore = copied.length
     assert.deepEqual(await tau.publish('session-p-fork' as SessionId, 11), [])
     assert.equal(copied.length, copiedBefore)
@@ -240,7 +242,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
 
     // The container's root is always there, so an out path directly in it needs no folder made.
     await tau.create('session-root' as SessionId, { ...spec, env: {}, paths: [{ name: 'top', type: 'file', role: 'out', host: '/top.md' }] })
-    assert.deepEqual(configured.get('session-root'), { mounts: [{ ...agentMount, source: join(home, 'fleet', 'sessions', 'session-root', 'agent') }] })
+    assert.deepEqual(configured.get('session-root'), { mounts: [], copies: [{ ...agentCopy, source: join(home, 'fleet', 'sessions', 'session-root', 'agent') }] })
 
     // An in path that cannot be copied is the caller's to fix, and leaves nothing behind.
     await mkdir(join(dir, 'odd'))

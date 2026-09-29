@@ -1,13 +1,13 @@
 /**
  * Snapshotting an agent's `in` paths when its session is made: each is
- * copied into the session's folder in the store, and the container mounts
- * the copy read-only where the caller has the path. The caller's path is
- * followed if it is a symlink, as tau follows it; a symlink inside it is
- * copied as the link it is, as a mount would show it, never as what it
- * leads to, which could be anywhere on the host. A copy is plain files,
- * folders and symlinks, so a device, a pipe or a socket in it refuses it.
- * Each folder keeps its mode, but stays writable by its owner, so the store
- * can remove it.
+ * copied into the session's folder in the store, and fleet-box copies the
+ * snapshot into each of the session's containers, where the caller has the
+ * path, when it creates the container. The caller's path is followed if it
+ * is a symlink, as tau follows it; a symlink inside it is copied as the link
+ * it is, never as what it leads to, which could be anywhere on the host. A
+ * copy is plain files, folders and symlinks, so a device, a pipe or a socket
+ * in it refuses it. Each folder keeps its mode, but stays writable by its
+ * owner, so the store can remove it.
  * @module fleet-tau/inputs
  */
 

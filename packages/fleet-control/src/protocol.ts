@@ -51,7 +51,7 @@ export const requestSchema = z.discriminatedUnion('op', [
    * gives it the TypeScript tools, which an agent declaring services or
    * shipping modules gets anyway.
    */
-  z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, ts: z.boolean(), wait: z.boolean() }),
+  z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
   /** Send `prompt` to a session, queued as a later turn or, with `steer`, into the running one. */
   z.object({ op: z.literal('send'), session, prompt, steer: z.boolean(), wait: z.boolean() }),
   /** Wait until a session is idle, and report its last turn. */

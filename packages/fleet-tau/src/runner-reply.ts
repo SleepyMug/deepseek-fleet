@@ -22,7 +22,6 @@ const failureSchema = z.object({
 const replySchema: z.ZodType<RunnerReply> = z.union([
   z.object({ ok: z.literal(true), modules: z.array(z.object({ specifier: z.string(), packageRoot: z.string(), description: z.string().optional() })) }),
   z.object({ ok: z.literal(true), value: z.unknown(), stdout: z.string(), stderr: z.string(), durationMs: z.number() }),
-  z.object({ ok: z.literal(true), installed: z.array(z.object({ name: z.string(), version: z.string(), typed: z.boolean() })), log: z.string() }),
   z.object({ ok: z.literal(false), error: failureSchema }),
 ])
 
