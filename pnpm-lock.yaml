@@ -172,6 +172,9 @@ importers:
       '@types/node':
         specifier: 26.6.2
         version: 26.6.2
+      fleet-setup:
+        specifier: workspace:*
+        version: link:packages/fleet-setup
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -282,6 +285,8 @@ importers:
       fleet-tau:
         specifier: workspace:*
         version: link:../fleet-tau
+
+  packages/fleet-signin:
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.4

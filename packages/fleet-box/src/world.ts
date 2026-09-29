@@ -261,8 +261,8 @@ export class FleetBox extends Service {
       found = await this.docker(['image', 'inspect', '--format', '{{.Id}} {{json .Config}}', image])
     } catch (error) {
       if (!/no such image/iu.test(message(error))) throw error
-      throw new Error(`fleet-box: the session image ${image} is not built; build it with \`fleet-setup image\`, `
-        + 'installed in this profile: `dsh plugin --profile <profile> exec fleet-setup image`')
+      throw new Error(`fleet-box: the session image ${image} is not built; build it with \`fleet-setup image\` `
+        + 'from the fleet checkout: `pnpm exec fleet-setup image`')
     }
     const space = found.indexOf(' ')
     const labels = (JSON.parse(found.slice(space + 1)) as { Labels?: Record<string, string> | null } | null)?.Labels ?? {}

@@ -2,13 +2,9 @@
   "name": "fleet-setup",
   "version": "0.0.1",
   "private": true,
-  "description": "Setup for the fleet profile: `fleet-setup image` builds the session image fleet-box uses, `fleet-setup signin` signs in to a model provider",
+  "description": "Setup for the fleet profile outside dsh: `fleet-setup image` builds the session image fleet-box uses",
   "type": "module",
   "exports": {
-    "./signin": {
-      "types": "./lib/signin.d.ts",
-      "default": "./lib/signin.js"
-    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -17,8 +13,7 @@
   "files": [
     "bin.js",
     "image",
-    "lib",
-    "signin.patch.yml"
+    "lib"
   ],
   "scripts": {
     "build": "tsc -b",
@@ -27,18 +22,5 @@
   "dependencies": {
     "fleet-box": "workspace:*",
     "fleet-tau": "workspace:*"
-  },
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-authorization": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-credentials": "0.1.7-rc.2",
-    "@deepseek-ai/schemastery": "3.18.4"
-  },
-  "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/dsh-authorization": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-cmdline": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-credentials": "0.1.7-rc.2",
-    "@deepseek-ai/schemastery": "3.18.4"
   }
 }

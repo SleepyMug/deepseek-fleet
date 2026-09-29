@@ -1,28 +1,18 @@
 /**
- * `fleet-setup`: what the fleet profile needs on this machine besides its
- * installed packages. `image` builds the session image fleet-box uses, with
- * this installation's runtime on an environment (./image.ts). `signin`
- * signs in to a model provider through dsh's own sign-in flows, by booting
- * dsh in a minimal profile of its own (`fleet-signin`) with the sign-in app
- * overlaid. Run it from the profile it is installed in,
- * `dsh plugin --profile fleet exec fleet-setup <part>`, or as
- * `node <fleet-setup>/bin.js <part>` with dsh on PATH.
+ * `fleet-setup`: what the fleet profile needs on this machine outside dsh.
+ * `image` builds the session image fleet-box uses, with the runtime of this
+ * checkout's packages on an environment (./image.ts). Run it from the fleet
+ * checkout, `pnpm exec fleet-setup <part>`. Signing in to a model provider
+ * happens in dsh, in a profile of its own (fleet-signin's app).
  * @module fleet-setup/cli
  */
 
-import { execFile, spawn } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { execFile } from 'node:child_process'
 import { parseArgs } from 'node:util'
 import { DEFAULT_IMAGE } from 'fleet-box/image'
 import { buildImage } from './image.ts'
 
 const DOCKER = 'docker'
-/** dsh from PATH; `dsh plugin … exec` runs this command with the invoking shell's PATH. */
-const DSH = 'dsh'
-/** The minimal profile the sign-in app boots in: dsh-base with this package installed. */
-const SIGNIN_PROFILE = 'fleet-signin'
-const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
-const SIGNIN_PATCH = fileURLToPath(new URL('../signin.patch.yml', import.meta.url))
 
 const EXIT_OK = 0
 const EXIT_FAILED = 1
@@ -33,8 +23,6 @@ const USAGE = [
   '  image [--from <image>] [--tag <tag>]',
   '                     build the session image: fleet\'s runtime on its own environment, or on the --from image;',
   `                     tagged ${DEFAULT_IMAGE}, which fleet-box uses, or --tag, which its \`image\` setting must name`,
-  '  signin [provider]  sign in to a model provider; the default is openai-codex, a ChatGPT subscription;',
-  '                     `signin --help` lists the providers',
 ].join('\n')
 
 async function main(args: readonly string[]): Promise<number> {
@@ -49,7 +37,6 @@ async function main(args: readonly string[]): Promise<number> {
     await buildImage({ docker: DOCKER, tag: options.tag ?? DEFAULT_IMAGE, ...options.from === undefined ? {} : { from: options.from }, log: say })
     return EXIT_OK
   }
-  if (part === 'signin') return signin(rest)
   const help = args.length === 1 && (part === '--help' || part === '-h')
   if (!help && args.length > 0) say(`Unexpected arguments: ${args.join(' ')}`)
   say(USAGE)
@@ -64,41 +51,6 @@ function imageOptions(args: string[]): { from?: string; tag?: string } | undefin
     say(error instanceof Error ? error.message : String(error))
     return undefined
   }
-}
-
-/**
- * Point the sign-in profile at this copy of fleet-setup, then run the app in it.
- * @param args - passed to the app: a provider, or `--help`.
- * @returns the app's exit code.
- */
-async function signin(args: readonly string[]): Promise<number> {
-  // Idempotent, and it keeps the profile on the same copy as this command.
-  const added = await run(['plugin', '--profile', SIGNIN_PROFILE, 'add', PACKAGE_DIR], 'pipe')
-  if (added.code !== 0) throw new Error(`fleet-setup: could not prepare the ${SIGNIN_PROFILE} profile:\n${added.output.trim()}`)
-  // Ctrl-C reaches dsh as well, which owns the attempt; wait for its answer instead of dying first.
-  const ignore = (): void => {}
-  process.on('SIGINT', ignore)
-  try {
-    return (await run(['--profile', SIGNIN_PROFILE, '--patch', SIGNIN_PATCH, ...args], 'inherit')).code
-  } finally {
-    process.off('SIGINT', ignore)
-  }
-}
-
-/** Run dsh; `pipe` collects its output, `inherit` gives it the terminal. */
-function run(args: readonly string[], stdio: 'pipe' | 'inherit'): Promise<{ code: number; output: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(DSH, args, { stdio: stdio === 'pipe' ? ['ignore', 'pipe', 'pipe'] : 'inherit' })
-    let output = ''
-    child.stdout?.on('data', (chunk: Buffer) => { output += chunk.toString() })
-    child.stderr?.on('data', (chunk: Buffer) => { output += chunk.toString() })
-    child.once('error', (error: NodeJS.ErrnoException) => {
-      reject(error.code === 'ENOENT'
-        ? new Error('fleet-setup: dsh is not on PATH; run this through dsh (`dsh plugin --profile <profile> exec fleet-setup …`) or put dsh on PATH')
-        : error)
-    })
-    child.once('close', (code) => { resolve({ code: code ?? EXIT_FAILED, output }) })
-  })
 }
 
 /** Fail early and plainly when the Docker daemon is not reachable, rather than on a build step. */

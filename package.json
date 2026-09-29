@@ -20,6 +20,7 @@
   "devDependencies": {
     "@deepseek-ai/dsh": "0.1.7-rc.2",
     "@types/node": "26.6.2",
+    "fleet-setup": "workspace:*",
     "typescript": "6.0.3"
   }
 }

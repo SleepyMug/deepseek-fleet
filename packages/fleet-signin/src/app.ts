@@ -1,11 +1,11 @@
 /**
- * One-shot terminal sign-in app for `ctx.authorization` flows, which
- * `fleet-setup signin` boots in a minimal dsh profile of its own through
- * `signin.patch.yml`: after startup it runs one attempt, prints the flow's
- * notices to stderr, answers its prompts from stdin, and requests exit. The
- * flow owns the credential write; a running dsh sharing the same Harness home
- * picks the record up without a restart.
- * @module fleet-setup/signin
+ * One-shot terminal sign-in app for `ctx.authorization` flows, booted as a
+ * dsh profile of its own, dsh-base with this package's bundle
+ * (`dsh fleet-signin [provider]`): after startup it runs one attempt, prints
+ * the flow's notices to stderr, answers its prompts from stdin, and requests
+ * exit. The flow owns the credential write; a running dsh sharing the same
+ * Harness home picks the record up without a restart.
+ * @module fleet-signin/app
  */
 
 import { createInterface } from 'node:readline'
@@ -41,7 +41,7 @@ export function apply(ctx: Context, config: Config): void {
   const exit = ctx.get('appExit')
   const ready = ctx.get('appReady')
   if (cmdline === undefined || exit === undefined || ready === undefined) {
-    throw new Error('fleet-signin: run it through `fleet-setup signin`; the launcher must provide ctx.cmdlineArgs, ctx.appExit and ctx.appReady')
+    throw new Error('fleet-signin: boot it as a profile of its own, `dsh fleet-signin`; the launcher must provide ctx.cmdlineArgs, ctx.appExit and ctx.appReady')
   }
   const args = cmdline.get()
   ctx.effect(() => {
@@ -63,7 +63,7 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 /**
- * @param args - the arguments after `fleet-setup signin`.
+ * @param args - the arguments after `dsh fleet-signin`.
  * @param signal - aborted when the app shuts down.
  * @returns the process exit code.
  */
@@ -107,7 +107,7 @@ function usage(ctx: Context, config: Config): void {
   const argument = (entry: AuthorizationEntry): string => entry.key.startsWith(scopePrefix) ? entry.key.slice(scopePrefix.length) : entry.key
   const width = Math.max(0, ...entries.map(entry => argument(entry).length))
   say([
-    `Usage: fleet-setup signin [provider]   (default ${config.provider}; a bare provider means ${scopePrefix}<provider>; <scope>/<id> names any flow)`,
+    `Usage: dsh fleet-signin [provider]   (default ${config.provider}; a bare provider means ${scopePrefix}<provider>; <scope>/<id> names any flow)`,
     entries.length === 0 ? 'No sign-in flows are registered.' : 'Available sign-ins:',
     ...entries.map(entry => `  ${argument(entry).padEnd(width)}  ${entry.label}`),
   ].join('\n'))
