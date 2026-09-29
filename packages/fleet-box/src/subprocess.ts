@@ -37,9 +37,9 @@ import type {
 } from '@deepseek-ai/dsh-subprocess'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
 import type {} from '@deepseek-ai/dsh-workspace'
+import { EXECUTABLE_NOT_FOUND, type SpawnParams } from 'fleet-box-helper/protocol'
 import { z } from 'zod'
 import { HelperError, type HelperConnection } from './connection.ts'
-import { EXECUTABLE_NOT_FOUND, type SpawnParams } from './helper/protocol.ts'
 import { ContainerTerminal } from './terminal.ts'
 import type { FleetBox } from './world.ts'
 

@@ -5,5 +5,5 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../fleet-box" }, { "path": "../fleet-tau" }]
+  "references": [{ "path": "../fleet-box-helper" }, { "path": "../fleet-tau-runner" }]
 }

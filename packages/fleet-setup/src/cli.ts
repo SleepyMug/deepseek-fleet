@@ -9,7 +9,7 @@
 
 import { execFile } from 'node:child_process'
 import { parseArgs } from 'node:util'
-import { DEFAULT_IMAGE } from 'fleet-box/image'
+import { DEFAULT_IMAGE } from 'fleet-box-helper/image'
 import { buildImage } from './image.ts'
 
 const DOCKER = 'docker'

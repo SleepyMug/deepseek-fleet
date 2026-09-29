@@ -2,41 +2,51 @@
  * `fleet-setup image`: build the session image fleet-box uses, outside dsh,
  * as dsh-ssh's operator installs its helper on a host. The image is an
  * environment, image/Dockerfile's own or one the caller names, with fleet's
- * runtime installed on top, from the parts its packages ship: fleet-box's
- * helper and fleet-tau's TypeScript runner. Each part labels the image with
- * its protocol, which its user checks before starting it. A build is tagged
- * only once its helper answers its handshake and its runner answers a
- * request, so a tag always names a working image. Nothing is removed: the
- * build a new one untags is left for `docker image prune`, since a
- * container may still use it.
+ * runtime on top: fleet-box's helper and fleet-tau's TypeScript runner, two
+ * packages this one depends on, each copied with the packages it depends on
+ * as they are installed here (./stage.ts), so the image runs what the host
+ * has installed. Each part labels the image with its protocol, which its
+ * user checks before starting it. A build is tagged only once its helper
+ * answers its handshake and its runner answers a request, so a tag always
+ * names a working image. Nothing is removed: the build a new one untags is
+ * left for `docker image prune`, since a container may still use it.
  * @module fleet-setup/image
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_VERSION, helperPart } from 'fleet-box/image'
-import { RUNNER_ENTRY, TS_ROOT, type RunnerRequest } from 'fleet-tau/runner'
-import { runnerPart } from 'fleet-tau/runner-image'
+import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL, PROTOCOL_VERSION } from 'fleet-box-helper/image'
+import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerRequest } from 'fleet-tau-runner/protocol'
+import { installedPackage, stagePackage } from './stage.ts'
 
-const DOCKERFILE = fileURLToPath(new URL('../image/Dockerfile', import.meta.url))
+/** This package's folder, from which its parts are found as Node finds them. */
+const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
+const DOCKERFILE = join(PACKAGE_DIR, 'image', 'Dockerfile')
 /** How long a new build's helper and runner get to answer. */
 const CHECK_TIMEOUT_MS = 60_000
 
-/**
- * A package's part of the image: a Node package that the Dockerfile's stage
- * of the same name compiles and installs.
- */
-export interface ImagePart {
-  /** Folder with the part's package.json, npm-shrinkwrap.json and tsconfig.json, and any tarball its manifest depends on under vendor/. */
-  build: string
-  /** Folder of the part's TypeScript sources; its tests (*.test.ts) are left out. */
-  sources: string
-  /** Labels the image carries for the part. */
+/** Docker reports Go's architecture names; the packages were chosen by Node's. */
+const NODE_ARCH: Record<string, string> = {
+  amd64: 'x64', arm64: 'arm64', arm: 'arm', 386: 'ia32', ppc64le: 'ppc64', s390x: 's390x', riscv64: 'riscv64', loong64: 'loong64',
+}
+
+/** A package the image holds, which the Dockerfile copies from its folder in the build context. */
+interface Part {
+  /** The package, as this one depends on it. */
+  name: string
+  /** Its folder in the build context. */
+  folder: string
+  /** Labels the image carries for it. */
   labels: Record<string, string>
 }
+
+const PARTS: Part[] = [
+  { name: 'fleet-box-helper', folder: 'helper', labels: { [PROTOCOL_LABEL]: String(PROTOCOL_VERSION) } },
+  { name: 'fleet-tau-runner', folder: 'runner', labels: { [RUNNER_PROTOCOL_LABEL]: String(RUNNER_PROTOCOL) } },
+]
 
 export interface BuildOptions {
   /** Docker CLI executable. */
@@ -56,13 +66,17 @@ export interface BuildOptions {
  * @returns the image's id.
  */
 export async function buildImage(options: BuildOptions): Promise<string> {
-  const parts: Record<string, ImagePart> = { helper: helperPart(), runner: await runnerPart() }
+  const reported = await docker(options, ['version', '--format', '{{.Server.Arch}}'])
   const work = await mkdtemp(join(tmpdir(), 'fleet-setup-image-'))
   try {
     const context = join(work, 'context')
-    await stage(context, parts)
+    await mkdir(context, { recursive: true })
+    await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
+    for (const part of PARTS) {
+      await stagePackage(await installedPackage(PACKAGE_DIR, part.name), join(context, part.folder), NODE_ARCH[reported] ?? reported)
+    }
     options.log(`fleet-setup: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
-    const id = await build(options, context, join(work, 'id'), Object.values(parts))
+    const id = await build(options, context, join(work, 'id'))
     await checkHelper(options, id)
     await checkRunner(options, id)
     const earlier = await docker(options, ['image', 'inspect', '--format', '{{.Id}}', options.tag]).catch(() => undefined)
@@ -80,23 +94,13 @@ export async function buildImage(options: BuildOptions): Promise<string> {
   }
 }
 
-/** Put the Dockerfile and each part's folder in the build context, which holds nothing else. */
-async function stage(context: string, parts: Record<string, ImagePart>): Promise<void> {
-  await mkdir(context, { recursive: true })
-  await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
-  for (const [name, part] of Object.entries(parts)) {
-    await cp(part.build, join(context, name), { recursive: true })
-    await cp(part.sources, join(context, name, 'src'), { recursive: true, filter: source => !source.endsWith('.test.ts') })
-  }
-}
-
 /** @returns the id of the image built, untagged. */
-async function build(options: BuildOptions, context: string, idFile: string, parts: ImagePart[]): Promise<string> {
+async function build(options: BuildOptions, context: string, idFile: string): Promise<string> {
   const args = [
     // A provenance attestation records when it was built, which gives an unchanged build a new id, and so recreates every container.
     'build', '--provenance=false', '--iidfile', idFile,
     ...options.from === undefined ? [] : ['--build-arg', `ENVIRONMENT=${options.from}`],
-    ...parts.flatMap(part => Object.entries(part.labels).flatMap(([name, value]) => ['--label', `${name}=${value}`])),
+    ...PARTS.flatMap(part => Object.entries(part.labels).flatMap(([name, value]) => ['--label', `${name}=${value}`])),
     context,
   ]
   const builder = spawn(options.docker, args, { stdio: ['ignore', 'inherit', 'inherit'], signal: options.signal })

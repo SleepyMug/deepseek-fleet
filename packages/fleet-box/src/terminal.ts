@@ -3,7 +3,7 @@
  * runs with a terminal of its own, driven from a pseudo-terminal on the host,
  * through which the Docker CLI relays input, output and window sizes. The
  * shell and everything it starts carry the terminal's marker
- * (./helper/protocol.ts), by which the helper finds them: `docker exec`
+ * (fleet-box-helper/protocol), by which the helper finds them: `docker exec`
  * starts them outside the helper, and a Docker CLI that ends leaves them
  * running.
  *
@@ -26,10 +26,10 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type {
   SubprocessOutcome, SubprocessTerminalActivity, SubprocessTerminalForeground, SubprocessTerminalHandle, SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
+import { TERMINAL_MARKER } from 'fleet-box-helper/protocol'
 import type { IPty } from 'node-pty'
 import { z } from 'zod'
 import { HelperError } from './connection.ts'
-import { TERMINAL_MARKER } from './helper/protocol.ts'
 import type { SessionWorld } from './world.ts'
 
 /**

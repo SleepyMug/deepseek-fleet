@@ -28,10 +28,10 @@
  * container keeps running without a helper only when dsh is killed, or exits
  * before the teardown finishes; its next use takes it over. The image, which
  * the `image` setting names, is a prerequisite built outside dsh by
- * `fleet-setup image` from the fleet-setup package (./image.ts). This
- * service checks it when it starts, and creates every container from the
- * image it checked, so a rebuild reaches containers once dsh restarts, and
- * recreates them. Without the image, or with one whose helper speaks another
+ * `fleet-setup image` from the fleet-setup package (fleet-box-helper/image).
+ * This service checks it when it starts, and creates every container from
+ * the image it checked, so a rebuild reaches containers once dsh restarts,
+ * and recreates them. Without the image, or with one whose helper speaks another
  * protocol, this service does not start, dsh's startup warning says how to
  * build it, and no session can run.
  * @module fleet-box/world
@@ -50,14 +50,14 @@ import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
+import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL } from 'fleet-box-helper/image'
+import { PROTOCOL_VERSION, SERVICE_SOCKET } from 'fleet-box-helper/protocol'
 import {
   additionArgs, mountField, readAdditions, readCopied, removeAdditions, writeAdditions, writeCopied, type ContainerAdditions, type Copy,
 } from './additions.ts'
 import { HelperConnection, type ServiceCallRequest } from './connection.ts'
 import { copyIn } from './copy-in.ts'
 import { copyOut as copyOutOf } from './copy-out.ts'
-import { PROTOCOL_VERSION, SERVICE_SOCKET } from './helper/protocol.ts'
-import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL } from './image.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
 
 export type { ContainerAdditions, Copy, Mount } from './additions.ts'
@@ -65,7 +65,7 @@ export type { ServiceCallRequest } from './calls.ts'
 
 /**
  * Serves the service calls programs in a root session's container make
- * (./helper/services.ts), for the session the container belongs to.
+ * (fleet-box-helper's services.ts), for the session the container belongs to.
  * @param root - the root session whose container the call came from, as the connection knows it.
  * @param signal - aborts when the program goes away or the container's world ends.
  * @returns the call's result, JSON; a throw's message goes back to the program.

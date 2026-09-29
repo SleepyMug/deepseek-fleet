@@ -2,9 +2,11 @@
   "files": [],
   "references": [
     { "path": "packages/fleet-box" },
+    { "path": "packages/fleet-box-helper" },
     { "path": "packages/fleet-control" },
     { "path": "packages/fleet-setup" },
     { "path": "packages/fleet-signin" },
-    { "path": "packages/fleet-tau" }
+    { "path": "packages/fleet-tau" },
+    { "path": "packages/fleet-tau-runner" }
   ]
 }

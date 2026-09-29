@@ -1,7 +1,7 @@
 /**
  * The host's end of one session container's helper. It starts the helper
  * with `docker exec --interactive`, sends it requests, and routes its answers
- * and process events (./helper/protocol.ts), and the service calls it relays
+ * and process events (fleet-box-helper/protocol), and the service calls it relays
  * to whoever serves them ({@link HelperConnection.serveCalls}). Everything
  * the helper sends is bounded and validated, since the model is root in the
  * same container.
@@ -16,9 +16,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { constants } from 'node:os'
 import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
+import { MAX_MESSAGE_BYTES, PROTOCOL_VERSION, type HostMessage } from 'fleet-box-helper/protocol'
 import { z } from 'zod'
 import { ServiceCalls, type CallHandler } from './calls.ts'
-import { MAX_MESSAGE_BYTES, PROTOCOL_VERSION, type HostMessage } from './helper/protocol.ts'
 
 /** Characters of the helper's stderr kept to explain a failed start. */
 const STDERR_TAIL = 4096

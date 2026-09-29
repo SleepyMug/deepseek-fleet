@@ -9,9 +9,9 @@
  * also watches and ends the terminals the host runs with `docker exec`
  * (./terminals.ts), which are not its processes.
  *
- * The image build compiles this directory on its own (image/helper), so it
- * imports nothing from the rest of fleet-box.
- * @module fleet-box/helper/main
+ * `fleet-setup image` installs this package in the session image with the
+ * packages it depends on, as they are installed on the host (./image.ts).
+ * @module fleet-box-helper/main
  */
 
 import { constants } from 'node:fs'
@@ -117,8 +117,8 @@ const handlers: Record<string, (params: Params, signal: AbortSignal) => Promise<
     return null
   },
 
-  // Copying a host path in (../copy-in.ts), before anything else uses the container: plain operations on
-  // absolute paths, outside dsh's file system, which has no folders, symlinks or modes to make.
+  // Copying a host path in (fleet-box's copy-in.ts), before anything else uses the container: plain
+  // operations on absolute paths, outside dsh's file system, which has no folders, symlinks or modes to make.
   'copyIn.begin': async (p) => {
     const path = absolutePath(p.path)
     await rm(path, { recursive: true, force: true })

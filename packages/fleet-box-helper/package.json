@@ -1,0 +1,32 @@
+{
+  "name": "fleet-box-helper",
+  "version": "0.0.1",
+  "private": true,
+  "description": "fleet-box's helper, which serves a session container's files and processes to the host from inside it, and where it sits in the session image, which `fleet-setup image` installs it in",
+  "type": "module",
+  "exports": {
+    "./protocol": {
+      "types": "./lib/protocol.d.ts",
+      "default": "./lib/protocol.js"
+    },
+    "./image": {
+      "types": "./lib/image.d.ts",
+      "default": "./lib/image.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2"
+  }
+}

@@ -3,7 +3,7 @@
  * process group holds it and whatever it starts, except processes that start
  * a session of their own; termination and quiescence both address that group.
  * Whatever escapes it dies when the container stops.
- * @module fleet-box/helper/processes
+ * @module fleet-box-helper/processes
  */
 
 import { spawn } from 'node:child_process'

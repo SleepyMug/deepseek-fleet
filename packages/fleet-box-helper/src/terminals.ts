@@ -15,7 +15,7 @@
  * a process that hides the marker, starts a session of its own and outlives
  * its parent between two lookups is not the terminal's; it runs until it ends
  * or the container stops.
- * @module fleet-box/helper/terminals
+ * @module fleet-box-helper/terminals
  */
 
 import { readdir, readFile } from 'node:fs/promises'

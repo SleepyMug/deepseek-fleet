@@ -19,7 +19,7 @@
  * host bounds the calls in flight, and each call's size both ways.
  *
  * Shared by the host and the helper, so it holds only types and constants.
- * @module fleet-box/helper/protocol
+ * @module fleet-box-helper/protocol
  */
 
 /** Wire version; the host refuses a helper that answers with another. */

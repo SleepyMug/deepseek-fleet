@@ -1,14 +1,14 @@
 /**
  * The host's side of one container's service calls: the calls its helper
- * relays from programs in the container (./helper/services.ts), served by a
- * handler within fixed bounds, and each answered once unless the program
- * went away. The helper is in the model's reach, so nothing it sends is
+ * relays from programs in the container (fleet-box-helper's services.ts),
+ * served by a handler within fixed bounds, and each answered once unless the
+ * program went away. The helper is in the model's reach, so nothing it sends is
  * trusted: names are checked, sizes bounded both ways, the calls in flight
  * capped, and an id already in flight gets no second answer.
  * @module fleet-box/calls
  */
 
-import { MAX_CALL_BYTES, type HostMessage } from './helper/protocol.ts'
+import { MAX_CALL_BYTES, type HostMessage } from 'fleet-box-helper/protocol'
 
 /** Calls one container may have in flight; more are refused at once. */
 const MAX_CALLS = 16

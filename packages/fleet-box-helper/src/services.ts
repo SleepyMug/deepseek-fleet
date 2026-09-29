@@ -12,7 +12,7 @@
  *
  * While the host has fallen behind reading the helper's messages, the socket
  * stops reading calls, as the processes' output does (./processes.ts).
- * @module fleet-box/helper/services
+ * @module fleet-box-helper/services
  */
 
 import { chmod, mkdir, rm } from 'node:fs/promises'

@@ -1,47 +1,19 @@
 # Session image for fleet-box, as `fleet-setup image` builds it outside dsh:
-# an environment for the model's commands, with fleet's runtime installed on
-# top: fleet-box's helper, which serves each session's files and processes
-# from inside its container, and fleet-tau's TypeScript runner, which runs
-# the model's programs there. The environment is the `environment` stage
-# below unless `--from` names an image, which the ENVIRONMENT build arg
-# puts in its place. The build context holds only a folder per part
-# (src/image.ts): its manifest, lockfile and tsconfig, any tarballs its
-# manifest depends on in vendor/, and its sources in src/.
+# an environment for the model's commands, with fleet's runtime on top:
+# fleet-box's helper, which serves each session's files and processes from
+# inside its container, and fleet-tau's TypeScript runner, which runs the
+# model's programs there. The environment is the `environment` stage below
+# unless `--from` names an image, which the ENVIRONMENT build arg puts in
+# its place. The build context holds a folder per part (src/image.ts): its
+# package, compiled into lib/, with every package it depends on as
+# installed on the host (src/stage.ts), so nothing is installed or compiled
+# here.
 
-# The Node image every stage builds on; fleet-tau's scripts/stage-runner.mjs
-# resolves the runner's lockfile with its npm.
+# The Node image the default environment builds on, whose Node the helper and the runner run on.
 ARG NODE_IMAGE=node:26.9.0-trixie-slim
 ARG ENVIRONMENT=environment
 
-# The helper: compiled from its sources, then kept with only its runtime
-# dependencies and a copy of Node under a name of its own.
-FROM ${NODE_IMAGE} AS helper
-WORKDIR /build
-COPY helper/package.json helper/npm-shrinkwrap.json ./
-RUN npm ci --no-audit --no-fund --no-update-notifier
-COPY helper/tsconfig.json ./
-COPY helper/src/ src/
-RUN npx tsc -p tsconfig.json \
- && npm prune --omit=dev --no-audit --no-fund --no-update-notifier \
- && mkdir -p /opt/fleet-box/bin /opt/fleet-box/helper \
- && cp /usr/local/bin/node /opt/fleet-box/bin/fleet-box \
- && cp -r package.json node_modules dist/. /opt/fleet-box/helper/
-
-# The TypeScript runner: ts-executor, which type-checks and runs programs,
-# and the runner that drives it, kept with only their runtime dependencies.
-# They run on the helper's Node. vendor/ holds ts-executor's tarball while
-# that is not on npm; fleet-tau's runnerPart refuses to build without it.
-FROM ${NODE_IMAGE} AS runner
-WORKDIR /build
-COPY runner/package.json runner/npm-shrinkwrap.json ./
-COPY runner/vendor/ vendor/
-RUN npm ci --no-audit --no-fund --no-update-notifier
-COPY runner/tsconfig.json ./
-COPY runner/src/ src/
-RUN npx tsc -p tsconfig.json \
- && npm prune --omit=dev --no-audit --no-fund --no-update-notifier \
- && mkdir -p /opt/fleet/runner \
- && cp -r package.json node_modules dist/. /opt/fleet/runner/
+FROM ${NODE_IMAGE} AS node
 
 # The default environment: a Debian toolchain for the model's commands.
 FROM ${NODE_IMAGE} AS environment
@@ -50,8 +22,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 FROM ${ENVIRONMENT}
-COPY --from=helper /opt/fleet-box /opt/fleet-box
-COPY --from=runner /opt/fleet/runner /opt/fleet/runner
+# The helper's own copy of Node, under a name of its own; the runner runs on it too.
+COPY --from=node /usr/local/bin/node /opt/fleet-box/bin/fleet-box
+# Each part's lib/ at the top of its folder, beside its package.json and node_modules.
+COPY helper/package.json /opt/fleet-box/helper/
+COPY helper/node_modules/ /opt/fleet-box/helper/node_modules/
+COPY helper/lib/ /opt/fleet-box/helper/
+COPY runner/package.json /opt/fleet/runner/
+COPY runner/node_modules/ /opt/fleet/runner/node_modules/
+COPY runner/lib/ /opt/fleet/runner/
 # fleet-box runs `sleep infinity` as root in every container, whatever the environment set.
 USER root
 ENTRYPOINT []

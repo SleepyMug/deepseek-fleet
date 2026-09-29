@@ -25,17 +25,11 @@
       "types": "./lib/context.d.ts",
       "default": "./lib/context.js"
     },
-    "./image": {
-      "types": "./lib/image.d.ts",
-      "default": "./lib/image.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
     "!lib/**/*.test.*",
-    "image",
-    "src/helper",
     "cordis.patch.yml"
   ],
   "scripts": {
@@ -49,6 +43,7 @@
     }
   },
   "dependencies": {
+    "fleet-box-helper": "workspace:*",
     "node-pty": "1.2.0-beta.15",
     "zod": "4.6.5"
   },
@@ -67,7 +62,6 @@
     "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-api-workspace-files": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-home-paths": "0.1.7-rc.2",
     "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
     "@deepseek-ai/dsh-scope": "0.1.7-rc.2",

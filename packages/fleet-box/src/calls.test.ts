@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
+import { MAX_CALL_BYTES } from 'fleet-box-helper/protocol'
 import { ServiceCalls } from './calls.ts'
-import { MAX_CALL_BYTES } from './helper/protocol.ts'
 
 function setup() {
   const sent: Record<string, unknown>[] = []

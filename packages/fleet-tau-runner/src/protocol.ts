@@ -4,12 +4,12 @@
  * runner's stdin, one JSON reply on its stdout, per run. Shared by the host,
  * whose tools start the runner, and the runner, so it holds only types and
  * constants.
- * @module fleet-tau/runner/protocol
+ * @module fleet-tau-runner/protocol
  */
 
 /**
- * The runner's entry in the container, where `fleet-setup image` installs it
- * (../runner-image.ts), run by the helper's own Node (fleet-box/image's
+ * The runner's ./main.ts in the container, where `fleet-setup image` puts
+ * this package's lib/, run by the helper's own Node (fleet-box-helper/image's
  * HELPER_NODE).
  */
 export const RUNNER_ENTRY = '/opt/fleet/runner/main.js'

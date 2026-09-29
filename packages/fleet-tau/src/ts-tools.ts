@@ -2,7 +2,7 @@
  * The TypeScript tools the agents of every session the `fleet` command
  * started get (./agent.ts): `ts_modules` and `ts_execute`, as pi-run gives
  * its agents `listModules` and `execute`, with a system-prompt section on
- * how to use them. Each call starts the runner (./runner/main.ts), which
+ * how to use them. Each call starts the runner (fleet-tau-runner), which
  * the session image carries, in the session's container through
  * `ctx.subprocess`, so programs run there, never on the host, and see what
  * bash sees; the runner type-checks and runs them with ts-executor. Programs
@@ -16,12 +16,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { HELPER_NODE } from 'fleet-box/image'
+import { HELPER_NODE } from 'fleet-box-helper/image'
 import type {} from 'fleet-box/world'
-import { parseRunnerReply } from './runner-reply.ts'
 import {
   MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
-} from './runner/protocol.ts'
+} from 'fleet-tau-runner/protocol'
+import { parseRunnerReply } from './runner-reply.ts'
 import { AGENT_VIEW, type Spec } from './spec.ts'
 
 /** How long a program may run, type-checking included. */
@@ -30,7 +30,7 @@ const EXECUTE_TIMEOUT_MS = 120_000
 const REPORT_MARGIN_MS = 30_000
 /** Time the runner gets to end its program once the call is cancelled. */
 const GRACE_MS = 5000
-/** Of stdout and stderr, the first and last this many characters each are kept (./runner/report.ts). */
+/** Of stdout and stderr, the first and last this many characters each are kept (fleet-tau-runner's report.ts). */
 const OUTPUT_KEPT = '16 Ki'
 
 const INSTRUCTIONS = `# TypeScript programs
