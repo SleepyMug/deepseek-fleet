@@ -1,12 +1,12 @@
 /**
- * The runner's reply, as the host reads it (fleet-box/runner). The runner
+ * The runner's reply, as the host reads it (./runner/protocol.ts). The runner
  * runs in the container, where the model is root and can replace it, so its
  * reply is parsed as the helper's messages are, never trusted as it is.
  * @module fleet-tau/runner-reply
  */
 
-import type { RunnerReply } from 'fleet-box/runner'
 import { z } from 'zod'
+import type { RunnerReply } from './runner/protocol.ts'
 
 const failureSchema = z.object({
   name: z.string(),

@@ -17,7 +17,7 @@ let server: Server
 const calls: unknown[] = []
 
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'fleet-box-runner-'))
+  dir = await mkdtemp(join(tmpdir(), 'fleet-tau-runner-'))
   socketPath = join(dir, 'tau.sock')
   // A provider as the host's relay answers: one line in, one line out.
   server = createServer((socket) => {

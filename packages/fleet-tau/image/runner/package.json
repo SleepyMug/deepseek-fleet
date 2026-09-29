@@ -1,9 +1,9 @@
 {
-  "name": "fleet-box-runner",
+  "name": "fleet-tau-runner",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "fleet-box's TypeScript runner as the session image builds it: what it runs programs with, and what compiles it",
+  "description": "fleet-tau's TypeScript runner as `fleet-setup image` builds it into the session image: what it runs programs with, and what compiles it",
   "dependencies": {
     "@sleepymug/ts-executor": "file:vendor/sleepymug-ts-executor-0.4.0.tgz"
   },

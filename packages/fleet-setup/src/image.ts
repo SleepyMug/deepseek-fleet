@@ -1,0 +1,206 @@
+/**
+ * `fleet-setup image`: build the session image fleet-box uses, outside dsh,
+ * as dsh-ssh's operator installs its helper on a host. The image is an
+ * environment, image/Dockerfile's own or one the caller names, with fleet's
+ * runtime installed on top, from the parts its packages ship: fleet-box's
+ * helper and fleet-tau's TypeScript runner. Each part labels the image with
+ * its protocol, which its user checks before starting it. A build is tagged
+ * only once its helper answers its handshake and its runner answers a
+ * request, so a tag always names a working image. Nothing is removed: the
+ * build a new one untags is left for `docker image prune`, since a
+ * container may still use it.
+ * @module fleet-setup/image
+ */
+
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_VERSION, helperPart } from 'fleet-box/image'
+import { RUNNER_ENTRY, TS_ROOT, type RunnerRequest } from 'fleet-tau/runner'
+import { runnerPart } from 'fleet-tau/runner-image'
+
+const DOCKERFILE = fileURLToPath(new URL('../image/Dockerfile', import.meta.url))
+/** How long a new build's helper and runner get to answer. */
+const CHECK_TIMEOUT_MS = 60_000
+
+/**
+ * A package's part of the image: a Node package that the Dockerfile's stage
+ * of the same name compiles and installs.
+ */
+export interface ImagePart {
+  /** Folder with the part's package.json, npm-shrinkwrap.json and tsconfig.json, and any tarball its manifest depends on under vendor/. */
+  build: string
+  /** Folder of the part's TypeScript sources; its tests (*.test.ts) are left out. */
+  sources: string
+  /** Labels the image carries for the part. */
+  labels: Record<string, string>
+}
+
+export interface BuildOptions {
+  /** Docker CLI executable. */
+  docker: string
+  /** The environment the runtime is installed on; image/Dockerfile's own when left out. */
+  from?: string
+  /** What to tag the build; fleet-box's `image` setting names it. */
+  tag: string
+  /** Receives one line per step; Docker's own build output goes to this process's stdout and stderr. */
+  log: (line: string) => void
+  /** Stops the Docker processes. */
+  signal?: AbortSignal
+}
+
+/**
+ * Build the image, check it, and tag it.
+ * @returns the image's id.
+ */
+export async function buildImage(options: BuildOptions): Promise<string> {
+  const parts: Record<string, ImagePart> = { helper: helperPart(), runner: await runnerPart() }
+  const work = await mkdtemp(join(tmpdir(), 'fleet-setup-image-'))
+  try {
+    const context = join(work, 'context')
+    await stage(context, parts)
+    options.log(`fleet-setup: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
+    const id = await build(options, context, join(work, 'id'), Object.values(parts))
+    await checkHelper(options, id)
+    await checkRunner(options, id)
+    const earlier = await docker(options, ['image', 'inspect', '--format', '{{.Id}}', options.tag]).catch(() => undefined)
+    await docker(options, ['tag', id, options.tag])
+    options.log(`fleet-setup: built ${options.tag} (${short(id)})`)
+    if (earlier !== undefined && earlier !== id) {
+      options.log(`fleet-setup: the earlier ${options.tag} (${short(earlier)}) is untagged now; \`docker image prune\` removes it once no container uses it`)
+    }
+    if (options.tag !== DEFAULT_IMAGE) {
+      options.log(`fleet-setup: fleet-box uses ${DEFAULT_IMAGE} unless its row in the profile's patch sets \`image: ${options.tag}\``)
+    }
+    return id
+  } finally {
+    await rm(work, { recursive: true, force: true })
+  }
+}
+
+/** Put the Dockerfile and each part's folder in the build context, which holds nothing else. */
+async function stage(context: string, parts: Record<string, ImagePart>): Promise<void> {
+  await mkdir(context, { recursive: true })
+  await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
+  for (const [name, part] of Object.entries(parts)) {
+    const folder = join(context, name)
+    await cp(part.build, folder, { recursive: true })
+    // The Dockerfile copies vendor/ whether or not the part has tarballs.
+    await mkdir(join(folder, 'vendor'), { recursive: true })
+    await mkdir(join(folder, 'src'), { recursive: true })
+    for (const file of await readdir(part.sources)) {
+      if (file.endsWith('.ts') && !file.endsWith('.test.ts')) await copyFile(join(part.sources, file), join(folder, 'src', file))
+    }
+  }
+}
+
+/** @returns the id of the image built, untagged. */
+async function build(options: BuildOptions, context: string, idFile: string, parts: ImagePart[]): Promise<string> {
+  const args = [
+    'build', '--iidfile', idFile,
+    ...options.from === undefined ? [] : ['--build-arg', `ENVIRONMENT=${options.from}`],
+    ...parts.flatMap(part => Object.entries(part.labels).flatMap(([name, value]) => ['--label', `${name}=${value}`])),
+    context,
+  ]
+  const builder = spawn(options.docker, args, { stdio: ['ignore', 'inherit', 'inherit'], signal: options.signal })
+  await exited(builder, 'docker build')
+  return (await readFile(idFile, 'utf8')).trim()
+}
+
+/** Start the build's helper without a network and check that it answers in this protocol. */
+async function checkHelper(options: BuildOptions, id: string): Promise<void> {
+  const hello = `${JSON.stringify({ type: 'request', id: 1, method: 'hello', params: {} })}\n`
+  // Its stdin ending stops the helper, and with it the container, so it ends only once the answer is in.
+  const { stdout, stderr, late } = await probe(options, [HELPER_NODE, '--disable-sigusr1', HELPER_ENTRY], id, hello, 'answer')
+  const line = stdout.split('\n', 1)[0] ?? ''
+  let protocol: unknown
+  try {
+    protocol = (JSON.parse(line) as { value?: { protocol?: unknown } }).value?.protocol
+  } catch {
+    protocol = undefined
+  }
+  if (protocol !== PROTOCOL_VERSION) throw failure(id, 'helper did not answer its handshake', late, stderr)
+}
+
+/** Start the build's runner without a network and check that it lists what a program may import. */
+async function checkRunner(options: BuildOptions, id: string): Promise<void> {
+  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, services: [], modules: [] }
+  // The runner reads its request to the end of its stdin.
+  const { stdout, stderr, late } = await probe(options, [HELPER_NODE, RUNNER_ENTRY], id, JSON.stringify(request), 'input')
+  let reply: { ok?: unknown; modules?: unknown } | null
+  try {
+    reply = JSON.parse(stdout) as typeof reply
+  } catch {
+    reply = null
+  }
+  if (reply?.ok !== true || !Array.isArray(reply.modules)) throw failure(id, 'TypeScript runner did not answer', late, stderr || stdout)
+}
+
+function failure(id: string, what: string, late: boolean, output: string): Error {
+  const within = late ? ` within ${CHECK_TIMEOUT_MS / 1000} s` : ''
+  return new Error(`fleet-setup: the ${what}${within} in the new build ${short(id)}, which is left untagged${output.trim() === '' ? '' : `: ${output.trim()}`}`)
+}
+
+/**
+ * Run a command in a throwaway container of the image, without a network,
+ * with `input` on its stdin, which closes once the input is written, or
+ * once the command has answered with a line.
+ */
+async function probe(options: BuildOptions, argv: string[], id: string, input: string, close: 'input' | 'answer'): Promise<{ stdout: string; stderr: string; late: boolean }> {
+  const [entrypoint = '', ...rest] = argv
+  const child = spawn(options.docker, ['run', '--rm', '--interactive', '--network', 'none', '--entrypoint', entrypoint, id, ...rest],
+    { stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal })
+  // A command that failed to start closes its stdin; its stderr explains why.
+  child.stdin.on('error', () => {})
+  let late = false
+  const timer = setTimeout(() => {
+    late = true
+    child.stdin.end()
+    child.kill('SIGKILL')
+  }, CHECK_TIMEOUT_MS)
+  let stdout = ''
+  let stderr = ''
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', (chunk: string) => {
+    stdout += chunk
+    if (close === 'answer' && stdout.includes('\n')) child.stdin.end()
+  })
+  child.stderr.on('data', (chunk: string) => { stderr += chunk })
+  child.stdin.write(input)
+  if (close === 'input') child.stdin.end()
+  await exited(child, argv.join(' ')).catch(() => {})
+  clearTimeout(timer)
+  return { stdout, stderr, late }
+}
+
+function short(id: string): string {
+  return id.replace(/^sha256:/u, '').slice(0, 12)
+}
+
+function exited(child: ChildProcess, name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      if (child.exitCode === 0) resolve()
+      else reject(new Error(`fleet-setup: ${name} failed (${child.signalCode ?? `exit ${String(child.exitCode)}`})`))
+      return
+    }
+    child.once('error', reject)
+    child.once('close', (code, signal) => {
+      if (code === 0) resolve()
+      else reject(new Error(`fleet-setup: ${name} failed (${signal ?? `exit ${String(code)}`})`))
+    })
+  })
+}
+
+/** @returns trimmed stdout; a failure carries Docker's stderr. */
+function docker(options: BuildOptions, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(options.docker, args, { signal: options.signal }, (error, stdout, stderr) => {
+      if (error === null) resolve(stdout.trim())
+      else reject(new Error(`fleet-setup: docker ${args[0] ?? ''} failed: ${stderr.trim() || error.message}`, { cause: error }))
+    })
+  })
+}

@@ -1,14 +1,28 @@
 /**
- * How the host starts fleet-box's TypeScript runner in a session container
+ * How the host starts fleet-tau's TypeScript runner in a session container
  * (./main.ts), and what it asks and answers: one JSON request on the
  * runner's stdin, one JSON reply on its stdout, per run. Shared by the host,
  * whose tools start the runner, and the runner, so it holds only types and
  * constants.
- * @module fleet-box/runner/protocol
+ * @module fleet-tau/runner/protocol
  */
 
-/** The runner's entry in the container, run by the helper's own Node (./image.ts's HELPER_NODE). */
-export const RUNNER_ENTRY = '/opt/fleet-box/runner/main.js'
+/**
+ * The runner's entry in the container, where `fleet-setup image` installs it
+ * (../runner-image.ts), run by the helper's own Node (fleet-box/image's
+ * HELPER_NODE).
+ */
+export const RUNNER_ENTRY = '/opt/fleet/runner/main.js'
+
+/**
+ * Version of this protocol. The session image carries the version of the
+ * runner it holds in {@link RUNNER_PROTOCOL_LABEL}, which the tools check
+ * before they start it.
+ */
+export const RUNNER_PROTOCOL = 1
+
+/** The image label that carries the runner's {@link RUNNER_PROTOCOL}. */
+export const RUNNER_PROTOCOL_LABEL = 'fleet-tau.runner-protocol'
 
 /**
  * The session's TypeScript root in the container: where ts-executor keeps

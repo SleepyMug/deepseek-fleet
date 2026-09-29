@@ -239,9 +239,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.4
         version: 3.18.4
-      '@sleepymug/ts-executor':
-        specifier: link:../../../agent_fleet_project/ts-executor
-        version: link:../../../agent_fleet_project/ts-executor
 
   packages/fleet-control:
     dependencies:
@@ -282,6 +279,9 @@ importers:
       fleet-box:
         specifier: workspace:*
         version: link:../fleet-box
+      fleet-tau:
+        specifier: workspace:*
+        version: link:../fleet-tau
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.4
@@ -350,6 +350,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.4
         version: 3.18.4
+      '@sleepymug/ts-executor':
+        specifier: link:../../../agent_fleet_project/ts-executor
+        version: link:../../../agent_fleet_project/ts-executor
       fleet-box:
         specifier: workspace:*
         version: link:../fleet-box

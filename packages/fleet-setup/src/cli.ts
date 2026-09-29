@@ -1,17 +1,20 @@
 /**
  * `fleet-setup`: what the fleet profile needs on this machine besides its
- * installed packages. `image` builds the session image this installation's
- * fleet-box needs. `signin` signs in to a model provider through dsh's own
- * sign-in flows, by booting dsh in a minimal profile of its own
- * (`fleet-signin`) with the sign-in app overlaid. Run it from the profile it
- * is installed in, `dsh plugin --profile fleet exec fleet-setup <part>`, or as
+ * installed packages. `image` builds the session image fleet-box uses, with
+ * this installation's runtime on an environment (./image.ts). `signin`
+ * signs in to a model provider through dsh's own sign-in flows, by booting
+ * dsh in a minimal profile of its own (`fleet-signin`) with the sign-in app
+ * overlaid. Run it from the profile it is installed in,
+ * `dsh plugin --profile fleet exec fleet-setup <part>`, or as
  * `node <fleet-setup>/bin.js <part>` with dsh on PATH.
  * @module fleet-setup/cli
  */
 
 import { execFile, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { prepareImage } from 'fleet-box/image'
+import { parseArgs } from 'node:util'
+import { DEFAULT_IMAGE } from 'fleet-box/image'
+import { buildImage } from './image.ts'
 
 const DOCKER = 'docker'
 /** dsh from PATH; `dsh plugin … exec` runs this command with the invoking shell's PATH. */
@@ -27,16 +30,23 @@ const EXIT_USAGE = 2
 
 const USAGE = [
   'Usage: fleet-setup <part>',
-  '  image              build the session image fleet-box needs, then remove older unused ones',
+  '  image [--from <image>] [--tag <tag>]',
+  '                     build the session image: fleet\'s runtime on its own environment, or on the --from image;',
+  `                     tagged ${DEFAULT_IMAGE}, which fleet-box uses, or --tag, which its \`image\` setting must name`,
   '  signin [provider]  sign in to a model provider; the default is openai-codex, a ChatGPT subscription;',
   '                     `signin --help` lists the providers',
 ].join('\n')
 
 async function main(args: readonly string[]): Promise<number> {
   const [part, ...rest] = args
-  if (part === 'image' && rest.length === 0) {
+  if (part === 'image') {
+    const options = imageOptions(rest)
+    if (options === undefined) {
+      say(USAGE)
+      return EXIT_USAGE
+    }
     await dockerResponds()
-    await prepareImage({ docker: DOCKER, log: say })
+    await buildImage({ docker: DOCKER, tag: options.tag ?? DEFAULT_IMAGE, ...options.from === undefined ? {} : { from: options.from }, log: say })
     return EXIT_OK
   }
   if (part === 'signin') return signin(rest)
@@ -44,6 +54,16 @@ async function main(args: readonly string[]): Promise<number> {
   if (!help && args.length > 0) say(`Unexpected arguments: ${args.join(' ')}`)
   say(USAGE)
   return help ? EXIT_OK : EXIT_USAGE
+}
+
+/** @returns `image`'s options, or undefined, having said why, when they are not options it takes. */
+function imageOptions(args: string[]): { from?: string; tag?: string } | undefined {
+  try {
+    return parseArgs({ args, options: { from: { type: 'string' }, tag: { type: 'string' } }, strict: true }).values
+  } catch (error) {
+    say(error instanceof Error ? error.message : String(error))
+    return undefined
+  }
 }
 
 /**

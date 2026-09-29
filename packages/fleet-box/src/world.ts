@@ -26,9 +26,13 @@
  * unarchived session gets a fresh one on its next use. Startup removes this
  * dsh home's containers whose session is archived, or gone and stopped. A
  * container keeps running without a helper only when dsh is killed, or exits
- * before the teardown finishes; its next use takes it over. The image is a
- * prerequisite, built by `fleet-setup image` from the fleet-setup package;
- * without it this service does not start, dsh's startup warning says how to
+ * before the teardown finishes; its next use takes it over. The image, which
+ * the `image` setting names, is a prerequisite built outside dsh by
+ * `fleet-setup image` from the fleet-setup package (./image.ts). This
+ * service checks it when it starts, and creates every container from the
+ * image it checked, so a rebuild reaches containers once dsh restarts, and
+ * recreates them. Without the image, or with one whose helper speaks another
+ * protocol, this service does not start, dsh's startup warning says how to
  * build it, and no session can run.
  * @module fleet-box/world
  */
@@ -52,8 +56,8 @@ import {
 import { HelperConnection, type ServiceCallRequest } from './connection.ts'
 import { copyIn } from './copy-in.ts'
 import { copyOut as copyOutOf } from './copy-out.ts'
-import { SERVICE_SOCKET } from './helper/protocol.ts'
-import { HELPER_ENTRY, HELPER_NODE, imageTag } from './image.ts'
+import { PROTOCOL_VERSION, SERVICE_SOCKET } from './helper/protocol.ts'
+import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL } from './image.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
 
 export type { ContainerAdditions, Copy, Mount } from './additions.ts'
@@ -91,6 +95,8 @@ const STOP_GRACE_SECONDS = 1
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 export interface Config {
+  /** The session image, as `fleet-setup image` tags it. */
+  image: string
   /** Docker CLI executable. */
   docker: string
   /** Deadline for one Docker CLI call. */
@@ -148,6 +154,7 @@ export class FleetBox extends Service {
   static inject = ['sessions', 'agents', 'workspaceRegistry', 'sessionPersistence']
 
   static Config: Schema<Config> = Schema.object({
+    image: Schema.string().default(DEFAULT_IMAGE).description('The session image, as `fleet-setup image` tags it.'),
     docker: Schema.string().default('docker').description('Docker CLI executable.'),
     dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call.'),
     idleStopMs: Schema.number().min(0).max(MAX_TIMER_DELAY_MS).default(60_000)
@@ -174,7 +181,8 @@ export class FleetBox extends Service {
    * without an image or is mistaken for stale before its session is saved.
    */
   private readonly started = Promise.withResolvers<void>()
-  private image = ''
+  /** The id of the image this service checked, which every container is created from, and its labels. */
+  private image = { id: '', labels: {} as Readonly<Record<string, string>> }
   /**
    * Set once this instance is disposed. A config change restarts its fiber
    * with a new instance, and an open still in flight on this one must not
@@ -222,23 +230,53 @@ export class FleetBox extends Service {
     ctx.on('domain/changed', (change) => { this.followArchive(change) })
   }
 
-  /** Find the image and clean up before any session needs them; without the image or Docker, this service does not start. */
+  /** Check the image and clean up before any session needs them; without the image or Docker, this service does not start. */
   async [Service.init](): Promise<void> {
     try {
-      this.image = await imageTag()
-      try {
-        await this.docker(['image', 'inspect', '--format', '{{.Id}}', this.image])
-      } catch (error) {
-        if (!/no such image/iu.test(message(error))) throw error
-        throw new Error(`fleet-box: the session image ${this.image} is not built; build it with \`fleet-setup image\`, `
-          + 'installed in this profile: `dsh plugin --profile <profile> exec fleet-setup image`')
-      }
+      this.image = await this.checkImage()
       await this.removeStale()
       this.started.resolve()
     } catch (error) {
       this.started.reject(error)
       throw error
     }
+  }
+
+  /**
+   * Look the configured image up, and check that its label says its helper
+   * speaks this fleet-box's protocol; the helper's handshake checks it again
+   * in each container.
+   * @returns the image's id and labels.
+   */
+  private async checkImage(): Promise<{ id: string; labels: Readonly<Record<string, string>> }> {
+    const { image } = this.config
+    let found: string
+    try {
+      // The whole config: Docker's template fails on a key an image's config leaves out.
+      found = await this.docker(['image', 'inspect', '--format', '{{.Id}} {{json .Config}}', image])
+    } catch (error) {
+      if (!/no such image/iu.test(message(error))) throw error
+      throw new Error(`fleet-box: the session image ${image} is not built; build it with \`fleet-setup image\`, `
+        + 'installed in this profile: `dsh plugin --profile <profile> exec fleet-setup image`')
+    }
+    const space = found.indexOf(' ')
+    const labels = (JSON.parse(found.slice(space + 1)) as { Labels?: Record<string, string> | null } | null)?.Labels ?? {}
+    const protocol = labels[PROTOCOL_LABEL]
+    if (protocol !== String(PROTOCOL_VERSION)) {
+      throw new Error(`fleet-box: the helper in the session image ${image} speaks protocol ${protocol ?? 'unknown'}, not ${PROTOCOL_VERSION}; `
+        + 'rebuild it with `fleet-setup image`')
+    }
+    return { id: found.slice(0, space), labels }
+  }
+
+  /**
+   * The labels of the session image this service checked. `fleet-setup
+   * image` labels it with the protocol of each part it installs, so a
+   * plugin that runs its own part in a container checks its label here.
+   */
+  async imageLabels(): Promise<Readonly<Record<string, string>>> {
+    await this.started.promise
+    return this.image.labels
   }
 
   /**
@@ -680,7 +718,8 @@ export class FleetBox extends Service {
       '--env', `TAU_SOCKET=${SERVICE_SOCKET}`,
       ...additionArgs(additions, workspace),
       '--workdir', workspace,
-      this.image, 'sleep', 'infinity',
+      // By id: the image checked at startup, which a rebuild under the same tag replaces in the spec.
+      this.image.id, 'sleep', 'infinity',
     ]
     const copies = additions?.copies ?? []
     // Without copies, the spec is what it was before containers had any.

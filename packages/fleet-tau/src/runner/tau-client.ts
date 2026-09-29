@@ -4,7 +4,7 @@
  * SPEC.md). Aborting closes the connection, which cancels the call. The
  * host checks the arguments and the result against the service's manifest,
  * so they cross here as they are.
- * @module fleet-box/runner/tau-client
+ * @module fleet-tau/runner/tau-client
  */
 
 import { createConnection } from 'node:net'

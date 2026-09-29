@@ -1,11 +1,11 @@
 {
-  "name": "fleet-box-runner",
+  "name": "fleet-tau-runner",
   "version": "0.0.1",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "fleet-box-runner",
+      "name": "fleet-tau-runner",
       "version": "0.0.1",
       "dependencies": {
         "@sleepymug/ts-executor": "file:vendor/sleepymug-ts-executor-0.4.0.tgz"

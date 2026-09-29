@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Stage the TypeScript runner's dependency on @sleepymug/ts-executor for the
- * session image, while its 0.4.0 is not on npm: pack the checkout fleet-box
+ * session image, while its 0.4.0 is not on npm: pack the checkout fleet-tau
  * links (../agent_fleet_project/ts-executor), building it first, into
  * image/runner/vendor/, where the runner's package.json depends on it as a
  * tarball, and refresh image/runner/npm-shrinkwrap.json with npm from the

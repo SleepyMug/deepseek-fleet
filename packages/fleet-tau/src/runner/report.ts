@@ -5,7 +5,7 @@
  * The whole reply is bounded in bytes too, {@link MAX_REPLY_BYTES}, since the
  * host keeps only the tail of the runner's stdout and a reply cut there
  * could not be read: a reply over it is shrunk until it fits.
- * @module fleet-box/runner/report
+ * @module fleet-tau/runner/report
  */
 
 import { MAX_REPLY_BYTES, type RunnerFailure, type RunnerReply } from './protocol.ts'

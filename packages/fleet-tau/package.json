@@ -29,12 +29,23 @@
       "types": "./lib/examples/notes.d.ts",
       "default": "./lib/examples/notes.js"
     },
+    "./runner": {
+      "types": "./lib/runner/protocol.d.ts",
+      "default": "./lib/runner/protocol.js"
+    },
+    "./runner-image": {
+      "types": "./lib/runner-image.d.ts",
+      "default": "./lib/runner-image.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
     "!lib/**/*.test.*",
+    "image",
     "manifests",
+    "scripts",
+    "src/runner",
     "cordis.patch.yml"
   ],
   "scripts": {
@@ -78,6 +89,7 @@
     "@deepseek-ai/dsh-tool-skill": "0.1.7-rc.2",
     "@deepseek-ai/dsh-tools": "0.1.7-rc.2",
     "@deepseek-ai/schemastery": "3.18.4",
+    "@sleepymug/ts-executor": "link:../../../agent_fleet_project/ts-executor",
     "fleet-box": "workspace:*"
   }
 }

@@ -1,10 +1,12 @@
 /**
- * fleet-box's TypeScript runner, which fleet-tau's `ts_*` tools start in a
- * session container for each call, with the helper's own Node:
- * `/opt/fleet-box/bin/fleet-box /opt/fleet-box/runner/main.js`, one JSON
- * request on stdin, one JSON reply on stdout (./protocol.ts). It runs
- * programs with ts-executor, so each one is type-checked and runs in a fresh
- * Node process of its own, and it imports:
+ * fleet-tau's TypeScript runner, which its `ts_*` tools (../ts-tools.ts)
+ * start in a session container for each call, with fleet-box's helper Node:
+ * `/opt/fleet-box/bin/fleet-box /opt/fleet/runner/main.js`, one JSON
+ * request on stdin, one JSON reply on stdout (./protocol.ts). The session
+ * image carries it, as `fleet-setup image` builds it from this directory
+ * (../runner-image.ts), so it imports nothing from the rest of fleet-tau.
+ * It runs programs with ts-executor, so each one is type-checked and runs in
+ * a fresh Node process of its own, and it imports:
  * - each service the agent declares as `@svc/<name>`, whose calls go to
  *   fleet-box's service socket at $TAU_SOCKET, and from there to the host;
  * - each module the agent ships, by its package name.
@@ -12,7 +14,7 @@
  * A SIGTERM, which the host sends when a call is cancelled or runs out of
  * time, ends the program, and every process in its process group, before
  * the runner exits.
- * @module fleet-box/runner/main
+ * @module fleet-tau/runner/main
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'

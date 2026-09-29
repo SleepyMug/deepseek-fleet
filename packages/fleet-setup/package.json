@@ -2,7 +2,7 @@
   "name": "fleet-setup",
   "version": "0.0.1",
   "private": true,
-  "description": "Setup for the fleet profile: `fleet-setup image` builds fleet-box's session image, `fleet-setup signin` signs in to a model provider",
+  "description": "Setup for the fleet profile: `fleet-setup image` builds the session image fleet-box uses, `fleet-setup signin` signs in to a model provider",
   "type": "module",
   "exports": {
     "./signin": {
@@ -16,6 +16,7 @@
   },
   "files": [
     "bin.js",
+    "image",
     "lib",
     "signin.patch.yml"
   ],
@@ -24,7 +25,8 @@
     "prepack": "tsc -b"
   },
   "dependencies": {
-    "fleet-box": "workspace:*"
+    "fleet-box": "workspace:*",
+    "fleet-tau": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
