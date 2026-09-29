@@ -5,14 +5,17 @@
 # the model's programs there. The environment is the `environment` stage
 # below unless `--from` names an image, which the ENVIRONMENT build arg
 # puts in its place. The build context holds only a folder per part
-# (src/image.ts): its manifest, lockfile and tsconfig, its tarballs in
-# vendor/, and its sources in src/.
+# (src/image.ts): its manifest, lockfile and tsconfig, any tarballs its
+# manifest depends on in vendor/, and its sources in src/.
 
+# The Node image every stage builds on; fleet-tau's scripts/stage-runner.mjs
+# resolves the runner's lockfile with its npm.
+ARG NODE_IMAGE=node:26.9.0-trixie-slim
 ARG ENVIRONMENT=environment
 
 # The helper: compiled from its sources, then kept with only its runtime
 # dependencies and a copy of Node under a name of its own.
-FROM node:26.9.0-trixie-slim AS helper
+FROM ${NODE_IMAGE} AS helper
 WORKDIR /build
 COPY helper/package.json helper/npm-shrinkwrap.json ./
 RUN npm ci --no-audit --no-fund --no-update-notifier
@@ -26,8 +29,9 @@ RUN npx tsc -p tsconfig.json \
 
 # The TypeScript runner: ts-executor, which type-checks and runs programs,
 # and the runner that drives it, kept with only their runtime dependencies.
-# They run on the helper's Node.
-FROM node:26.9.0-trixie-slim AS runner
+# They run on the helper's Node. vendor/ holds ts-executor's tarball while
+# that is not on npm; fleet-tau's runnerPart refuses to build without it.
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /build
 COPY runner/package.json runner/npm-shrinkwrap.json ./
 COPY runner/vendor/ vendor/
@@ -40,7 +44,7 @@ RUN npx tsc -p tsconfig.json \
  && cp -r package.json node_modules dist/. /opt/fleet/runner/
 
 # The default environment: a Debian toolchain for the model's commands.
-FROM node:26.9.0-trixie-slim AS environment
+FROM ${NODE_IMAGE} AS environment
 RUN apt-get update \
  && apt-get install --yes --no-install-recommends ca-certificates curl git less procps ripgrep \
  && rm -rf /var/lib/apt/lists/*

@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** The Node image the Dockerfile builds on, whose npm resolves the runner's dependencies. */
+/** The Node image fleet-setup's image/Dockerfile builds on (NODE_IMAGE), whose npm resolves the runner's dependencies. */
 const NODE_IMAGE = 'node:26.9.0-trixie-slim'
 const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
 const RUNNER_DIR = join(PACKAGE_DIR, 'image', 'runner')

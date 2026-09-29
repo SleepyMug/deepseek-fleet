@@ -30,9 +30,10 @@
 # its container, through fleet-box's helper. The helper also serves tau's
 # service protocol at $TAU_SOCKET (/run/fleet-box/tau.sock) and relays each
 # call to whatever serves them on the host (fleet-tau), for the session the
-# container belongs to; without it, every call fails. The subprocess side serves bash,
-# with collected output without spill files and no raw pipes or control
-# channel, and the sidebar's terminals, as shells in the session's container.
+# container belongs to; without it, every call fails. The subprocess side
+# serves bash, with collected output without spill files and no raw pipes
+# or control channel, and the sidebar's terminals, as shells in the
+# session's container.
 # The file side serves a session's own work, which reads and writes, and
 # any other call only when it names a session's container, which reads.
 # That covers the file viewer: dsh looks up each session's folder through

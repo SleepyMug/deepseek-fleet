@@ -105,6 +105,13 @@ export interface Config {
   idleStopMs: number
 }
 
+/** The session image as this service checked it at startup. */
+interface CheckedImage {
+  /** The image's id, which every container is created from. */
+  id: string
+  labels: Readonly<Record<string, string>>
+}
+
 /** One root session's container. */
 export interface SessionContainer {
   /** Docker container name. */
@@ -181,8 +188,7 @@ export class FleetBox extends Service {
    * without an image or is mistaken for stale before its session is saved.
    */
   private readonly started = Promise.withResolvers<void>()
-  /** The id of the image this service checked, which every container is created from, and its labels. */
-  private image = { id: '', labels: {} as Readonly<Record<string, string>> }
+  private image: CheckedImage = { id: '', labels: {} }
   /**
    * Set once this instance is disposed. A config change restarts its fiber
    * with a new instance, and an open still in flight on this one must not
@@ -246,9 +252,8 @@ export class FleetBox extends Service {
    * Look the configured image up, and check that its label says its helper
    * speaks this fleet-box's protocol; the helper's handshake checks it again
    * in each container.
-   * @returns the image's id and labels.
    */
-  private async checkImage(): Promise<{ id: string; labels: Readonly<Record<string, string>> }> {
+  private async checkImage(): Promise<CheckedImage> {
     const { image } = this.config
     let found: string
     try {

@@ -13,7 +13,7 @@
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -85,21 +85,16 @@ async function stage(context: string, parts: Record<string, ImagePart>): Promise
   await mkdir(context, { recursive: true })
   await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
   for (const [name, part] of Object.entries(parts)) {
-    const folder = join(context, name)
-    await cp(part.build, folder, { recursive: true })
-    // The Dockerfile copies vendor/ whether or not the part has tarballs.
-    await mkdir(join(folder, 'vendor'), { recursive: true })
-    await mkdir(join(folder, 'src'), { recursive: true })
-    for (const file of await readdir(part.sources)) {
-      if (file.endsWith('.ts') && !file.endsWith('.test.ts')) await copyFile(join(part.sources, file), join(folder, 'src', file))
-    }
+    await cp(part.build, join(context, name), { recursive: true })
+    await cp(part.sources, join(context, name, 'src'), { recursive: true, filter: source => !source.endsWith('.test.ts') })
   }
 }
 
 /** @returns the id of the image built, untagged. */
 async function build(options: BuildOptions, context: string, idFile: string, parts: ImagePart[]): Promise<string> {
   const args = [
-    'build', '--iidfile', idFile,
+    // A provenance attestation records when it was built, which gives an unchanged build a new id, and so recreates every container.
+    'build', '--provenance=false', '--iidfile', idFile,
     ...options.from === undefined ? [] : ['--build-arg', `ENVIRONMENT=${options.from}`],
     ...parts.flatMap(part => Object.entries(part.labels).flatMap(([name, value]) => ['--label', `${name}=${value}`])),
     context,
@@ -113,7 +108,7 @@ async function build(options: BuildOptions, context: string, idFile: string, par
 async function checkHelper(options: BuildOptions, id: string): Promise<void> {
   const hello = `${JSON.stringify({ type: 'request', id: 1, method: 'hello', params: {} })}\n`
   // Its stdin ending stops the helper, and with it the container, so it ends only once the answer is in.
-  const { stdout, stderr, late } = await probe(options, [HELPER_NODE, '--disable-sigusr1', HELPER_ENTRY], id, hello, 'answer')
+  const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, ['--disable-sigusr1', HELPER_ENTRY], hello, 'answer')
   const line = stdout.split('\n', 1)[0] ?? ''
   let protocol: unknown
   try {
@@ -128,7 +123,7 @@ async function checkHelper(options: BuildOptions, id: string): Promise<void> {
 async function checkRunner(options: BuildOptions, id: string): Promise<void> {
   const request: RunnerRequest = { command: 'modules', root: TS_ROOT, services: [], modules: [] }
   // The runner reads its request to the end of its stdin.
-  const { stdout, stderr, late } = await probe(options, [HELPER_NODE, RUNNER_ENTRY], id, JSON.stringify(request), 'input')
+  const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, [RUNNER_ENTRY], JSON.stringify(request), 'input')
   let reply: { ok?: unknown; modules?: unknown } | null
   try {
     reply = JSON.parse(stdout) as typeof reply
@@ -144,15 +139,16 @@ function failure(id: string, what: string, late: boolean, output: string): Error
 }
 
 /**
- * Run a command in a throwaway container of the image, without a network,
+ * Run a program in a throwaway container of the image, without a network,
  * with `input` on its stdin, which closes once the input is written, or
- * once the command has answered with a line.
+ * once the program has answered with a line.
  */
-async function probe(options: BuildOptions, argv: string[], id: string, input: string, close: 'input' | 'answer'): Promise<{ stdout: string; stderr: string; late: boolean }> {
-  const [entrypoint = '', ...rest] = argv
-  const child = spawn(options.docker, ['run', '--rm', '--interactive', '--network', 'none', '--entrypoint', entrypoint, id, ...rest],
+async function probe(
+  options: BuildOptions, id: string, program: string, args: string[], input: string, close: 'input' | 'answer',
+): Promise<{ stdout: string; stderr: string; late: boolean }> {
+  const child = spawn(options.docker, ['run', '--rm', '--interactive', '--network', 'none', '--entrypoint', program, id, ...args],
     { stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal })
-  // A command that failed to start closes its stdin; its stderr explains why.
+  // A program that failed to start closes its stdin; its stderr explains why.
   child.stdin.on('error', () => {})
   let late = false
   const timer = setTimeout(() => {
@@ -171,7 +167,7 @@ async function probe(options: BuildOptions, argv: string[], id: string, input: s
   child.stderr.on('data', (chunk: string) => { stderr += chunk })
   child.stdin.write(input)
   if (close === 'input') child.stdin.end()
-  await exited(child, argv.join(' ')).catch(() => {})
+  await exited(child, [program, ...args].join(' ')).catch(() => {})
   clearTimeout(timer)
   return { stdout, stderr, late }
 }
