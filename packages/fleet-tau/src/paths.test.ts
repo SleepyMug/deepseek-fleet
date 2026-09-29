@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import type { BoundPath } from '@sleepymug/tau'
 import { pathProblems } from './paths.ts'
 
-const path = (name: string, host: string, view = host): BoundPath => ({ name, kind: 'dir', mode: 'mount-ro', host, view })
+const path = (name: string, host: string, view = host): BoundPath => ({ name, type: 'dir', role: 'in', host, view })
 
 test('a path that is, holds or lies in the session folder is refused, through symlinks too', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-tau-paths-'))

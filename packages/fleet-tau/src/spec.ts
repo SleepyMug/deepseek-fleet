@@ -9,7 +9,7 @@
 import { z } from 'zod'
 
 /** Bumped when a stored spec changes shape so that older ones would be misread; they are refused instead. */
-export const SPEC_VERSION = 2
+export const SPEC_VERSION = 3
 
 /** Where a session's container sees its agent's snapshot. */
 export const AGENT_VIEW = '/opt/fleet/agent'
@@ -37,8 +37,9 @@ const serviceSchema = z.object({
 const pathSchema = z.object({
   /** The argument's name in tau.json. */
   name: z.string(),
-  kind: z.enum(['file', 'dir']),
-  mode: z.enum(['mount-ro', 'mount-rw', 'copy-in', 'copy-out']),
+  type: z.enum(['file', 'dir']),
+  /** What the agent does with it, which decides how the container gets it (./store.ts). */
+  role: z.enum(['in', 'out', 'inout']),
   /** The caller's path, absolute. */
   host: z.string(),
   /** Where the container sees it. */

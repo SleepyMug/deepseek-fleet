@@ -24,7 +24,7 @@ const request = (agent: string, args: string[], bind = true, providers: PrepareR
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
     'PROMPT.md': 'Greet ${name}. Then say: ${rest}',
-    'tau.json': '{"args": [{"name": "name"}, {"name": "rest"}]}',
+    'tau.json': '{"args": [{"name": "name", "type": "text"}, {"name": "rest", "type": "text"}]}',
     'skills/shout/SKILL.md': '---\nname: shout\ndescription: Shout.\n---\nSHOUT\n',
   }, (dir) => {
     const prepared = prepare(request(dir, ['World', 'bye']))
@@ -39,7 +39,7 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
 test('every problem is reported together', async () => {
   await withAgent({
     'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "dir": "mount-rw"}], "env": ["TAU_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
+    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "inout"}], "env": ["TAU_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
     'skills/bad/SKILL.md': 'no frontmatter',
   }, (dir) => {
     const prepared = prepare(request(dir, []))
@@ -58,7 +58,7 @@ test('path arguments and variables are bound, outside the session folder only', 
     await withAgent({
       'PROMPT.md': 'Edit ${src} into ${report} with ${rules}',
       'tau.json': JSON.stringify({
-        args: [{ name: 'src', dir: 'mount-rw' }, { name: 'report', file: 'copy-out' }, { name: 'rules', file: 'copy-in', at: '/work/rules.md' }],
+        args: [{ name: 'src', type: 'dir', role: 'inout' }, { name: 'report', type: 'file', role: 'out' }, { name: 'rules', type: 'file', role: 'in' }],
         env: ['LANG', 'UNSET'],
       }),
     }, (dir) => {
@@ -66,10 +66,11 @@ test('path arguments and variables are bound, outside the session folder only', 
       const prepared = prepare({ ...request(dir, args), env: { LANG: 'C.UTF-8' } })
       assert.ok(prepared.ok, JSON.stringify(prepared))
       assert.deepEqual(prepared.spec.env, { LANG: 'C.UTF-8' })
-      assert.deepEqual(prepared.spec.paths.map(({ name, mode, view }) => [name, mode, view]), [
-        ['src', 'mount-rw', join(outside, 'src')], ['report', 'copy-out', join(outside, 'report.md')], ['rules', 'copy-in', '/work/rules.md'],
+      // The container sees each path where the caller has it.
+      assert.deepEqual(prepared.spec.paths.map(({ name, type, role, view }) => [name, type, role, view]), [
+        ['src', 'dir', 'inout', join(outside, 'src')], ['report', 'file', 'out', join(outside, 'report.md')], ['rules', 'file', 'in', join(dir, 'PROMPT.md')],
       ])
-      assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into ${join(outside, 'report.md')} with /work/rules.md`)
+      assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into ${join(outside, 'report.md')} with ${join(dir, 'PROMPT.md')}`)
       // The same paths inside the session folder are refused, and so is a missing input.
       const inside = prepare({ ...request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'PROMPT.md')]), cwd: outside })
       assert.ok(!inside.ok)
@@ -95,7 +96,7 @@ test('a directory that is no tau, or whose tau.json breaks the spec, is refused'
 })
 
 test('a check without arguments does not bind them, and an empty prompt is refused only when bound', async () => {
-  await withAgent({ 'PROMPT.md': '${text}', 'tau.json': '{"args": [{"name": "text"}]}' }, (dir) => {
+  await withAgent({ 'PROMPT.md': '${text}', 'tau.json': '{"args": [{"name": "text", "type": "text"}]}' }, (dir) => {
     assert.ok(prepare(request(dir, [], false)).ok)
     const prepared = prepare(request(dir, ['  ']))
     assert.ok(!prepared.ok)

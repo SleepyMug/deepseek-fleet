@@ -57,14 +57,14 @@ test('a copy replaces a file at once, and a folder whole, leaving nothing beside
   })
 })
 
-test('outputs are checked as tau checks them: each copy-out and mount-rw of the declared kind', async () => {
+test('outputs are checked as tau checks them: each out and inout path of the declared type', async () => {
   await withDir(async (dir) => {
     await writeFile(join(dir, 'copy.md'), 'x')
     await mkdir(join(dir, 'data'))
     const paths = [
-      { name: 'report', kind: 'file' as const, mode: 'copy-out' as const, host: '/h/report.md', view: '/v/report.md' },
-      { name: 'data', kind: 'dir' as const, mode: 'mount-rw' as const, host: join(dir, 'data'), view: join(dir, 'data') },
-      { name: 'in', kind: 'file' as const, mode: 'mount-ro' as const, host: '/missing', view: '/missing' },
+      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md', view: '/v/report.md' },
+      { name: 'data', type: 'dir' as const, role: 'inout' as const, host: join(dir, 'data'), view: join(dir, 'data') },
+      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing', view: '/missing' },
     ]
     assert.deepEqual(await outputProblems(paths, { '/v/report.md': join(dir, 'copy.md') }), [])
     assert.deepEqual(await outputProblems(paths, { '/v/report.md': join(dir, 'data') }), ['report: /v/report.md is a folder, not a file'])

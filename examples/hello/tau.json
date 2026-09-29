@@ -1,3 +1,7 @@
 {
-  "args": [{ "name": "name" }, { "name": "rest" }]
+  "description": "Greet someone with a skill, then repeat a line back.",
+  "args": [
+    { "name": "name", "type": "text", "description": "Who to greet." },
+    { "name": "rest", "type": "text", "description": "A line to repeat back; empty for none." }
+  ]
 }

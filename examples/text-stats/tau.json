@@ -1,3 +1,4 @@
 {
-  "args": [{ "name": "text" }]
+  "description": "Find the three most frequent words of a text with a module.",
+  "args": [{ "name": "text", "type": "text", "description": "The text to read." }]
 }

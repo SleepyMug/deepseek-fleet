@@ -1,11 +1,12 @@
 /**
- * Where an agent's path arguments may appear in its container. Running a tau
- * in fleet is a transformation of it: the session folder is an implicit
- * identity `mount-rw` argument, which the container mounts already. tau
- * refuses a path that is, holds or lies in another, so a declared path that
- * does so with the session folder is refused too; both are compared as the
- * host resolves them, through symlinks. A path may not cover or replace the
- * container's system folders or fleet's own either.
+ * Where an agent's path arguments may appear in its container, which sees
+ * each where the caller has it. Running a tau in fleet is a transformation
+ * of it: the session folder is an implicit `inout` folder argument, which
+ * the container mounts already. tau refuses a path that is, holds or lies
+ * in another, so a declared path that does so with the session folder is
+ * refused too; both are compared as the host resolves them, through
+ * symlinks. A path may not cover or replace the container's system folders
+ * or fleet's own either.
  * @module fleet-tau/paths
  */
 

@@ -83,7 +83,7 @@ export interface Outcome {
   text: string
   /** The failure of a turn that ended in `error`. */
   error?: { code: string; message: string }
-  /** Why the agent's copy-out paths were not published after its completed turn; absent when they were, or it has none. */
+  /** Why the agent's out paths were not published after its completed turn; absent when they were, or it has none. */
   outputs?: string[]
 }
 

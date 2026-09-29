@@ -101,7 +101,7 @@ export function prepare(request: PrepareRequest): Prepared {
       })),
       ts: request.ts === true || services.length > 0 || modules.length > 0,
       env: { ...run?.env },
-      paths: (run?.paths ?? []).map(({ name, kind, mode, host, view }) => ({ name, kind, mode, host, view })),
+      paths: (run?.paths ?? []).map(({ name, type, role, host, view }) => ({ name, type, role, host, view })),
     },
     title: [name, ...request.args].join(' '),
   }

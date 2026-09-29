@@ -206,7 +206,7 @@ export class FleetControl {
 
   /**
    * Wait until the session's agent, if one holds it, is idle, then read the
-   * outcome from its log. After a completed turn, the agent's copy-out paths
+   * outcome from its log. After a completed turn, the agent's out paths
    * are published, once per turn, whoever waits (fleet-tau/store).
    * @param from - the first event the outcome covers, or the start of the last turn.
    */

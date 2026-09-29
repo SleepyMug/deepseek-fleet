@@ -17,7 +17,7 @@ before(async () => {
   process.env.DSH_HOME = home
   agent = await mkdtemp(join(tmpdir(), 'fleet-tau-agent-'))
   await writeFile(join(agent, 'PROMPT.md'), 'Greet ${name}.')
-  await writeFile(join(agent, 'tau.json'), '{"args": [{"name": "name"}]}')
+  await writeFile(join(agent, 'tau.json'), '{"args": [{"name": "name", "type": "text"}]}')
   await writeFile(join(agent, 'notes.txt'), 'not part of the agent')
   const shared = await mkdtemp(join(tmpdir(), 'fleet-tau-shared-'))
   await mkdir(join(shared, 'shout'))
@@ -155,12 +155,12 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await mkdir(join(dir, 'out'))
     await writeFile(report, 'old report')
     const spec: Spec = {
-      version: 2, args: [], prompt: 'x', skills: [], services: {}, modules: [], ts: false, env: { LANG: 'C.UTF-8' },
+      version: 3, args: [], prompt: 'x', skills: [], services: {}, modules: [], ts: false, env: { LANG: 'C.UTF-8' },
       paths: [
-        { name: 'rules', kind: 'file', mode: 'copy-in', host: join(dir, 'rules.md'), view: '/work/rules.md' },
-        { name: 'data', kind: 'dir', mode: 'mount-rw', host: join(dir, 'data'), view: join(dir, 'data') },
-        { name: 'report', kind: 'file', mode: 'copy-out', host: report, view: report },
-        { name: 'summary', kind: 'file', mode: 'copy-out', host: join(dir, 'summary.md'), view: '/summary.md' },
+        { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md'), view: join(dir, 'rules.md') },
+        { name: 'data', type: 'dir', role: 'inout', host: join(dir, 'data'), view: join(dir, 'data') },
+        { name: 'report', type: 'file', role: 'out', host: report, view: report },
+        { name: 'summary', type: 'file', role: 'out', host: join(dir, 'summary.md'), view: '/summary.md' },
       ],
     }
     await tau.create('session-p' as SessionId, spec)
@@ -168,7 +168,8 @@ test('a run\'s paths reach its container, and its outputs are published once per
     assert.deepEqual(configured.get('session-p'), {
       mounts: [
         { source: join(folder, 'agent'), target: '/opt/fleet/agent', readonly: true },
-        { source: join(folder, 'paths', 'rules'), target: '/work/rules.md', readonly: false },
+        // An in path is its snapshot, which the agent cannot change.
+        { source: join(folder, 'paths', 'rules'), target: join(dir, 'rules.md'), readonly: true },
         { source: join(dir, 'data'), target: join(dir, 'data'), readonly: false },
       ],
       env: { LANG: 'C.UTF-8' },

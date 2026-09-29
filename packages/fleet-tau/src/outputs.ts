@@ -1,5 +1,5 @@
 /**
- * Publishing an agent's `copy-out` paths: what the agent left in its
+ * Publishing an agent's `out` paths: what the agent left in its
  * container, copied out to the store by fleet-box, which copies plain files
  * and folders only, is checked again here, and as tau checks a run's
  * outputs, and then replaces the caller's path. The copy comes from the container, which the model controls, so it
@@ -48,22 +48,22 @@ export async function copyProblems(copy: string, name: string, view: string, lim
 }
 
 /**
- * What tau's `checkOutputs` checks after a run: each `copy-out` path, here
- * its copy, and each `mount-rw` path is a file or a folder as declared,
- * symlinks followed.
- * @param copies - each copy-out's copy, by the path the agent left it at.
- * @returns a problem for each path that is missing or of the other kind.
+ * What tau's `checkOutputs` checks after a run: each `out` path, here its
+ * copy, and each `inout` path, which the container mounts from the caller,
+ * is a file or a folder as declared, symlinks followed.
+ * @param copies - each out path's copy, by the path the agent left it at.
+ * @returns a problem for each path that is missing or of the other type.
  */
 export async function outputProblems(paths: readonly SpecPath[], copies: Readonly<Record<string, string>>): Promise<string[]> {
   const problems: string[] = []
   for (const path of paths) {
-    if (path.mode !== 'copy-out' && path.mode !== 'mount-rw') continue
-    const at = path.mode === 'copy-out' ? copies[path.view] : path.host
+    if (path.role === 'in') continue
+    const at = path.role === 'out' ? copies[path.view] : path.host
     const info = at === undefined ? undefined : await stat(at).catch(() => undefined)
-    const where = path.mode === 'copy-out' ? `the agent left nothing at ${path.view}` : `${path.host} is gone`
+    const where = path.role === 'out' ? `the agent left nothing at ${path.view}` : `${path.host} is gone`
     if (info === undefined) problems.push(`${path.name}: ${where}`)
-    else if (info.isDirectory() !== (path.kind === 'dir')) {
-      problems.push(`${path.name}: ${path.mode === 'copy-out' ? path.view : path.host} is a ${info.isDirectory() ? 'folder' : 'file'}, not a ${path.kind === 'dir' ? 'folder' : 'file'}`)
+    else if (info.isDirectory() !== (path.type === 'dir')) {
+      problems.push(`${path.name}: ${path.role === 'out' ? path.view : path.host} is a ${info.isDirectory() ? 'folder' : 'file'}, not a ${path.type === 'dir' ? 'folder' : 'file'}`)
     }
   }
   return problems

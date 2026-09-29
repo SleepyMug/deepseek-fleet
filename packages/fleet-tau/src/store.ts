@@ -11,12 +11,15 @@
  * fleet-tau's agent plugin (./agent.ts) gives the session's agents what the
  * spec holds, whenever an agent is created or resumed.
  *
- * The container gets the agent's path arguments too: a `mount-ro` or
- * `mount-rw` path mounted from the caller, a `copy-in` path mounted from a
- * copy taken into the session's folder when the session is made, and the
- * folder a `copy-out` path goes in; and the caller's values of the variables
- * tau.json lists. After a completed turn, the command that waited on it has
- * the store publish the `copy-out` paths ({@link FleetTau.publish}).
+ * The container gets the agent's path arguments too, each as its role asks
+ * and tau leaves to the runtime: an `in` path copied into the session's
+ * folder when the session is made, and that copy mounted read-only, so the
+ * agent sees the input as it was when it was given, however long the
+ * session lasts; an `inout` path mounted from the caller; and the folder an
+ * `out` path goes in. The container gets the caller's values of the
+ * variables tau.json lists as well. After a completed turn, the command
+ * that waited on it has the store publish the `out` paths
+ * ({@link FleetTau.publish}).
  *
  * A fork of such a session has no folder of its own: it takes its source's
  * spec, and its container the same snapshot, but none of its paths or
@@ -130,7 +133,7 @@ export class FleetTau extends Service {
     try {
       // A prompt run has no agent, and its container sees an empty snapshot.
       await mkdir(join(folder, 'agent'), { mode: 0o700 })
-      for (const path of spec.paths.filter(path => path.mode === 'copy-in')) {
+      for (const path of spec.paths.filter(path => path.role === 'in')) {
         await cp(path.host, join(folder, 'paths', path.name), { recursive: true, dereference: true, errorOnExist: true, force: false })
       }
       if (spec.agent !== undefined) {
@@ -148,7 +151,7 @@ export class FleetTau extends Service {
   }
 
   /**
-   * Publish a session's `copy-out` paths after a completed turn, once per
+   * Publish a session's `out` paths after a completed turn, once per
    * turn: copy each out of the container into a staging folder of this
    * publish's own, check the copies (./outputs.ts) and that the run left
    * what the tau declares, and only then replace the caller's paths. A
@@ -171,8 +174,8 @@ export class FleetTau extends Service {
     const found = await this.specOf(root)
     if (found === undefined || found.owner !== root.id) return []
     const { paths } = found.spec
-    const outputs = paths.filter(path => path.mode === 'copy-out')
-    if (outputs.length === 0 && !paths.some(path => path.mode === 'mount-rw')) return []
+    const outputs = paths.filter(path => path.role === 'out')
+    if (!paths.some(path => path.role !== 'in')) return []
     const folder = this.folder(root.id)
     const record = join(folder, 'published.json')
     const published = await readFile(record, 'utf8').then(text => JSON.parse(text) as { turn: number; problems: string[] }, () => undefined)
@@ -245,11 +248,12 @@ export class FleetTau extends Service {
     const mounts: Mount[] = [{ source: join(folder, 'agent'), target: AGENT_VIEW, readonly: true }]
     const directories: string[] = []
     for (const path of spec?.paths ?? []) {
-      // The folder a copy-out path goes in, unless it is the container's root, which is always there.
-      if (path.mode === 'copy-out') {
+      // The folder an out path goes in, unless it is the container's root, which is always there.
+      if (path.role === 'out') {
         if (posix.dirname(path.view) !== '/') directories.push(posix.dirname(path.view))
       }
-      else mounts.push({ source: path.mode === 'copy-in' ? join(folder, 'paths', path.name) : path.host, target: path.view, readonly: path.mode === 'mount-ro' })
+      else if (path.role === 'in') mounts.push({ source: join(folder, 'paths', path.name), target: path.view, readonly: true })
+      else mounts.push({ source: path.host, target: path.view, readonly: false })
     }
     return {
       mounts,
