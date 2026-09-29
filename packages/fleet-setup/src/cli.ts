@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * `fleet-setup`: what the fleet profile needs on this machine outside dsh.
  * `image` builds the session image fleet-box uses, with the runtime of this

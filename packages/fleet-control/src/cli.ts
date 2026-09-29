@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * `fleet`: run agents in the fleet host's containers from the command line,
  * through the host's control socket. An agent is a directory in the tau
@@ -62,8 +63,11 @@ const SOCKET = socketPath(dshHome())
 
 /** A failure the fleet host reported. */
 class HostError extends Error {
-  constructor(readonly code: string, message: string) {
+  readonly code: string
+
+  constructor(code: string, message: string) {
     super(message)
+    this.code = code
   }
 }
 

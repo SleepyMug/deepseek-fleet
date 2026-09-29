@@ -12,14 +12,18 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "fleet": "./bin.js"
+    "fleet": "./src/cli.ts"
   },
   "files": [
-    "bin.js",
     "lib",
     "!lib/**/*.test.*",
     "cordis.patch.yml"
   ],
+  "publishConfig": {
+    "bin": {
+      "fleet": "./lib/cli.js"
+    }
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",

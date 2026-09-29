@@ -33,13 +33,20 @@ const UNCANCELLED = new AbortController().signal
 
 /** A failure the protocol reports with its own code. */
 export class ControlError extends Error {
-  constructor(readonly code: string, message: string) {
+  readonly code: string
+
+  constructor(code: string, message: string) {
     super(message)
+    this.code = code
   }
 }
 
 export class FleetControl {
-  constructor(private readonly ctx: Context) {}
+  private readonly ctx: Context
+
+  constructor(ctx: Context) {
+    this.ctx = ctx
+  }
 
   /**
    * Start a session in a folder, registered as a workspace so the web UI
