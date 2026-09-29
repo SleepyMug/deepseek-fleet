@@ -18,13 +18,13 @@
 # and is removed when its session is archived; an unarchived session starts
 # fresh, and the model is told once. The session image, with the helper
 # built into it, is a prerequisite that dsh never builds: build it with
-# `fleet-setup image` from the fleet checkout (`pnpm exec fleet-setup
-# image`), which tags it fleet-box:local, the image fleet-box uses unless
-# `image` on the fleet-box row names another. fleet-box checks at startup
-# that the image is there and that its helper speaks this fleet-box's
-# protocol; otherwise it does not start, dsh's startup warning says so, and
-# no session can run. A rebuild reaches the containers once dsh restarts,
-# and recreates them.
+# `pnpm image` in the fleet checkout, which builds the workspace and runs
+# `fleet-setup image`, which tags it fleet-box:local, the image fleet-box
+# uses unless `image` on the fleet-box row names another. fleet-box checks
+# at startup that the image is there and that its helper speaks this
+# fleet-box's protocol; otherwise it does not start, dsh's startup warning
+# says so, and no session can run. A rebuild reaches the containers once dsh
+# restarts, and recreates them.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through fleet-box's helper. The helper also serves tau's

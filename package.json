@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc -b",
     "watch": "tsc -b --watch",
-    "clean": "tsc -b --clean"
+    "clean": "tsc -b --clean",
+    "image": "pnpm build && fleet-setup image"
   },
   "devEngines": {
     "packageManager": {

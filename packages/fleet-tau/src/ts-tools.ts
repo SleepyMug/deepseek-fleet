@@ -147,7 +147,7 @@ export function registerTsTools(ctx: Context, spec: Spec): void {
 async function runner(ctx: Context, exec: ToolRunContext, request: RunnerRequest): Promise<RunnerReply> {
   const protocol = (await ctx.fleetBox.imageLabels())[RUNNER_PROTOCOL_LABEL]
   if (protocol !== String(RUNNER_PROTOCOL)) {
-    throw new Error(`the session image's TypeScript runner speaks protocol ${protocol ?? 'none'}, not ${RUNNER_PROTOCOL}; rebuild it with \`fleet-setup image\``)
+    throw new Error(`the session image's TypeScript runner speaks protocol ${protocol ?? 'none'}, not ${RUNNER_PROTOCOL}; rebuild it with \`pnpm image\` in the fleet checkout`)
   }
   const handle = ctx.subprocess.spawn({
     argv: [HELPER_NODE, RUNNER_ENTRY],

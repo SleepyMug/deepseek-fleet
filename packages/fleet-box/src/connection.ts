@@ -128,7 +128,7 @@ export class HelperConnection {
       throw new Error(`fleet-box: the helper in ${container} did not start${this.stderrNote() || `: ${message(error)}`}`)
     }
     if (hello.protocol !== PROTOCOL_VERSION) {
-      throw new Error(`fleet-box: the helper in ${container} speaks protocol ${hello.protocol}, not ${PROTOCOL_VERSION}; rebuild the image with \`fleet-setup image\``)
+      throw new Error(`fleet-box: the helper in ${container} speaks protocol ${hello.protocol}, not ${PROTOCOL_VERSION}; rebuild the image with \`pnpm image\` in the fleet checkout`)
     }
   }
 

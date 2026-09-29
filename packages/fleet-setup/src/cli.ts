@@ -2,9 +2,10 @@
 /**
  * `fleet-setup`: what the fleet profile needs on this machine outside dsh.
  * `image` builds the session image fleet-box uses, with the runtime of this
- * checkout's packages on an environment (./image.ts). Run it from the fleet
- * checkout, `pnpm exec fleet-setup <part>`. Signing in to a model provider
- * happens in dsh, in a profile of its own (fleet-signin's app).
+ * checkout's packages on an environment (./image.ts). In the fleet
+ * checkout, `pnpm image` builds the workspace, then runs `fleet-setup
+ * image`. Signing in to a model provider happens in dsh, in a profile of its
+ * own (fleet-signin's app).
  * @module fleet-setup/cli
  */
 

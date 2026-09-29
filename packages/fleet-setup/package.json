@@ -8,18 +8,13 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "fleet-setup": "./src/cli.ts"
+    "fleet-setup": "./lib/cli.js"
   },
   "files": [
     "image",
     "lib",
     "!lib/**/*.test.*"
   ],
-  "publishConfig": {
-    "bin": {
-      "fleet-setup": "./lib/cli.js"
-    }
-  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",

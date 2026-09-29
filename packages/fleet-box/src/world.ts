@@ -261,15 +261,14 @@ export class FleetBox extends Service {
       found = await this.docker(['image', 'inspect', '--format', '{{.Id}} {{json .Config}}', image])
     } catch (error) {
       if (!/no such image/iu.test(message(error))) throw error
-      throw new Error(`fleet-box: the session image ${image} is not built; build it with \`fleet-setup image\` `
-        + 'from the fleet checkout: `pnpm exec fleet-setup image`')
+      throw new Error(`fleet-box: the session image ${image} is not built; build it with \`pnpm image\` in the fleet checkout`)
     }
     const space = found.indexOf(' ')
     const labels = (JSON.parse(found.slice(space + 1)) as { Labels?: Record<string, string> | null } | null)?.Labels ?? {}
     const protocol = labels[PROTOCOL_LABEL]
     if (protocol !== String(PROTOCOL_VERSION)) {
       throw new Error(`fleet-box: the helper in the session image ${image} speaks protocol ${protocol ?? 'unknown'}, not ${PROTOCOL_VERSION}; `
-        + 'rebuild it with `fleet-setup image`')
+        + 'rebuild it with `pnpm image` in the fleet checkout')
     }
     return { id: found.slice(0, space), labels }
   }
