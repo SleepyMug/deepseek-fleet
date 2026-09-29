@@ -26,13 +26,14 @@
 # import the agent's services as @svc/<name>, its modules by name, and the
 # npm packages ts_install adds to /opt/fleet/ts.
 #
-# Path arguments reach the container where the caller has them, each as its
-# role in tau.json asks: an `in` path as a snapshot taken when the session is
-# made, mounted read-only; an `inout` path mounted from the caller; and an
-# `out` path published to the caller after a completed turn a `fleet`
-# command waited on. The session folder counts as an implicit `inout`
-# folder, so a path that is, holds or lies in it is refused. The variables
-# tau.json lists are passed from the caller's environment.
+# Path arguments reach the container where the caller has them, each
+# according to its role in tau.json, as fleet-tau chooses: an `in` path as a
+# snapshot taken when the session is made, mounted read-only; an `inout`
+# path mounted from the caller; and an `out` path published to the caller
+# after a completed turn a `fleet` command waited on. The session folder
+# counts as an implicit `inout` folder, so a path that is, holds or lies in
+# it is refused. The variables tau.json lists are passed from the caller's
+# environment.
 
 - insert:
     - id: fleet-tau-services

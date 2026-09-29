@@ -40,10 +40,8 @@ const pathSchema = z.object({
   type: z.enum(['file', 'dir']),
   /** What the agent does with it, which decides how the container gets it (./store.ts). */
   role: z.enum(['in', 'out', 'inout']),
-  /** The caller's path, absolute. */
+  /** The caller's path, absolute, which is where the container sees it too. */
   host: z.string(),
-  /** Where the container sees it. */
-  view: z.string(),
 })
 
 const moduleSchema = z.object({

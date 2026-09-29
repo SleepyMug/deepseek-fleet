@@ -66,8 +66,7 @@ test('path arguments and variables are bound, outside the session folder only', 
       const prepared = prepare({ ...request(dir, args), env: { LANG: 'C.UTF-8' } })
       assert.ok(prepared.ok, JSON.stringify(prepared))
       assert.deepEqual(prepared.spec.env, { LANG: 'C.UTF-8' })
-      // The container sees each path where the caller has it.
-      assert.deepEqual(prepared.spec.paths.map(({ name, type, role, view }) => [name, type, role, view]), [
+      assert.deepEqual(prepared.spec.paths.map(({ name, type, role, host }) => [name, type, role, host]), [
         ['src', 'dir', 'inout', join(outside, 'src')], ['report', 'file', 'out', join(outside, 'report.md')], ['rules', 'file', 'in', join(dir, 'PROMPT.md')],
       ])
       assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into ${join(outside, 'report.md')} with ${join(dir, 'PROMPT.md')}`)

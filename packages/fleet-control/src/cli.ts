@@ -295,7 +295,7 @@ function report(outcome: Outcome): void {
   if (outcome.error !== undefined) say(`fleet: ${outcome.error.code}: ${outcome.error.message}`)
   else if (outcome.reason === null) say('fleet: the session has not finished a turn')
   else if (outcome.reason !== 'completed') say(`fleet: the turn ended ${outcome.reason}`)
-  if (outcome.outputs !== undefined) say(`fleet: the agent's outputs were not published:\n  ${outcome.outputs.join('\n  ')}`)
+  if (outcome.outputs !== undefined) say(`fleet: the run did not give back its outputs:\n  ${outcome.outputs.join('\n  ')}`)
 }
 
 /**

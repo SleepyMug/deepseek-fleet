@@ -22,7 +22,7 @@ import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type Workspa
 import type {} from 'fleet-box/world'
 import type {} from 'fleet-tau/services'
 import { promptSpec } from 'fleet-tau/spec'
-import type { Spec } from 'fleet-tau/store'
+import { InputError, type Spec } from 'fleet-tau/store'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
 import type { Outcome, Request, Results } from './protocol.ts'
 
@@ -70,7 +70,10 @@ export class FleetControl {
       title = prepared.title
     }
     const workspace = await this.ctx.workspaceRegistry.create(request.cwd)
-    const sessionId = await this.create(workspace.id, spec, signal)
+    const sessionId = await this.create(workspace.id, spec, signal).catch((error: unknown) => {
+      if (error instanceof InputError && 'agent' in task) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${error.problems.join('\n  ')}`)
+      throw error
+    })
     try {
       if (title !== undefined) {
         // A title only helps people find the run in the web UI; the run goes on without it.
@@ -95,12 +98,14 @@ export class FleetControl {
   /**
    * Make a session in a workspace, its agent's spec stored first under the
    * id it will have. A spec stays with a session that was made, even if
-   * creating it failed later on, and goes with one that was not.
+   * creating it failed later on, and goes with one that was not. A command
+   * that has gone stops the spec from being stored, which can take a while
+   * for large `in` paths.
    */
   private async create(workspaceId: WorkspaceId, spec: Spec | undefined, signal: AbortSignal): Promise<SessionId> {
     // The session controller's own format for new sessions.
     const sessionId = `session-${randomUUID()}` as SessionId
-    if (spec !== undefined) await this.ctx.fleetTau.create(sessionId, spec)
+    if (spec !== undefined) await this.ctx.fleetTau.create(sessionId, spec, signal)
     try {
       await this.ctx.sessionController.create({ sessionId, workspaceId })
     } catch (error) {

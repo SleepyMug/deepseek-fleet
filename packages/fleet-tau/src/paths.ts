@@ -4,9 +4,9 @@
  * of it: the session folder is an implicit `inout` folder argument, which
  * the container mounts already. tau refuses a path that is, holds or lies
  * in another, so a declared path that does so with the session folder is
- * refused too; both are compared as the host resolves them, through
- * symlinks. A path may not cover or replace the container's system folders
- * or fleet's own either.
+ * refused too, compared as the host resolves it, through symlinks, and as
+ * given, which is where the container mounts it. A path may not cover or
+ * replace the container's system folders or fleet's own either.
  * @module fleet-tau/paths
  */
 
@@ -24,22 +24,21 @@ const ENCLOSED = ['/proc', '/sys', '/dev', '/opt/fleet-box', '/opt/fleet', '/run
  * @param cwd - the session folder, as its real path.
  * @returns a problem for each path the container cannot be given.
  */
-export function pathProblems(paths: readonly BoundPath[], cwd: string): string[] {
+export function pathProblems(paths: readonly Pick<BoundPath, 'name' | 'host'>[], cwd: string): string[] {
   const problems: string[] = []
   for (const path of paths) {
-    const host = realPath(path.host)
-    if (overlaps(host, cwd) || overlaps(path.view, cwd)) {
+    if (overlaps(realPath(path.host), cwd) || overlaps(path.host, cwd)) {
       problems.push(`${path.name}: ${path.host} is, holds or lies in the session folder ${cwd}, which the container mounts already; `
         + 'give a path outside it, or run the agent in another folder with --cwd')
       continue
     }
-    const covered = COVERED.find(folder => within(folder, path.view))
+    const covered = COVERED.find(folder => within(folder, path.host))
     if (covered !== undefined) {
-      problems.push(`${path.name}: ${path.view} would cover ${covered} in the container`)
+      problems.push(`${path.name}: ${path.host} would cover ${covered} in the container`)
       continue
     }
-    const enclosing = ENCLOSED.find(folder => within(path.view, folder))
-    if (enclosing !== undefined) problems.push(`${path.name}: ${path.view} lies in ${enclosing}, which the container keeps for itself`)
+    const enclosing = ENCLOSED.find(folder => within(path.host, folder))
+    if (enclosing !== undefined) problems.push(`${path.name}: ${path.host} lies in ${enclosing}, which the container keeps for itself`)
   }
   return problems
 }

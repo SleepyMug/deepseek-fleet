@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { link, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -62,13 +63,21 @@ test('outputs are checked as tau checks them: each out and inout path of the dec
     await writeFile(join(dir, 'copy.md'), 'x')
     await mkdir(join(dir, 'data'))
     const paths = [
-      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md', view: '/v/report.md' },
-      { name: 'data', type: 'dir' as const, role: 'inout' as const, host: join(dir, 'data'), view: join(dir, 'data') },
-      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing', view: '/missing' },
+      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md' },
+      { name: 'data', type: 'dir' as const, role: 'inout' as const, host: join(dir, 'data') },
+      { name: 'rules', type: 'file' as const, role: 'inout' as const, host: join(dir, 'rules') },
+      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing' },
     ]
-    assert.deepEqual(await outputProblems(paths, { '/v/report.md': join(dir, 'copy.md') }), [])
-    assert.deepEqual(await outputProblems(paths, { '/v/report.md': join(dir, 'data') }), ['report: /v/report.md is a folder, not a file'])
+    const at = (copy: string) => () => join(dir, copy)
+    await writeFile(join(dir, 'rules'), 'x')
+    assert.deepEqual(await outputProblems(paths, at('copy.md')), [])
+    assert.deepEqual(await outputProblems(paths, at('data')), ['report: /h/report.md is not a file'])
+    // A pipe is not a file, though it is no folder either.
+    await rm(join(dir, 'rules'))
+    execFileSync('mkfifo', [join(dir, 'rules')])
     await rm(join(dir, 'data'), { recursive: true })
-    assert.deepEqual(await outputProblems(paths, {}), ['report: the agent left nothing at /v/report.md', `data: ${join(dir, 'data')} is gone`])
+    assert.deepEqual(await outputProblems(paths, at('missing')), [
+      'report: the agent left nothing at /h/report.md', `data: ${join(dir, 'data')} is gone`, `rules: ${join(dir, 'rules')} is not a file`,
+    ])
   })
 })
