@@ -1,8 +1,20 @@
 packages:
   - packages/*
+  # tau, ts-executor and pi-run are developed in checkouts of their own
+  # beside this one, and join this workspace from there. Install only here:
+  # `pnpm install` inside one of them installs it on its own again, from its
+  # own lockfile, and the next install here switches it back.
+  - ../agent_fleet_project/tau
+  - ../agent_fleet_project/ts-executor
+  - ../agent_fleet_project/pi-run
+# A dependency on a member's version, such as pi-run's on tau 0.1.0, links
+# the member, so the members' manifests stay as they are.
+linkWorkspacePackages: true
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true
+  # tsx's, which finds its platform binary in @esbuild/<platform> at runtime.
+  esbuild: false
   koffi: true
   node-pty: true
   protobufjs: true

@@ -21,6 +21,6 @@
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dependencies": {
-    "@sleepymug/ts-executor": "link:../../../agent_fleet_project/ts-executor"
+    "@sleepymug/ts-executor": "0.4.0"
   }
 }

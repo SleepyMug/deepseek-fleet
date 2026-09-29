@@ -48,7 +48,7 @@
     }
   },
   "dependencies": {
-    "@sleepymug/tau": "link:../../../agent_fleet_project/tau",
+    "@sleepymug/tau": "0.1.0",
     "fleet-box-helper": "workspace:*",
     "fleet-tau-runner": "workspace:*",
     "typescript": "6.0.3",
