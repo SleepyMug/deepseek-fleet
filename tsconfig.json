@@ -2,8 +2,9 @@
   "files": [],
   "references": [
     { "path": "packages/fleet-control" },
+    { "path": "packages/fleet-core" },
     { "path": "packages/fleet-image" },
-    { "path": "packages/fleet-runtime" },
+    { "path": "packages/fleet-setup" },
     { "path": "packages/fleet-signin" }
   ]
 }

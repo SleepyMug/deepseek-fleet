@@ -4,7 +4,7 @@
  * so a session the `fleet` command starts is one the web UI lists, follows
  * and can steer; a human message queued there while a run waits becomes
  * part of that run. A run of an agent directory has fleet-tau read and store
- * the agent before its session exists (fleet-runtime/tau/store), so every agent of
+ * the agent before its session exists (fleet-core/tau/store), so every agent of
  * the session gets the agent's customization from the first step on. Waiting follows dsh's headless runner: the agent is idle
  * once no turn runs and none is queued, and the outcome is the last turn's
  * end and the last assistant text.
@@ -19,11 +19,11 @@ import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import type {} from 'fleet-runtime/box/world'
+import type {} from 'fleet-core/box/world'
 import { declarations, implementations } from 'fleet-image/apis/registry'
-import type {} from 'fleet-runtime/tau/backends'
-import { promptSpec } from 'fleet-runtime/tau/spec'
-import { InputError, type Spec } from 'fleet-runtime/tau/store'
+import type {} from 'fleet-core/tau/backends'
+import { promptSpec } from 'fleet-core/tau/spec'
+import { InputError, type Spec } from 'fleet-core/tau/store'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
 import type { Outcome, Request, Results } from './protocol.ts'
 
@@ -222,7 +222,7 @@ export class FleetControl {
   /**
    * Wait until the session's agent, if one holds it, is idle, then read the
    * outcome from its log. After a completed turn, the agent's out paths
-   * are published, once per turn, whoever waits (fleet-runtime/tau/store).
+   * are published, once per turn, whoever waits (fleet-core/tau/store).
    * @param from - the first event the outcome covers, or the start of the last turn.
    */
   private async settle(sessionId: SessionId, from: number | 'last-turn', signal: AbortSignal): Promise<Outcome> {
