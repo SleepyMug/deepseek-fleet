@@ -1,0 +1,32 @@
+{
+  "name": "fleet-client",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The fleet's commands outside dsh: `fleet run <agent-dir>` runs an agent directory in the tau format in its own session and container, through the Unix socket fleet-core's fleet-control plugin serves in the fleet host; `fleet-setup image` builds the session image fleet-box uses",
+  "type": "module",
+  "exports": {
+    "./control/protocol": {
+      "types": "./lib/control/protocol.d.ts",
+      "default": "./lib/control/protocol.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "fleet": "./lib/control/cli.js",
+    "fleet-setup": "./lib/setup/cli.js"
+  },
+  "files": [
+    "image",
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dependencies": {
+    "fleet-image": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

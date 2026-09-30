@@ -1,7 +1,7 @@
 /**
  * The `fleet` command's options: leading `--name` or `-n` flags and values,
  * ended by the first other argument or by `--`.
- * @module fleet-control/options
+ * @module fleet-client/control/options
  */
 
 /** A command line the command does not accept; it prints its usage. */

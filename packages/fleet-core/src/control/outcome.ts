@@ -1,11 +1,11 @@
 /**
  * A session's outcome, read from its log as dsh's headless runner reads a
  * run: the last non-empty assistant text and the last turn's end.
- * @module fleet-control/outcome
+ * @module fleet-core/control/outcome
  */
 
 import type { SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
-import type { Outcome } from './protocol.ts'
+import type { Outcome } from 'fleet-client/control/protocol'
 
 /** The outcome of the turns that start from `from` on. */
 export function summarize(events: readonly SessionEvent[], from: number): Outcome {

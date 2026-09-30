@@ -1,8 +1,8 @@
-# The fleet host's core: fleet-box, the Docker execution world, and
-# fleet-tau, the tau runtime on it. Layered after profile-fleet, whose
-# `fs-local` row it replaces, as it does dsh-base's `subprocess` row, and
-# before fleet-control, whose `fleet run` stores each session's spec here:
-# list it between them in the profile's bundles.
+# The fleet host's core: fleet-box, the Docker execution world; fleet-tau,
+# the tau runtime on it; and fleet-control, the socket through which
+# fleet-client's `fleet` command runs sessions. Layered after profile-fleet,
+# whose `fs-local` row it replaces, as it does dsh-base's `subprocess` row:
+# list it after profile-fleet in the profile's bundles.
 #
 # ═══ fleet-box: the Docker execution world ═══
 #
@@ -17,7 +17,7 @@
 # starts when something of its session needs it, keeps running while
 # anything occupies it (a running turn, a sidebar terminal, a process, a file
 # access), stops once nothing has for a minute (`idleStopMs` on the
-# fleet-box row), at once when fleet-control's `fleet` command finishes
+# fleet-box row), at once when the `fleet` command finishes
 # waiting and nothing occupies it, or when dsh exits or the helper is lost,
 # and is removed when its session is archived; an unarchived session starts
 # fresh, and the model is told once. The session image, with the helper
@@ -193,3 +193,14 @@
     - id: fleet-tau-archives
       name: fleet-core/tau/examples/archives
       disabled: true
+
+# ═══ fleet-control: the control socket the `fleet` command talks to ═══
+#
+# It listens at $DSH_HOME/fleet/control.sock, which only the owner can open,
+# and refuses to start while another dsh process serves that socket. A run
+# has fleet-tau read and store its agent directory, then starts its session
+# through dsh's session controller, so the web UI lists it.
+
+- insert:
+    - id: fleet-control
+      name: fleet-core/control/server

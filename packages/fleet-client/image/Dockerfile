@@ -5,9 +5,9 @@
 # runs the model's programs there, and fleet's implementations of the APIs
 # those programs import. The environment is the `environment` stage below
 # unless `--from` names an image, which the ENVIRONMENT build arg puts in
-# its place. The build context's box/ holds fleet-image (src/image.ts),
+# its place. The build context's box/ holds fleet-image (src/setup/image.ts),
 # compiled into lib/, with every package it depends on as installed on the
-# host (src/stage.ts), so nothing is installed or compiled here.
+# host (src/setup/stage.ts), so nothing is installed or compiled here.
 
 # The Node image the default environment builds on, whose Node the helper and the runner run on.
 ARG NODE_IMAGE=node:26.9.0-trixie-slim

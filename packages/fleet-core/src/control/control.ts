@@ -8,7 +8,7 @@
  * the session gets the agent's customization from the first step on. Waiting follows dsh's headless runner: the agent is idle
  * once no turn runs and none is queued, and the outcome is the last turn's
  * end and the last assistant text.
- * @module fleet-control/control
+ * @module fleet-core/control/control
  */
 
 import { randomUUID } from 'node:crypto'
@@ -19,13 +19,13 @@ import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import type {} from 'fleet-core/box/world'
+import type { Outcome, Request, Results } from 'fleet-client/control/protocol'
 import { declarations, implementations } from 'fleet-image/apis/registry'
-import type {} from 'fleet-core/tau/backends'
-import { promptSpec } from 'fleet-core/tau/spec'
-import { InputError, type Spec } from 'fleet-core/tau/store'
+import type {} from '../box/world.ts'
+import type {} from '../tau/backends.ts'
+import { promptSpec } from '../tau/spec.ts'
+import { InputError, type Spec } from '../tau/store.ts'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
-import type { Outcome, Request, Results } from './protocol.ts'
 
 type RequestOf<K extends Request['op']> = Extract<Request, { op: K }>
 

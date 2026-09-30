@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { dshHome, lineReader, requestSchema } from './protocol.ts'
 
 test('lines split across and within chunks', () => {
@@ -33,13 +32,6 @@ test('the dsh home follows DSH_HOME as dsh does', () => {
   assert.equal(dshHome({ DSH_HOME: '  ' }), join(homedir(), '.dsh'))
   assert.equal(dshHome({ DSH_HOME: '~/other' }), join(homedir(), 'other'))
   assert.equal(dshHome({ DSH_HOME: '/srv/dsh/' }), '/srv/dsh')
-})
-
-test('the command finds the home the host serves, which dsh resolves', () => {
-  for (const home of [undefined, '', '  ', '~', '~/other', '/srv/dsh/', 'relative/home']) {
-    const env = home === undefined ? {} : { DSH_HOME: home }
-    assert.equal(dshHome(env), resolveDshHome(undefined, env), `DSH_HOME=${String(home)}`)
-  }
 })
 
 test('a run carries a prompt or an agent directory, never both or neither', () => {

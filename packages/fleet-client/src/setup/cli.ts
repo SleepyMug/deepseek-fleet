@@ -6,7 +6,7 @@
  * checkout, `pnpm image` builds the workspace, then runs `fleet-setup
  * image`. Signing in to a model provider happens in dsh, in a profile of its
  * own (fleet-signin's app).
- * @module fleet-setup/cli
+ * @module fleet-client/setup/cli
  */
 
 import { execFile } from 'node:child_process'

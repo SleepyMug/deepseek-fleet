@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "lib"
-  },
-  "include": ["src"],
-  "references": [{ "path": "../fleet-image" }, { "path": "../fleet-core" }]
-}

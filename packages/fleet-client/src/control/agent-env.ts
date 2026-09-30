@@ -4,7 +4,7 @@
  * the host never sees the rest of the caller's environment. The host reads
  * and checks tau.json itself; this reads only `env`, leniently, and a
  * tau.json it cannot read sends nothing, leaving the host to report it.
- * @module fleet-control/agent-env
+ * @module fleet-client/control/agent-env
  */
 
 import { readFileSync } from 'node:fs'

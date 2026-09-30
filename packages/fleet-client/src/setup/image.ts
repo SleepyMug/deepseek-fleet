@@ -11,7 +11,7 @@
  * handshake, its runner answers a request, and every implementation loads,
  * so a tag always names a working image. Nothing is removed: the build a new one untags is
  * left for `docker image prune`, since a container may still use it.
- * @module fleet-setup/image
+ * @module fleet-client/setup/image
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
@@ -25,7 +25,7 @@ import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type Run
 import { installedPackage, stagePackage } from './stage.ts'
 
 /** This package's folder, from which fleet-image is found as Node finds it. */
-const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
+const PACKAGE_DIR = fileURLToPath(new URL('../../', import.meta.url))
 const DOCKERFILE = join(PACKAGE_DIR, 'image', 'Dockerfile')
 /** How long a new build's helper and runner get to answer. */
 const CHECK_TIMEOUT_MS = 60_000

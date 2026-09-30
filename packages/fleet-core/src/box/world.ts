@@ -28,7 +28,7 @@
  * container keeps running without a helper only when dsh is killed, or exits
  * before the teardown finishes; its next use takes it over. The image, which
  * the `image` setting names, is a prerequisite built outside dsh by
- * `fleet-setup image` from the fleet-setup package, with fleet-image's helper
+ * `fleet-setup image` from the fleet-client package, with fleet-image's helper
  * in it (fleet-image/helper/image).
  * This service checks it when it starts, and creates every container from
  * the image it checked, so a rebuild reaches containers once dsh restarts,

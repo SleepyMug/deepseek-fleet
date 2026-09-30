@@ -8,7 +8,7 @@
  * declares. Nothing is installed or compiled for the image, so it runs what
  * the host runs; since the package manager chose the platform-specific
  * packages for this machine, the image must be linux on its architecture.
- * @module fleet-setup/stage
+ * @module fleet-client/setup/stage
  */
 
 import { cp, mkdir, readdir, readFile, realpath, stat, symlink } from 'node:fs/promises'

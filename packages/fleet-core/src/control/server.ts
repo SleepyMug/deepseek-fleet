@@ -3,7 +3,7 @@
  * `fleet` command talks to. Only the owner can open it, and that is its
  * authentication, as the dsh home's own files are. One fleet host serves a
  * dsh home: a second one finds the socket answering and does not start.
- * @module fleet-control/server
+ * @module fleet-core/control/server
  */
 
 import { chmod, mkdir, unlink } from 'node:fs/promises'
@@ -12,10 +12,10 @@ import type { Server, Socket } from 'node:net'
 import { dirname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { MAX_REQUEST_BYTES, PROTOCOL_VERSION, lineReader, requestSchema, socketPath } from 'fleet-client/control/protocol'
+import type { Frame, Request } from 'fleet-client/control/protocol'
 import { z } from 'zod'
 import { ControlError, FleetControl, message } from './control.ts'
-import { MAX_REQUEST_BYTES, PROTOCOL_VERSION, lineReader, requestSchema, socketPath } from './protocol.ts'
-import type { Frame, Request } from './protocol.ts'
 
 export const name = 'fleet-control'
 export const inject = ['sessionController', 'workspaceRegistry', 'agents', 'sessions', 'sessionPersistence', 'fleetBox', 'fleetTau', 'fleetBackends']
@@ -107,7 +107,7 @@ function parse(line: string): Request {
   const version = typeof value === 'object' && value !== null ? (value as { v?: unknown }).v : undefined
   if (version !== PROTOCOL_VERSION) {
     throw new ControlError('fleet/version', `this fleet host speaks protocol ${PROTOCOL_VERSION} and the request ${String(version)}; `
-      + 'the fleet command and the host come from different versions of fleet-control')
+      + 'the fleet command (fleet-client) and the host (fleet-core) come from different versions of fleet')
   }
   const parsed = requestSchema.safeParse(value)
   if (!parsed.success) throw new ControlError('fleet/bad-request', z.prettifyError(parsed.error))

@@ -19,7 +19,7 @@
  * task is accepted. With `--async`, `run` and `send` return once their
  * message is accepted. Ctrl-C cancels the turn being waited on; a second one
  * leaves it.
- * @module fleet-control/cli
+ * @module fleet-client/control/cli
  */
 
 import { accessSync, constants, realpathSync, statSync, writeFileSync } from 'node:fs'
