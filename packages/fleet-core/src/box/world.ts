@@ -28,7 +28,7 @@
  * container keeps running without a helper only when dsh is killed, or exits
  * before the teardown finishes; its next use takes it over. The image, which
  * the `image` setting names, is a prerequisite built outside dsh by
- * `fleet-setup image` from the fleet-client package, with fleet-image's helper
+ * `fleet setup image` from the fleet-client package, with fleet-image's helper
  * in it (fleet-image/helper/image).
  * This service checks it when it starts, and creates every container from
  * the image it checked, so a rebuild reaches containers once dsh restarts,
@@ -96,7 +96,7 @@ const STOP_GRACE_SECONDS = 1
 const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 export interface Config {
-  /** The session image, as `fleet-setup image` tags it. */
+  /** The session image, as `fleet setup image` tags it. */
   image: string
   /** Docker CLI executable. */
   docker: string
@@ -162,7 +162,7 @@ export class FleetBox extends Service {
   static inject = ['sessions', 'agents', 'workspaceRegistry', 'sessionPersistence']
 
   static Config: Schema<Config> = Schema.object({
-    image: Schema.string().default(DEFAULT_IMAGE).description('The session image, as `fleet-setup image` tags it.'),
+    image: Schema.string().default(DEFAULT_IMAGE).description('The session image, as `fleet setup image` tags it.'),
     docker: Schema.string().default('docker').description('Docker CLI executable.'),
     dockerTimeoutMs: Schema.number().default(60_000).description('Deadline for one Docker CLI call.'),
     idleStopMs: Schema.number().min(0).max(MAX_TIMER_DELAY_MS).default(60_000)
@@ -275,7 +275,7 @@ export class FleetBox extends Service {
   }
 
   /**
-   * The labels of the session image this service checked. `fleet-setup
+   * The labels of the session image this service checked. `fleet setup
    * image` labels it with the protocol of each part it installs, so a
    * plugin that runs its own part in a container checks its label here.
    */

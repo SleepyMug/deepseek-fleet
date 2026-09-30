@@ -1,4 +1,4 @@
-# Session image for fleet-box, as `fleet-setup image` builds it outside dsh:
+# Session image for fleet-box, as `fleet setup image` builds it outside dsh:
 # an environment for the model's commands, with fleet's runtime on top,
 # fleet-image: fleet-box's helper, which serves each session's files and
 # processes from inside its container, fleet-tau's TypeScript runner, which

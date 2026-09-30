@@ -9,7 +9,7 @@
  * also watches and ends the terminals the host runs with `docker exec`
  * (./terminals.ts), which are not its processes.
  *
- * `fleet-setup image` installs this package in the session image with the
+ * `fleet setup image` installs this package in the session image with the
  * packages it depends on, as they are installed on the host (./image.ts).
  * @module fleet-image/helper/main
  */

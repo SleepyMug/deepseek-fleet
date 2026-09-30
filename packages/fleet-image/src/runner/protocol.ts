@@ -8,7 +8,7 @@
  */
 
 /**
- * The runner's ./main.ts in the container, where `fleet-setup image` puts
+ * The runner's ./main.ts in the container, where `fleet setup image` puts
  * this package's lib/, run by the helper's own Node (../helper/image.ts's
  * HELPER_NODE).
  */

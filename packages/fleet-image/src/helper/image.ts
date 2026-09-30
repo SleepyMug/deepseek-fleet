@@ -1,7 +1,7 @@
 /**
  * The session image as fleet-box relies on it: where the helper and its Node
  * are, and the label that says which protocol the helper speaks. The image
- * is built outside dsh, by `fleet-setup image`, which installs this package
+ * is built outside dsh, by `fleet setup image`, which installs this package
  * in it with the packages it depends on, as they are installed on the host.
  * fleet-box's `image` setting names it; fleet-box never builds, pulls or
  * removes an image, and only checks at startup that the one named is there
@@ -13,7 +13,7 @@ import { PROTOCOL_VERSION } from './protocol.ts'
 
 export { PROTOCOL_VERSION }
 
-/** The image fleet-box uses unless its `image` setting names another; `fleet-setup image` tags this one by default. */
+/** The image fleet-box uses unless its `image` setting names another; `fleet setup image` tags this one by default. */
 export const DEFAULT_IMAGE = 'fleet-box:local'
 
 /**

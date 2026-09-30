@@ -2,7 +2,7 @@
   "name": "fleet-client",
   "version": "0.0.1",
   "private": true,
-  "description": "The fleet's commands outside dsh: `fleet run <agent-dir>` runs an agent directory in the tau format in its own session and container, through the Unix socket fleet-core's fleet-control plugin serves in the fleet host; `fleet-setup image` builds the session image fleet-box uses",
+  "description": "The `fleet` command, which runs outside dsh: `fleet run <agent-dir>` runs an agent directory in the tau format in its own session and container, through the Unix socket fleet-core's fleet-control plugin serves in the fleet host, and `fleet setup image` builds the session image fleet-box uses",
   "type": "module",
   "exports": {
     "./control/protocol": {
@@ -12,8 +12,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "fleet": "./lib/control/cli.js",
-    "fleet-setup": "./lib/setup/cli.js"
+    "fleet": "./lib/cli.js"
   },
   "files": [
     "image",

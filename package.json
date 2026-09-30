@@ -8,7 +8,7 @@
     "build": "pnpm -r build",
     "watch": "tsc -b --watch",
     "clean": "tsc -b --clean",
-    "image": "pnpm build && fleet-setup image",
+    "image": "pnpm build && fleet setup image",
     "smoke": "pnpm --filter fleet-core run smoke"
   },
   "devEngines": {

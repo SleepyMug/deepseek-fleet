@@ -23,7 +23,7 @@
 # fresh, and the model is told once. The session image, with the helper
 # built into it, is a prerequisite that dsh never builds: build it with
 # `pnpm image` in the fleet checkout, which builds the workspace and runs
-# `fleet-setup image`, which tags it fleet-box:local, the image fleet-box
+# `fleet setup image`, which tags it fleet-box:local, the image fleet-box
 # uses unless `image` on the fleet-box row names another. fleet-box checks
 # at startup that the image is there and that its helper speaks this
 # fleet-box's protocol; otherwise it does not start, dsh's startup warning
@@ -141,9 +141,9 @@
 # with problems before any session exists, and keeps a snapshot of it, whole
 # and with its symlinks, per session in $DSH_HOME/fleet/sessions/<id>/,
 # which fleet-box copies into each of the session's containers at
-# /opt/fleet-tau/agent; nothing of the store is mounted. The session's agents get the snapshot's skills, with dsh's
-# `skill` tool, in a scope of their own; sessions started any other way
-# keep the fleet preset unchanged.
+# /opt/fleet-tau/agent; nothing of the store is mounted. The session's
+# agents get the snapshot's skills, with dsh's `skill` tool, in a scope of
+# their own; sessions started any other way keep the fleet preset unchanged.
 #
 # fleet links each API an agent declares to its own implementation of the
 # same name (fleet-image's apis/), which the session image carries; there is no
@@ -156,7 +156,7 @@
 #
 # Every session `fleet run` starts gets TypeScript tools: ts_modules and
 # ts_execute, which run programs in the session's container with
-# fleet-tau's runner. `fleet-setup image` builds the runner into the
+# fleet-tau's runner. `fleet setup image` builds the runner into the
 # session image (/opt/fleet-box/runner), and labels the image with the
 # runner's protocol, which the tools check before they start it. Programs
 # import the agent's APIs as @api/<name>, typed by the agent's declarations,

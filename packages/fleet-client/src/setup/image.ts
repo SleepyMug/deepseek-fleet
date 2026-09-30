@@ -1,5 +1,5 @@
 /**
- * `fleet-setup image`: build the session image fleet-box uses, outside dsh,
+ * `fleet setup image`: build the session image fleet-box uses, outside dsh,
  * as dsh-ssh's operator installs its helper on a host. The image is an
  * environment, image/Dockerfile's own or one the caller names, with fleet's
  * runtime on top: fleet-image, which holds fleet-box's helper,
@@ -58,6 +58,7 @@ export interface BuildOptions {
  * @returns the image's id.
  */
 export async function buildImage(options: BuildOptions): Promise<string> {
+  await dockerResponds(options)
   const reported = await docker(options, ['version', '--format', '{{.Server.Arch}}'])
   const work = await mkdtemp(join(tmpdir(), 'fleet-setup-image-'))
   try {
@@ -65,24 +66,34 @@ export async function buildImage(options: BuildOptions): Promise<string> {
     await mkdir(context, { recursive: true })
     await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
     await stagePackage(await installedPackage(PACKAGE_DIR, RUNTIME), join(context, 'box'), NODE_ARCH[reported] ?? reported)
-    options.log(`fleet-setup: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
+    options.log(`fleet: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
     const id = await build(options, context, join(work, 'id'))
     await checkHelper(options, id)
     await checkRunner(options, id)
     await checkImplementations(options, id)
     const earlier = await docker(options, ['image', 'inspect', '--format', '{{.Id}}', options.tag]).catch(() => undefined)
     await docker(options, ['tag', id, options.tag])
-    options.log(`fleet-setup: built ${options.tag} (${short(id)})`)
+    options.log(`fleet: built ${options.tag} (${short(id)})`)
     if (earlier !== undefined && earlier !== id) {
-      options.log(`fleet-setup: the earlier ${options.tag} (${short(earlier)}) is untagged now; \`docker image prune\` removes it once no container uses it`)
+      options.log(`fleet: the earlier ${options.tag} (${short(earlier)}) is untagged now; \`docker image prune\` removes it once no container uses it`)
     }
     if (options.tag !== DEFAULT_IMAGE) {
-      options.log(`fleet-setup: fleet-box uses ${DEFAULT_IMAGE} unless its row in the profile's patch sets \`image: ${options.tag}\``)
+      options.log(`fleet: fleet-box uses ${DEFAULT_IMAGE} unless its row in the profile's patch sets \`image: ${options.tag}\``)
     }
     return id
   } finally {
     await rm(work, { recursive: true, force: true })
   }
+}
+
+/** Fail early and plainly when the Docker daemon is not reachable, rather than on a build step. */
+function dockerResponds(options: BuildOptions): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(options.docker, ['version', '--format', '{{.Server.Version}}'], { signal: options.signal }, (error, _stdout, stderr) => {
+      if (error === null) resolve()
+      else reject(new Error(`fleet: Docker does not respond; start it and run \`fleet setup image\` again: ${stderr.trim() || error.message}`))
+    })
+  })
 }
 
 /** @returns the id of the image built, untagged. */
@@ -141,7 +152,7 @@ async function checkImplementations(options: BuildOptions, id: string): Promise<
 
 function failure(id: string, what: string, late: boolean, output: string): Error {
   const within = late ? ` within ${CHECK_TIMEOUT_MS / 1000} s` : ''
-  return new Error(`fleet-setup: the ${what}${within} in the new build ${short(id)}, which is left untagged${output.trim() === '' ? '' : `: ${output.trim()}`}`)
+  return new Error(`fleet: the ${what}${within} in the new build ${short(id)}, which is left untagged${output.trim() === '' ? '' : `: ${output.trim()}`}`)
 }
 
 /**
@@ -186,13 +197,13 @@ function exited(child: ChildProcess, name: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (child.exitCode !== null || child.signalCode !== null) {
       if (child.exitCode === 0) resolve()
-      else reject(new Error(`fleet-setup: ${name} failed (${child.signalCode ?? `exit ${String(child.exitCode)}`})`))
+      else reject(new Error(`fleet: ${name} failed (${child.signalCode ?? `exit ${String(child.exitCode)}`})`))
       return
     }
     child.once('error', reject)
     child.once('close', (code, signal) => {
       if (code === 0) resolve()
-      else reject(new Error(`fleet-setup: ${name} failed (${signal ?? `exit ${String(code)}`})`))
+      else reject(new Error(`fleet: ${name} failed (${signal ?? `exit ${String(code)}`})`))
     })
   })
 }
@@ -202,7 +213,7 @@ function docker(options: BuildOptions, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(options.docker, args, { signal: options.signal }, (error, stdout, stderr) => {
       if (error === null) resolve(stdout.trim())
-      else reject(new Error(`fleet-setup: docker ${args[0] ?? ''} failed: ${stderr.trim() || error.message}`, { cause: error }))
+      else reject(new Error(`fleet: docker ${args[0] ?? ''} failed: ${stderr.trim() || error.message}`, { cause: error }))
     })
   })
 }

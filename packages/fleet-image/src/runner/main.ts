@@ -3,7 +3,7 @@
  * ts-tools.ts) start in a session container for each call, with fleet-box's
  * helper Node: `/opt/fleet-box/bin/fleet-box /opt/fleet-box/runner/main.js`, one
  * JSON request on stdin, one JSON reply on stdout (./protocol.ts). The
- * session image carries it: `fleet-setup image` installs this package there
+ * session image carries it: `fleet setup image` installs this package there
  * with the packages it depends on, as they are installed on the host.
  * It runs programs with ts-executor, so each one is type-checked and runs in
  * a fresh Node process of its own, and it imports each API the agent

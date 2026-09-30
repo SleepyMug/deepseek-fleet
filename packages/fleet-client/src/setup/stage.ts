@@ -46,7 +46,7 @@ interface Installed {
  */
 export async function installedPackage(from: string, name: string): Promise<string> {
   const dir = await locate(await realpath(from), name)
-  if (dir === undefined) throw new Error(`fleet-setup: ${name} is not installed where ${from} can find it`)
+  if (dir === undefined) throw new Error(`fleet: ${name} is not installed where ${from} can find it`)
   return dir
 }
 
@@ -57,7 +57,7 @@ export async function installedPackage(from: string, name: string): Promise<stri
  */
 export async function stagePackage(root: string, target: string, arch: string): Promise<void> {
   if (process.platform !== 'linux' || process.arch !== arch) {
-    throw new Error(`fleet-setup: the packages are installed for ${process.platform}-${process.arch}, and the image is linux-${arch}: build it on linux-${arch}`)
+    throw new Error(`fleet: the packages are installed for ${process.platform}-${process.arch}, and the image is linux-${arch}: build it on linux-${arch}`)
   }
   await layOut(await installedClosure(await realpath(root), arch), target)
 }
@@ -78,10 +78,10 @@ async function installedClosure(root: string, arch: string): Promise<Installed[]
     if (known !== undefined) return known
     const manifest = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as Manifest
     const { name, version } = manifest
-    if (typeof name !== 'string' || typeof version !== 'string') throw new Error(`fleet-setup: ${join(dir, 'package.json')} has no name or version`)
+    if (typeof name !== 'string' || typeof version !== 'string') throw new Error(`fleet: ${join(dir, 'package.json')} has no name or version`)
     if (!allows(manifest.os, 'linux') || !allows(manifest.cpu, arch) || !allows(manifest.libc, 'glibc')) {
       if (optional) return undefined
-      throw new Error(`fleet-setup: ${name}@${version} is not for the image's platform, linux-${arch} with glibc`)
+      throw new Error(`fleet: ${name}@${version} is not for the image's platform, linux-${arch} with glibc`)
     }
     const installed: Installed = { dir, name, version, manifest, dependencies: new Map() }
     byDir.set(dir, installed)
@@ -96,7 +96,7 @@ async function installedClosure(root: string, arch: string): Promise<Installed[]
     for (const name of names) {
       const optional = optionalDependencies?.[name] !== undefined || peerDependenciesMeta?.[name]?.optional === true
       const dir = await locate(pkg.dir, name)
-      if (dir === undefined && !optional) throw new Error(`fleet-setup: ${pkg.name}@${pkg.version} depends on ${name}, which is not installed where it can find it`)
+      if (dir === undefined && !optional) throw new Error(`fleet: ${pkg.name}@${pkg.version} depends on ${name}, which is not installed where it can find it`)
       const dependency = dir === undefined ? undefined : await load(dir, optional)
       if (dependency !== undefined) pkg.dependencies.set(name, dependency)
     }
@@ -154,7 +154,7 @@ async function layOut(packages: readonly Installed[], target: string): Promise<v
       if (link === dir) {
         // Where the package itself is: right only if it is the package itself.
         if (dependency === pkg) continue
-        throw new Error(`fleet-setup: ${pkg.name}@${pkg.version} depends on another ${name}, which this layout cannot hold`)
+        throw new Error(`fleet: ${pkg.name}@${pkg.version} depends on another ${name}, which this layout cannot hold`)
       }
       await mkdir(dirname(link), { recursive: true })
       await symlink(relative(dirname(link), placeOf(dependency).dir), link)
@@ -177,7 +177,7 @@ const ALWAYS_PACKED = /^(?:readme|licen[cs]e)(?:\..*)?$/iu
  *   `files` excludes;
  * - files only, so no empty folders.
  * Stray files pnpm would drop (`.DS_Store`, lockfiles, …) are copied; none
- * occur in what fleet-setup copies.
+ * occur in what `fleet setup image` copies.
  */
 async function copyPackage(pkg: Installed, to: string): Promise<void> {
   if (pkg.dir.split(sep).includes('node_modules')) {
@@ -186,7 +186,7 @@ async function copyPackage(pkg: Installed, to: string): Promise<void> {
     return
   }
   const { files, main, bin } = pkg.manifest
-  if (files === undefined) throw new Error(`fleet-setup: ${pkg.name} at ${pkg.dir} is a source tree without "files", so what it publishes is unknown`)
+  if (files === undefined) throw new Error(`fleet: ${pkg.name} at ${pkg.dir} is a source tree without "files", so what it publishes is unknown`)
   const always = (await readdir(pkg.dir)).filter(name => ALWAYS_PACKED.test(name))
   const entrypoints = [...main === undefined ? [] : [main], ...typeof bin === 'string' ? [bin] : Object.values(bin ?? {})]
   for (const entry of ['package.json', ...always, ...entrypoints]) {
@@ -195,9 +195,9 @@ async function copyPackage(pkg: Installed, to: string): Promise<void> {
   }
   const excluded = files.filter(entry => entry.startsWith('!')).map(entry => entry.slice(1))
   for (const entry of files.filter(entry => !entry.startsWith('!'))) {
-    if (/[*?[\]{}]/u.test(entry)) throw new Error(`fleet-setup: ${pkg.name}: "files" entry ${entry} is a pattern; only plain paths, and patterns that exclude, are supported`)
+    if (/[*?[\]{}]/u.test(entry)) throw new Error(`fleet: ${pkg.name}: "files" entry ${entry} is a pattern; only plain paths, and patterns that exclude, are supported`)
     const source = join(pkg.dir, entry)
-    if (!(await exists(source))) throw new Error(`fleet-setup: ${pkg.name}: ${entry}, listed in its "files", does not exist; build the package first`)
+    if (!(await exists(source))) throw new Error(`fleet: ${pkg.name}: ${entry}, listed in its "files", does not exist; build the package first`)
     await copyPacked(source, join(to, entry), posix.normalize(entry), excluded)
   }
 }

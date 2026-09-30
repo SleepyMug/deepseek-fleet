@@ -2,7 +2,7 @@
   "name": "fleet-image",
   "version": "0.0.1",
   "private": true,
-  "description": "What the session image carries, which `fleet-setup image` installs at /opt/fleet-box: fleet-box's helper, which serves a session container's files and processes to the host from inside it; fleet-tau's TypeScript runner, which type-checks and runs the model's programs there with ts-executor; and fleet's implementations of the APIs a tau declares, which those programs import as @api/<name>. Each part's protocol module is shared with the host",
+  "description": "What the session image carries, which `fleet setup image` installs at /opt/fleet-box: fleet-box's helper, which serves a session container's files and processes to the host from inside it; fleet-tau's TypeScript runner, which type-checks and runs the model's programs there with ts-executor; and fleet's implementations of the APIs a tau declares, which those programs import as @api/<name>. Each part's protocol module is shared with the host",
   "type": "module",
   "exports": {
     "./helper/protocol": {

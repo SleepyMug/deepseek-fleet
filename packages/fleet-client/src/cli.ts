@@ -19,16 +19,24 @@
  * task is accepted. With `--async`, `run` and `send` return once their
  * message is accepted. Ctrl-C cancels the turn being waited on; a second one
  * leaves it.
- * @module fleet-client/control/cli
+ *
+ * `fleet setup image` sets this machine up for the host instead, without
+ * it: it builds the session image fleet-box uses (./setup/image.ts). In the
+ * fleet checkout, `pnpm image` builds the workspace, then runs it. Signing
+ * in to a model provider happens in dsh, in a profile of its own
+ * (fleet-signin's app).
+ * @module fleet-client/cli
  */
 
 import { accessSync, constants, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { dirname, resolve } from 'node:path'
-import { agentEnv } from './agent-env.ts'
+import { DEFAULT_IMAGE } from 'fleet-image/helper/image'
+import { agentEnv } from './control/agent-env.ts'
+import { PROTOCOL_VERSION, dshHome, lineReader, socketPath } from './control/protocol.ts'
+import type { Frame, Op, Outcome, Request, Results, Task } from './control/protocol.ts'
 import { UsageError, parseOptions } from './options.ts'
-import { PROTOCOL_VERSION, dshHome, lineReader, socketPath } from './protocol.ts'
-import type { Frame, Op, Outcome, Request, Results, Task } from './protocol.ts'
+import { buildImage } from './setup/image.ts'
 
 const EXIT_OK = 0
 const EXIT_FAILED = 1
@@ -53,6 +61,9 @@ const USAGE = [
   '                                              in a session in <dir>, its APIs checked against',
   '                                              fleet\'s implementations; with arguments, bind them too',
   '  apis [name]                                 list the APIs fleet implements, or print one\'s declarations',
+  '  setup image [--from <image>] [--tag <tag>]  build the session image: fleet\'s runtime on its own environment,',
+  `                                              or on the --from image; tagged ${DEFAULT_IMAGE}, which fleet-box uses,`,
+  '                                              or --tag, which its `image` setting must name',
   '',
   'Options come before the other arguments. run, send and wait print only the answer, exit 0',
   'when the turn completed and 1 otherwise, and stop the session\'s container. Ctrl-C cancels',
@@ -60,6 +71,7 @@ const USAGE = [
 ].join('\n')
 
 const SOCKET = socketPath(dshHome())
+const DOCKER = 'docker'
 
 /** A failure the fleet host reported. */
 class HostError extends Error {
@@ -92,6 +104,7 @@ async function main(args: readonly string[]): Promise<number> {
     }
     case 'check': return check(rest)
     case 'apis': return apis(rest)
+    case 'setup': return setup(rest)
     case '--help':
     case '-h':
       say(USAGE)
@@ -178,6 +191,17 @@ async function apis(args: readonly string[]): Promise<number> {
   if (row === undefined) throw new Error(`fleet: fleet has no implementation of the API ${name}`)
   // What a tau copies into its api/<name>.d.ts.
   process.stdout.write(row.declarations.endsWith('\n') ? row.declarations : `${row.declarations}\n`)
+  return EXIT_OK
+}
+
+/** What the host needs on this machine, which it cannot make itself: the session image. */
+async function setup(args: readonly string[]): Promise<number> {
+  const [part, ...rest] = args
+  if (part !== 'image') throw new UsageError(part === undefined ? 'setup needs a part, image' : `unknown setup part ${part}`)
+  const { values, positional } = parseOptions(rest, { '--from': 'value', '--tag': 'value' })
+  if (positional.length > 0) throw new UsageError('setup image takes only options')
+  const from = values.get('--from')
+  await buildImage({ docker: DOCKER, tag: values.get('--tag') ?? DEFAULT_IMAGE, ...from === undefined ? {} : { from }, log: say })
   return EXIT_OK
 }
 
