@@ -22,6 +22,7 @@
     "@deepseek-ai/dsh": "0.1.7-rc.2",
     "@types/node": "26.6.2",
     "fleet-setup": "workspace:*",
+    "playwright": "1.63.0",
     "typescript": "6.0.3"
   }
 }
