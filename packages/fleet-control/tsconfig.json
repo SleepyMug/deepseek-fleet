@@ -5,5 +5,5 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../fleet-apis" }, { "path": "../fleet-box" }, { "path": "../fleet-tau" }]
+  "references": [{ "path": "../fleet-image" }, { "path": "../fleet-runtime" }]
 }

@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "lib"
-  },
-  "include": ["src"],
-  "references": [{ "path": "../fleet-apis" }, { "path": "../fleet-box-helper" }, { "path": "../fleet-tau-runner" }]
-}

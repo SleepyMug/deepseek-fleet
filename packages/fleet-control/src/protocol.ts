@@ -93,7 +93,7 @@ export interface SessionRow {
   updatedAt: number
 }
 
-/** An API fleet implements (fleet-apis). */
+/** An API fleet implements (fleet-image's apis/). */
 export interface ApiRow {
   name: string
   description?: string

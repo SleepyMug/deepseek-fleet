@@ -1,13 +1,9 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/fleet-apis" },
-    { "path": "packages/fleet-box" },
-    { "path": "packages/fleet-box-helper" },
     { "path": "packages/fleet-control" },
-    { "path": "packages/fleet-setup" },
-    { "path": "packages/fleet-signin" },
-    { "path": "packages/fleet-tau" },
-    { "path": "packages/fleet-tau-runner" }
+    { "path": "packages/fleet-image" },
+    { "path": "packages/fleet-runtime" },
+    { "path": "packages/fleet-signin" }
   ]
 }
