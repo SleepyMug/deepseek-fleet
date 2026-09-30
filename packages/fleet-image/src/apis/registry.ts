@@ -12,9 +12,10 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { PACKAGE_ROOT } from '../layout.ts'
 
 /** Where the session image holds this folder of the package's lib/. */
-export const IMAGE_APIS = '/opt/fleet-box/apis'
+export const IMAGE_APIS = `${PACKAGE_ROOT}/apis`
 
 /** The backends each implementation calls, by the name of the API it implements. */
 const BACKENDS: Readonly<Record<string, readonly string[]>> = {

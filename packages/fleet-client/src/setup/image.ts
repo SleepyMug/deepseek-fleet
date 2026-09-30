@@ -1,16 +1,17 @@
 /**
  * `fleet setup image`: build the session image fleet-box uses, outside dsh,
  * as dsh-ssh's operator installs its helper on a host. The image is an
- * environment, image/Dockerfile's own or one the caller names, with fleet's
- * runtime on top: fleet-image, which holds fleet-box's helper,
+ * environment, fleet-image's Dockerfile's own or one the caller names, with
+ * fleet's runtime on top: fleet-image, which holds fleet-box's helper,
  * fleet-tau's TypeScript runner and fleet's API implementations, copied with
  * the packages it depends on as they are installed here (./stage.ts), so the
- * image runs what the host has installed. The helper and the runner
- * label the image with their protocols, which their users check before
- * starting them. A build is tagged only once its helper answers its
- * handshake, its runner answers a request, and every implementation loads,
- * so a tag always names a working image. Nothing is removed: the build a new one untags is
- * left for `docker image prune`, since a container may still use it.
+ * image runs what the host has installed. The helper and the runner label
+ * the image with their protocols, which their users check before starting
+ * them. A build is tagged only once its helper answers its handshake, its
+ * runner answers a request, and every implementation loads, each where the
+ * host will look for it, so a tag always names a working image. Nothing is
+ * removed: the build a new one untags is left for `docker image prune`,
+ * since a container may still use it.
  * @module fleet-client/setup/image
  */
 
@@ -26,7 +27,6 @@ import { installedPackage, stagePackage } from './stage.ts'
 
 /** This package's folder, from which fleet-image is found as Node finds it. */
 const PACKAGE_DIR = fileURLToPath(new URL('../../', import.meta.url))
-const DOCKERFILE = join(PACKAGE_DIR, 'image', 'Dockerfile')
 /** How long a new build's helper and runner get to answer. */
 const CHECK_TIMEOUT_MS = 60_000
 
@@ -35,7 +35,7 @@ const NODE_ARCH: Record<string, string> = {
   amd64: 'x64', arm64: 'arm64', arm: 'arm', 386: 'ia32', ppc64le: 'ppc64', s390x: 's390x', riscv64: 'riscv64', loong64: 'loong64',
 }
 
-/** The package the image holds, which the Dockerfile copies from the build context's box/ to /opt/fleet-box. */
+/** The package the image holds, with the Dockerfile that copies it from the build context's box/. */
 const RUNTIME = 'fleet-image'
 /** The protocols of its helper and its runner, which their users check before starting them. */
 const LABELS: Record<string, string> = { [PROTOCOL_LABEL]: String(PROTOCOL_VERSION), [RUNNER_PROTOCOL_LABEL]: String(RUNNER_PROTOCOL) }
@@ -43,7 +43,7 @@ const LABELS: Record<string, string> = { [PROTOCOL_LABEL]: String(PROTOCOL_VERSI
 export interface BuildOptions {
   /** Docker CLI executable. */
   docker: string
-  /** The environment the runtime is installed on; image/Dockerfile's own when left out. */
+  /** The environment the runtime is installed on; the Dockerfile's own when left out. */
   from?: string
   /** What to tag the build; fleet-box's `image` setting names it. */
   tag: string
@@ -64,8 +64,9 @@ export async function buildImage(options: BuildOptions): Promise<string> {
   try {
     const context = join(work, 'context')
     await mkdir(context, { recursive: true })
-    await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
-    await stagePackage(await installedPackage(PACKAGE_DIR, RUNTIME), join(context, 'box'), NODE_ARCH[reported] ?? reported)
+    const runtime = await installedPackage(PACKAGE_DIR, RUNTIME)
+    await copyFile(join(runtime, 'Dockerfile'), join(context, 'Dockerfile'))
+    await stagePackage(runtime, join(context, 'box'), NODE_ARCH[reported] ?? reported)
     options.log(`fleet: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
     const id = await build(options, context, join(work, 'id'))
     await checkHelper(options, id)

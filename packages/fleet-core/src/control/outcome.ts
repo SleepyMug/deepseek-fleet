@@ -5,7 +5,7 @@
  */
 
 import type { SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
-import type { Outcome } from 'fleet-client/control/protocol'
+import type { Outcome } from 'fleet-protocol/control'
 
 /** The outcome of the turns that start from `from` on. */
 export function summarize(events: readonly SessionEvent[], from: number): Outcome {

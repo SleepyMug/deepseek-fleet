@@ -22,6 +22,8 @@
  * @module fleet-image/helper/protocol
  */
 
+import { RUN_ROOT } from '../layout.ts'
+
 /** Wire version; the host refuses a helper that answers with another. */
 export const PROTOCOL_VERSION = 3
 
@@ -29,7 +31,7 @@ export const PROTOCOL_VERSION = 3
  * Where the helper serves its service socket in the container: one call per
  * connection, one JSON line each way (./services.ts).
  */
-export const SERVICE_SOCKET = '/run/fleet-box/services.sock'
+export const SERVICE_SOCKET = `${RUN_ROOT}/services.sock`
 
 /** The variable that names {@link SERVICE_SOCKET} to every process in the container. */
 export const SOCKET_VARIABLE = 'FLEET_SOCKET'

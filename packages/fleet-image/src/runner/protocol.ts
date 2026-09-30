@@ -7,12 +7,13 @@
  * @module fleet-image/runner/protocol
  */
 
+import { PACKAGE_ROOT, TAU_ROOT } from '../layout.ts'
+
 /**
- * The runner's ./main.ts in the container, where `fleet setup image` puts
- * this package's lib/, run by the helper's own Node (../helper/image.ts's
- * HELPER_NODE).
+ * The runner's ./main.ts in the container, with the rest of this package's
+ * lib/, run by the helper's own Node (../helper/image.ts's HELPER_NODE).
  */
-export const RUNNER_ENTRY = '/opt/fleet-box/runner/main.js'
+export const RUNNER_ENTRY = `${PACKAGE_ROOT}/runner/main.js`
 
 /**
  * Version of this protocol. The session image carries the version of the
@@ -30,7 +31,7 @@ export const RUNNER_PROTOCOL_LABEL = 'fleet-tau.runner-protocol'
  * APIs (./links.ts). It is the container's own, so it lasts as long as the
  * container.
  */
-export const TS_ROOT = '/opt/fleet-tau/ts'
+export const TS_ROOT = `${TAU_ROOT}/ts`
 
 /** Most bytes of a reply; the runner shrinks what it reports to fit. */
 export const MAX_REPLY_BYTES = 1024 * 1024

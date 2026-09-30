@@ -6,13 +6,14 @@
  * @module fleet-core/tau/spec
  */
 
+import { TAU_ROOT } from 'fleet-image/layout'
 import { z } from 'zod'
 
 /** Bumped when a stored spec changes shape so that older ones would be misread; they are refused instead. */
 export const SPEC_VERSION = 3
 
 /** Where a session's container sees its agent's snapshot. */
-export const AGENT_VIEW = '/opt/fleet-tau/agent'
+export const AGENT_VIEW = `${TAU_ROOT}/agent`
 
 const skillSchema = z.object({
   name: z.string(),

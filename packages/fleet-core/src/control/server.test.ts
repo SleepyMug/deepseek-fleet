@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { dshHome } from 'fleet-client/control/protocol'
+import { dshHome } from 'fleet-protocol/control'
 
 test('the command finds the home the host serves, which dsh resolves', () => {
   for (const home of [undefined, '', '  ', '~', '~/other', '/srv/dsh/', 'relative/home']) {

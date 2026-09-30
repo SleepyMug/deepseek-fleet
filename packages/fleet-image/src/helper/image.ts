@@ -9,6 +9,7 @@
  * @module fleet-image/helper/image
  */
 
+import { PACKAGE_ROOT } from '../layout.ts'
 import { PROTOCOL_VERSION } from './protocol.ts'
 
 export { PROTOCOL_VERSION }
@@ -21,9 +22,9 @@ export const DEFAULT_IMAGE = 'fleet-box:local'
  * removes does not change it. The helper names its process `fleet-box`, so a
  * `pkill node` misses it too.
  */
-export const HELPER_NODE = '/opt/fleet-box/bin/fleet-box'
-/** The helper's ./main.ts, which the image holds with the rest of this package's lib/ at /opt/fleet-box. */
-export const HELPER_ENTRY = '/opt/fleet-box/helper/main.js'
+export const HELPER_NODE = `${PACKAGE_ROOT}/bin/fleet-box`
+/** The helper's ./main.ts, which the image holds with the rest of this package's lib/. */
+export const HELPER_ENTRY = `${PACKAGE_ROOT}/helper/main.js`
 
 /** The image label that carries the helper's {@link PROTOCOL_VERSION}. */
 export const PROTOCOL_LABEL = 'fleet-box.protocol'

@@ -227,21 +227,21 @@ importers:
       fleet-image:
         specifier: workspace:*
         version: link:../fleet-image
-      zod:
-        specifier: 4.6.5
-        version: 4.6.5
+      fleet-protocol:
+        specifier: workspace:*
+        version: link:../fleet-protocol
 
   packages/fleet-core:
     dependencies:
       '@sleepymug/tau':
         specifier: 0.1.0
         version: link:../../../agent_fleet_project/tau
-      fleet-client:
-        specifier: workspace:*
-        version: link:../fleet-client
       fleet-image:
         specifier: workspace:*
         version: link:../fleet-image
+      fleet-protocol:
+        specifier: workspace:*
+        version: link:../fleet-protocol
       node-pty:
         specifier: 1.2.0-beta.15
         version: 1.2.0-beta.15
@@ -334,6 +334,12 @@ importers:
         specifier: 24.19.0
         version: 24.19.0
 
+  packages/fleet-protocol:
+    dependencies:
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   packages/fleet-signin:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -351,8 +357,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.4
         version: 3.18.4
-
-  packages/profile-fleet: {}
 
 packages:
 

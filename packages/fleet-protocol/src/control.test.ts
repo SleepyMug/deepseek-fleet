@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { dshHome, lineReader, requestSchema } from './protocol.ts'
+import { dshHome, lineReader, requestSchema } from './control.ts'
 
 test('lines split across and within chunks', () => {
   const lines: string[] = []

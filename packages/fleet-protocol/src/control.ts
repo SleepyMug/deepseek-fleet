@@ -6,7 +6,7 @@
  * the connection. A client that goes away only stops the host waiting for
  * it; the session keeps running. This module has no dsh dependency, so the
  * `fleet` command loads it without dsh.
- * @module fleet-client/control/protocol
+ * @module fleet-protocol/control
  */
 
 import { homedir } from 'node:os'

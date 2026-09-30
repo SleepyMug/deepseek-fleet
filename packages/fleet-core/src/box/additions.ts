@@ -15,10 +15,11 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, posix } from 'node:path'
+import { PACKAGE_ROOT, RUN_ROOT } from 'fleet-image/layout'
 import { z } from 'zod'
 
 /** Folders of the container that fleet-box itself fills; no addition may cover them. */
-const RESERVED = ['/opt/fleet-box', '/run/fleet-box']
+const RESERVED = [PACKAGE_ROOT, RUN_ROOT]
 /**
  * Variables fleet-box itself sets in every container, or that the helper,
  * its Node and what they start rely on the image for; no addition may set

@@ -2,7 +2,7 @@
   "name": "fleet-core",
   "version": "0.0.1",
   "private": true,
-  "description": "The fleet host's core: fleet-box, the Docker execution world, one container per root session, served by fleet-image's helper inside it, with the session folder bind-mounted at the same path; fleet-tau, which runs agent directories in the tau format as sessions, each with its agent's skills and its APIs linked to fleet's implementations, whose backends fleet's plugins provide; and fleet-control, the Unix socket through which fleet-client's `fleet` command runs them",
+  "description": "The fleet host's core: fleet-box, the Docker execution world, one container per root session, served by fleet-image's helper inside it, with the session folder bind-mounted at the same path; fleet-tau, which runs agent directories in the tau format as sessions, each with its agent's skills and its APIs linked to fleet's implementations, whose backends fleet's plugins provide; and fleet-control, the Unix socket through which fleet-client's `fleet` command runs them, speaking fleet-protocol",
   "type": "module",
   "exports": {
     "./box/world": {
@@ -77,8 +77,8 @@
   },
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
-    "fleet-client": "workspace:*",
     "fleet-image": "workspace:*",
+    "fleet-protocol": "workspace:*",
     "node-pty": "1.2.0-beta.15",
     "yaml": "2.9.1",
     "zod": "4.6.5"

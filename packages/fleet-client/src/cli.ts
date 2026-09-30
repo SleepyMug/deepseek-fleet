@@ -32,9 +32,9 @@ import { accessSync, constants, realpathSync, statSync, writeFileSync } from 'no
 import { createConnection } from 'node:net'
 import { dirname, resolve } from 'node:path'
 import { DEFAULT_IMAGE } from 'fleet-image/helper/image'
-import { agentEnv } from './control/agent-env.ts'
-import { PROTOCOL_VERSION, dshHome, lineReader, socketPath } from './control/protocol.ts'
-import type { Frame, Op, Outcome, Request, Results, Task } from './control/protocol.ts'
+import { PROTOCOL_VERSION, dshHome, lineReader, socketPath } from 'fleet-protocol/control'
+import type { Frame, Op, Outcome, Request, Results, Task } from 'fleet-protocol/control'
+import { agentEnv } from './agent-env.ts'
 import { UsageError, parseOptions } from './options.ts'
 import { buildImage } from './setup/image.ts'
 

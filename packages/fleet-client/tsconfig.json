@@ -5,5 +5,5 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../fleet-image" }]
+  "references": [{ "path": "../fleet-image" }, { "path": "../fleet-protocol" }]
 }
