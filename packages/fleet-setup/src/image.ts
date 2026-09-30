@@ -2,13 +2,14 @@
  * `fleet-setup image`: build the session image fleet-box uses, outside dsh,
  * as dsh-ssh's operator installs its helper on a host. The image is an
  * environment, image/Dockerfile's own or one the caller names, with fleet's
- * runtime on top: fleet-box's helper and fleet-tau's TypeScript runner, two
- * packages this one depends on, each copied with the packages it depends on
- * as they are installed here (./stage.ts), so the image runs what the host
- * has installed. Each part labels the image with its protocol, which its
- * user checks before starting it. A build is tagged only once its helper
- * answers its handshake and its runner answers a request, so a tag always
- * names a working image. Nothing is removed: the build a new one untags is
+ * runtime on top: fleet-box's helper, fleet-tau's TypeScript runner, and
+ * fleet's API implementations, packages this one depends on, each copied
+ * with the packages it depends on as they are installed here (./stage.ts),
+ * so the image runs what the host has installed. The helper and the runner
+ * label the image with their protocols, which their users check before
+ * starting them. A build is tagged only once its helper answers its
+ * handshake, its runner answers a request, and every implementation loads,
+ * so a tag always names a working image. Nothing is removed: the build a new one untags is
  * left for `docker image prune`, since a container may still use it.
  * @module fleet-setup/image
  */
@@ -19,7 +20,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL, PROTOCOL_VERSION } from 'fleet-box-helper/image'
-import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, SERVICE_CLIENT, TS_ROOT, type RunnerRequest } from 'fleet-tau-runner/protocol'
+import { implementations } from 'fleet-apis/registry'
+import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerRequest } from 'fleet-tau-runner/protocol'
 import { installedPackage, stagePackage } from './stage.ts'
 
 /** This package's folder, from which its parts are found as Node finds them. */
@@ -46,6 +48,7 @@ interface Part {
 const PARTS: Part[] = [
   { name: 'fleet-box-helper', folder: 'helper', labels: { [PROTOCOL_LABEL]: String(PROTOCOL_VERSION) } },
   { name: 'fleet-tau-runner', folder: 'runner', labels: { [RUNNER_PROTOCOL_LABEL]: String(RUNNER_PROTOCOL) } },
+  { name: 'fleet-apis', folder: 'apis', labels: {} },
 ]
 
 export interface BuildOptions {
@@ -74,11 +77,14 @@ export async function buildImage(options: BuildOptions): Promise<string> {
     await copyFile(DOCKERFILE, join(context, 'Dockerfile'))
     for (const part of PARTS) {
       await stagePackage(await installedPackage(PACKAGE_DIR, part.name), join(context, part.folder), NODE_ARCH[reported] ?? reported)
+      // The Dockerfile copies each part's node_modules, which one without dependencies lacks.
+      await mkdir(join(context, part.folder, 'node_modules'), { recursive: true })
     }
     options.log(`fleet-setup: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
     const id = await build(options, context, join(work, 'id'))
     await checkHelper(options, id)
     await checkRunner(options, id)
+    await checkImplementations(options, id)
     const earlier = await docker(options, ['image', 'inspect', '--format', '{{.Id}}', options.tag]).catch(() => undefined)
     await docker(options, ['tag', id, options.tag])
     options.log(`fleet-setup: built ${options.tag} (${short(id)})`)
@@ -125,10 +131,10 @@ async function checkHelper(options: BuildOptions, id: string): Promise<void> {
 
 /**
  * Start the build's runner without a network and check that it lists what a
- * program may import, and that the client the service bindings import loads.
+ * program may import.
  */
 async function checkRunner(options: BuildOptions, id: string): Promise<void> {
-  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, modules: [] }
+  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, apis: [] }
   // The runner reads its request to the end of its stdin.
   const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, [RUNNER_ENTRY], JSON.stringify(request), 'input')
   let reply: { ok?: unknown; modules?: unknown } | null
@@ -138,8 +144,14 @@ async function checkRunner(options: BuildOptions, id: string): Promise<void> {
     reply = null
   }
   if (reply?.ok !== true || !Array.isArray(reply.modules)) throw failure(id, 'TypeScript runner did not answer', late, stderr || stdout)
-  const client = await probe(options, id, HELPER_NODE, ['--input-type=module', '--eval', `await import(${JSON.stringify(SERVICE_CLIENT)}); console.log('loaded')`], '', 'input')
-  if (client.stdout.trim() !== 'loaded') throw failure(id, 'service client did not load', client.late, client.stderr || client.stdout)
+}
+
+/** Check that every implementation of an API loads in the build, as a program's process imports it. */
+async function checkImplementations(options: BuildOptions, id: string): Promise<void> {
+  const images = implementations().map(({ image }) => image)
+  const code = `for (const module of ${JSON.stringify(images)}) await import(module); console.log('loaded')`
+  const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, ['--input-type=module', '--eval', code], '', 'input')
+  if (stdout.trim() !== 'loaded') throw failure(id, 'API implementations did not load', late, stderr || stdout)
 }
 
 function failure(id: string, what: string, late: boolean, output: string): Error {

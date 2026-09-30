@@ -14,13 +14,6 @@ export const SPEC_VERSION = 3
 /** Where a session's container sees its agent's snapshot. */
 export const AGENT_VIEW = '/opt/fleet-tau/agent'
 
-/**
- * Where the agent's snapshot holds the binding of each service it declares,
- * `@svc/<name>` (fleet-tau-runner's binding.ts), relative to the snapshot:
- * where tau's SPEC.md has a runtime put it, so that modules find it.
- */
-export const SERVICE_BINDINGS = 'modules/node_modules/@svc'
-
 const skillSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -33,14 +26,13 @@ const skillSchema = z.object({
   content: z.string(),
 })
 
-const serviceSchema = z.object({
+const apiSchema = z.object({
+  /** The API's name: programs import it as `@api/<name>`, typed by the agent's `api/<name>.d.ts`, and fleet's implementation of the same name runs it. */
+  name: z.string(),
+  /** The agent's own description of it. */
   description: z.string().optional(),
-  /** The manifest as written, which types what programs import as `@svc/<name>`. */
-  declarations: z.string(),
-  /** The functions the agent declares, which are all its programs may call. */
-  functions: z.array(z.string()),
-  /** The manifest's canonical JSON Schema, as tau gives it, which its binding checks and converts calls with. */
-  schema: z.record(z.string(), z.unknown()),
+  /** The fleet host's backends its implementation calls, which are all the session's programs may call. */
+  backends: z.array(z.string()),
 })
 
 const pathSchema = z.object({
@@ -53,29 +45,17 @@ const pathSchema = z.object({
   host: z.string(),
 })
 
-const moduleSchema = z.object({
-  /** The package name programs import it by. */
-  name: z.string(),
-  description: z.string().optional(),
-  /** The module's folder under the agent's `modules/`. */
-  dir: z.string(),
-})
-
 export const specSchema = z.object({
   version: z.literal(SPEC_VERSION),
-  /**
-   * The agent directory the session was started from, its name, and what
-   * its tau.json copies for its programs (tau's `copy`); none for a prompt run.
-   */
-  agent: z.object({ name: z.string(), source: z.string(), copy: z.array(z.string()) }).optional(),
+  /** The agent directory the session was started from, and its name; none for a prompt run. */
+  agent: z.object({ name: z.string(), source: z.string() }).optional(),
   /** The command's arguments to the agent. */
   args: z.array(z.string()),
   /** PROMPT.md with the arguments filled in, or the prompt as given: the session's task. */
   prompt: z.string(),
   skills: z.array(skillSchema),
-  /** The services the agent declares, by name. */
-  services: z.record(z.string(), serviceSchema),
-  modules: z.array(moduleSchema),
+  /** The APIs the agent declares, each linked to fleet's implementation. */
+  apis: z.array(apiSchema),
   /** The caller's values of the variables tau.json lists, which every process in the container sees. */
   env: z.record(z.string(), z.string()),
   /** The path arguments, as tau binds them. */
@@ -84,11 +64,10 @@ export const specSchema = z.object({
 
 export type Spec = z.output<typeof specSchema>
 export type Skill = z.output<typeof skillSchema>
-export type SpecService = z.output<typeof serviceSchema>
-export type SpecModule = z.output<typeof moduleSchema>
+export type SpecApi = z.output<typeof apiSchema>
 export type SpecPath = z.output<typeof pathSchema>
 
 /** The spec of a prompt run: no agent, nothing else. */
 export function promptSpec(prompt: string): Spec {
-  return { version: SPEC_VERSION, args: [], prompt, skills: [], services: {}, modules: [], env: {}, paths: [] }
+  return { version: SPEC_VERSION, args: [], prompt, skills: [], apis: [], env: {}, paths: [] }
 }

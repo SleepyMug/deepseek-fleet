@@ -5,28 +5,31 @@
 #
 # `fleet run <agent-dir> [args...]` runs an agent directory in the tau format
 # (@sleepymug/tau's SPEC.md): PROMPT.md filled with the arguments tau.json
-# declares, the agent's skills, the services its api/*.d.ts declare, and
-# the modules in its modules/. fleet-tau reads the directory in a worker,
-# checking its modules and services, refuses one with problems
-# before any session exists, and keeps a snapshot of it per session in
-# $DSH_HOME/fleet/sessions/<id>/, which fleet-box copies into each of the
-# session's containers at /opt/fleet-tau/agent; nothing of the store is
-# mounted. The session's agents get the snapshot's skills, with dsh's
+# declares, the agent's skills, and the APIs its api/*.d.ts declare.
+# fleet-tau reads the directory in a worker, checking its APIs, refuses one
+# with problems before any session exists, and keeps a snapshot of it, whole
+# and with its symlinks, per session in $DSH_HOME/fleet/sessions/<id>/,
+# which fleet-box copies into each of the session's containers at
+# /opt/fleet-tau/agent; nothing of the store is mounted. The session's agents get the snapshot's skills, with dsh's
 # `skill` tool, in a scope of their own; sessions started any other way
 # keep the fleet preset unchanged.
 #
-# Services are what fleet's own plugins provide (`ctx.fleetServices`), each
-# a tau manifest and its functions. An agent runs only when every service it
-# declares is provided and fits its declaration (`fleet check` tells ahead
-# of time); programs in its container then call them through $TAU_SOCKET,
-# fleet-box's service socket, and only the functions the agent declares.
+# fleet links each API an agent declares to its own implementation of the
+# same name (fleet-apis), which the session image carries; there is no
+# other. Some implementations run in the program alone; others call
+# backends on the host, which fleet's plugins provide (`ctx.fleetBackends`),
+# through $FLEET_SOCKET, fleet-box's service socket. An agent runs only when
+# fleet implements each of its APIs, the implementation fits the API as tau
+# checks, and the backends it calls are provided (`fleet check` tells ahead
+# of time); its programs may then call those backends, and no others.
 #
 # Every session `fleet run` starts gets TypeScript tools: ts_modules and
 # ts_execute, which run programs in the session's container with
 # fleet-tau's runner. `fleet-setup image` builds the runner into the
 # session image (/opt/fleet-tau/runner), and labels the image with the
 # runner's protocol, which the tools check before they start it. Programs
-# import the agent's services as @svc/<name>, and its modules by name.
+# import the agent's APIs as @api/<name>, typed by the agent's declarations,
+# which the runner links to fleet's implementations (/opt/fleet-tau/apis).
 #
 # Path arguments reach the container where the caller has them, each
 # according to its role in tau.json, as fleet-tau chooses: an `in` path as a
@@ -38,8 +41,8 @@
 # passed from the caller's environment.
 
 - insert:
-    - id: fleet-tau-services
-      name: fleet-tau/services
+    - id: fleet-tau-backends
+      name: fleet-tau/backends
 
     - id: fleet-tau
       name: fleet-tau/store
@@ -50,12 +53,12 @@
     - id: fleet-tau-relay
       name: fleet-tau/relay
 
-    # An example provider: a per-session notebook, for examples/notes.
+    # An example backend: a per-session notebook, for examples/notes.
     - id: fleet-tau-notes
       name: fleet-tau/examples/notes
       disabled: true
 
-    # An example provider that takes bytes: tarballs, for examples/archive-dir.
+    # An example backend: receipts of tarballs, for examples/archive-dir.
     - id: fleet-tau-archives
       name: fleet-tau/examples/archives
       disabled: true

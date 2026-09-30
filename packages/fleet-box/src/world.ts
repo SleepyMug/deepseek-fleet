@@ -51,7 +51,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL } from 'fleet-box-helper/image'
-import { PROTOCOL_VERSION, SERVICE_SOCKET } from 'fleet-box-helper/protocol'
+import { PROTOCOL_VERSION, SERVICE_SOCKET, SOCKET_VARIABLE } from 'fleet-box-helper/protocol'
 import {
   additionArgs, mountField, readAdditions, readCopied, removeAdditions, writeAdditions, writeCopied, type ContainerAdditions, type Copy,
 } from './additions.ts'
@@ -718,8 +718,8 @@ export class FleetBox extends Service {
       '--label', `${SESSION_LABEL}=${root.id}`, '--label', `${HOME_LABEL}=${this.home}`,
       '--init',
       '--mount', `type=bind,${mountField(`src=${workspace}`)},${mountField(`dst=${workspace}`)}`,
-      // Every process in the container finds the service socket, as tau's runtimes look for it.
-      '--env', `TAU_SOCKET=${SERVICE_SOCKET}`,
+      // Every process in the container finds the service socket.
+      '--env', `${SOCKET_VARIABLE}=${SERVICE_SOCKET}`,
       ...additionArgs(additions, workspace),
       '--workdir', workspace,
       // By id: the image checked at startup, which a rebuild under the same tag replaces in the spec.

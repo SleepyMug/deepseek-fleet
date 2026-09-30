@@ -6,8 +6,9 @@
  * the session image carries, in the session's container through
  * `ctx.subprocess`, so programs run there, never on the host, and see what
  * bash sees; the runner type-checks and runs them with ts-executor. Programs
- * import the services the agent declares as `@svc/<name>`, and the modules
- * it ships.
+ * import each API the agent declares as `@api/<name>`, typed by the agent's
+ * declarations in its snapshot and running fleet's implementation, which
+ * the image carries (fleet-apis).
  * @module fleet-tau/ts-tools
  */
 
@@ -17,12 +18,13 @@ import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { HELPER_NODE } from 'fleet-box-helper/image'
+import { implementation } from 'fleet-apis/registry'
 import type {} from 'fleet-box/world'
 import {
   MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
 } from 'fleet-tau-runner/protocol'
 import { parseRunnerReply } from './runner-reply.ts'
-import { AGENT_VIEW, SERVICE_BINDINGS, type Spec } from './spec.ts'
+import { AGENT_VIEW, type Spec } from './spec.ts'
 
 /** How long a program may run, type-checking included. */
 const EXECUTE_TIMEOUT_MS = 120_000
@@ -36,8 +38,7 @@ const OUTPUT_KEPT = '16 Ki'
 const INSTRUCTIONS = `# TypeScript programs
 
 Besides running commands, you can write TypeScript programs and run them in this session's container with \`ts_execute\`. A program is one self-contained ES module that exports \`main(input)\`; it is type-checked strictly, then run in a fresh Node process. It imports, by package name:
-- the services this session can call, as \`@svc/<name>\`. Their calls leave the container for services the fleet host provides;
-- the modules this session's agent ships;
+- the APIs this session's agent declares, as \`@api/<name>\`, typed by the agent's declarations. Some run in the program alone; others reach the fleet host, outside the container;
 - Node's built-ins, as \`node:\` specifiers.
 
 ## Workflow
@@ -46,40 +47,33 @@ Besides running commands, you can write TypeScript programs and run them in this
 2. Read a package's \`package.json\` and the declaration files its \`types\` and \`exports\` name, under \`packageRoot\`, before writing calls; descriptions are summaries, not contracts.
 3. Write strict ES2022 TypeScript with ESM imports.
 4. Call \`ts_execute({ source, cwd?, input? })\`. It type-checks before running; fix the reported errors and retry. \`cwd\`, the session folder by default, is where relative paths resolve; packages are imported by specifier wherever it is.
-5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. Service calls are asynchronous, may change state outside the container, and are not undone when a program fails.
+5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. What an API does outside the container is not undone when a program fails.
 
 ## JSON
 
-\`input\` and the value \`main\` returns must be strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. So must the arguments and results of service calls, except that where a service's declarations say \`Uint8Array\`, it takes and gives bytes as a \`Uint8Array\`. Leave out an optional property rather than setting it to \`undefined\`. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs.`
+\`input\` and the value \`main\` returns must be strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. Leave out an optional property rather than setting it to \`undefined\`. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs. APIs take and give what their declarations say.`
 
 /**
  * Register the TypeScript tools and their instructions in an agent's scope.
  * @param ctx - the agent's scope, with `tools`, `subprocess` and `systemPrompt`.
- * @param spec - the session's spec, whose services and modules programs import.
+ * @param spec - the session's spec, whose APIs programs import.
  */
 export function registerTsTools(ctx: Context, spec: Spec): void {
   const packages = (): Omit<Extract<RunnerRequest, { command: 'modules' }>, 'command'> => ({
     root: TS_ROOT,
-    modules: [
-      // Each service's binding, which the store wrote into the agent's snapshot.
-      ...Object.entries(spec.services).map(([name, service]) => ({
-        name: `@svc/${name}`,
-        ...service.description === undefined ? {} : { description: service.description },
-        root: posix.join(AGENT_VIEW, SERVICE_BINDINGS, name),
-      })),
-      ...spec.modules.map(module => ({
-        name: module.name,
-        ...module.description === undefined ? {} : { description: module.description },
-        root: posix.join(AGENT_VIEW, 'modules', module.dir),
-      })),
-    ],
+    apis: spec.apis.map(api => ({
+      name: api.name,
+      ...api.description === undefined ? {} : { description: api.description },
+      types: posix.join(AGENT_VIEW, 'api', `${api.name}.d.ts`),
+      implementation: implementationIn(api.name),
+    })),
   })
 
   ctx.systemPrompt.section({ name: 'fleet-tau:typescript', order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX') - 1, interpolate: false, text: INSTRUCTIONS })
 
   ctx.tools.register(defineTool({
     name: 'ts_modules',
-    description: 'List the packages a `ts_execute` program may import: the services this session can call (`@svc/<name>`), and the modules its agent ships. '
+    description: 'List the packages a `ts_execute` program may import: the APIs of this session\'s agent (`@api/<name>`). '
       + 'Returns each package\'s specifier, description and packageRoot, a folder in this container; read its package.json and declaration files to learn its API.',
     parameters: {
       query: { type: 'string', description: 'Case-insensitive filter on specifier and description.' },
@@ -182,4 +176,12 @@ function sessionFolder(exec: ToolRunContext): string {
 function failed(reply: RunnerReply): Error {
   const failure: RunnerFailure = reply.ok ? { name: 'Error', message: 'the TypeScript runner answered something else' } : reply.error
   return new Error(JSON.stringify(failure))
+}
+
+/** Where the image holds fleet's implementation of an API the spec links. */
+function implementationIn(name: string): string {
+  const found = implementation(name)
+  // The spec was stored only once fleet's implementation fitted the API.
+  if (found === undefined) throw new Error(`fleet no longer implements the API ${name}`)
+  return found.image
 }

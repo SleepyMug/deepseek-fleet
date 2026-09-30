@@ -24,7 +24,7 @@ const RESERVED = ['/opt/fleet-box', '/run/fleet-box']
  * its Node and what they start rely on the image for; no addition may set
  * them, nor any `LD_` variable of the dynamic linker.
  */
-const RESERVED_ENV = ['TAU_SOCKET', 'PATH', 'HOME', 'NODE_OPTIONS', 'NODE_PATH']
+const RESERVED_ENV = ['FLEET_SOCKET', 'PATH', 'HOME', 'NODE_OPTIONS', 'NODE_PATH']
 
 /** Whether a variable is fleet-box's or the container's own, which no addition may set. */
 export function reservedVariable(name: string): boolean {

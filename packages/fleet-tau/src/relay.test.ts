@@ -4,9 +4,8 @@ import { Context } from '@deepseek-ai/cordis'
 import type { ServiceHandler } from 'fleet-box/world'
 import * as Relay from './relay.ts'
 
-async function setup(declared: Record<string, string[]> | undefined) {
-  const services = declared === undefined ? undefined
-    : Object.fromEntries(Object.entries(declared).map(([name, functions]) => [name, { declarations: '', functions }]))
+/** The relay, for a session whose agent links APIs whose implementations call `backends`, or with no spec. */
+async function setup(backends: string[] | undefined) {
   const ctx = new Context()
   let handler: ServiceHandler | undefined
   const served: unknown[] = []
@@ -14,8 +13,9 @@ async function setup(declared: Record<string, string[]> | undefined) {
     serveCalls: (serve: ServiceHandler) => { handler = serve; return () => { handler = undefined } },
     rootHeaderOf: (id: string) => Promise.resolve({ id }),
   })
-  ctx.provide('fleetTau', { specOf: () => Promise.resolve(services === undefined ? undefined : { spec: { services }, owner: 'session-a' }) })
-  ctx.provide('fleetServices', { call: (session: string, call: unknown) => { served.push([session, call]); return Promise.resolve('ok') } })
+  const spec = backends === undefined ? undefined : { apis: [{ name: 'notes', backends }, { name: 'text-stats', backends: [] }] }
+  ctx.provide('fleetTau', { specOf: () => Promise.resolve(spec === undefined ? undefined : { spec, owner: 'session-a' }) })
+  ctx.provide('fleetBackends', { call: (session: string, call: unknown) => { served.push([session, call]); return Promise.resolve('ok') } })
   await ctx.plugin(Relay)
   assert.ok(handler !== undefined)
   return { handler, served }
@@ -23,17 +23,17 @@ async function setup(declared: Record<string, string[]> | undefined) {
 
 const never = new AbortController().signal
 
-test('a call the session\'s agent declares is served for the container\'s own session', async () => {
-  const { handler, served } = await setup({ notes: ['addNote'] })
+test('a call to a backend an API of the session\'s agent calls is served for the container\'s own session', async () => {
+  const { handler, served } = await setup(['notes'])
   assert.equal(await handler('session-a' as never, { service: 'notes', function: 'addNote', args: ['x'] }, never), 'ok')
   assert.deepEqual(served, [['session-a', { service: 'notes', function: 'addNote', args: ['x'] }]])
 })
 
 test('any other call is refused, as from a session with no spec', async () => {
-  const declared = await setup({ notes: ['addNote'] })
-  await assert.rejects(declared.handler('session-a' as never, { service: 'notes', function: 'byTag', args: [] }, never), /does not declare notes\.byTag/u)
-  await assert.rejects(declared.handler('session-a' as never, { service: 'constructor', function: 'name', args: [] }, never), /does not declare/u)
+  const linked = await setup(['notes'])
+  await assert.rejects(linked.handler('session-a' as never, { service: 'archives', function: 'list', args: [] }, never), /links no API that calls the backend archives/u)
+  await assert.rejects(linked.handler('session-a' as never, { service: 'constructor', function: 'name', args: [] }, never), /links no API/u)
   const web = await setup(undefined)
-  await assert.rejects(web.handler('session-web' as never, { service: 'notes', function: 'addNote', args: [] }, never), /does not declare/u)
-  assert.deepEqual([...declared.served, ...web.served], [])
+  await assert.rejects(web.handler('session-web' as never, { service: 'notes', function: 'addNote', args: [] }, never), /links no API/u)
+  assert.deepEqual([...linked.served, ...web.served], [])
 })

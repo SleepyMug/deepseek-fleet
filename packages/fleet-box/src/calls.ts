@@ -14,7 +14,7 @@ import { MAX_CALL_BYTES, type HostMessage } from 'fleet-box-helper/protocol'
 const MAX_CALLS = 16
 /** Characters of a failed call's message sent back to the container. */
 const MAX_CALL_ERROR = 16 * 1024
-/** Service and function names as tau allows them, and no longer than this. */
+/** Service and function names: identifiers or file-name-like names, no longer than this. */
 const CALL_NAME = /^[A-Za-z0-9_$][A-Za-z0-9._$-]{0,127}$/u
 const MIB = 1024 * 1024
 

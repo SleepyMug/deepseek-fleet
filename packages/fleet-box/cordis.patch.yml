@@ -27,10 +27,10 @@
 # restarts, and recreates them.
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
-# its container, through fleet-box's helper. The helper also serves tau's
-# service protocol at $TAU_SOCKET (/run/fleet-box/tau.sock) and relays each
-# call to whatever serves them on the host (fleet-tau), for the session the
-# container belongs to; without it, every call fails. The subprocess side
+# its container, through fleet-box's helper. The helper also serves a
+# service socket at $FLEET_SOCKET (/run/fleet-box/services.sock) and relays
+# each call to whatever serves them on the host (fleet-tau's backends), for
+# the session the container belongs to; without it, every call fails. The subprocess side
 # serves bash, with collected output without spill files and no raw pipes
 # or control channel, and the sidebar's terminals, as shells in the
 # session's container.

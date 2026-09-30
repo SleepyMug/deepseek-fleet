@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { declarations, implementation } from 'fleet-apis/registry'
 import { prepare, type PrepareRequest } from './prepare.ts'
 
 async function withAgent(files: Record<string, string>, check: (dir: string) => void): Promise<void> {
@@ -18,8 +19,8 @@ async function withAgent(files: Record<string, string>, check: (dir: string) => 
   }
 }
 
-const request = (agent: string, args: string[], bind = true, providers: PrepareRequest['providers'] = []): PrepareRequest =>
-  ({ agent, args, bind, callerCwd: '/caller', cwd: '/session', env: {}, providers })
+const request = (agent: string, args: string[], bind = true, backends: string[] = []): PrepareRequest =>
+  ({ agent, args, bind, callerCwd: '/caller', cwd: '/session', env: {}, backends })
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
@@ -31,7 +32,7 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
     assert.ok(prepared.ok, JSON.stringify(prepared))
     assert.equal(prepared.spec.prompt, 'Greet World. Then say: bye')
     assert.equal(prepared.title, `${basename(dir)} World bye`)
-    assert.deepEqual(prepared.spec.agent, { name: basename(dir), source: dir, copy: [] })
+    assert.deepEqual(prepared.spec.agent, { name: basename(dir), source: dir })
     assert.deepEqual(prepared.spec.skills.map(skill => skill.name), ['shout'])
   })
 })
@@ -39,13 +40,13 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
 test('every problem is reported together', async () => {
   await withAgent({
     'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "inout"}], "env": ["TAU_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
+    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "inout"}], "env": ["FLEET_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
     'skills/bad/SKILL.md': 'no frontmatter',
   }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.equal(prepared.problems.length, 3)
-    assert.match(prepared.problems[0]!, /env lists TAU_SOCKET, NODE_OPTIONS, LD_PRELOAD, which the container keeps as its own/u)
+    assert.match(prepared.problems[0]!, /env lists FLEET_SOCKET, NODE_OPTIONS, LD_PRELOAD, which the container keeps as its own/u)
     assert.match(prepared.problems[1]!, /expected 1 argument/u)
     assert.match(prepared.problems[2]!, /bad\/SKILL\.md/u)
   })
@@ -103,54 +104,39 @@ test('a check without arguments does not bind them, and an empty prompt is refus
   })
 })
 
-test('declared services must be provided and fit, and are recorded with their functions', async () => {
-  const manifest = '/** Notes. @packageDocumentation */\nexport declare function addNote(text: string): Promise<number>;\n'
-  await withAgent({ 'PROMPT.md': 'Take notes.', 'api/notes.d.ts': manifest }, (dir) => {
+test('each API is linked to fleet\'s implementation of its name, whose backends must be provided', async () => {
+  const notes = implementation('notes')
+  assert.ok(notes !== undefined)
+  // What `fleet apis notes` prints, for the tau to copy.
+  await withAgent({ 'PROMPT.md': 'Take notes.', 'api/notes.d.ts': declarations(notes), 'api/text-stats.d.ts': 'export declare function wordFrequencies(text: string): Record<string, number>;\n' }, (dir) => {
     const missing = prepare(request(dir, []))
     assert.ok(!missing.ok)
-    assert.deepEqual(missing.problems, ['no fleet plugin provides the service notes'])
-    const provided = { name: 'notes', declarations: 'export declare function addNote(text: string, tags?: string[]): Promise<number>;\n', functions: ['addNote'] }
-    const prepared = prepare(request(dir, [], true, [provided]))
+    assert.deepEqual(missing.problems, ['@api/notes: fleet\'s implementation calls the backend notes, which no fleet plugin provides now'])
+    const prepared = prepare(request(dir, [], true, ['notes']))
     assert.ok(prepared.ok, JSON.stringify(prepared))
-    assert.deepEqual(Object.keys(prepared.spec.services), ['notes'])
-    assert.deepEqual(prepared.spec.services.notes?.functions, ['addNote'])
-    assert.equal(prepared.spec.services.notes?.description, 'Notes.')
-    assert.match(prepared.spec.services.notes?.declarations ?? '', /addNote\(text: string\): Promise<number>/u)
+    assert.deepEqual(prepared.spec.apis.map(({ name, backends }) => [name, backends]), [['notes', ['notes']], ['text-stats', []]])
+    // The agent's own description of each, if it gives one.
+    assert.match(prepared.spec.apis[0]?.description ?? '', /^A notebook of short notes/u)
+    assert.equal(prepared.spec.apis[1]?.description, undefined)
   })
 })
 
-test('a manifest tau refuses, and a module that is no package, are problems', async () => {
-  await withAgent({ 'PROMPT.md': 'x', 'api/bad.d.ts': 'export declare function f(when: Date): Promise<void>;\n', 'modules/m/package.json': '{}' }, (dir) => {
+test('an API fleet does not implement, one its implementation does not fit, and one tau refuses are problems', async () => {
+  await withAgent({
+    'PROMPT.md': 'x',
+    'api/weather.d.ts': 'export declare function forecast(city: string): Promise<string>;\n',
+    // Asks for a result the implementation does not give.
+    'api/text-stats.d.ts': 'export declare function wordFrequencies(text: string): string[];\n',
+  }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.equal(prepared.problems.length, 2)
-    assert.match(prepared.problems[0]!, /modules\/m/u)
-    assert.match(prepared.problems[1]!, /bad\.d\.ts/u)
+    assert.match(prepared.problems[0]!, /does not implement @api\/text-stats/u)
+    assert.equal(prepared.problems[1], '@api/weather: fleet has no implementation of it; `fleet apis` lists the ones it has')
   })
-})
-
-test('modules are recorded by name and folder, with a module whose imports do not resolve refused', async () => {
-  const shout = {
-    'modules/shout/package.json': JSON.stringify({ name: 'shout', description: 'Loud.', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
-    'modules/shout/index.js': 'export const shout = (text) => text.toUpperCase()\n',
-    'modules/shout/index.d.ts': 'export declare const shout: (text: string) => string;\n',
-  }
-  await withAgent({ 'PROMPT.md': 'x', ...shout }, (dir) => {
-    const prepared = prepare(request(dir, []))
-    assert.ok(prepared.ok, JSON.stringify(prepared))
-    assert.deepEqual(prepared.spec.modules, [{ name: 'shout', description: 'Loud.', dir: 'shout' }])
-    // What the tau copies for its programs: its modules, unless tau.json says otherwise.
-    assert.deepEqual(prepared.spec.agent?.copy, ['modules'])
-  })
-  // A module whose package.json the tau does not copy is refused.
-  await withAgent({ 'PROMPT.md': 'x', 'tau.json': '{"copy": ["modules/shout/index.js"]}', ...shout }, (dir) => {
+  await withAgent({ 'PROMPT.md': 'x', 'api/bad.d.ts': 'export declare function f(): Promise<Missing>;\n' }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
-    assert.match(prepared.problems.join('\n'), /tau\.json does not copy it/u)
-  })
-  await withAgent({ 'PROMPT.md': 'x', ...shout, 'modules/shout/index.js': 'import "not-installed"\n' }, (dir) => {
-    const prepared = prepare(request(dir, []))
-    assert.ok(!prepared.ok)
-    assert.match(prepared.problems.join('\n'), /not-installed/u)
+    assert.match(prepared.problems[0]!, /its APIs break the spec:[^]*Missing/u)
   })
 })

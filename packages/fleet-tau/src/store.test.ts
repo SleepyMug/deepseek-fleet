@@ -19,19 +19,12 @@ before(async () => {
   agent = await mkdtemp(join(tmpdir(), 'fleet-tau-agent-'))
   await writeFile(join(agent, 'PROMPT.md'), 'Greet ${name}.')
   await writeFile(join(agent, 'tau.json'), '{"args": [{"name": "name", "type": "text"}]}')
-  await writeFile(join(agent, 'notes.txt'), 'not part of the agent')
+  await writeFile(join(agent, 'notes.txt'), 'the author\'s own')
   await mkdir(join(agent, 'shared', 'shout'), { recursive: true })
   await writeFile(join(agent, 'shared', 'shout', 'SKILL.md'), '---\nname: shout\ndescription: Shout.\n---\nSHOUT\n')
   await mkdir(join(agent, 'skills'))
-  // A skill kept elsewhere in the tau, as it may link one; the snapshot follows the link.
+  // A skill kept elsewhere in the tau, as it may link one.
   await symlink(join('..', 'shared', 'shout'), join(agent, 'skills', 'shout'))
-  const module = join(agent, 'modules', 'loud')
-  await mkdir(module, { recursive: true })
-  await writeFile(join(module, 'package.json'), JSON.stringify({ name: 'loud', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }))
-  await writeFile(join(module, 'index.js'), 'export const loud = (text) => text.toUpperCase()\n')
-  await writeFile(join(module, 'types.d.ts'), 'export declare const loud: (text: string) => string;\n')
-  // A module's symlinks lead into what the tau copies, and the snapshot keeps them.
-  await symlink('types.d.ts', join(module, 'index.d.ts'))
 })
 
 after(async () => {
@@ -51,7 +44,7 @@ async function setup() {
     'session-fork-of-sub': header('session-fork-of-sub', { cwd: '/w', parentSession: 'session-sub' as SessionId }),
     'session-web': header('session-web', { cwd: '/w' }),
   }
-  ctx.provide('fleetServices', { list: () => [] })
+  ctx.provide('fleetBackends', { list: () => [] })
   ctx.provide('fleetBox', {
     configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
     unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
@@ -79,11 +72,10 @@ test('a run is read in a worker, and its spec is stored with a snapshot of the a
   const folder = join(home, 'fleet', 'sessions', 'session-a')
   assert.equal((await stat(folder)).mode & 0o777, 0o700)
   assert.equal(await readFile(join(folder, 'agent', 'PROMPT.md'), 'utf8'), 'Greet ${name}.')
-  assert.ok((await lstat(join(folder, 'agent', 'skills', 'shout'))).isDirectory())
+  // The whole tau, whose symlinks stay as they are, and still lead where they did.
+  assert.equal(await readlink(join(folder, 'agent', 'skills', 'shout')), join('..', 'shared', 'shout'))
   assert.ok((await stat(join(folder, 'agent', 'skills', 'shout', 'SKILL.md'))).isFile())
-  assert.equal(await readlink(join(folder, 'agent', 'modules', 'loud', 'index.d.ts')), 'types.d.ts')
-  await assert.rejects(stat(join(folder, 'agent', 'notes.txt')))
-  await assert.rejects(stat(join(folder, 'agent', 'shared')))
+  assert.equal(await readFile(join(folder, 'agent', 'notes.txt'), 'utf8'), 'the author\'s own')
   // Nothing of the store is mounted: fleet-box copies the snapshot into the container.
   assert.deepEqual(configured.get('session-a'), { mounts: [], copies: [{ source: join(folder, 'agent'), target: '/opt/fleet-tau/agent' }] })
 
@@ -91,31 +83,6 @@ test('a run is read in a worker, and its spec is stored with a snapshot of the a
   assert.equal(await tau.specOf(headers['session-web']!), undefined)
   // A second spec never lands in a session's folder.
   await assert.rejects(tau.create('session-a' as SessionId, prepared.spec))
-})
-
-test('the snapshot holds a binding for each service, in place of what the agent keeps there', async () => {
-  const { tau } = await setup()
-  const source = await mkdtemp(join(tmpdir(), 'fleet-tau-agent-'))
-  try {
-    await writeFile(join(source, 'PROMPT.md'), 'Take notes.')
-    // Types to build modules against, as a tau may keep them.
-    const standIn = join(source, 'modules', 'node_modules', '@svc', 'notes')
-    await mkdir(standIn, { recursive: true })
-    await writeFile(join(standIn, 'package.json'), '{"name": "@svc/notes", "types": "./index.d.ts"}')
-    await symlink(join('..', '..', '..', '..', 'api', 'notes.d.ts'), join(standIn, 'index.d.ts'))
-    const declarations = 'export declare function addNote(text: string): Promise<number>;\n'
-    const spec: Spec = {
-      version: 3, agent: { name: 'notes', source, copy: ['modules'] }, args: [], prompt: 'x', skills: [], modules: [], env: {}, paths: [],
-      services: { notes: { declarations, functions: ['addNote'], schema: { name: 'notes', functions: { addNote: { params: [] } } } } },
-    }
-    await tau.create('session-bound' as SessionId, spec)
-    const binding = join(home, 'fleet', 'sessions', 'session-bound', 'agent', 'modules', 'node_modules', '@svc', 'notes')
-    assert.deepEqual((await readdir(binding)).sort(), ['index.d.ts', 'index.js', 'package.json'])
-    assert.equal(await readFile(join(binding, 'index.d.ts'), 'utf8'), declarations)
-    assert.match(await readFile(join(binding, 'index.js'), 'utf8'), /import \{ bindService \} from "file:\/\/\/opt\/fleet-tau\/runner\/service\.js"[^]*export function addNote\(/u)
-  } finally {
-    await rm(source, { recursive: true, force: true })
-  }
 })
 
 test('a fork, even one of a subagent, takes its source\'s spec and snapshot', async () => {
@@ -167,7 +134,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const container = join(dir, 'container')
     const copied: string[] = []
     let running = false
-    ctx.provide('fleetServices', { list: () => [] })
+    ctx.provide('fleetBackends', { list: () => [] })
     ctx.provide('fleetBox', {
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: () => Promise.resolve(),
@@ -196,7 +163,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await writeFile(report, 'old report')
     const summary = join(dir, 'summary.md')
     const spec: Spec = {
-      version: 3, args: [], prompt: 'x', skills: [], services: {}, modules: [], env: { LANG: 'C.UTF-8' },
+      version: 3, args: [], prompt: 'x', skills: [], apis: [], env: { LANG: 'C.UTF-8' },
       paths: [
         { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md') },
         { name: 'data', type: 'dir', role: 'inout', host: join(dir, 'data') },
@@ -294,7 +261,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
 
 test('an agent directory that takes too long to read fails, and the next is read by a new worker', async () => {
   const ctx = new Context()
-  ctx.provide('fleetServices', { list: () => [] })
+  ctx.provide('fleetBackends', { list: () => [] })
   ctx.provide('fleetBox', {})
   await ctx.plugin(FleetTau, { prepareTimeoutMs: 1 })
   let tau: FleetTau | undefined
@@ -302,7 +269,7 @@ test('an agent directory that takes too long to read fails, and the next is read
   assert.ok(tau !== undefined)
   await assert.rejects(tau.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} }), /took longer than 0\.001 s/u)
   const patient = new Context()
-  patient.provide('fleetServices', { list: () => [] })
+  patient.provide('fleetBackends', { list: () => [] })
   patient.provide('fleetBox', {})
   await patient.plugin(FleetTau, { prepareTimeoutMs: 60_000 })
   let other: FleetTau | undefined

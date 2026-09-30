@@ -21,6 +21,7 @@
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dependencies": {
+    "fleet-apis": "workspace:*",
     "fleet-box-helper": "workspace:*",
     "fleet-tau-runner": "workspace:*"
   }

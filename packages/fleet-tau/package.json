@@ -2,12 +2,12 @@
   "name": "fleet-tau",
   "version": "0.0.1",
   "private": true,
-  "description": "The fleet's tau runtime: runs agent directories in the tau format as sessions of the fleet host, each with its agent's skills and the services fleet's plugins provide, from a spec the `fleet` command stores per session",
+  "description": "The fleet's tau runtime: runs agent directories in the tau format as sessions of the fleet host, each with its agent's skills and its APIs linked to fleet's implementations, whose backends fleet's plugins provide, from a spec the `fleet` command stores per session",
   "type": "module",
   "exports": {
-    "./services": {
-      "types": "./lib/services.d.ts",
-      "default": "./lib/services.js"
+    "./backends": {
+      "types": "./lib/backends.d.ts",
+      "default": "./lib/backends.js"
     },
     "./spec": {
       "types": "./lib/spec.d.ts",
@@ -38,13 +38,13 @@
   "files": [
     "lib",
     "!lib/**/*.test.*",
-    "manifests",
     "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
-    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\"",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dsh": {
     "bundle": {
@@ -53,9 +53,9 @@
   },
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
+    "fleet-apis": "workspace:*",
     "fleet-box-helper": "workspace:*",
     "fleet-tau-runner": "workspace:*",
-    "typescript": "6.0.3",
     "yaml": "2.9.1",
     "zod": "4.6.5"
   },

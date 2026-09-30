@@ -6,12 +6,11 @@
  * session image carries it: `fleet-setup image` installs this package there
  * with the packages it depends on, as they are installed on the host.
  * It runs programs with ts-executor, so each one is type-checked and runs in
- * a fresh Node process of its own, and it imports:
- * - each service the agent declares as `@svc/<name>`, the service's binding
- *   (./binding.ts), whose calls go from the program's process to fleet-box's
- *   service socket at $TAU_SOCKET, and from there to the host;
- * - each module the agent ships, by its package name, which imports the
- *   services through the same bindings.
+ * a fresh Node process of its own, and it imports each API the agent
+ * declares as `@api/<name>`, typed by the agent's declarations and running
+ * fleet's implementation, which the image carries (./links.ts). An
+ * implementation runs in the program's process, and calls the host through
+ * fleet-box's service socket, if at all, itself.
  *
  * A SIGTERM, which the host sends when a call is cancelled or runs out of
  * time, ends the program, and every process in its process group, before
@@ -21,6 +20,7 @@
 
 import { mkdir } from 'node:fs/promises'
 import { ExecutionAbortedError, TSFuncExecutor, packageModule, type JsonValue } from '@sleepymug/ts-executor'
+import { API_SCOPE, linkApi, linkNodeTypes } from './links.ts'
 import type { ModuleSummary, RunnerReply, RunnerRequest } from './protocol.ts'
 import { outputCaptures, replyLine, reportFailure, reportResult } from './report.ts'
 
@@ -66,12 +66,14 @@ async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest,
   }
 }
 
-/** An executor over the TypeScript root with every package a program may import registered, for one operation. */
+/** An executor over the TypeScript root with each of the agent's APIs linked and registered, for one operation. */
 async function withExecutor(request: RunnerRequest, operation: (executor: TSFuncExecutor) => Promise<RunnerReply>): Promise<RunnerReply> {
   await mkdir(request.root, { recursive: true })
+  await linkNodeTypes(request.root)
   const executor = new TSFuncExecutor({ resolutionRoot: request.root })
-  for (const module of request.modules) {
-    executor.modules.register(packageModule({ specifier: module.name, root: module.root, ...module.description === undefined ? {} : { description: module.description } }))
+  for (const api of request.apis) {
+    const root = await linkApi(request.root, api)
+    executor.modules.register(packageModule({ specifier: `${API_SCOPE}${api.name}`, root, ...api.description === undefined ? {} : { description: api.description } }))
   }
   return await operation(executor)
 }

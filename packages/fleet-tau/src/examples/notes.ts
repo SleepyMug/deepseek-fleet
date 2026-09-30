@@ -1,44 +1,47 @@
 /**
- * An example service, `notes` (manifests/notes.d.ts): a notebook per session,
- * kept in the fleet host's memory until it exits. It shows what a provider
- * plugin looks like; fleet-tau's patch lists it disabled. An agent directory
- * with a copy of the manifest in its api/ can call it, as examples/notes in
- * this repository does.
+ * An example backend, `notes`: a notebook per session, kept in the fleet
+ * host's memory until it exits, for fleet's implementation of the `notes`
+ * API (fleet-apis), which programs in the container import. It shows what a
+ * backend plugin looks like; fleet-tau's patch lists it disabled. An agent
+ * directory with a copy of the API in its api/ can use it, as examples/notes
+ * in this repository does.
  * @module fleet-tau/examples/notes
  */
 
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '../services.ts'
+import { z } from 'zod'
+import { method } from '../backends.ts'
 
 export const name = 'fleet-tau-notes'
-export const inject = ['fleetServices']
+export const inject = ['fleetBackends']
 
+/** A note as the implementation takes it back: its date as ISO 8601 text. */
 interface Note {
   id: number
   text: string
   tags: string[]
+  written: string
 }
 
-export async function apply(ctx: Context): Promise<void> {
+export function apply(ctx: Context): void {
   const notebooks = new Map<SessionId, Note[]>()
   const notebook = (session: SessionId): Note[] => {
     let notes = notebooks.get(session)
     if (notes === undefined) notebooks.set(session, notes = [])
     return notes
   }
-  const dispose = await ctx.fleetServices.provide({
-    manifest: fileURLToPath(new URL('../../manifests/notes.d.ts', import.meta.url)),
-    functions: {
-      addNote: ([text, tags], { session }) => {
+  const dispose = ctx.fleetBackends.provide({
+    name: 'notes',
+    methods: {
+      addNote: method(z.tuple([z.string(), z.array(z.string())]), ([text, tags], { session }) => {
         const notes = notebook(session)
-        const note: Note = { id: notes.length + 1, text: text as string, tags: (tags as string[] | undefined) ?? [] }
+        const note: Note = { id: notes.length + 1, text, tags, written: new Date().toISOString() }
         notes.push(note)
         return { ...note }
-      },
-      byTag: ([tag], { session }) => notebook(session).filter(note => note.tags.includes(tag as string)).map(note => ({ ...note })),
+      }),
+      byTag: method(z.tuple([z.string()]), ([tag], { session }) => notebook(session).filter(note => note.tags.includes(tag)).map(note => ({ ...note }))),
     },
   })
-  ctx.effect(() => dispose, 'the notes service')
+  ctx.effect(() => dispose, 'the notes backend')
 }

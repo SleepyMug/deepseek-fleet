@@ -12,11 +12,11 @@
  * inside the container can only mislead the host about that same container.
  * The host bounds and validates every message it reads, and never acts on the
  * host's filesystem on the helper's word. A service call is the one thing the
- * host does at the container's request: it runs a provider plugin's code for
- * the session whose container the call came from, which the host knows from
- * the connection and never takes from the message, and only a call that
- * session's spec declares, with arguments the provider's manifest accepts. The
- * host bounds the calls in flight, and each call's size both ways.
+ * host does at the container's request: it runs a plugin's code for the
+ * session whose container the call came from, which the host knows from the
+ * connection and never takes from the message, and only a call that session
+ * may make, with arguments the plugin accepts. The host bounds the calls in
+ * flight, and each call's size both ways.
  *
  * Shared by the host and the helper, so it holds only types and constants.
  * @module fleet-box-helper/protocol
@@ -26,10 +26,13 @@
 export const PROTOCOL_VERSION = 3
 
 /**
- * Where the helper serves tau's service protocol (@sleepymug/tau's SPEC.md)
- * in the container: one call per connection, one JSON line each way.
+ * Where the helper serves its service socket in the container: one call per
+ * connection, one JSON line each way (./services.ts).
  */
-export const SERVICE_SOCKET = '/run/fleet-box/tau.sock'
+export const SERVICE_SOCKET = '/run/fleet-box/services.sock'
+
+/** The variable that names {@link SERVICE_SOCKET} to every process in the container. */
+export const SOCKET_VARIABLE = 'FLEET_SOCKET'
 
 /** Longest service call, or answer to one, in bytes of JSON, either way. */
 export const MAX_CALL_BYTES = 16 * 1024 * 1024

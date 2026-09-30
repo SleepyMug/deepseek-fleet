@@ -10,7 +10,7 @@ import { ServiceSocket } from './services.ts'
 
 async function setup(options: { behind?: boolean } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-box-services-'))
-  const path = join(dir, 'run', 'tau.sock')
+  const path = join(dir, 'run', 'services.sock')
   const sent: HelperMessage[] = []
   let drain: (() => void) | undefined
   let behind = options.behind ?? false

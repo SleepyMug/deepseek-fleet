@@ -2,22 +2,21 @@
  * Read an agent directory for a run or a check: its tau metadata and prompt,
  * the command's arguments bound to them, with its path arguments checked as
  * tau checks a run's inputs and where the container can give them
- * (./paths.ts), its skills, its modules, checked as tau checks them against
- * what it copies, and its service manifests in api/, checked against the
- * services fleet provides (./compat.ts), with every problem found reported
+ * (./paths.ts), its skills, and its APIs, each linked to fleet's
+ * implementation of the same name (fleet-apis), which tau checks fits it,
+ * and whose backends must be provided, with every problem found reported
  * together. tau's library loads TypeScript as it is imported, so this runs
  * in a worker (./worker.ts), never in the fleet host's own thread.
  * @module fleet-tau/prepare
  */
 
-import { existsSync, readdirSync } from 'node:fs'
-import { basename, join, relative } from 'node:path'
-import { checkInputs, checkModule, loadModules, loadService, loadTau, type Module, type Run, type Service, type Tau } from '@sleepymug/tau'
+import { basename } from 'node:path'
+import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from 'fleet-box/additions'
-import { checkServices, type Declared } from './compat.ts'
+import { implementation } from 'fleet-apis/registry'
 import { pathProblems } from './paths.ts'
 import { loadSkills } from './skills.ts'
-import { SPEC_VERSION, type Spec } from './spec.ts'
+import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
 
 export interface PrepareRequest {
   /** The agent directory, absolute. */
@@ -32,8 +31,8 @@ export interface PrepareRequest {
   cwd: string
   /** The command's values of the variables the agent's tau.json lists. */
   env: Record<string, string>
-  /** The services fleet's plugins provide now. */
-  providers: Declared[]
+  /** The backends fleet's plugins provide now. */
+  backends: string[]
 }
 
 export type Prepared =
@@ -74,30 +73,18 @@ export function prepare(request: PrepareRequest): Prepared {
   }
   const skills = loadSkills(tau.dir)
   problems.push(...skills.problems)
-  const modules = checkedModules(tau, problems)
-  const services = loadManifests(tau.dir, problems)
-  problems.push(...checkServices(services.map(service => ({ name: service.name, declarations: service.declarations, functions: service.functions })), request.providers))
+  const apis = linkedApis(tau.dir, request.backends, problems)
   if (problems.length > 0) return { ok: false, problems }
   const name = basename(tau.dir)
   return {
     ok: true,
     spec: {
       version: SPEC_VERSION,
-      agent: { name, source: tau.dir, copy: [...tau.copy] },
+      agent: { name, source: tau.dir },
       args: request.args,
       prompt,
       skills: skills.skills,
-      services: Object.fromEntries(services.map(service => [service.name, {
-        ...service.description === undefined ? {} : { description: service.description },
-        declarations: service.declarations,
-        functions: [...service.functions],
-        schema: { ...service.schema },
-      }])),
-      modules: modules.map(module => ({
-        name: module.name,
-        ...module.description === undefined ? {} : { description: module.description },
-        dir: relative(join(tau.dir, 'modules'), module.root),
-      })),
+      apis,
       env: { ...run?.env },
       paths: (run?.paths ?? []).map(({ name, type, role, host }) => ({ name, type, role, host })),
     },
@@ -105,39 +92,38 @@ export function prepare(request: PrepareRequest): Prepared {
   }
 }
 
-/** The agent's modules, each of whose imports resolves as tau checks it; each problem is reported. */
-function checkedModules(tau: Tau, problems: string[]): Module[] {
-  let modules: Module[]
+/**
+ * The agent's APIs, each linked to fleet's implementation of the same name,
+ * which must fit it as tau checks, and whose backends must be provided now;
+ * each problem is reported.
+ */
+function linkedApis(dir: string, provided: readonly string[], problems: string[]): SpecApi[] {
+  let apis: Api[]
   try {
-    modules = loadModules(tau)
+    apis = loadApis(dir)
   } catch (error) {
     problems.push(message(error))
     return []
   }
-  return modules.filter((module) => {
+  return apis.flatMap((api) => {
+    const found = implementation(api.name)
+    if (found === undefined) {
+      problems.push(`${api.specifier}: fleet has no implementation of it; \`fleet apis\` lists the ones it has`)
+      return []
+    }
     try {
-      checkModule(module, tau)
-      return true
+      checkImplementation(api, found.file)
     } catch (error) {
       problems.push(message(error))
-      return false
+      return []
     }
+    const missing = found.backends.filter(backend => !provided.includes(backend))
+    if (missing.length > 0) {
+      problems.push(`${api.specifier}: fleet's implementation calls the backend ${missing.join(', ')}, which no fleet plugin provides now`)
+      return []
+    }
+    return [{ name: api.name, ...api.description === undefined ? {} : { description: api.description }, backends: [...found.backends] }]
   })
-}
-
-/** Every `api/*.d.ts` that tau accepts; each one it refuses is a problem. */
-function loadManifests(dir: string, problems: string[]): Service[] {
-  const folder = join(dir, 'api')
-  if (!existsSync(folder)) return []
-  const services: Service[] = []
-  for (const file of readdirSync(folder).filter(name => name.endsWith('.d.ts')).sort()) {
-    try {
-      services.push(loadService(join(folder, file)))
-    } catch (error) {
-      problems.push(message(error))
-    }
-  }
-  return services
 }
 
 function message(error: unknown): string {

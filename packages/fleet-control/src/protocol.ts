@@ -46,11 +46,7 @@ const taskSchema = z.union([
 export type Task = z.infer<typeof taskSchema>
 
 export const requestSchema = z.discriminatedUnion('op', [
-  /**
-   * Start a session in `cwd` with a task; `wait` stays until it is idle. `ts`
-   * gives it the TypeScript tools, which an agent declaring services or
-   * shipping modules gets anyway.
-   */
+  /** Start a session in `cwd` with a task; `wait` stays until it is idle. */
   z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
   /** Send `prompt` to a session, queued as a later turn or, with `steer`, into the running one. */
   z.object({ op: z.literal('send'), session, prompt, steer: z.boolean(), wait: z.boolean() }),
@@ -68,8 +64,8 @@ export const requestSchema = z.discriminatedUnion('op', [
    * the arguments are bound only when `bind`.
    */
   z.object({ op: z.literal('check'), ...agentFields, cwd: z.string().min(1), bind: z.boolean() }),
-  /** The services fleet's plugins provide. */
-  z.object({ op: z.literal('services') }),
+  /** The APIs fleet implements. */
+  z.object({ op: z.literal('apis') }),
 ])
 
 export type Request = z.infer<typeof requestSchema>
@@ -97,13 +93,16 @@ export interface SessionRow {
   updatedAt: number
 }
 
-/** A service fleet's plugins provide. */
-export interface ServiceRow {
+/** An API fleet implements (fleet-apis). */
+export interface ApiRow {
   name: string
   description?: string
-  /** The service's manifest as its provider wrote it, to copy into an agent's api/<name>.d.ts. */
+  /** The implementation's declarations, to copy into an agent's api/<name>.d.ts. */
   declarations: string
-  functions: string[]
+  /** The fleet host's backends the implementation calls. */
+  backends: string[]
+  /** Those of them no fleet plugin provides now; an agent that declares the API does not run until they are. */
+  missing: string[]
 }
 
 /** The result of each request. */
@@ -118,7 +117,7 @@ export interface Results {
   archive: Record<string, never>
   /** Every problem that would refuse a run; none when it would start. */
   check: { problems: string[] }
-  services: { services: ServiceRow[] }
+  apis: { apis: ApiRow[] }
 }
 
 /** One line the host writes. */

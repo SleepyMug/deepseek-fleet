@@ -1,1 +1,1 @@
-With a TypeScript program that uses the `archive-dir` module, send ${dir} to the archives service. Then tell me what the service says it received: the tarball's size, its SHA-256, and the paths it holds.
+With a TypeScript program that uses the `archives` API, archive ${dir}. Then tell me what the fleet host says it received: the tarball's size, its SHA-256, and the paths it holds.

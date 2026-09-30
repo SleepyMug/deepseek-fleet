@@ -2,16 +2,12 @@
   "name": "fleet-tau-runner",
   "version": "0.0.1",
   "private": true,
-  "description": "fleet-tau's TypeScript runner, which type-checks and runs the model's programs in a session container with ts-executor, and the service bindings they import, as `fleet-setup image` installs it in the session image",
+  "description": "fleet-tau's TypeScript runner, which type-checks and runs the model's programs in a session container with ts-executor, each API of the agent linked to fleet's implementation, as `fleet-setup image` installs it in the session image",
   "type": "module",
   "exports": {
     "./protocol": {
       "types": "./lib/protocol.d.ts",
       "default": "./lib/protocol.js"
-    },
-    "./binding": {
-      "types": "./lib/binding.d.ts",
-      "default": "./lib/binding.js"
     },
     "./package.json": "./package.json"
   },
@@ -25,7 +21,7 @@
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dependencies": {
-    "@sleepymug/tau": "0.1.0",
-    "@sleepymug/ts-executor": "0.4.0"
+    "@sleepymug/ts-executor": "0.4.0",
+    "@types/node": "24.19.0"
   }
 }

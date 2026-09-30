@@ -30,6 +30,7 @@
     }
   },
   "dependencies": {
+    "fleet-apis": "workspace:*",
     "zod": "4.6.5"
   },
   "peerDependencies": {

@@ -20,7 +20,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {} from 'fleet-box/world'
-import type {} from 'fleet-tau/services'
+import { declarations, implementations } from 'fleet-apis/registry'
+import type {} from 'fleet-tau/backends'
 import { promptSpec } from 'fleet-tau/spec'
 import { InputError, type Spec } from 'fleet-tau/store'
 import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
@@ -183,10 +184,15 @@ export class FleetControl {
     return { problems: prepared.ok ? [] : prepared.problems }
   }
 
-  services(): Results['services'] {
+  apis(): Results['apis'] {
+    const provided = this.ctx.fleetBackends.list()
     return {
-      services: this.ctx.fleetServices.list().map(({ name, description, declarations, functions }) => ({
-        name, ...description === undefined ? {} : { description }, declarations, functions: [...functions],
+      apis: implementations().map(implementation => ({
+        name: implementation.name,
+        ...implementation.description === undefined ? {} : { description: implementation.description },
+        declarations: declarations(implementation),
+        backends: [...implementation.backends],
+        missing: implementation.backends.filter(backend => !provided.includes(backend)),
       })),
     }
   }

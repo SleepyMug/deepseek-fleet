@@ -1,14 +1,13 @@
 /**
- * The container's service socket, {@link SERVICE_SOCKET}: tau's service
- * protocol (@sleepymug/tau's SPEC.md) for programs in the container, relayed
- * to the host. Each connection carries one call, a JSON line naming a
- * service, a function and positional arguments; the helper forwards it to
- * the host as a `call` message and writes the host's answer back as one
- * line, `{"result":…}` or `{"error":{"message":…}}`, then closes. A connection
- * that closes before its answer cancels the call. Everything else is the
- * host's to decide: which session the call is for, whether its agent
- * declares it, and whether its arguments fit; the helper checks only the
- * call's shape and size.
+ * The container's service socket, {@link SERVICE_SOCKET}: how programs in
+ * the container call the host, relayed by the helper. Each connection
+ * carries one call, a JSON line naming a service, a function and positional
+ * arguments; the helper forwards it to the host as a `call` message and
+ * writes the host's answer back as one line, `{"result":…}` or
+ * `{"error":{"message":…}}`, then closes. A connection that closes before its
+ * answer cancels the call. Everything else is the host's to decide: which
+ * session the call is for, whether that session may make it, and whether its
+ * arguments fit; the helper checks only the call's shape and size.
  *
  * While the host has fallen behind reading the helper's messages, the socket
  * stops reading calls, as the processes' output does (./processes.ts).
@@ -36,7 +35,7 @@ export class ServiceSocket {
   private nextCall = 1
 
   constructor(private readonly channel: Channel, private readonly path = SERVICE_SOCKET) {
-    // tau's runtimes never half-close while they wait, so a program's end of the connection is its going away.
+    // Callers never half-close while they wait, so a program's end of the connection is its going away.
     this.server = createServer((socket) => { this.accept(socket) })
     this.server.maxConnections = MAX_CONNECTIONS
     channel.onDrain(() => {

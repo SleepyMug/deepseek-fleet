@@ -1,21 +1,21 @@
 /**
- * An example service that takes bytes, `archives` (manifests/archives.d.ts):
- * it receives the tarballs a session sends, as a `Uint8Array`, which calls
- * carry as base64, and keeps a receipt of each per session, in the fleet
- * host's memory until it exits. fleet-tau's patch lists it disabled. An
- * agent directory with a copy of the manifest in its api/ can call it, as
+ * An example backend, `archives`: it receives the tarballs a session sends
+ * through fleet's implementation of the `archives` API (fleet-apis), as
+ * base64, and keeps a receipt of each per session, in the fleet host's
+ * memory until it exits. fleet-tau's patch lists it disabled. An agent
+ * directory with a copy of the API in its api/ can use it, as
  * examples/archive-dir in this repository does.
  * @module fleet-tau/examples/archives
  */
 
 import { createHash } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '../services.ts'
+import { z } from 'zod'
+import { method } from '../backends.ts'
 
 export const name = 'fleet-tau-archives'
-export const inject = ['fleetServices']
+export const inject = ['fleetBackends']
 
 interface Receipt {
   name: string
@@ -24,25 +24,25 @@ interface Receipt {
   entries: string[]
 }
 
-export async function apply(ctx: Context): Promise<void> {
+export function apply(ctx: Context): void {
   const receipts = new Map<SessionId, Map<string, Receipt>>()
-  const dispose = await ctx.fleetServices.provide({
-    manifest: fileURLToPath(new URL('../../manifests/archives.d.ts', import.meta.url)),
-    functions: {
-      store: ([name, tarball], { session }) => {
-        const bytes = tarball as Uint8Array
-        const receipt: Receipt = { name: name as string, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), entries: tarEntries(bytes) }
+  const dispose = ctx.fleetBackends.provide({
+    name: 'archives',
+    methods: {
+      store: method(z.tuple([z.string(), z.base64()]), ([name, tarball], { session }) => {
+        const bytes = Buffer.from(tarball, 'base64')
+        const receipt: Receipt = { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), entries: tarEntries(bytes) }
         let kept = receipts.get(session)
         if (kept === undefined) receipts.set(session, kept = new Map())
         // Replaced in place of the earlier one, so the list is oldest first.
         kept.delete(receipt.name)
         kept.set(receipt.name, receipt)
         return { ...receipt, entries: [...receipt.entries] }
-      },
-      list: (_args, { session }) => [...receipts.get(session)?.values() ?? []].map(receipt => ({ ...receipt, entries: [...receipt.entries] })),
+      }),
+      list: method(z.tuple([]), (_args, { session }) => [...receipts.get(session)?.values() ?? []].map(receipt => ({ ...receipt, entries: [...receipt.entries] }))),
     },
   })
-  ctx.effect(() => dispose, 'the archives service')
+  ctx.effect(() => dispose, 'the archives backend')
 }
 
 const BLOCK = 512

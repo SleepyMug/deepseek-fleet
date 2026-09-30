@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "packages/fleet-apis" },
     { "path": "packages/fleet-box" },
     { "path": "packages/fleet-box-helper" },
     { "path": "packages/fleet-control" },

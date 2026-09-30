@@ -1,95 +1,62 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer, type Server } from 'node:net'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { loadService } from '@sleepymug/tau'
-import { serviceBinding } from './binding.ts'
-import type { AgentModule, RunnerReply, RunnerRequest } from './protocol.ts'
+import type { LinkedApi, RunnerReply, RunnerRequest } from './protocol.ts'
 import { replyLine } from './report.ts'
 
 const RUNNER = fileURLToPath(new URL('./main.js', import.meta.url))
-const CLIENT = fileURLToPath(new URL('./service.js', import.meta.url))
 
 let dir: string
-let socketPath: string
-let server: Server
-const calls: unknown[] = []
-/** The packages a program may import, as fleet-tau lays them out in the agent's snapshot. */
-let modules: AgentModule[]
+let notes: LinkedApi
 
-/** A module of the agent's, from its files. */
-async function writePackage(root: string, files: Record<string, string>): Promise<void> {
-  await mkdir(root, { recursive: true })
-  for (const [name, text] of Object.entries(files)) await writeFile(join(root, name), text)
-}
-
-/** A service's binding, where fleet-tau writes it, from its manifest. */
-async function bind(agent: string, name: string, manifest: string): Promise<AgentModule> {
-  await writeFile(join(dir, `${name}.d.ts`), manifest)
-  const service = loadService(join(dir, `${name}.d.ts`))
-  const root = join(agent, 'modules', 'node_modules', '@svc', name)
-  await writePackage(root, serviceBinding({ name, declarations: service.declarations, functions: service.functions, schema: service.schema }, CLIENT))
-  return { name: `@svc/${name}`, root }
+/** Files under `root`, by their paths relative to it. */
+async function writeFiles(root: string, files: Record<string, string>): Promise<void> {
+  for (const [path, text] of Object.entries(files)) {
+    await mkdir(join(root, path, '..'), { recursive: true })
+    await writeFile(join(root, path), text)
+  }
 }
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'fleet-tau-runner-'))
-  socketPath = join(dir, 'tau.sock')
-  // A provider as the host's relay answers: one line in, one line out, bytes as base64.
-  server = createServer((socket) => {
-    let line = ''
-    socket.on('data', (chunk: Buffer) => {
-      line += chunk.toString('utf8')
-      if (!line.includes('\n')) return
-      const call = JSON.parse(line) as { function: string; args: unknown[] }
-      calls.push(call)
-      const answer = call.function === 'fail'
-        ? { error: { message: 'disk full' } }
-        : call.function === 'reverse'
-          ? { result: Buffer.from(call.args[0] as string, 'base64').reverse().toString('base64') }
-          : { result: { id: 7, text: call.args[0] } }
-      socket.end(`${JSON.stringify(answer)}\n`)
-    })
+  // The agent's API, as its snapshot has it, importing a file of its own.
+  await writeFiles(join(dir, 'agent', 'api'), {
+    'notes.d.ts': [
+      'import type { When } from "./shared/when.js";',
+      'export interface Note { id: number; text: string; written: When }',
+      'export declare function addNote(text: string): Promise<Note>;',
+      'export declare function fail(): Promise<void>;',
+    ].join('\n'),
+    'shared/when.d.ts': 'export type When = Date;\n',
   })
-  await new Promise<void>((resolve) => { server.listen(socketPath, resolve) })
-  const agent = join(dir, 'agent')
-  const exports = { '.': { types: './index.d.ts', default: './index.js' } }
-  modules = [
-    await bind(agent, 'notes', 'export interface Note { id: number; text: string }\nexport declare function addNote(text: string, tags?: string[]): Promise<Note>;\nexport declare function fail(): Promise<void>;\n'),
-    await bind(agent, 'blobs', 'export declare function reverse(data: Uint8Array): Promise<Uint8Array>;\n'),
-    { name: 'shout', description: 'Loud text.', root: join(agent, 'modules', 'shout') },
-    { name: 'loud-notes', root: join(agent, 'modules', 'loud-notes') },
-  ]
-  await writePackage(join(agent, 'modules', 'shout'), {
-    'package.json': JSON.stringify({ name: 'shout', description: 'Loud text.', type: 'module', exports }),
-    'index.js': 'export function shout(text) { return `${text.toUpperCase()}!!!` }\n',
-    'index.d.ts': 'export declare function shout(text: string): string;\n',
+  // fleet's implementation, as the image has it: it may give more than the API declares.
+  await writeFiles(join(dir, 'apis', 'notes'), {
+    'index.js': [
+      'export async function addNote(text) { return { id: 7, text, written: new Date(0) } }',
+      'export async function fail() { throw new Error("disk full") }',
+      'export function extra() {}',
+    ].join('\n'),
+    'index.d.ts': 'export declare function addNote(text: string): Promise<{ id: number; text: string; written: Date }>;\nexport declare function fail(): Promise<void>;\nexport declare function extra(): void;\n',
   })
-  // A module that imports a service, which it finds in modules/node_modules as tau's SPEC.md says.
-  await writePackage(join(agent, 'modules', 'loud-notes'), {
-    'package.json': JSON.stringify({ name: 'loud-notes', type: 'module', exports }),
-    'index.js': 'import { addNote } from "@svc/notes"\nexport function addLoudNote(text) { return addNote(text.toUpperCase()) }\n',
-    'index.d.ts': 'import type { Note } from "@svc/notes";\nexport declare function addLoudNote(text: string): Promise<Note>;\n',
-  })
+  notes = { name: 'notes', description: 'Notes.', types: join(dir, 'agent', 'api', 'notes.d.ts'), implementation: join(dir, 'apis', 'notes', 'index.js') }
 })
 
 after(async () => {
-  server.close()
   await rm(dir, { recursive: true, force: true })
 })
 
 function packages() {
-  return { root: join(dir, 'root'), modules }
+  return { root: join(dir, 'root'), apis: [notes] }
 }
 
 /** Run the runner once; `terminateAfterMs` sends it SIGTERM, as the host does on a cancelled call. */
 function runner(request: RunnerRequest, options: { terminateAfterMs?: number } = {}): Promise<RunnerReply> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [RUNNER], { env: { ...process.env, TAU_SOCKET: socketPath }, stdio: ['pipe', 'pipe', 'inherit'] })
+    const child = spawn(process.execPath, [RUNNER], { stdio: ['pipe', 'pipe', 'inherit'] })
     let stdout = ''
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk })
     child.once('error', reject)
@@ -105,73 +72,52 @@ function runner(request: RunnerRequest, options: { terminateAfterMs?: number } =
   })
 }
 
-/** A program's value, from a run that must succeed. */
-async function value(source: string, input?: unknown): Promise<unknown> {
-  const reply = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, source, ...input === undefined ? {} : { input } })
-  assert.ok(reply.ok && 'value' in reply, JSON.stringify(reply))
-  return reply.value
-}
+const execute = (source: string, timeoutMs = 60_000, input?: unknown) =>
+  runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs, source, ...input === undefined ? {} : { input } })
 
-test('a program imports its services and the agent\'s modules, and returns JSON', async () => {
-  const reply = await runner({
-    command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, input: { text: 'milk' },
-    source: [
-      'import { addNote } from "@svc/notes"',
-      'import { shout } from "shout"',
-      'export async function main(input: { text: string }) {',
-      '  console.log("adding")',
-      '  const note = await addNote(input.text, undefined)',
-      '  return { note, loud: shout(note.text) }',
-      '}',
-    ].join('\n'),
-  })
-  assert.deepEqual(reply, { ok: true, value: { note: { id: 7, text: 'milk' }, loud: 'MILK!!!' }, stdout: 'adding\n', stderr: '', durationMs: (reply as { durationMs: number }).durationMs })
-  // An optional argument passed as undefined is left out.
-  assert.deepEqual(calls.at(-1), { service: 'notes', function: 'addNote', args: ['milk'] })
-})
-
-test('a module imports a service through the same binding', async () => {
-  const note = await value('import { addLoudNote } from "loud-notes"\nexport async function main() { return await addLoudNote("milk") }')
-  assert.deepEqual(note, { id: 7, text: 'MILK' })
-  assert.deepEqual(calls.at(-1), { service: 'notes', function: 'addNote', args: ['MILK'] })
-})
-
-test('bytes are a Uint8Array in the program and base64 on the wire', async () => {
-  const reversed = await value([
-    'import { reverse } from "@svc/blobs"',
-    'export async function main() {',
-    '  const bytes = await reverse(new Uint8Array([1, 2, 3]))',
-    '  return { bytes: bytes instanceof Uint8Array, values: [...bytes] }',
+test('a program imports an API, typed by the agent\'s declarations and run by the implementation', async () => {
+  const reply = await execute([
+    'import { addNote } from "@api/notes"',
+    'export async function main(input: { text: string }) {',
+    '  console.log("adding")',
+    '  const note = await addNote(input.text)',
+    '  return { id: note.id, written: note.written.toISOString(), date: note.written instanceof Date, node: typeof process.versions.node }',
     '}',
-  ].join('\n'))
-  assert.deepEqual(reversed, { bytes: true, values: [3, 2, 1] })
-  assert.deepEqual(calls.at(-1), { service: 'blobs', function: 'reverse', args: ['AQID'] })
-  // What the manifest does not declare never reaches the socket.
-  const refused = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, source: 'import { reverse } from "@svc/blobs"\nexport async function main() { await reverse("AQID" as never) }' })
-  assert.ok(!refused.ok)
-  assert.match(refused.error.message, /blobs\.reverse: data: must be bytes/u)
+  ].join('\n'), 60_000, { text: 'milk' })
+  assert.deepEqual(reply, {
+    ok: true, value: { id: 7, written: '1970-01-01T00:00:00.000Z', date: true, node: 'string' }, stdout: 'adding\n', stderr: '', durationMs: (reply as { durationMs: number }).durationMs,
+  })
+  // The implementation gives more than the API declares; the program sees only the API.
+  const extra = await execute('import { extra } from "@api/notes"\nexport function main() { extra() }')
+  assert.ok(!extra.ok)
+  assert.equal(extra.error.name, 'TypeCheckError')
 })
 
-test('the packages a program may import are listed where they are', async () => {
-  const reply = await runner({ command: 'modules', ...packages() })
-  assert.ok(reply.ok && 'modules' in reply)
-  assert.deepEqual(reply.modules.map(module => [module.specifier, module.packageRoot]), modules.map(module => [module.name, module.root]))
-  assert.match(await readFile(join(modules[0]!.root, 'index.d.ts'), 'utf8'), /addNote\(text: string, tags\?: string\[\]\): Promise<Note>/u)
+test('an API\'s package is listed, reads as the agent declared it, and is shared by runs at once', async () => {
+  const [first, second] = await Promise.all([runner({ command: 'modules', ...packages() }), runner({ command: 'modules', ...packages() })])
+  for (const reply of [first, second]) assert.ok(reply?.ok && 'modules' in reply)
+  const listed = (first as Extract<RunnerReply, { modules: unknown }>).modules
+  assert.deepEqual(listed.map(({ specifier, description }) => [specifier, description]), [['@api/notes', 'Notes.']])
+  const root = listed[0]!.packageRoot
+  assert.equal((second as Extract<RunnerReply, { modules: unknown }>).modules[0]!.packageRoot, root)
+  assert.deepEqual(await readdir(join(dir, 'root', 'apis')), [root.split('/').at(-1)])
+  const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { exports: { '.': { types: string } } }
+  assert.equal(await readFile(join(root, manifest.exports['.'].types), 'utf8'), await readFile(notes.types, 'utf8'))
 })
 
-test('a type error, and a failing service call, come back as failures', async () => {
-  const typeError = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, source: 'export function main() { const n: number = "x"; return n }' })
+test('a type error, and a failing API call, come back as failures', async () => {
+  const typeError = await execute('export function main() { const n: number = "x"; return n }')
   assert.ok(!typeError.ok)
   assert.equal(typeError.error.name, 'TypeCheckError')
   assert.ok((typeError.error.diagnostics?.length ?? 0) > 0)
-  const failed = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, source: 'import { fail } from "@svc/notes"\nexport async function main() { await fail() }' })
+  const failed = await execute('import { fail } from "@api/notes"\nexport async function main() { await fail() }')
   assert.ok(!failed.ok)
   assert.match(failed.error.message, /disk full/u)
 })
 
 test('a program past its time, or whose call is cancelled, is killed and reported', async () => {
   const forever = 'export async function main() { await new Promise(resolve => setTimeout(resolve, 600_000)) }'
-  const timedOut = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 3000, source: forever })
+  const timedOut = await execute(forever, 3000)
   assert.ok(!timedOut.ok)
   assert.equal(timedOut.error.name, 'TimeoutError')
   const started = Date.now()

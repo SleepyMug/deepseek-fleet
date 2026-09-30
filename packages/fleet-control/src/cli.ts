@@ -6,7 +6,7 @@
  * [args...]` has the host fill its PROMPT.md with the arguments its tau.json
  * declares and give it to a new session in the current folder, or the one
  * `--cwd` names, which the session's container mounts; the session gets the
- * agent's skills, and the services it declares. `fleet run -p <prompt>`
+ * agent's skills, and the APIs it declares. `fleet run -p <prompt>`
  * gives a session a prompt as it is, without an agent directory. Either way
  * the session gets TypeScript tools that run programs in its container. The
  * session is an ordinary one of the fleet host, so the web UI lists it and a
@@ -50,9 +50,9 @@ const USAGE = [
   '  rm [--force] <session>                      archive a session and remove its container;',
   '                                              --force stops what it still runs',
   '  check [--cwd <dir>] <agent-dir> [args...]   report what would keep an agent directory from running',
-  '                                              in a session in <dir>, its services checked against',
-  '                                              those provided; with arguments, bind them too',
-  '  services [name]                             list the services fleet provides, or print one\'s manifest',
+  '                                              in a session in <dir>, its APIs checked against',
+  '                                              fleet\'s implementations; with arguments, bind them too',
+  '  apis [name]                                 list the APIs fleet implements, or print one\'s declarations',
   '',
   'Options come before the other arguments. run, send and wait print only the answer, exit 0',
   'when the turn completed and 1 otherwise, and stop the session\'s container. Ctrl-C cancels',
@@ -91,7 +91,7 @@ async function main(args: readonly string[]): Promise<number> {
       return EXIT_OK
     }
     case 'check': return check(rest)
-    case 'services': return services(rest)
+    case 'apis': return apis(rest)
     case '--help':
     case '-h':
       say(USAGE)
@@ -163,23 +163,22 @@ async function check(args: readonly string[]): Promise<number> {
   return EXIT_FAILED
 }
 
-async function services(args: readonly string[]): Promise<number> {
-  if (args.length > 1) throw new UsageError('services takes at most one service name')
-  const { services: rows } = await call({ op: 'services' })
+async function apis(args: readonly string[]): Promise<number> {
+  if (args.length > 1) throw new UsageError('apis takes at most one API name')
+  const { apis: rows } = await call({ op: 'apis' })
   const [name] = args
   if (name === undefined) {
-    for (const row of rows) process.stdout.write(`${row.name}  ${row.description?.replace(/\s+/gu, ' ').trim() ?? '-'}\n`)
+    for (const row of rows) {
+      const missing = row.missing.length === 0 ? '' : ` (needs the backend ${row.missing.join(', ')}, which no fleet plugin provides now)`
+      process.stdout.write(`${row.name}  ${row.description?.replace(/\s+/gu, ' ').trim() ?? '-'}${missing}\n`)
+    }
     return EXIT_OK
   }
   const row = rows.find(candidate => candidate.name === name)
-  if (row === undefined) throw new Error(`fleet: no fleet plugin provides the service ${name}`)
-  process.stdout.write(manifest(row))
+  if (row === undefined) throw new Error(`fleet: fleet has no implementation of the API ${name}`)
+  // What a tau copies into its api/<name>.d.ts.
+  process.stdout.write(row.declarations.endsWith('\n') ? row.declarations : `${row.declarations}\n`)
   return EXIT_OK
-}
-
-/** A service's manifest, as its provider wrote it, to copy into an agent's api/<name>.d.ts. */
-function manifest(row: { declarations: string }): string {
-  return row.declarations.endsWith('\n') ? row.declarations : `${row.declarations}\n`
 }
 
 /** The real path of a session's folder, where its workspace is registered. */
