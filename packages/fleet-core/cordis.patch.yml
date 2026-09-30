@@ -162,7 +162,7 @@
 #
 # Status: ctx.fs and ctx.subprocess run each session's file tools and bash in
 # its container, through fleet-box's helper. The helper also serves a
-# service socket at $FLEET_SOCKET (/run/fleet-box/services.sock) and relays
+# service socket at $FLEET_SOCKET (/run/fleet/services.sock) and relays
 # each call to whatever serves them on the host (fleet-tau's backends), for
 # the session the container belongs to; without it, every call fails. The
 # subprocess side serves bash, with collected output without spill files
@@ -284,10 +284,10 @@
 # Every session `fleet run` starts gets TypeScript tools: ts_modules and
 # ts_execute, which run programs in the session's container with
 # fleet-tau's runner. `fleet setup image` builds the runner into the
-# session image (/opt/fleet-box/runner), and labels the image with the
+# session image (/opt/fleet/runner), and labels the image with the
 # runner's protocol, which the tools check before they start it. Programs
 # import the agent's APIs as @api/<name>, typed by the agent's declarations,
-# which the runner links to fleet's implementations (/opt/fleet-box/apis).
+# which the runner links to fleet's implementations (/opt/fleet/apis).
 #
 # Path arguments reach the container where the caller has them, each
 # according to its role in tau.json, as fleet-tau chooses: an `in` path as a

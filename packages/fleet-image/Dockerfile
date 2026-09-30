@@ -5,7 +5,7 @@
 # TypeScript runner, which runs the model's programs there, and fleet's
 # implementations of the APIs those programs import. The environment is the
 # `environment` stage below unless `--from` names an image, which the
-# ENVIRONMENT build arg puts in its place. The build context's box/ holds
+# ENVIRONMENT build arg puts in its place. The build context's fleet/ holds
 # this package, compiled into lib/, with every package it depends on as
 # installed on the host, so nothing is installed or compiled here. The
 # folders are src/layout.ts's: `fleet setup image` checks the helper, the
@@ -27,12 +27,12 @@ RUN apt-get update \
 
 FROM ${ENVIRONMENT}
 # The helper's own copy of Node, under a name of its own; the runner runs on it too.
-COPY --from=node /usr/local/bin/node /opt/fleet-box/bin/fleet-box
-# This package's lib/ at the top of /opt/fleet-box (PACKAGE_ROOT), beside its package.json
+COPY --from=node /usr/local/bin/node /opt/fleet/bin/fleet-node
+# This package's lib/ at the top of /opt/fleet (PACKAGE_ROOT), beside its package.json
 # and node_modules: helper/, runner/ and apis/.
-COPY box/package.json /opt/fleet-box/
-COPY box/node_modules/ /opt/fleet-box/node_modules/
-COPY box/lib/ /opt/fleet-box/
+COPY fleet/package.json /opt/fleet/
+COPY fleet/node_modules/ /opt/fleet/node_modules/
+COPY fleet/lib/ /opt/fleet/
 # fleet-box runs `sleep infinity` as root in every container, whatever the environment set.
 USER root
 ENTRYPOINT []

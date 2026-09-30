@@ -31,7 +31,7 @@ import { ServiceSocket } from './services.ts'
 import { endTerminal, terminalState, waitTerminal } from './terminals.ts'
 
 // Node names its main thread `node-MainThread`, which a `pkill node` in the container would match.
-process.title = 'fleet-box'
+process.title = 'fleet-helper'
 
 type Params = Record<string, unknown>
 type Request = Extract<HostMessage, { type: 'request' }>
@@ -58,7 +58,7 @@ const processes = new Processes(channel)
 const services = new ServiceSocket(channel)
 // Listening before the first request is read, so the socket is there once the host has its hello.
 await services.listen().catch((error: unknown) => {
-  process.stderr.write(`fleet-box helper: no service socket: ${error instanceof Error ? error.message : String(error)}\n`)
+  process.stderr.write(`fleet-helper: no service socket: ${error instanceof Error ? error.message : String(error)}\n`)
 })
 /** Open text streams, read one chunk per request. */
 const streams = new Map<number, { iterator: AsyncIterator<string>; controller: AbortController }>()
@@ -265,7 +265,7 @@ lines.on('line', (line) => {
   try {
     message = JSON.parse(line) as HostMessage
   } catch {
-    process.stderr.write('fleet-box helper: ignored a line that is not JSON\n')
+    process.stderr.write('fleet-helper: ignored a line that is not JSON\n')
     return
   }
   handle(message)

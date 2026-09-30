@@ -19,12 +19,12 @@ export const DEFAULT_IMAGE = 'fleet-box:local'
 
 /**
  * The helper's Node, a copy of the image's, so a Node the model installs or
- * removes does not change it. The helper names its process `fleet-box`, so a
- * `pkill node` misses it too.
+ * removes does not change it; the runner runs on it too. The helper names
+ * its process `fleet-helper`, so a `pkill node` misses it too.
  */
-export const HELPER_NODE = `${PACKAGE_ROOT}/bin/fleet-box`
+export const HELPER_NODE = `${PACKAGE_ROOT}/bin/fleet-node`
 /** The helper's ./main.ts, which the image holds with the rest of this package's lib/. */
 export const HELPER_ENTRY = `${PACKAGE_ROOT}/helper/main.js`
 
 /** The image label that carries the helper's {@link PROTOCOL_VERSION}. */
-export const PROTOCOL_LABEL = 'fleet-box.protocol'
+export const PROTOCOL_LABEL = 'fleet-box.helper-protocol'

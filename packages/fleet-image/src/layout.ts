@@ -10,10 +10,10 @@
  */
 
 /** This package in the session image: its lib/ at the top, beside its package.json and node_modules. */
-export const PACKAGE_ROOT = '/opt/fleet-box'
+export const PACKAGE_ROOT = '/opt/fleet'
 
 /** What the helper makes as it runs: its service socket (./helper/protocol.ts). */
-export const RUN_ROOT = '/run/fleet-box'
+export const RUN_ROOT = '/run/fleet'
 
 /**
  * fleet-tau's folder in a container, which the image leaves empty: the

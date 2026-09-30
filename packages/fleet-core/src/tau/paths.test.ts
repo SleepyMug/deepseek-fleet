@@ -27,7 +27,7 @@ test('a path that is, holds or lies in the session folder is refused, through sy
 })
 
 test('a path may not cover system or fleet folders, nor lie in the kernel\'s or fleet\'s', () => {
-  const refused = ['/', '/usr', '/etc', '/opt', '/opt/fleet-tau', '/opt/fleet-tau/ts/x', '/run', '/proc/x', '/dev/shm', '/run/fleet-box/x']
+  const refused = ['/', '/usr', '/etc', '/opt', '/opt/fleet-tau', '/opt/fleet-tau/ts/x', '/run', '/proc/x', '/dev/shm', '/run/fleet/x']
   for (const host of refused) assert.equal(pathProblems([path('p', host)], '/session').length, 1, host)
   for (const host of ['/etc/app/config.json', '/work/rules.md', '/tmp/in', '/home/u/data', '/opt/data']) assert.deepEqual(pathProblems([path('p', host)], '/session'), [], host)
 })

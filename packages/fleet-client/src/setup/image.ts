@@ -35,7 +35,7 @@ const NODE_ARCH: Record<string, string> = {
   amd64: 'x64', arm64: 'arm64', arm: 'arm', 386: 'ia32', ppc64le: 'ppc64', s390x: 's390x', riscv64: 'riscv64', loong64: 'loong64',
 }
 
-/** The package the image holds, with the Dockerfile that copies it from the build context's box/. */
+/** The package the image holds, with the Dockerfile that copies it from the build context's fleet/. */
 const RUNTIME = 'fleet-image'
 /** The protocols of its helper and its runner, which their users check before starting them. */
 const LABELS: Record<string, string> = { [PROTOCOL_LABEL]: String(PROTOCOL_VERSION), [RUNNER_PROTOCOL_LABEL]: String(RUNNER_PROTOCOL) }
@@ -66,7 +66,7 @@ export async function buildImage(options: BuildOptions): Promise<string> {
     await mkdir(context, { recursive: true })
     const runtime = await installedPackage(PACKAGE_DIR, RUNTIME)
     await copyFile(join(runtime, 'Dockerfile'), join(context, 'Dockerfile'))
-    await stagePackage(runtime, join(context, 'box'), NODE_ARCH[reported] ?? reported)
+    await stagePackage(runtime, join(context, 'fleet'), NODE_ARCH[reported] ?? reported)
     options.log(`fleet: building the session image${options.from === undefined ? '' : ` on ${options.from}`}`)
     const id = await build(options, context, join(work, 'id'))
     await checkHelper(options, id)

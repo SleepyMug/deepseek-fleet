@@ -35,7 +35,7 @@ test('variables are passed in name order, and none adds nothing', () => {
 })
 
 test('a mount may not cover the session folder or fleet-box\'s own folders', () => {
-  for (const target of ['/work', '/work/sub', '/', '/opt', '/opt/fleet-box', '/opt/fleet-box/bin', '/run', '/run/fleet-box']) {
+  for (const target of ['/work', '/work/sub', '/', '/opt', '/opt/fleet', '/opt/fleet/bin', '/run', '/run/fleet']) {
     assert.throws(() => additionArgs({ mounts: [{ source: '/src', target, readonly: true }] }, '/work'), /overlaps/u, target)
   }
   assert.doesNotThrow(() => additionArgs({ mounts: [{ source: '/src', target: '/workshop', readonly: true }] }, '/work'))
@@ -44,7 +44,7 @@ test('a mount may not cover the session folder or fleet-box\'s own folders', () 
 test('copies are not docker run arguments, and may overlap no mount, copy, session folder or fleet-box folder', () => {
   const agent = { source: '/store/agent', target: '/opt/fleet-tau/agent', readonly: true }
   assert.deepEqual(additionArgs({ mounts: [], copies: [{ source: '/store/in/rules', target: '/home/u/rules.md' }] }, '/work'), [])
-  for (const target of ['/work/rules.md', '/opt/fleet-box/x', '/opt/fleet-tau/agent/x', '/opt']) {
+  for (const target of ['/work/rules.md', '/opt/fleet/x', '/opt/fleet-tau/agent/x', '/opt']) {
     assert.throws(() => additionArgs({ mounts: [agent], copies: [{ source: '/s', target }] }, '/work'), /copies to .*overlaps/u, target)
   }
   assert.throws(() => additionArgs({ mounts: [], copies: [{ source: '/a', target: '/data' }, { source: '/b', target: '/data/b' }] }, '/work'), /overlaps/u)
