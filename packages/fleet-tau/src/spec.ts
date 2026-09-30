@@ -12,7 +12,14 @@ import { z } from 'zod'
 export const SPEC_VERSION = 3
 
 /** Where a session's container sees its agent's snapshot. */
-export const AGENT_VIEW = '/opt/fleet/agent'
+export const AGENT_VIEW = '/opt/fleet-tau/agent'
+
+/**
+ * Where the agent's snapshot holds the binding of each service it declares,
+ * `@svc/<name>` (fleet-tau-runner's binding.ts), relative to the snapshot:
+ * where tau's SPEC.md has a runtime put it, so that modules find it.
+ */
+export const SERVICE_BINDINGS = 'modules/node_modules/@svc'
 
 const skillSchema = z.object({
   name: z.string(),
@@ -28,10 +35,12 @@ const skillSchema = z.object({
 
 const serviceSchema = z.object({
   description: z.string().optional(),
-  /** The manifest's canonical declarations, as tau prints them: what programs import as `@svc/<name>`. */
+  /** The manifest as written, which types what programs import as `@svc/<name>`. */
   declarations: z.string(),
   /** The functions the agent declares, which are all its programs may call. */
   functions: z.array(z.string()),
+  /** The manifest's canonical JSON Schema, as tau gives it, which its binding checks and converts calls with. */
+  schema: z.record(z.string(), z.unknown()),
 })
 
 const pathSchema = z.object({
@@ -54,8 +63,11 @@ const moduleSchema = z.object({
 
 export const specSchema = z.object({
   version: z.literal(SPEC_VERSION),
-  /** The agent directory the session was started from, and its name; none for a prompt run. */
-  agent: z.object({ name: z.string(), source: z.string() }).optional(),
+  /**
+   * The agent directory the session was started from, its name, and what
+   * its tau.json copies for its programs (tau's `copy`); none for a prompt run.
+   */
+  agent: z.object({ name: z.string(), source: z.string(), copy: z.array(z.string()) }).optional(),
   /** The command's arguments to the agent. */
   args: z.array(z.string()),
   /** PROMPT.md with the arguments filled in, or the prompt as given: the session's task. */

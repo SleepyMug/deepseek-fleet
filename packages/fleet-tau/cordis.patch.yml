@@ -5,15 +5,15 @@
 #
 # `fleet run <agent-dir> [args...]` runs an agent directory in the tau format
 # (@sleepymug/tau's SPEC.md): PROMPT.md filled with the arguments tau.json
-# declares, the agent's skills, the services its services/*.d.ts declare,
-# and the modules in its modules/. fleet-tau reads the directory in a
-# worker, checking its modules and services, refuses one with problems
+# declares, the agent's skills, the services its api/*.d.ts declare, and
+# the modules in its modules/. fleet-tau reads the directory in a worker,
+# checking its modules and services, refuses one with problems
 # before any session exists, and keeps a snapshot of it per session in
 # $DSH_HOME/fleet/sessions/<id>/, which fleet-box copies into each of the
-# session's containers at /opt/fleet/agent; nothing of the store is mounted.
-# The session's agents get the snapshot's skills, with dsh's `skill` tool,
-# in a scope of their own; sessions started any other way keep the fleet
-# preset unchanged.
+# session's containers at /opt/fleet-tau/agent; nothing of the store is
+# mounted. The session's agents get the snapshot's skills, with dsh's
+# `skill` tool, in a scope of their own; sessions started any other way
+# keep the fleet preset unchanged.
 #
 # Services are what fleet's own plugins provide (`ctx.fleetServices`), each
 # a tau manifest and its functions. An agent runs only when every service it
@@ -24,7 +24,7 @@
 # Every session `fleet run` starts gets TypeScript tools: ts_modules and
 # ts_execute, which run programs in the session's container with
 # fleet-tau's runner. `fleet-setup image` builds the runner into the
-# session image (/opt/fleet/runner), and labels the image with the
+# session image (/opt/fleet-tau/runner), and labels the image with the
 # runner's protocol, which the tools check before they start it. Programs
 # import the agent's services as @svc/<name>, and its modules by name.
 #
@@ -53,4 +53,9 @@
     # An example provider: a per-session notebook, for examples/notes.
     - id: fleet-tau-notes
       name: fleet-tau/examples/notes
+      disabled: true
+
+    # An example provider that takes bytes: tarballs, for examples/archive-dir.
+    - id: fleet-tau-archives
+      name: fleet-tau/examples/archives
       disabled: true

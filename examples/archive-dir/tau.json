@@ -1,0 +1,6 @@
+{
+  "description": "Send a directory to the archives service as a tarball, which a module packs, and report what the service received.",
+  "args": [
+    { "name": "dir", "type": "dir", "role": "in", "description": "The directory to send." }
+  ]
+}

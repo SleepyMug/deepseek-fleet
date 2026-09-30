@@ -15,9 +15,9 @@ import { basename, dirname, join } from 'node:path'
 import type { BoundPath } from '@sleepymug/tau'
 
 /** Folders a path may neither be nor hold: the system's, and fleet's own. */
-const COVERED = ['/bin', '/sbin', '/lib', '/lib64', '/usr', '/etc', '/var', '/opt/fleet-box', '/opt/fleet', '/run/fleet-box']
+const COVERED = ['/bin', '/sbin', '/lib', '/lib64', '/usr', '/etc', '/var', '/opt/fleet-box', '/opt/fleet-tau', '/run/fleet-box']
 /** Folders a path may not lie in either: the kernel's, and fleet's own. */
-const ENCLOSED = ['/proc', '/sys', '/dev', '/opt/fleet-box', '/opt/fleet', '/run/fleet-box']
+const ENCLOSED = ['/proc', '/sys', '/dev', '/opt/fleet-box', '/opt/fleet-tau', '/run/fleet-box']
 
 /**
  * @param paths - the bound path arguments.

@@ -12,7 +12,7 @@
  * this package's lib/, run by the helper's own Node (fleet-box-helper/image's
  * HELPER_NODE).
  */
-export const RUNNER_ENTRY = '/opt/fleet/runner/main.js'
+export const RUNNER_ENTRY = '/opt/fleet-tau/runner/main.js'
 
 /**
  * Version of this protocol. The session image carries the version of the
@@ -26,25 +26,24 @@ export const RUNNER_PROTOCOL_LABEL = 'fleet-tau.runner-protocol'
 
 /**
  * The session's TypeScript root in the container: where ts-executor keeps
- * each run's workspace, and the runner a copy of each service's package for
- * the model to read. It is the container's own, so it lasts as long as the
- * container.
+ * each run's workspace. It is the container's own, so it lasts as long as
+ * the container.
  */
-export const TS_ROOT = '/opt/fleet/ts'
+export const TS_ROOT = '/opt/fleet-tau/ts'
+
+/**
+ * The runner's ./service.ts in the container, beside {@link RUNNER_ENTRY}:
+ * what each service's binding (./binding.ts) calls the service with.
+ */
+export const SERVICE_CLIENT = '/opt/fleet-tau/runner/service.js'
 
 /** Most bytes of a reply; the runner shrinks what it reports to fit. */
 export const MAX_REPLY_BYTES = 1024 * 1024
 
-/** A service a program may import as `@svc/<name>`, calling it through $TAU_SOCKET. */
-export interface ServiceModule {
-  name: string
-  description?: string
-  /** The service's canonical declarations, every function returning a Promise. */
-  declarations: string
-  functions: string[]
-}
-
-/** A package the agent ships, importable by its name. */
+/**
+ * A package a program may import by its name: a service's binding,
+ * `@svc/<name>` (./binding.ts), or a module the agent ships.
+ */
 export interface AgentModule {
   name: string
   description?: string
@@ -56,7 +55,6 @@ export interface AgentModule {
 interface Packages {
   /** The TypeScript root, {@link TS_ROOT} in a container. */
   root: string
-  services: ServiceModule[]
   modules: AgentModule[]
 }
 

@@ -15,10 +15,11 @@ ARG ENVIRONMENT=environment
 
 FROM ${NODE_IMAGE} AS node
 
-# The default environment: a Debian toolchain for the model's commands.
+# The default environment: a Debian toolchain for the model's commands, and
+# for agents' modules, such as the tar that examples/archive-dir's runs.
 FROM ${NODE_IMAGE} AS environment
 RUN apt-get update \
- && apt-get install --yes --no-install-recommends ca-certificates curl git less procps ripgrep \
+ && apt-get install --yes --no-install-recommends ca-certificates curl git less procps ripgrep tar \
  && rm -rf /var/lib/apt/lists/*
 
 FROM ${ENVIRONMENT}
@@ -28,9 +29,9 @@ COPY --from=node /usr/local/bin/node /opt/fleet-box/bin/fleet-box
 COPY helper/package.json /opt/fleet-box/helper/
 COPY helper/node_modules/ /opt/fleet-box/helper/node_modules/
 COPY helper/lib/ /opt/fleet-box/helper/
-COPY runner/package.json /opt/fleet/runner/
-COPY runner/node_modules/ /opt/fleet/runner/node_modules/
-COPY runner/lib/ /opt/fleet/runner/
+COPY runner/package.json /opt/fleet-tau/runner/
+COPY runner/node_modules/ /opt/fleet-tau/runner/node_modules/
+COPY runner/lib/ /opt/fleet-tau/runner/
 # fleet-box runs `sleep infinity` as root in every container, whatever the environment set.
 USER root
 ENTRYPOINT []

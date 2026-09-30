@@ -2,11 +2,11 @@
  * Read an agent directory for a run or a check: its tau metadata and prompt,
  * the command's arguments bound to them, with its path arguments checked as
  * tau checks a run's inputs and where the container can give them
- * (./paths.ts), its skills, its modules, checked as tau checks them, and its
- * service manifests, checked against the services fleet provides
- * (./compat.ts), with every problem found reported together. tau's library loads
- * TypeScript as it is imported, so this runs in a worker (./worker.ts), never
- * in the fleet host's own thread.
+ * (./paths.ts), its skills, its modules, checked as tau checks them against
+ * what it copies, and its service manifests in api/, checked against the
+ * services fleet provides (./compat.ts), with every problem found reported
+ * together. tau's library loads TypeScript as it is imported, so this runs
+ * in a worker (./worker.ts), never in the fleet host's own thread.
  * @module fleet-tau/prepare
  */
 
@@ -74,7 +74,7 @@ export function prepare(request: PrepareRequest): Prepared {
   }
   const skills = loadSkills(tau.dir)
   problems.push(...skills.problems)
-  const modules = checkedModules(tau.dir, problems)
+  const modules = checkedModules(tau, problems)
   const services = loadManifests(tau.dir, problems)
   problems.push(...checkServices(services.map(service => ({ name: service.name, declarations: service.declarations, functions: service.functions })), request.providers))
   if (problems.length > 0) return { ok: false, problems }
@@ -83,7 +83,7 @@ export function prepare(request: PrepareRequest): Prepared {
     ok: true,
     spec: {
       version: SPEC_VERSION,
-      agent: { name, source: tau.dir },
+      agent: { name, source: tau.dir, copy: [...tau.copy] },
       args: request.args,
       prompt,
       skills: skills.skills,
@@ -91,6 +91,7 @@ export function prepare(request: PrepareRequest): Prepared {
         ...service.description === undefined ? {} : { description: service.description },
         declarations: service.declarations,
         functions: [...service.functions],
+        schema: { ...service.schema },
       }])),
       modules: modules.map(module => ({
         name: module.name,
@@ -105,17 +106,17 @@ export function prepare(request: PrepareRequest): Prepared {
 }
 
 /** The agent's modules, each of whose imports resolves as tau checks it; each problem is reported. */
-function checkedModules(dir: string, problems: string[]): Module[] {
+function checkedModules(tau: Tau, problems: string[]): Module[] {
   let modules: Module[]
   try {
-    modules = loadModules(dir)
+    modules = loadModules(tau)
   } catch (error) {
     problems.push(message(error))
     return []
   }
   return modules.filter((module) => {
     try {
-      checkModule(module)
+      checkModule(module, tau)
       return true
     } catch (error) {
       problems.push(message(error))
@@ -124,9 +125,9 @@ function checkedModules(dir: string, problems: string[]): Module[] {
   })
 }
 
-/** Every `services/*.d.ts` that tau accepts; each one it refuses is a problem. */
+/** Every `api/*.d.ts` that tau accepts; each one it refuses is a problem. */
 function loadManifests(dir: string, problems: string[]): Service[] {
-  const folder = join(dir, 'services')
+  const folder = join(dir, 'api')
   if (!existsSync(folder)) return []
   const services: Service[] = []
   for (const file of readdirSync(folder).filter(name => name.endsWith('.d.ts')).sort()) {

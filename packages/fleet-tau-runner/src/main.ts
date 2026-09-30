@@ -1,15 +1,17 @@
 /**
  * fleet-tau's TypeScript runner, which its `ts_*` tools (fleet-tau's
  * ts-tools.ts) start in a session container for each call, with fleet-box's
- * helper Node: `/opt/fleet-box/bin/fleet-box /opt/fleet/runner/main.js`, one
+ * helper Node: `/opt/fleet-box/bin/fleet-box /opt/fleet-tau/runner/main.js`, one
  * JSON request on stdin, one JSON reply on stdout (./protocol.ts). The
  * session image carries it: `fleet-setup image` installs this package there
  * with the packages it depends on, as they are installed on the host.
  * It runs programs with ts-executor, so each one is type-checked and runs in
  * a fresh Node process of its own, and it imports:
- * - each service the agent declares as `@svc/<name>`, whose calls go to
- *   fleet-box's service socket at $TAU_SOCKET, and from there to the host;
- * - each module the agent ships, by its package name.
+ * - each service the agent declares as `@svc/<name>`, the service's binding
+ *   (./binding.ts), whose calls go from the program's process to fleet-box's
+ *   service socket at $TAU_SOCKET, and from there to the host;
+ * - each module the agent ships, by its package name, which imports the
+ *   services through the same bindings.
  *
  * A SIGTERM, which the host sends when a call is cancelled or runs out of
  * time, ends the program, and every process in its process group, before
@@ -17,12 +19,10 @@
  * @module fleet-tau-runner/main
  */
 
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { ExecutionAbortedError, TSFuncExecutor, hostModule, packageModule, type HostModule, type JsonValue } from '@sleepymug/ts-executor'
+import { mkdir } from 'node:fs/promises'
+import { ExecutionAbortedError, TSFuncExecutor, packageModule, type JsonValue } from '@sleepymug/ts-executor'
 import type { ModuleSummary, RunnerReply, RunnerRequest } from './protocol.ts'
 import { outputCaptures, replyLine, reportFailure, reportResult } from './report.ts'
-import { callService } from './tau-client.ts'
 
 const cancelled = new AbortController()
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => { cancelled.abort(new Error(`the runner got ${signal}`)) })
@@ -39,8 +39,7 @@ async function run(request: RunnerRequest): Promise<RunnerReply> {
   switch (request.command) {
     case 'modules': return withExecutor(request, async (executor) => {
       const listed = await executor.listModules(request.query === undefined ? {} : { query: request.query })
-      const readable = await servicePackages(request)
-      return { ok: true, modules: listed.map(module => ({ ...summary(module), packageRoot: readable.get(module.specifier) ?? module.packageRoot })) }
+      return { ok: true, modules: listed.map(summary) }
     })
     case 'execute': return withExecutor(request, executor => execute(executor, request))
   }
@@ -67,57 +66,14 @@ async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest,
   }
 }
 
-/**
- * An executor over the TypeScript root with every package a program may
- * import registered, for one operation; the service modules it wrote are
- * removed after.
- */
+/** An executor over the TypeScript root with every package a program may import registered, for one operation. */
 async function withExecutor(request: RunnerRequest, operation: (executor: TSFuncExecutor) => Promise<RunnerReply>): Promise<RunnerReply> {
   await mkdir(request.root, { recursive: true })
   const executor = new TSFuncExecutor({ resolutionRoot: request.root })
-  const services: HostModule[] = []
-  try {
-    const socket = process.env.TAU_SOCKET
-    for (const service of request.services) {
-      const module = await hostModule({
-        resolutionRoot: request.root,
-        specifier: `@svc/${service.name}`,
-        ...service.description === undefined ? {} : { description: service.description },
-        declarations: service.declarations,
-        functions: service.functions,
-        call: async (fn, args, { signal }) => {
-          if (socket === undefined || socket === '') throw new Error(`${service.name}.${fn}: TAU_SOCKET is not set, so no service can be reached`)
-          return await callService(socket, service.name, fn, args, signal) as JsonValue
-        },
-      })
-      services.push(module)
-      executor.modules.register(module)
-    }
-    for (const module of request.modules) {
-      executor.modules.register(packageModule({ specifier: module.name, root: module.root, ...module.description === undefined ? {} : { description: module.description } }))
-    }
-    return await operation(executor)
-  } finally {
-    await Promise.allSettled(services.map(module => module.dispose()))
+  for (const module of request.modules) {
+    executor.modules.register(packageModule({ specifier: module.name, root: module.root, ...module.description === undefined ? {} : { description: module.description } }))
   }
-}
-
-/**
- * A copy of each service's package to read, at `<root>/svc/<name>`, since
- * the one ts-executor imports is written for one run and removed after it.
- * @returns each service's folder, by specifier.
- */
-async function servicePackages(request: RunnerRequest): Promise<Map<string, string>> {
-  const folders = new Map<string, string>()
-  for (const service of request.services) {
-    const folder = join(request.root, 'svc', service.name)
-    await mkdir(folder, { recursive: true })
-    const manifest = { name: `@svc/${service.name}`, ...service.description === undefined ? {} : { description: service.description }, types: './index.d.ts' }
-    await writeFile(join(folder, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
-    await writeFile(join(folder, 'index.d.ts'), service.declarations)
-    folders.set(`@svc/${service.name}`, folder)
-  }
-  return folders
+  return await operation(executor)
 }
 
 function summary(module: { specifier: string; packageRoot: string; description?: string }): ModuleSummary {

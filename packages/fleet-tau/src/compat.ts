@@ -8,9 +8,10 @@
  * functions, with narrower parameters or a wider result, and a call its
  * manifest allows is one the provider's manifest accepts.
  *
- * Both sides are compared in their canonical declarations, as tau prints
- * them from JSON Schema, in one program over files in a temporary folder.
- * It runs where tau's library is loaded, in fleet-tau's worker.
+ * Both sides are compared in their manifests as written, which tau has
+ * proved to mean what their JSON Schema means, in one program over files in
+ * a temporary folder. It runs where tau's library is loaded, in fleet-tau's
+ * worker.
  * @module fleet-tau/compat
  */
 
@@ -22,7 +23,7 @@ import ts from 'typescript'
 /** A service as its manifest declares it. */
 export interface Declared {
   name: string
-  /** The manifest's canonical declarations. */
+  /** The manifest as written. */
   declarations: string
   functions: readonly string[]
 }

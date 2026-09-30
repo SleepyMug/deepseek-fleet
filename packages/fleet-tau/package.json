@@ -29,6 +29,10 @@
       "types": "./lib/examples/notes.d.ts",
       "default": "./lib/examples/notes.js"
     },
+    "./examples/archives": {
+      "types": "./lib/examples/archives.d.ts",
+      "default": "./lib/examples/archives.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

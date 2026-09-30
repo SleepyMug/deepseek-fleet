@@ -101,7 +101,7 @@ export interface SessionRow {
 export interface ServiceRow {
   name: string
   description?: string
-  /** The service's manifest in its canonical form, to copy into an agent's services/<name>.d.ts. */
+  /** The service's manifest as its provider wrote it, to copy into an agent's api/<name>.d.ts. */
   declarations: string
   functions: string[]
 }

@@ -426,6 +426,9 @@ importers:
 
   packages/fleet-tau-runner:
     dependencies:
+      '@sleepymug/tau':
+        specifier: 0.1.0
+        version: link:../../../agent_fleet_project/tau
       '@sleepymug/ts-executor':
         specifier: 0.4.0
         version: link:../../../agent_fleet_project/ts-executor

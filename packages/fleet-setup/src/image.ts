@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL, PROTOCOL_VERSION } from 'fleet-box-helper/image'
-import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerRequest } from 'fleet-tau-runner/protocol'
+import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, SERVICE_CLIENT, TS_ROOT, type RunnerRequest } from 'fleet-tau-runner/protocol'
 import { installedPackage, stagePackage } from './stage.ts'
 
 /** This package's folder, from which its parts are found as Node finds them. */
@@ -123,9 +123,12 @@ async function checkHelper(options: BuildOptions, id: string): Promise<void> {
   if (protocol !== PROTOCOL_VERSION) throw failure(id, 'helper did not answer its handshake', late, stderr)
 }
 
-/** Start the build's runner without a network and check that it lists what a program may import. */
+/**
+ * Start the build's runner without a network and check that it lists what a
+ * program may import, and that the client the service bindings import loads.
+ */
 async function checkRunner(options: BuildOptions, id: string): Promise<void> {
-  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, services: [], modules: [] }
+  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, modules: [] }
   // The runner reads its request to the end of its stdin.
   const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, [RUNNER_ENTRY], JSON.stringify(request), 'input')
   let reply: { ok?: unknown; modules?: unknown } | null
@@ -135,6 +138,8 @@ async function checkRunner(options: BuildOptions, id: string): Promise<void> {
     reply = null
   }
   if (reply?.ok !== true || !Array.isArray(reply.modules)) throw failure(id, 'TypeScript runner did not answer', late, stderr || stdout)
+  const client = await probe(options, id, HELPER_NODE, ['--input-type=module', '--eval', `await import(${JSON.stringify(SERVICE_CLIENT)}); console.log('loaded')`], '', 'input')
+  if (client.stdout.trim() !== 'loaded') throw failure(id, 'service client did not load', client.late, client.stderr || client.stdout)
 }
 
 function failure(id: string, what: string, late: boolean, output: string): Error {

@@ -1,8 +1,8 @@
 /**
- * A tau service call from the runner (adapted from pi-run's provider.ts):
- * one connection to $TAU_SOCKET, one JSON line each way (@sleepymug/tau's
- * SPEC.md). Aborting closes the connection, which cancels the call. The
- * host checks the arguments and the result against the service's manifest,
+ * A tau service call from a binding (./service.ts; adapted from pi-run's
+ * provider.ts): one connection to $TAU_SOCKET, one JSON line each way
+ * (@sleepymug/tau's SPEC.md). Aborting closes the connection, which cancels
+ * the call. The binding converts the arguments and the result for the wire,
  * so they cross here as they are.
  * @module fleet-tau-runner/tau-client
  */

@@ -12,17 +12,19 @@
  *
  * A call reaches its function only with arguments the manifest accepts,
  * reduced to what it declares, and its result is checked the same way; one
- * that runs past the provider's time is cancelled. Calls come from
- * fleet-tau's relay (./relay.ts), only for a function the session's agent
- * declares, and an agent is run only when its declarations fit what is
- * provided (./compat.ts), so both sides' manifests hold for every call.
+ * that runs past the provider's time is cancelled. Where the manifest
+ * declares a `Uint8Array`, the function takes and gives one, which the wire
+ * carries as base64. Calls come from fleet-tau's relay (./relay.ts), only
+ * for a function the session's agent declares, and an agent is run only
+ * when its declarations fit what is provided (./compat.ts), so both sides'
+ * manifests hold for every call.
  * @module fleet-tau/services
  */
 
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { JsonValue, Service as Manifest } from '@sleepymug/tau'
+import type { JsonValue, Service as Manifest, Value } from '@sleepymug/tau'
 import type { Declared } from './compat.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -42,8 +44,12 @@ export interface ServiceCall {
   signal: AbortSignal
 }
 
-/** One function of a service; its arguments fit the manifest, and it returns JSON, or nothing for null. */
-export type ServiceFunction = (args: JsonValue[], call: ServiceCall) => JsonValue | undefined | Promise<JsonValue | undefined>
+/**
+ * One function of a service; its arguments fit the manifest, and it returns
+ * what the manifest declares, or nothing for null: JSON's values, and bytes
+ * as a `Uint8Array` where the manifest declares one.
+ */
+export type ServiceFunction = (args: Value[], call: ServiceCall) => Value | undefined | Promise<Value | undefined>
 
 export interface ServiceProvider {
   /** The manifest, an absolute path to `<service>.d.ts`. */
@@ -115,17 +121,17 @@ export class FleetServices extends Service {
     if (provider === undefined) throw new Error(`nothing provides the service ${request.service} now`)
     if (!Object.hasOwn(provider.functions, request.function)) throw new Error(`the service ${request.service} has no function ${request.function}`)
     const fn = provider.functions[request.function]!
-    const args = provider.manifest.checkArguments(request.function, request.args as JsonValue[])
+    const args = provider.manifest.decodeArguments(request.function, request.args as JsonValue[])
     const timeout = AbortSignal.timeout(provider.timeoutMs)
     const cancelled = AbortSignal.any([signal, timeout, provider.removed.signal])
-    let result: JsonValue | undefined
+    let result: Value | undefined
     try {
       result = await abortable(Promise.resolve().then(() => fn(args, { session, signal: cancelled })), cancelled)
     } catch (error) {
       if (timeout.aborted) throw new Error(`${request.service}.${request.function} ran longer than ${provider.timeoutMs / 1000} s and was cancelled`)
       throw error
     }
-    return provider.manifest.checkResult(request.function, result ?? null)
+    return provider.manifest.encodeResult(request.function, result ?? null)
   }
 }
 

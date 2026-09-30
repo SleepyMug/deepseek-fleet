@@ -2,8 +2,8 @@
  * An example service, `notes` (manifests/notes.d.ts): a notebook per session,
  * kept in the fleet host's memory until it exits. It shows what a provider
  * plugin looks like; fleet-tau's patch lists it disabled. An agent directory
- * that declares the same manifest in its services/ can call it, as
- * examples/notes in this repository does.
+ * with a copy of the manifest in its api/ can call it, as examples/notes in
+ * this repository does.
  * @module fleet-tau/examples/notes
  */
 

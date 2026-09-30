@@ -1,0 +1,12 @@
+{
+  "name": "archive-dir",
+  "version": "1.0.0",
+  "description": "Send a directory to the archives service, packed as a tarball.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  }
+}

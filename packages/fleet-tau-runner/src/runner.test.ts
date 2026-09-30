@@ -6,20 +6,40 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import type { RunnerReply, RunnerRequest, ServiceModule } from './protocol.ts'
+import { loadService } from '@sleepymug/tau'
+import { serviceBinding } from './binding.ts'
+import type { AgentModule, RunnerReply, RunnerRequest } from './protocol.ts'
 import { replyLine } from './report.ts'
 
 const RUNNER = fileURLToPath(new URL('./main.js', import.meta.url))
+const CLIENT = fileURLToPath(new URL('./service.js', import.meta.url))
 
 let dir: string
 let socketPath: string
 let server: Server
 const calls: unknown[] = []
+/** The packages a program may import, as fleet-tau lays them out in the agent's snapshot. */
+let modules: AgentModule[]
+
+/** A module of the agent's, from its files. */
+async function writePackage(root: string, files: Record<string, string>): Promise<void> {
+  await mkdir(root, { recursive: true })
+  for (const [name, text] of Object.entries(files)) await writeFile(join(root, name), text)
+}
+
+/** A service's binding, where fleet-tau writes it, from its manifest. */
+async function bind(agent: string, name: string, manifest: string): Promise<AgentModule> {
+  await writeFile(join(dir, `${name}.d.ts`), manifest)
+  const service = loadService(join(dir, `${name}.d.ts`))
+  const root = join(agent, 'modules', 'node_modules', '@svc', name)
+  await writePackage(root, serviceBinding({ name, declarations: service.declarations, functions: service.functions, schema: service.schema }, CLIENT))
+  return { name: `@svc/${name}`, root }
+}
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'fleet-tau-runner-'))
   socketPath = join(dir, 'tau.sock')
-  // A provider as the host's relay answers: one line in, one line out.
+  // A provider as the host's relay answers: one line in, one line out, bytes as base64.
   server = createServer((socket) => {
     let line = ''
     socket.on('data', (chunk: Buffer) => {
@@ -27,15 +47,34 @@ before(async () => {
       if (!line.includes('\n')) return
       const call = JSON.parse(line) as { function: string; args: unknown[] }
       calls.push(call)
-      socket.end(`${JSON.stringify(call.function === 'fail' ? { error: { message: 'disk full' } } : { result: { id: 7, text: call.args[0] } })}\n`)
+      const answer = call.function === 'fail'
+        ? { error: { message: 'disk full' } }
+        : call.function === 'reverse'
+          ? { result: Buffer.from(call.args[0] as string, 'base64').reverse().toString('base64') }
+          : { result: { id: 7, text: call.args[0] } }
+      socket.end(`${JSON.stringify(answer)}\n`)
     })
   })
   await new Promise<void>((resolve) => { server.listen(socketPath, resolve) })
-  // An agent module.
-  await mkdir(join(dir, 'modules', 'shout'), { recursive: true })
-  await writeFile(join(dir, 'modules', 'shout', 'package.json'), JSON.stringify({ name: 'shout', description: 'Loud text.', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }))
-  await writeFile(join(dir, 'modules', 'shout', 'index.js'), 'export function shout(text) { return `${text.toUpperCase()}!!!` }\n')
-  await writeFile(join(dir, 'modules', 'shout', 'index.d.ts'), 'export declare function shout(text: string): string;\n')
+  const agent = join(dir, 'agent')
+  const exports = { '.': { types: './index.d.ts', default: './index.js' } }
+  modules = [
+    await bind(agent, 'notes', 'export interface Note { id: number; text: string }\nexport declare function addNote(text: string, tags?: string[]): Promise<Note>;\nexport declare function fail(): Promise<void>;\n'),
+    await bind(agent, 'blobs', 'export declare function reverse(data: Uint8Array): Promise<Uint8Array>;\n'),
+    { name: 'shout', description: 'Loud text.', root: join(agent, 'modules', 'shout') },
+    { name: 'loud-notes', root: join(agent, 'modules', 'loud-notes') },
+  ]
+  await writePackage(join(agent, 'modules', 'shout'), {
+    'package.json': JSON.stringify({ name: 'shout', description: 'Loud text.', type: 'module', exports }),
+    'index.js': 'export function shout(text) { return `${text.toUpperCase()}!!!` }\n',
+    'index.d.ts': 'export declare function shout(text: string): string;\n',
+  })
+  // A module that imports a service, which it finds in modules/node_modules as tau's SPEC.md says.
+  await writePackage(join(agent, 'modules', 'loud-notes'), {
+    'package.json': JSON.stringify({ name: 'loud-notes', type: 'module', exports }),
+    'index.js': 'import { addNote } from "@svc/notes"\nexport function addLoudNote(text) { return addNote(text.toUpperCase()) }\n',
+    'index.d.ts': 'import type { Note } from "@svc/notes";\nexport declare function addLoudNote(text: string): Promise<Note>;\n',
+  })
 })
 
 after(async () => {
@@ -43,14 +82,8 @@ after(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-const notes: ServiceModule = {
-  name: 'notes',
-  declarations: 'export interface Note { id: number; text: string }\nexport declare function addNote(text: string): Promise<Note>;\nexport declare function fail(): Promise<void>;\n',
-  functions: ['addNote', 'fail'],
-}
-
 function packages() {
-  return { root: join(dir, 'root'), services: [notes], modules: [{ name: 'shout', root: join(dir, 'modules', 'shout') }] }
+  return { root: join(dir, 'root'), modules }
 }
 
 /** Run the runner once; `terminateAfterMs` sends it SIGTERM, as the host does on a cancelled call. */
@@ -72,6 +105,13 @@ function runner(request: RunnerRequest, options: { terminateAfterMs?: number } =
   })
 }
 
+/** A program's value, from a run that must succeed. */
+async function value(source: string, input?: unknown): Promise<unknown> {
+  const reply = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, source, ...input === undefined ? {} : { input } })
+  assert.ok(reply.ok && 'value' in reply, JSON.stringify(reply))
+  return reply.value
+}
+
 test('a program imports its services and the agent\'s modules, and returns JSON', async () => {
   const reply = await runner({
     command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, input: { text: 'milk' },
@@ -80,23 +120,43 @@ test('a program imports its services and the agent\'s modules, and returns JSON'
       'import { shout } from "shout"',
       'export async function main(input: { text: string }) {',
       '  console.log("adding")',
-      '  const note = await addNote(input.text)',
+      '  const note = await addNote(input.text, undefined)',
       '  return { note, loud: shout(note.text) }',
       '}',
     ].join('\n'),
   })
   assert.deepEqual(reply, { ok: true, value: { note: { id: 7, text: 'milk' }, loud: 'MILK!!!' }, stdout: 'adding\n', stderr: '', durationMs: (reply as { durationMs: number }).durationMs })
+  // An optional argument passed as undefined is left out.
   assert.deepEqual(calls.at(-1), { service: 'notes', function: 'addNote', args: ['milk'] })
 })
 
-test('the packages a program may import are listed', async () => {
+test('a module imports a service through the same binding', async () => {
+  const note = await value('import { addLoudNote } from "loud-notes"\nexport async function main() { return await addLoudNote("milk") }')
+  assert.deepEqual(note, { id: 7, text: 'MILK' })
+  assert.deepEqual(calls.at(-1), { service: 'notes', function: 'addNote', args: ['MILK'] })
+})
+
+test('bytes are a Uint8Array in the program and base64 on the wire', async () => {
+  const reversed = await value([
+    'import { reverse } from "@svc/blobs"',
+    'export async function main() {',
+    '  const bytes = await reverse(new Uint8Array([1, 2, 3]))',
+    '  return { bytes: bytes instanceof Uint8Array, values: [...bytes] }',
+    '}',
+  ].join('\n'))
+  assert.deepEqual(reversed, { bytes: true, values: [3, 2, 1] })
+  assert.deepEqual(calls.at(-1), { service: 'blobs', function: 'reverse', args: ['AQID'] })
+  // What the manifest does not declare never reaches the socket.
+  const refused = await runner({ command: 'execute', ...packages(), cwd: dir, timeoutMs: 60_000, source: 'import { reverse } from "@svc/blobs"\nexport async function main() { await reverse("AQID" as never) }' })
+  assert.ok(!refused.ok)
+  assert.match(refused.error.message, /blobs\.reverse: data: must be bytes/u)
+})
+
+test('the packages a program may import are listed where they are', async () => {
   const reply = await runner({ command: 'modules', ...packages() })
   assert.ok(reply.ok && 'modules' in reply)
-  assert.deepEqual(reply.modules.map(module => module.specifier), ['@svc/notes', 'shout'])
-  // A service's package stays readable after the run, unlike the one ts-executor wrote for it.
-  const notesRoot = reply.modules.find(module => module.specifier === '@svc/notes')?.packageRoot
-  assert.equal(notesRoot, join(dir, 'root', 'svc', 'notes'))
-  assert.equal(await readFile(join(notesRoot, 'index.d.ts'), 'utf8'), notes.declarations)
+  assert.deepEqual(reply.modules.map(module => [module.specifier, module.packageRoot]), modules.map(module => [module.name, module.root]))
+  assert.match(await readFile(join(modules[0]!.root, 'index.d.ts'), 'utf8'), /addNote\(text: string, tags\?: string\[\]\): Promise<Note>/u)
 })
 
 test('a type error, and a failing service call, come back as failures', async () => {

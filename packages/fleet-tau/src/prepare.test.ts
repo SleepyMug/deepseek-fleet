@@ -31,7 +31,7 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
     assert.ok(prepared.ok, JSON.stringify(prepared))
     assert.equal(prepared.spec.prompt, 'Greet World. Then say: bye')
     assert.equal(prepared.title, `${basename(dir)} World bye`)
-    assert.deepEqual(prepared.spec.agent, { name: basename(dir), source: dir })
+    assert.deepEqual(prepared.spec.agent, { name: basename(dir), source: dir, copy: [] })
     assert.deepEqual(prepared.spec.skills.map(skill => skill.name), ['shout'])
   })
 })
@@ -105,7 +105,7 @@ test('a check without arguments does not bind them, and an empty prompt is refus
 
 test('declared services must be provided and fit, and are recorded with their functions', async () => {
   const manifest = '/** Notes. @packageDocumentation */\nexport declare function addNote(text: string): Promise<number>;\n'
-  await withAgent({ 'PROMPT.md': 'Take notes.', 'services/notes.d.ts': manifest }, (dir) => {
+  await withAgent({ 'PROMPT.md': 'Take notes.', 'api/notes.d.ts': manifest }, (dir) => {
     const missing = prepare(request(dir, []))
     assert.ok(!missing.ok)
     assert.deepEqual(missing.problems, ['no fleet plugin provides the service notes'])
@@ -120,7 +120,7 @@ test('declared services must be provided and fit, and are recorded with their fu
 })
 
 test('a manifest tau refuses, and a module that is no package, are problems', async () => {
-  await withAgent({ 'PROMPT.md': 'x', 'services/bad.d.ts': 'export declare function f(when: Date): Promise<void>;\n', 'modules/m/package.json': '{}' }, (dir) => {
+  await withAgent({ 'PROMPT.md': 'x', 'api/bad.d.ts': 'export declare function f(when: Date): Promise<void>;\n', 'modules/m/package.json': '{}' }, (dir) => {
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.equal(prepared.problems.length, 2)
@@ -139,6 +139,14 @@ test('modules are recorded by name and folder, with a module whose imports do no
     const prepared = prepare(request(dir, []))
     assert.ok(prepared.ok, JSON.stringify(prepared))
     assert.deepEqual(prepared.spec.modules, [{ name: 'shout', description: 'Loud.', dir: 'shout' }])
+    // What the tau copies for its programs: its modules, unless tau.json says otherwise.
+    assert.deepEqual(prepared.spec.agent?.copy, ['modules'])
+  })
+  // A module whose package.json the tau does not copy is refused.
+  await withAgent({ 'PROMPT.md': 'x', 'tau.json': '{"copy": ["modules/shout/index.js"]}', ...shout }, (dir) => {
+    const prepared = prepare(request(dir, []))
+    assert.ok(!prepared.ok)
+    assert.match(prepared.problems.join('\n'), /tau\.json does not copy it/u)
   })
   await withAgent({ 'PROMPT.md': 'x', ...shout, 'modules/shout/index.js': 'import "not-installed"\n' }, (dir) => {
     const prepared = prepare(request(dir, []))

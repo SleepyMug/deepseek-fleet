@@ -177,12 +177,9 @@ async function services(args: readonly string[]): Promise<number> {
   return EXIT_OK
 }
 
-/** A service's manifest to copy into an agent's services/<name>.d.ts: its declarations, after its description as tau reads one. */
-function manifest(row: { description?: string; declarations: string }): string {
-  const declarations = row.declarations.endsWith('\n') ? row.declarations : `${row.declarations}\n`
-  if (row.description === undefined || row.description.trim() === '') return declarations
-  const lines = row.description.trim().split('\n').map(line => ` * ${line}`.trimEnd())
-  return `/**\n${lines.join('\n')}\n *\n * @packageDocumentation\n */\n\n${declarations}`
+/** A service's manifest, as its provider wrote it, to copy into an agent's api/<name>.d.ts. */
+function manifest(row: { declarations: string }): string {
+  return row.declarations.endsWith('\n') ? row.declarations : `${row.declarations}\n`
 }
 
 /** The real path of a session's folder, where its workspace is registered. */

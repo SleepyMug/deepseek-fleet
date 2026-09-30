@@ -64,3 +64,23 @@ test('a provider must give exactly the manifest\'s functions, once', async () =>
   await services.provide({ manifest, functions: { addNote: () => null, wait: () => null } })
   await assert.rejects(services.provide({ manifest, functions: { addNote: () => null, wait: () => null } }), /provided already/u)
 })
+
+test('a provider takes and gives bytes as a Uint8Array, which calls carry as base64', async () => {
+  const services = await setup()
+  const blobs = join(dir, 'blobs.d.ts')
+  await writeFile(blobs, 'export declare function reverse(data: Uint8Array): Promise<{ data: Uint8Array; size: number }>;\n')
+  const seen: unknown[] = []
+  await services.provide({
+    manifest: blobs,
+    functions: {
+      reverse: ([data]) => {
+        seen.push(data)
+        const bytes = data as Uint8Array
+        return { data: bytes.toReversed(), size: bytes.length }
+      },
+    },
+  })
+  assert.deepEqual(await services.call(session, { service: 'blobs', function: 'reverse', args: ['AQID'] }, never), { data: 'AwIB', size: 3 })
+  assert.deepEqual(seen, [new Uint8Array([1, 2, 3])])
+  await assert.rejects(services.call(session, { service: 'blobs', function: 'reverse', args: ['not base64'] }, never), /data: must be bytes/u)
+})

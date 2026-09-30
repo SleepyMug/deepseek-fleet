@@ -22,7 +22,7 @@ import {
   MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
 } from 'fleet-tau-runner/protocol'
 import { parseRunnerReply } from './runner-reply.ts'
-import { AGENT_VIEW, type Spec } from './spec.ts'
+import { AGENT_VIEW, SERVICE_BINDINGS, type Spec } from './spec.ts'
 
 /** How long a program may run, type-checking included. */
 const EXECUTE_TIMEOUT_MS = 120_000
@@ -46,11 +46,11 @@ Besides running commands, you can write TypeScript programs and run them in this
 2. Read a package's \`package.json\` and the declaration files its \`types\` and \`exports\` name, under \`packageRoot\`, before writing calls; descriptions are summaries, not contracts.
 3. Write strict ES2022 TypeScript with ESM imports.
 4. Call \`ts_execute({ source, cwd?, input? })\`. It type-checks before running; fix the reported errors and retry. \`cwd\`, the session folder by default, is where relative paths resolve; packages are imported by specifier wherever it is.
-5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. Service calls are asynchronous, take and return JSON, may change state outside the container, and are not undone when a program fails.
+5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. Service calls are asynchronous, may change state outside the container, and are not undone when a program fails.
 
 ## JSON
 
-\`input\`, the value \`main\` returns, and the arguments of service calls must be strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. Leave out an optional argument or property rather than passing \`undefined\`. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs.`
+\`input\` and the value \`main\` returns must be strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. So must the arguments and results of service calls, except that where a service's declarations say \`Uint8Array\`, it takes and gives bytes as a \`Uint8Array\`. Leave out an optional property rather than setting it to \`undefined\`. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs.`
 
 /**
  * Register the TypeScript tools and their instructions in an agent's scope.
@@ -60,12 +60,19 @@ Besides running commands, you can write TypeScript programs and run them in this
 export function registerTsTools(ctx: Context, spec: Spec): void {
   const packages = (): Omit<Extract<RunnerRequest, { command: 'modules' }>, 'command'> => ({
     root: TS_ROOT,
-    services: Object.entries(spec.services).map(([name, service]) => ({ name, ...service, functions: [...service.functions] })),
-    modules: spec.modules.map(module => ({
-      name: module.name,
-      ...module.description === undefined ? {} : { description: module.description },
-      root: posix.join(AGENT_VIEW, 'modules', module.dir),
-    })),
+    modules: [
+      // Each service's binding, which the store wrote into the agent's snapshot.
+      ...Object.entries(spec.services).map(([name, service]) => ({
+        name: `@svc/${name}`,
+        ...service.description === undefined ? {} : { description: service.description },
+        root: posix.join(AGENT_VIEW, SERVICE_BINDINGS, name),
+      })),
+      ...spec.modules.map(module => ({
+        name: module.name,
+        ...module.description === undefined ? {} : { description: module.description },
+        root: posix.join(AGENT_VIEW, 'modules', module.dir),
+      })),
+    ],
   })
 
   ctx.systemPrompt.section({ name: 'fleet-tau:typescript', order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX') - 1, interpolate: false, text: INSTRUCTIONS })

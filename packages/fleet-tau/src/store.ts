@@ -6,13 +6,15 @@
  * exists, so nothing of the session ever runs without it. A session's folder
  * in the store, `$DSH_HOME/fleet/sessions/<id>/`, holds `spec.json`
  * (./spec.ts), `agent/`, a snapshot of the agent's PROMPT.md, tau.json,
- * skills, service manifests and modules, with symlinks followed, and `in/`,
- * a snapshot of each `in` path (./inputs.ts). Nothing of it is mounted:
- * fleet-box copies the snapshots into each container of the session when it
- * creates the container (fleet-box's container additions), the agent's at
- * {@link AGENT_VIEW}, and whatever the agent does to its copies stays there.
- * fleet-tau's agent plugin (./agent.ts) gives the session's agents what the
- * spec holds, whenever an agent is created or resumed.
+ * skills and service manifests, and of what its tau.json copies for its
+ * programs, its modules by default, with the binding of each service its
+ * programs and modules import, and `in/`, a snapshot of each `in` path
+ * (./inputs.ts). Nothing of it is mounted: fleet-box copies the snapshots
+ * into each container of the session when it creates the container
+ * (fleet-box's container additions), the agent's at {@link AGENT_VIEW}, and
+ * whatever the agent does to its copies stays there. fleet-tau's agent
+ * plugin (./agent.ts) gives the session's agents what the spec holds,
+ * whenever an agent is created or resumed.
  *
  * The container gets the agent's path arguments too, where the caller has
  * them, each according to its role; tau leaves how to the runtime. An `in`
@@ -31,7 +33,7 @@
  */
 
 import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join, posix } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
@@ -39,12 +41,13 @@ import Schema from '@deepseek-ai/schemastery'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { ContainerAdditions, Copy, Mount } from 'fleet-box/world'
+import { serviceBinding } from 'fleet-tau-runner/binding'
 import { z } from 'zod'
 import { InputError, snapshot } from './inputs.ts'
 import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, replace } from './outputs.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
 import type {} from './services.ts'
-import { AGENT_VIEW, SPEC_VERSION, specSchema, type Spec, type SpecPath } from './spec.ts'
+import { AGENT_VIEW, SERVICE_BINDINGS, SPEC_VERSION, specSchema, type Spec, type SpecPath } from './spec.ts'
 import type { Answer, Job } from './worker.ts'
 
 export { InputError } from './inputs.ts'
@@ -57,8 +60,8 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** What of an agent directory the snapshot keeps. */
-const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills', 'services', 'modules']
+/** What of an agent directory the snapshot keeps besides what its tau.json copies. */
+const AGENT_PARTS = ['PROMPT.md', 'tau.json', 'skills', 'api']
 /** How long copying a turn's outputs out of the container may take. */
 const PUBLISH_TIMEOUT_MS = 10 * 60_000
 const BUSY = 'the session started another turn before its outputs were copied, so they were not published; `fleet wait` publishes them once it is idle'
@@ -147,12 +150,7 @@ export class FleetTau extends Service {
       const problems: string[] = []
       for (const path of inputs) problems.push(...await snapshot(path.name, path.host, join(folder, 'in', path.name), signal))
       if (problems.length > 0) throw new InputError(problems)
-      if (spec.agent !== undefined) {
-        for (const part of AGENT_PARTS) {
-          await cp(join(spec.agent.source, part), join(folder, 'agent', part), { recursive: true, dereference: true, force: false, errorOnExist: true })
-            .catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
-        }
-      }
+      if (spec.agent !== undefined) await this.snapshotAgent(spec.agent.source, spec.agent.copy, spec.services, join(folder, 'agent'))
       await writeFile(join(folder, 'spec.json'), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 })
       await this.self.fleetBox.configure(session, this.additions(session, spec))
     } catch (error) {
@@ -160,6 +158,33 @@ export class FleetTau extends Service {
         this.self.logger.warn(`fleet-tau: could not remove the spec of ${session}, which was never made: ${message(removeError)}`)
       })
       throw error
+    }
+  }
+
+  /**
+   * Snapshot an agent directory. What its tau.json copies keeps its symlinks,
+   * which tau keeps inside what is copied, so modules run from the snapshot
+   * as from the directory. The rest is only read, and a symlink there may
+   * lead anywhere in the agent directory, so it is followed. Each service's
+   * binding then takes the place of whatever the agent keeps for it at
+   * {@link SERVICE_BINDINGS}, such as its types to build modules against.
+   */
+  private async snapshotAgent(source: string, copy: readonly string[], services: Spec['services'], target: string): Promise<void> {
+    const copied = copy.map(entry => join(source, entry))
+    for (const entry of copy) {
+      await mkdir(dirname(join(target, entry)), { recursive: true, mode: 0o700 })
+      await cp(join(source, entry), join(target, entry), { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true })
+    }
+    for (const part of AGENT_PARTS) {
+      await cp(join(source, part), join(target, part), {
+        recursive: true, dereference: true, force: false, errorOnExist: true, filter: from => !copied.includes(from),
+      }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
+    }
+    await rm(join(target, SERVICE_BINDINGS), { recursive: true, force: true })
+    for (const [name, service] of Object.entries(services)) {
+      const binding = join(target, SERVICE_BINDINGS, name)
+      await mkdir(binding, { recursive: true })
+      for (const [file, text] of Object.entries(serviceBinding({ name, ...service }))) await writeFile(join(binding, file), text)
     }
   }
 
