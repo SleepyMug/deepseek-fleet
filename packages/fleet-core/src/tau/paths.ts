@@ -7,13 +7,15 @@
  * the caller's path, so neither meets the caller's paths or the container's
  * own, and the prompt names them there. A `share` path is the caller's own,
  * which the agent changes as the caller sees it, so the container mounts it
- * at its real path, the same in the container as on the host, as fleet-box
- * mounts the workspace dir: such mounts show the same files where they
- * meet, so `share` paths may lie in the workspace dir or in each other, or
- * hold them, and symlinks between them lead where they do on the host.
- * Where it really is, though, a `share` path may not be or hold the
- * container's system folders or fleet's own, nor lie in the kernel's or
- * fleet's.
+ * at its real path, the same in the container as on the host: such mounts
+ * show the same files where they meet, so `share` paths may lie in each
+ * other or hold each other, and symlinks between them lead where they do on
+ * the host. Where it really is, though, a `share` path may not be or hold
+ * the container's system folders or fleet's own, nor lie in the kernel's or
+ * fleet's. Nothing else of the caller's is mounted: the agent works in a
+ * folder of the container's own at the workspace dir's path (../box/world.ts),
+ * and sees the workspace dir's files only through a `share` path that is,
+ * holds or lies in it.
  *
  * Paths may overlap each other and the workspace dir, but none may be, hold or
  * lie in the dsh home, where fleet keeps its sessions: a snapshot would copy it
@@ -22,12 +24,12 @@
  * host resolves it, but for an `out` path's own name, which the publish
  * replaces, not follows.
  *
- * A run started inside a session's container (./children.ts) works in
- * {@link NESTED_CWD}, its own container's, with nothing mounted, and its
- * `in` and `out` paths are placed as any run's are, while the caller's paths
- * are in the caller's container. A `share` path there would name the caller's
- * files in its container, which no other container can mount, so such a run
- * takes none: only a functional tau runs inside a container.
+ * A run started inside a session's container (./children.ts) works as any
+ * run does, and its `in` and `out` paths are placed as any run's are, while
+ * the caller's paths are in the caller's container. A `share` path there
+ * would name the caller's files in its container, which no other container
+ * can mount, so such a run takes none: only a functional tau runs inside a
+ * container.
  * @module fleet-core/tau/paths
  */
 
@@ -39,9 +41,6 @@ import type { Mount } from '../box/additions.ts'
 
 /** Where a session's container sees its agent's snapshot. */
 export const AGENT_VIEW = `${TAU_ROOT}/agent`
-
-/** The folder a run started inside a container works in, its own container's. */
-export const NESTED_CWD = '/workspace'
 
 /** Folders a `share` path may neither be nor hold: the system's, and fleet's own. */
 const COVERED = ['/bin', '/sbin', '/lib', '/lib64', '/usr', '/etc', '/var', PACKAGE_ROOT, TAU_ROOT, RUN_ROOT]

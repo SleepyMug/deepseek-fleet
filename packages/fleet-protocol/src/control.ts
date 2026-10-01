@@ -46,7 +46,7 @@ const taskSchema = z.union([
 export type Task = z.infer<typeof taskSchema>
 
 export const requestSchema = z.discriminatedUnion('op', [
-  /** Start a session in the workspace dir `cwd` with a task; `wait` stays until it is idle. */
+  /** Start a session with a task in the workspace dir `cwd`, the project `fleet run` names; `wait` stays until it is idle. */
   z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
   /** Wait until a session is idle, and report its last turn. */
   z.object({ op: z.literal('wait'), session }),

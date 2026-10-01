@@ -19,24 +19,27 @@
  * role, where ./paths.ts places it; tau leaves how to the runtime. An `in`
  * path is its snapshot, which the session keeps however long it lasts,
  * whatever becomes of the caller's path; the folder an `out` path goes in
- * is made; and a `share` path is mounted from the caller at its real path,
- * which composes with fleet-box's mount of the workspace dir. The
- * container gets the caller's values of the variables tau.json lists as
- * well. After a completed turn, the command that waited on it has the store
- * publish the `out` paths ({@link FleetTau.publish}).
+ * is made; and a `share` path is mounted from the caller at its real path.
+ * Nothing else of the caller's is: the workspace dir is not mounted, and the
+ * agent works in a folder of the container's own at its path, so it has the
+ * caller's files only as its paths give them. The container gets the
+ * caller's values of the variables tau.json lists as well. After a
+ * completed turn, the command that waited on it has the store publish the
+ * `out` paths ({@link FleetTau.publish}). A run of a prompt, which has no
+ * paths, works in the workspace dir, which its container mounts.
  *
- * A fork of such a session has no folder of its own: it takes its source's
- * spec, and its container copies of the source's snapshots, which never
- * change; but none of its other paths or its variables, which belong to the
- * run that started the source.
+ * A fork of such a session has no folder in the store: it takes its
+ * source's spec, and its container copies of the source's snapshots, which
+ * never change, and mounts the workspace dir only if its source's does; but
+ * none of its other paths or its variables, which belong to the run that
+ * started the source.
  *
  * A run started inside a session's container (./children.ts) is stored the
  * same way, as a subagent of the calling session that owns a container of
- * its own, whose folder is the container's own rather than a mounted
- * workspace dir, but its caller's paths are in the calling session's
- * container: its `in` paths are copied out of that container, and checked
- * there with the folders of its `out` paths (./inputs.ts), and its `out`
- * paths are published back into it.
+ * its own, but its caller's paths are in the calling session's container:
+ * its `in` paths are copied out of that container, and checked there with
+ * the folders of its `out` paths (./inputs.ts), and its `out` paths are
+ * published back into it.
  * @module fleet-core/tau/store
  */
 
@@ -266,11 +269,13 @@ export class FleetTau extends Service {
   /**
    * A fork's container additions: copies of its source's snapshots, since a
    * fork has no folder in the store; but none of its other paths or its
-   * variables. A fork of a run started inside a container works in a folder
-   * of its container's own, as the run did.
+   * variables. It works in a folder of its container's own when its source
+   * does, as the source's additions say, so a fork of a run made before runs
+   * had one still mounts the workspace dir, as its source does.
    */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
-    await this.self.fleetBox.configure(fork, { ...ownFolder(found.spec), mounts: [], copies: this.snapshots(found.owner, found.spec) })
+    const ownFolder = this.self.fleetBox.hasOwnFolder(found.owner)
+    await this.self.fleetBox.configure(fork, { ...ownFolder ? { ownFolder } : {}, mounts: [], copies: this.snapshots(found.owner, found.spec) })
   }
 
   /**
@@ -399,12 +404,13 @@ export class FleetTau extends Service {
 }
 
 /**
- * A run started inside a container works in a folder of its own container's
- * (./paths.ts), and so does a fork of one, whose folder is the run's: neither
- * has a workspace dir on the host to mount.
+ * A run of an agent directory works in a folder of its own container's
+ * (./paths.ts), not a mounted workspace dir, so that the agent has the
+ * caller's files only as its paths give them; a run of a prompt has nothing
+ * else, and works in the workspace dir.
  */
 function ownFolder(spec: Spec): Pick<ContainerAdditions, 'ownFolder'> {
-  return spec.caller === undefined ? {} : { ownFolder: true }
+  return spec.agent === undefined ? {} : { ownFolder: true }
 }
 
 function message(error: unknown): string {

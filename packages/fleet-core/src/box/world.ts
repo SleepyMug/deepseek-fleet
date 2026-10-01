@@ -10,7 +10,7 @@
  * owner's folder, the workspace dir, is bind-mounted at the same absolute
  * path, beside any mounts another plugin configured for the session
  * (./additions.ts), unless the plugin made the folder the container's own,
- * as fleet-tau does for its runs inside a container and their forks.
+ * as fleet-tau does for its runs of agent directories and their forks.
  * Everything else, `/tmp` included, is the container's own, as are the host
  * paths such a plugin has copied in when the container was created
  * (./copy-in.ts). Processes run as the container's root, which rootless
@@ -339,7 +339,12 @@ export class FleetBox extends Service {
 
   /** Whether the container an agent's work uses mounts the workspace dir, rather than having a folder of its own. */
   mountsWorkspace(agent: Agent): boolean {
-    return !this.configuredOf(this.ownerHeader(agent.session.header).id).ownFolder
+    return !this.hasOwnFolder(this.ownerHeader(agent.session.header).id)
+  }
+
+  /** Whether a session's additions make its folder its container's own, so that the workspace dir is not mounted. */
+  hasOwnFolder(id: SessionId): boolean {
+    return this.configuredOf(id).ownFolder
   }
 
   /**

@@ -54,10 +54,11 @@ const MOUNTED = 'Your commands and file tools run inside this session\'s own Doc
   + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages and '
   + `files in /tmp, persists from turn to turn, and you are told if the container is ever replaced. ${OUTPUT}`
 
-/** For a subagent's container of its own, which mounts nothing. */
+/** For a container whose folder is its own, as a run's is, which mounts no more of the user's machine than the session's task names. */
 const OWN = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, working in {{cwd}}, '
-  + 'a folder of the container\'s own; nothing in the container is mounted from the user\'s machine. Everything in it, such as '
-  + `installed packages and files in /tmp, persists from turn to turn, and you are told if the container is ever replaced. ${OUTPUT}`
+  + 'a folder of the container\'s own, not the user\'s; you have the user\'s files only where your task gives them to you. '
+  + 'Everything in the container, such as installed packages and files in /tmp, persists from turn to turn, and you are told if '
+  + `the container is ever replaced. ${OUTPUT}`
 
 export const name = 'fleet-box-context'
 export const inject = ['fleetBox', 'systemPrompt', 'sessionProjections']

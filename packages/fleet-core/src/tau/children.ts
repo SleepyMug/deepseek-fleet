@@ -5,7 +5,10 @@
  * here, which runs the tau as a child of the calling session's agent: a
  * one-shot dsh subagent, which the web UI shows under it, started through
  * this module's subagent provider in a container of its own (fleet-box's
- * world.ts), where it works in /workspace with nothing mounted (./paths.ts).
+ * world.ts), which mounts nothing: as any run of an agent directory, it
+ * works in a folder of the container's own at the workspace dir's path,
+ * which its caller's session has (./paths.ts), so a fork of it is one of
+ * that workspace.
  * As any run, it gets its agent's skills, APIs and TypeScript tools
  * (./agent.ts), so its programs may run taus of their own.
  *
@@ -44,7 +47,6 @@ import {
 import { z } from 'zod'
 import type {} from '../box/world.ts'
 import { method } from './backends.ts'
-import { NESTED_CWD } from './paths.ts'
 import type { Spec } from './spec.ts'
 import { InputError } from './store.ts'
 
@@ -185,7 +187,7 @@ class TauProvider implements SubagentProvider {
       handle = await parent.ctx.agents.create({
         sessionId: id,
         parentAgent: parent,
-        meta: { ...childSessionMeta(parent, depth, false), cwd: NESTED_CWD },
+        meta: childSessionMeta(parent, depth, false),
         agentOptions: resolveChildAgentOptions(parent, undefined, depth),
         signal: request.signal,
         setup: (childCtx, child) => {

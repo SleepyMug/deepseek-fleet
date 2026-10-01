@@ -49,7 +49,7 @@ const headers: Record<string, SessionHeader> = {
   s0: header('s0'),
   s1: header('s1', { cwd: '/w/s1' }),
   's1-sub': header('s1-sub', { cwd: '/w/s1/sub', origin: 'subagent', parentSession: 's1' as SessionId }),
-  's1-run': header('s1-run', { cwd: '/workspace', origin: 'subagent', parentSession: 's1' as SessionId }),
+  's1-run': header('s1-run', { cwd: '/w/s1', origin: 'subagent', parentSession: 's1' as SessionId }),
   's1-fork': header('s1-fork', { cwd: '/w/s1', parentSession: 's1' as SessionId }),
   s2: header('s2', { cwd: '/w/s2' }),
   orphan: header('orphan', { cwd: '/w/orphan', origin: 'subagent' }),
@@ -170,14 +170,14 @@ test('a session\'s work reads and writes in the container it uses, where its pla
   assert.deepEqual(requests.map(({ owner, method }) => [owner, method]), [['s1', 'fs.resolve'], ['s1', 'fs.writeText'], ['s1', 'fs.resolve']])
 })
 
-test('a subagent that owns a container works in its own, which its parent\'s work does not reach', async () => {
+test('a subagent that owns a container works in its own, at its parent\'s path, which its parent\'s work does not reach', async () => {
   const run = await setup({ agent: 's1-run' })
-  assert.deepEqual(await run.fs.resolve('out.txt', { cwd: '/workspace' }), { targetKey: 'fleet-box://s1-run/workspace/out.txt', displayPath: 'out.txt' })
+  assert.deepEqual(await run.fs.resolve('out.txt', { cwd: '/w/s1' }), { targetKey: 'fleet-box://s1-run/w/s1/out.txt', displayPath: 'out.txt' })
   await assert.rejects(run.fs.resolve('fleet-box://s1/w/s1/a.ts'), { code: 'FS_PERMISSION_DENIED' })
   assert.deepEqual(run.requests.map(({ owner, method }) => [owner, method]), [['s1-run', 'fs.resolve']])
 
   const parent = await setup({ agent: 's1' })
-  await assert.rejects(parent.fs.stat(target('s1-run', '/workspace/a.ts')), { code: 'FS_PERMISSION_DENIED' })
+  await assert.rejects(parent.fs.stat(target('s1-run', '/w/s1/a.ts')), { code: 'FS_PERMISSION_DENIED' })
   assert.deepEqual(parent.requests, [])
 })
 
@@ -230,7 +230,7 @@ test('the file viewer\'s scope of a session is its folder in the container it us
   assert.ok(resolve !== undefined)
   assert.deepEqual(await resolve('s1'), { sessionId: 's1', workspaceRoot: 'fleet-box://s1/w/s1' })
   assert.deepEqual(await resolve('s1-fork'), { sessionId: 's1-fork', workspaceRoot: 'fleet-box://s1-fork/w/s1' })
-  assert.deepEqual(await resolve('s1-run'), { sessionId: 's1-run', workspaceRoot: 'fleet-box://s1-run/workspace' })
+  assert.deepEqual(await resolve('s1-run'), { sessionId: 's1-run', workspaceRoot: 'fleet-box://s1-run/w/s1' })
   assert.deepEqual(await resolve('s0'), undefined)
   assert.deepEqual(await resolve('orphan'), undefined)
   assert.deepEqual(await resolve('s9'), undefined)

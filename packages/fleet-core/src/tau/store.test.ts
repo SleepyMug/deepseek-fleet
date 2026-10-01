@@ -8,6 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session/types'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { ContainerAdditions } from '../box/world.ts'
+import { promptSpec } from './spec.ts'
 import { FleetTau, InputError, type Spec } from './store.ts'
 
 let home: string
@@ -48,6 +49,7 @@ async function setup() {
   ctx.provide('fleetBox', {
     configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
     unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
+    hasOwnFolder: (id: string) => configured.get(id)?.ownFolder === true,
     turnRunning: () => false,
     ownerHeaderOf: (id: string) => {
       let current = headers[id]
@@ -76,8 +78,8 @@ test('a run is read in a worker, and its spec is stored with a snapshot of the a
   assert.equal(await readlink(join(folder, 'agent', 'skills', 'shout')), join('..', 'shared', 'shout'))
   assert.ok((await stat(join(folder, 'agent', 'skills', 'shout', 'SKILL.md'))).isFile())
   assert.equal(await readFile(join(folder, 'agent', 'notes.txt'), 'utf8'), 'the author\'s own')
-  // Nothing of the store is mounted: fleet-box copies the snapshot into the container.
-  assert.deepEqual(configured.get('session-a'), { mounts: [], copies: [{ source: join(folder, 'agent'), target: '/tau/agent' }] })
+  // Nothing of the store is mounted: fleet-box copies the snapshot into the container, whose folder is its own, not the workspace dir.
+  assert.deepEqual(configured.get('session-a'), { ownFolder: true, mounts: [], copies: [{ source: join(folder, 'agent'), target: '/tau/agent' }] })
 
   assert.deepEqual((await tau.specOf(headers['session-a']!))?.spec, prepared.spec)
   assert.equal(await tau.specOf(headers['session-web']!), undefined)
@@ -99,6 +101,28 @@ test('a fork, even one of a subagent, takes its source\'s spec and snapshot', as
   assert.ok(found !== undefined)
   await tau.configureFork('session-fork' as SessionId, found)
   assert.deepEqual(configured.get('session-fork'), configured.get('session-src'))
+  assert.equal(configured.get('session-fork')?.ownFolder, true)
+})
+
+test('a run of a prompt works in the workspace dir, and a fork mounts it only as its source does', async () => {
+  const { tau, configured, headers } = await setup()
+  await tau.create('session-prompt' as SessionId, promptSpec('Say hi.'))
+  assert.equal(configured.get('session-prompt')?.ownFolder, undefined)
+  headers['session-prompt'] = header('session-prompt', { cwd: '/w' })
+  const fromPrompt = await tau.specOf(header('session-prompt-fork', { cwd: '/w', parentSession: 'session-prompt' as SessionId }))
+  await tau.configureFork('session-prompt-fork' as SessionId, fromPrompt!)
+  assert.equal(configured.get('session-prompt-fork')?.ownFolder, undefined)
+
+  // A run made before runs had folders of their own mounts the workspace dir, as its additions say, and so do its forks.
+  const prepared = await tau.prepare({ agent, args: ['Old'], bind: true, callerCwd: '/caller', env: {} })
+  assert.ok(prepared.ok)
+  await tau.create('session-old' as SessionId, prepared.spec)
+  const { ownFolder: _, ...before } = configured.get('session-old')!
+  configured.set('session-old', before)
+  headers['session-old'] = header('session-old', { cwd: '/w' })
+  const fromOld = await tau.specOf(header('session-old-fork', { cwd: '/w', parentSession: 'session-old' as SessionId }))
+  await tau.configureFork('session-old-fork' as SessionId, fromOld!)
+  assert.deepEqual(configured.get('session-old-fork'), before)
 })
 
 test('a spec is removed with its additions, and a broken one fails to read', async () => {
@@ -138,6 +162,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     ctx.provide('fleetBox', {
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: () => Promise.resolve(),
+      hasOwnFolder: (id: string) => configured.get(id)?.ownFolder === true,
       turnRunning: () => running,
       ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', ...id === 'session-p-fork' ? { parentSession: 'session-p' as SessionId } : {} })),
       // The container's files are under `container`, at their view paths; fleet-box refuses a symlink as it copies.
@@ -163,7 +188,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await writeFile(report, 'old report')
     const summary = join(dir, 'summary.md')
     const spec: Spec = {
-      version: 3, args: [], prompt: 'x', skills: [], apis: [], env: { LANG: 'C.UTF-8' },
+      version: 3, agent: { name: 'paths', source: agent }, args: [], prompt: 'x', skills: [], apis: [], env: { LANG: 'C.UTF-8' },
       paths: [
         { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md'), view: '/tau/in/rules/rules.md' },
         { name: 'data', type: 'dir', role: 'share', host: join(dir, 'data'), view: join(dir, 'data') },
@@ -176,7 +201,9 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const agentCopy = { source: join(folder, 'agent'), target: '/tau/agent' }
     // An in path is its snapshot, which fleet-box copies into the container as it does the agent's.
     const rulesCopy = { source: join(folder, 'in', 'rules'), target: '/tau/in/rules/rules.md' }
+    // Of the caller's files, only its share path is mounted; the container's folder is its own.
     assert.deepEqual(configured.get('session-p'), {
+      ownFolder: true,
       mounts: [{ source: join(dir, 'data'), target: join(dir, 'data'), readonly: false }],
       copies: [agentCopy, rulesCopy],
       env: { LANG: 'C.UTF-8' },
@@ -216,7 +243,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const found = await tau.specOf(header('session-p-fork', { cwd: '/w', parentSession: 'session-p' as SessionId }))
     assert.equal(found?.owner, 'session-p')
     await tau.configureFork('session-p-fork' as SessionId, found!)
-    assert.deepEqual(configured.get('session-p-fork'), { mounts: [], copies: [agentCopy, rulesCopy] })
+    assert.deepEqual(configured.get('session-p-fork'), { ownFolder: true, mounts: [], copies: [agentCopy, rulesCopy] })
     const copiedBefore = copied.length
     assert.deepEqual(await tau.publish('session-p-fork' as SessionId, 11), [])
     assert.equal(copied.length, copiedBefore)
@@ -313,8 +340,9 @@ test('a run started in a container takes its in paths from the caller\'s contain
     ctx.provide('fleetBox', {
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
+      hasOwnFolder: (id: string) => configured.get(id)?.ownFolder === true,
       turnRunning: () => false,
-      ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/workspace', origin: 'subagent', parentSession: 'session-caller' as SessionId })),
+      ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', origin: 'subagent', parentSession: 'session-caller' as SessionId })),
       // As fleet-box copies: keeping links, the path is followed and the links in it copied as they are.
       copyOut: async (owner: string, source: string, target: string, options: { links?: boolean } = {}) => {
         const from = inside(owner, source)
@@ -367,7 +395,7 @@ test('a run started in a container takes its in paths from the caller\'s contain
     assert.equal(await readFile(join(folder, 'agent', 'PROMPT.md'), 'utf8'), 'Greet ${name}.')
     assert.equal(await readFile(join(folder, 'in', 'text'), 'utf8'), 'one two')
     assert.equal(await readlink(join(folder, 'in', 'data', 'link')), 'b.txt')
-    // Its container's folder is its own, and so is a fork's of it, which has no workspace dir on the host either.
+    // Its container's folder is its own, as any run's is, and so is a fork's of it, as its source's is.
     assert.deepEqual(configured.get('session-run')?.directories, ['/tau/out/report'])
     assert.equal(configured.get('session-run')?.ownFolder, true)
     await tau.configureFork('session-run-fork' as SessionId, { spec, owner: 'session-run' as SessionId })

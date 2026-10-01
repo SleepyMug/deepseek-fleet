@@ -8,7 +8,7 @@
 // the repository runs this. Needs Docker, and exits 1 at the first check that fails.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,7 +27,8 @@ import * as archives from '../lib/tau/examples/archives.js'
 import * as notes from '../lib/tau/examples/notes.js'
 import * as relay from '../lib/tau/relay.js'
 import { linksLeaving } from '../lib/tau/children.js'
-import { AGENT_VIEW, NESTED_CWD } from '../lib/tau/paths.js'
+import { AGENT_VIEW } from '../lib/tau/paths.js'
+import { promptSpec } from '../lib/tau/spec.js'
 import { FleetTau } from '../lib/tau/store.js'
 
 const EXAMPLES = fileURLToPath(new URL('../../../examples/', import.meta.url))
@@ -79,12 +80,13 @@ try {
   }
 
   /**
-   * A session's container and helper, as fleet-box starts them: a root
-   * session's mounts the workspace dir, a subagent's own works in a folder of
-   * its own, mounting nothing.
+   * A session's container and helper, as fleet-box starts them: one mounts
+   * the workspace dir, unless its additions make the folder its own, as a
+   * run of an agent directory's do.
    */
-  async function container(id, folder, mounted = true) {
+  async function container(id, folder) {
     const additions = additionsOf.get(id)
+    const mounted = additions.ownFolder !== true
     const name = `fleet-smoke-${id}`
     execFileSync('docker', ['rm', '--force', name], { stdio: 'ignore' })
     execFileSync('docker', ['run', '--detach', '--name', name, '--init',
@@ -133,7 +135,11 @@ try {
   }
 
   step('notes: an API whose implementation keeps its notes on the host')
+  await writeFile(join(workspace, 'host.txt'), 'the caller\'s own')
   const notesSession = await session('notes', 'notes', ['buy milk', 'shopping,errands'])
+  // A run of an agent directory works in a folder of its container's own, at the workspace dir's path, which shows nothing of the host's.
+  assert.equal(await bash(notesSession, 'pwd'), `${workspace}\n`)
+  assert.equal(await bash(notesSession, 'ls -A'), '')
   const listed = await runner(notesSession, { command: 'modules' })
   console.log('ts_modules:', JSON.stringify(listed.modules.map(({ specifier, packageRoot }) => ({ specifier, packageRoot }))))
   const noted = await execute(notesSession, [
@@ -195,8 +201,10 @@ try {
     assert.ok(nested.ok, JSON.stringify(nested))
     assert.deepEqual(nested.spec.agent, { name: 'count', source: '/tmp/agents/count' })
     await tau.create('child', nested.spec, undefined, copied)
-    const child = { spec: nested.spec, connection: await container('child', NESTED_CWD, false), cwd: NESTED_CWD }
-    assert.equal(await bash(child, 'pwd'), `${NESTED_CWD}\n`)
+    // It works as its caller's session does, at the workspace dir's path, in a folder of its container's own.
+    const child = { spec: nested.spec, connection: await container('child', workspace) }
+    assert.equal(await bash(child, 'pwd'), `${workspace}\n`)
+    assert.equal(await bash(child, 'ls -A'), '')
     assert.equal(await bash(child, 'cat /tau/in/text/a.txt'), 'one two three')
     assert.equal(await bash(child, 'readlink /tau/agent/prompt-link.md'), 'PROMPT.md\n')
     assert.equal(await bash(child, '/tau/agent/run.sh'), 'run\n', 'a script keeps its mode through the copies')
@@ -219,6 +227,11 @@ try {
   console.log('tau run, from an agent without the tau API:', refusedRun.stderr.trim())
   assert.equal(refusedRun.exitCode, 1)
   assert.match(refusedRun.stderr, /links no API that calls the backend tau/u)
+
+  step('a run of a prompt: its container mounts the workspace dir to work in')
+  await tau.create('prompt', promptSpec('Say hi.'))
+  const promptSession = { connection: await container('prompt', workspace) }
+  assert.equal(await bash(promptSession, 'cat host.txt'), 'the caller\'s own')
 
   console.log('\nevery check passed')
 } finally {

@@ -203,11 +203,11 @@ export class FleetControl {
     return {}
   }
 
-  /** A run's workspace dir as dsh's workspaces have it, through symlinks, refused before anything is read when it cannot be one. */
+  /** A run's project, the workspace dir, as dsh's workspaces have it, through symlinks, refused before anything is read when it cannot be one. */
   private async workspaceDir(cwd: string): Promise<string> {
-    if (!isAbsolute(cwd)) throw new ControlError('fleet/bad-request', `the workspace dir must be an absolute path: ${cwd}`)
+    if (!isAbsolute(cwd)) throw new ControlError('fleet/bad-request', `the project must be an absolute path: ${cwd}`)
     return await realpathNormalize(cwd).catch((error: unknown) => {
-      throw new ControlError('fleet/bad-request', `the workspace dir ${cwd} cannot be used: ${message(error)}`)
+      throw new ControlError('fleet/bad-request', `the project ${cwd} cannot be used: ${message(error)}`)
     })
   }
 

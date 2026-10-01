@@ -140,13 +140,14 @@
 # folder is bind-mounted at the same path, beside any mounts, variables and
 # folders another plugin configured for the session (fleet-tau's agent
 # snapshot and an agent's path arguments), which fleet-box keeps in
-# $DSH_HOME/fleet/containers/<id>.json; everything else (/tmp included) is
-# the container's own, and processes run as the container's root (you,
-# under rootless Docker). A subagent session uses its parent's container,
-# unless another plugin configured one for it, as fleet-tau does for a tau
-# run started inside a container, whose container mounts nothing; a fork
-# gets its own, and archiving a session removes the containers of the
-# subagents under it too. A container runs while dsh has its helper connected: it
+# $DSH_HOME/fleet/containers/<id>.json, unless that plugin made the folder
+# the container's own, as fleet-tau does for a run of an agent directory;
+# everything else (/tmp included) is the container's own, and processes run
+# as the container's root (you, under rootless Docker). A subagent session
+# uses its parent's container, unless another plugin configured one for it,
+# as fleet-tau does for a tau run started inside a container; a fork gets
+# its own, and archiving a session removes the containers of the subagents
+# under it too. A container runs while dsh has its helper connected: it
 # starts when something of its session needs it, keeps running while
 # anything occupies it (a running turn, a sidebar terminal, a process, a file
 # access), stops once nothing has for a minute (`idleStopMs` on the
@@ -297,11 +298,11 @@
 # run other taus, from a program through the API, or from a command with the
 # image's `tau` command: `tau run <agent-dir> [args...]`. Each run is a
 # one-shot subagent of the calling session, which the web UI shows under it,
-# with a container of its own that works in /workspace and mounts nothing:
-# its agent directory and `in` paths are copied out of the caller's
-# container, its `out` paths are copied back into it once the run completes,
-# and a tau with a `share` path is refused, since no other container can
-# mount the caller's files. The call waits for the run, and cancelling it
+# with a container of its own that mounts nothing, and works as any run of
+# an agent directory does: its agent directory and `in` paths are copied out
+# of the caller's container, its `out` paths are copied back into it once
+# the run completes, and a tau with a `share` path is refused, since no
+# other container can mount the caller's files. The call waits for the run, and cancelling it
 # cancels the run. Once the run ends, its container is stopped, and stays
 # until the caller's session is archived.
 #
@@ -311,14 +312,18 @@
 # the container at /tau/in/<name>/; an `out` path written in
 # /tau/out/<name>/ and published to the caller after a completed turn a
 # `fleet` command waited on; and a `share` path mounted at its real path,
-# the same in the container as on the host, just as fleet-box mounts the
-# workspace dir as the agent's cwd. Overlapping `out` paths are published
-# outermost first, and one over an existing folder goes in entry by entry,
-# so a folder that stays a folder keeps any mount of it. Paths may overlap
-# each other and the workspace dir, but none may be, hold or lie in the dsh
-# home, and a `share` path may not be, hold or lie in the container's system
-# or fleet folders. The variables tau.json lists are
-# passed from the caller's environment.
+# the same in the container as on the host. Nothing else of the caller's is
+# mounted: the agent works in a folder of the container's own at the path of
+# the project, the workspace dir, so it sees the project's files only through
+# a `share` path; a `share` path that is the project mounts it as fleet-box
+# mounts it for any other session. A run of a prompt (`fleet run -p`) works
+# in the project, which its container mounts. Overlapping `out` paths are
+# published outermost first, and one over an existing folder goes in entry
+# by entry, so a folder that stays a folder keeps any mount of it. Paths may
+# overlap each other and the project, but none may be, hold or lie in the
+# dsh home, and a `share` path may not be, hold or lie in the container's
+# system or fleet folders. The variables tau.json lists are passed from the
+# caller's environment.
 
 - insert:
     - id: fleet-tau-backends

@@ -4,13 +4,15 @@
  * through the host's control socket. An agent is a directory in the tau
  * format, as for pi-run (@sleepymug/tau's SPEC.md): `fleet run <agent-dir>
  * [args...]` has the host fill its PROMPT.md with the arguments its tau.json
- * declares and give it to a new session in the current folder, or the one
- * `--cwd` names, which the session's container mounts; the session gets the
- * agent's skills, and the APIs it declares. `fleet run -p <prompt>`
- * gives a session a prompt as it is, without an agent directory. Either way
- * the session gets TypeScript tools that run programs in its container. The
- * session is an ordinary one of the fleet host, so the web UI lists it and a
- * person can follow or steer it there.
+ * declares and give it to a new session of a project, the current folder or
+ * the one `--project` names; the session gets the agent's skills, and the
+ * APIs it declares, and works in a folder of its container's own, with the
+ * caller's files only as its arguments give them. `fleet run -p <prompt>`
+ * gives a session a prompt as it is, without an agent directory, and its
+ * container mounts the project to work in. Either way the session gets
+ * TypeScript tools that run programs in its container. The session is an
+ * ordinary one of the fleet host, so the web UI lists it under its project,
+ * and a person can follow or steer it there.
  *
  * A run is one-shot, as a tau's is: its session gets its task, and no
  * later message from the command. `run` and `wait` wait until the session is
@@ -48,7 +50,8 @@ const USAGE = [
   'Usage: fleet <command>',
   '  run [options] <agent-dir> [args...]         run an agent directory (tau format) in a new session',
   '  run [options] -p <prompt>                   run a new session on a prompt, without an agent directory',
-  '      --cwd <dir>                             the workspace dir its container mounts; default: this one',
+  '      --project <dir>                         the project the web UI lists it under, which a prompt run works in;',
+  '                                              default: this folder',
   '      --sid-file <file>                       write the session id to <file> once the task is accepted',
   '      --async                                 return once the task is accepted',
   '  wait <session>                              wait until a session is idle and print its last answer',
@@ -114,8 +117,8 @@ async function main(args: readonly string[]): Promise<number> {
 }
 
 async function run(args: readonly string[]): Promise<number> {
-  const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--cwd': 'value', '--sid-file': 'value', '-p': 'value' })
-  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: workspaceDir(values.get('--cwd') ?? process.cwd()) } as const
+  const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--project': 'value', '--sid-file': 'value', '-p': 'value' })
+  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: projectDir(values.get('--project') ?? process.cwd()) } as const
   const sidFile = sidFilePath(values.get('--sid-file'))
   if (flags.has('--async')) {
     const { session } = await call({ ...request, wait: false })
@@ -187,8 +190,8 @@ async function setup(args: readonly string[]): Promise<number> {
   return EXIT_OK
 }
 
-/** The real path of a session's workspace dir, as dsh registers it. */
-function workspaceDir(dir: string): string {
+/** The real path of a project, the folder dsh registers as the workspace of the session. */
+function projectDir(dir: string): string {
   let path: string
   try {
     path = realpathSync(resolve(dir))
