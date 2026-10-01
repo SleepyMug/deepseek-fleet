@@ -1,7 +1,6 @@
 {
-  "description": "Count the words of each file in a directory, each with a run of its own of a counting agent, and write a summary.",
+  "description": "Count the words of each file in a directory, each with a run of its own of the counting agent this one carries, and write a summary.",
   "args": [
-    { "name": "counter", "type": "dir", "role": "in", "description": "An agent that takes a text file and a report to write the count in, such as count-words." },
     { "name": "dir", "type": "dir", "role": "in", "description": "The files to count." },
     { "name": "summary", "type": "file", "role": "out", "description": "Where to write each file's count." }
   ]

@@ -24,13 +24,14 @@ const request = (agent: string, args: string[], bind = true, backends: string[] 
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
-    'PROMPT.md': 'Greet ${name}. Then say: ${rest}',
+    'PROMPT.md': 'Greet ${name}. Then say: ${rest}, as ${self}/voice.md says',
     'tau.json': '{"args": [{"name": "name", "type": "text"}, {"name": "rest", "type": "text"}]}',
     'skills/shout/SKILL.md': '---\nname: shout\ndescription: Shout.\n---\nSHOUT\n',
   }, (dir) => {
     const prepared = prepare(request(dir, ['World', 'bye']))
     assert.ok(prepared.ok, JSON.stringify(prepared))
-    assert.equal(prepared.spec.prompt, 'Greet World. Then say: bye')
+    // The agent directory is where the container shows its snapshot.
+    assert.equal(prepared.spec.prompt, 'Greet World. Then say: bye, as /tau/agent/voice.md says')
     assert.equal(prepared.title, `${basename(dir)} World bye`)
     assert.deepEqual(prepared.spec.agent, { name: basename(dir), source: dir })
     assert.deepEqual(prepared.spec.skills.map(skill => skill.name), ['shout'])

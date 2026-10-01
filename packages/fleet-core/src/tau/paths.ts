@@ -1,18 +1,19 @@
 /**
  * Where a session's container shows its agent and the agent's path
  * arguments, which tau leaves to the runtime, and the arguments it cannot
- * give. The agent's snapshot is copied to /tau/agent. An `in` path is a
- * snapshot copied into /tau/in/<name>/, and an `out` path is made in
- * /tau/out/<name>/, each keeping the base name of the caller's path, so
- * neither meets the caller's paths or the container's own, and the prompt
- * names them there. A `share` path is the caller's own, which the agent
- * changes as the caller sees it, so the container mounts it at its real
- * path, the same in the container as on the host, as fleet-box mounts the
- * workspace dir: such mounts show the same files where they meet, so
- * `share` paths may lie in the workspace dir or in each other, or hold
- * them, and symlinks between them lead where they do on the host. Where it
- * really is, though, a `share` path may not be or hold the container's
- * system folders or fleet's own, nor lie in the kernel's or fleet's.
+ * give. The agent's snapshot is copied to /tau/agent, which the prompt names
+ * as `${self}`. An `in` path is a snapshot copied into /tau/in/<name>/, and
+ * an `out` path is made in /tau/out/<name>/, each keeping the base name of
+ * the caller's path, so neither meets the caller's paths or the container's
+ * own, and the prompt names them there. A `share` path is the caller's own,
+ * which the agent changes as the caller sees it, so the container mounts it
+ * at its real path, the same in the container as on the host, as fleet-box
+ * mounts the workspace dir: such mounts show the same files where they
+ * meet, so `share` paths may lie in the workspace dir or in each other, or
+ * hold them, and symlinks between them lead where they do on the host.
+ * Where it really is, though, a `share` path may not be or hold the
+ * container's system folders or fleet's own, nor lie in the kernel's or
+ * fleet's.
  *
  * Paths may overlap each other and the workspace dir, but none may be, hold or
  * lie in the dsh home, where fleet keeps its sessions: a snapshot would copy it

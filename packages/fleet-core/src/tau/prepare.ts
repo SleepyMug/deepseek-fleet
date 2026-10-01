@@ -1,9 +1,10 @@
 /**
  * Read an agent directory for a run or a check: its tau metadata and prompt,
  * the command's arguments bound to them, with its path arguments placed
- * where the container shows them and checked as tau checks a run's inputs
- * and as the container can give them (./paths.ts), its skills, and its
- * APIs, each linked to fleet's implementation of the same name
+ * where the container shows them, as is the agent directory, which
+ * `${self}` names, and checked as tau checks a run's inputs and as the
+ * container can give them (./paths.ts), its skills, and its APIs, each
+ * linked to fleet's implementation of the same name
  * (fleet-image's apis/), which tau checks fits it, and whose backends must
  * be provided, with every problem found reported together. tau's library
  * loads TypeScript as it is imported, so this runs in a worker
@@ -20,7 +21,7 @@ import { basename } from 'node:path'
 import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from '../box/additions.ts'
 import { implementation } from 'fleet-image/apis/registry'
-import { nestedPathProblems, pathProblems, place, placeNested } from './paths.ts'
+import { AGENT_VIEW, nestedPathProblems, pathProblems, place, placeNested } from './paths.ts'
 import { loadSkills } from './skills.ts'
 import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
 
@@ -71,7 +72,7 @@ function prepareFrom(request: PrepareRequest): Prepared {
   let run: Run | undefined
   if (request.bind) {
     try {
-      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, nested ? placeNested : place)
+      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, nested ? placeNested : place, AGENT_VIEW)
       prompt = run.prompt
       if (prompt.trim() === '') problems.push(`${tau.dir}/PROMPT.md gives an empty prompt`)
     } catch (error) {

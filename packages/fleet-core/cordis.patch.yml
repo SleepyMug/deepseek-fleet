@@ -270,8 +270,8 @@
 # fleet-tau reads the directory in a worker, checking its APIs, refuses one
 # with problems before any session exists, and keeps a snapshot of it, whole
 # and with its symlinks, per session in $DSH_HOME/fleet/sessions/<id>/,
-# which fleet-box copies into each of the session's containers at /tau/agent;
-# nothing of the store is mounted. The session's agents get the snapshot's
+# which fleet-box copies into each of the session's containers at /tau/agent,
+# which `${self}` in PROMPT.md names; nothing of the store is mounted. The session's agents get the snapshot's
 # skills, with dsh's `skill` tool, in a scope of their own; sessions started
 # any other way keep the fleet preset unchanged.
 #

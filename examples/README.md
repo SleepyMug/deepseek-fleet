@@ -10,7 +10,7 @@ Agent directories in the tau format (../../agent_fleet_project/tau/SPEC.md), for
 | `text-stats` | an API whose implementation runs in the program alone | `fleet run examples/text-stats "the cat and the hat and the bat"` |
 | `count-words` | an `in` file and an `out` report, and a variable from the caller | `fleet run examples/count-words <file> <report>` |
 | `archive-dir` | an API that takes a folder, which its implementation packs with tar and sends to the fleet host | `fleet check examples/archive-dir`, then `fleet run examples/archive-dir <dir>` |
-| `count-each` | the `tau` API: an agent given as an argument, run once per file as runs of their own, which give back their outputs | `fleet run examples/count-each examples/count-words <dir> <summary>` |
+| `count-each` | the `tau` API: an agent the tau carries, which its prompt names with `${self}`, run once per file as runs of their own, which give back their outputs | `fleet run examples/count-each <dir> <summary>` |
 
 A tau declares its APIs, and fleet links each to its own implementation of the same name, which
 the session image carries (packages/fleet-image/src/apis); `fleet apis` lists them, and `fleet apis <name>`
