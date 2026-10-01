@@ -3,36 +3,26 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { nestedPathProblems, pathProblems, place, placeNested, shareMount } from './paths.ts'
+import { pathProblems, placeProblems } from './paths.ts'
 
-const share = (name: string, host: string, view = host) => ({ name, role: 'share' as const, host, view })
 const problems = (paths: Parameters<typeof pathProblems>[0]) => pathProblems(paths, '/dsh')
 
-test('in and out paths are placed under /tau by role and name, keeping the caller\'s base name', () => {
-  assert.equal(place({ name: 'rules', type: 'file', role: 'in', host: '/home/u/style.md' }), '/tau/in/rules/style.md')
-  assert.equal(place({ name: 'site', type: 'dir', role: 'in', host: '/home/u/site' }), '/tau/in/site/site')
-  assert.equal(place({ name: 'report', type: 'file', role: 'out', host: '/home/u/out/report.md' }), '/tau/out/report/report.md')
-})
-
-test('a share path is placed at its real path, and mounted from there to there', async () => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), 'fleet-tau-paths-')))
-  try {
-    await mkdir(join(dir, 'src'))
-    await symlink(join(dir, 'src'), join(dir, 'link'))
-    const at = (host: string) => place({ name: 'src', type: 'dir', role: 'share', host })
-    assert.equal(at(join(dir, 'src')), join(dir, 'src'))
-    assert.equal(at(join(dir, 'link')), join(dir, 'src'))
-    // One not made yet, which tau's input check reports, is placed in its folder's real path.
-    assert.equal(at(join(dir, 'link', 'missing')), join(dir, 'src', 'missing'))
-    assert.deepEqual(shareMount({ view: join(dir, 'src') }), { source: join(dir, 'src'), target: join(dir, 'src'), readonly: false })
-  } finally {
-    await rm(dir, { recursive: true, force: true })
+test('a place may not be, hold or lie in the system\'s, the kernel\'s or fleet\'s folders', () => {
+  const refused = ['/usr', '/etc', '/usr/lib', '/usr/local/src/proj/a', '/var/www/a', '/opt/fleet', '/tau', '/tau/in/x', '/run', '/proc/x', '/dev/shm', '/run/fleet/x', '/']
+  for (const view of refused) assert.equal(placeProblems([{ name: 'p', view }]).length, 1, view)
+  assert.deepEqual(placeProblems([{ name: 'all', view: '/' }, { name: 'lib', view: '/usr/lib' }, { name: 'shm', view: '/dev/shm' }]), [
+    'all: its place / would cover /bin in the container',
+    'lib: its place /usr/lib lies in /usr, which the container keeps for itself',
+    'shm: its place /dev/shm lies in /dev, which the container keeps for itself',
+  ])
+  for (const view of ['/home/u/proj/site', '/srv/proj/report.md', '/tmp/in', '/opt/data', '/opt/fleet-tau', '/run/user/1000/x', '/root/x']) {
+    assert.deepEqual(placeProblems([{ name: 'p', view }]), [], view)
   }
 })
 
-test('in and out paths may be anywhere but the dsh home, the container\'s own folders included', () => {
+test('the caller\'s paths may be anywhere but the dsh home, the container\'s own folders included', () => {
   for (const host of ['/work/a.md', '/work', '/usr', '/tau/x', '/proc/x']) {
-    for (const role of ['in', 'out'] as const) assert.deepEqual(problems([{ name: 'p', role, host, view: '/tau/x/p' }]), [], `${role} ${host}`)
+    for (const role of ['in', 'out'] as const) assert.deepEqual(problems([{ name: 'p', role, host }]), [], `${role} ${host}`)
   }
 })
 
@@ -41,7 +31,7 @@ test('no path may be, hold or lie in the dsh home, where it really is, but for a
   try {
     await mkdir(join(dir, 'home'))
     await symlink(join(dir, 'home'), join(dir, 'link'))
-    const at = (role: 'in' | 'out' | 'share') => pathProblems([{ name: 'p', role, host: join(dir, 'link'), view: join(dir, 'home') }], join(dir, 'home'))
+    const at = (role: 'in' | 'out') => pathProblems([{ name: 'p', role, host: join(dir, 'link') }], join(dir, 'home'))
     assert.deepEqual(at('in'), [`p: ${join(dir, 'link')} is the dsh home ${join(dir, 'home')}, where fleet keeps its sessions`])
     // Publishing it replaces the symlink, not what it leads to.
     assert.deepEqual(at('out'), [])
@@ -49,32 +39,12 @@ test('no path may be, hold or lie in the dsh home, where it really is, but for a
     await rm(dir, { recursive: true, force: true })
   }
 
-  for (const role of ['in', 'out', 'share'] as const) {
-    const at = (name: string, host: string) => ({ name, role, host, view: host })
+  for (const role of ['in', 'out'] as const) {
+    const at = (name: string, host: string) => ({ name, role, host })
     assert.deepEqual(problems([at('a', '/dsh'), at('b', '/'), at('c', '/dsh/fleet/x')]), [
       'a: /dsh is the dsh home /dsh, where fleet keeps its sessions',
       'b: / holds the dsh home /dsh, where fleet keeps its sessions',
       'c: /dsh/fleet/x lies in the dsh home /dsh, where fleet keeps its sessions',
     ], role)
   }
-})
-
-test('a share path may not cover system or fleet folders, nor lie in the kernel\'s or fleet\'s, where it really is', () => {
-  const refused = ['/usr', '/etc', '/opt/fleet', '/tau', '/tau/in/x', '/run', '/proc/x', '/dev/shm', '/run/fleet/x']
-  for (const host of refused) assert.equal(problems([share('p', host)]).length, 1, host)
-  assert.deepEqual(problems([share('p', '/home/u/system', '/usr')]), ['p: /home/u/system, which is /usr, would cover /usr in the container'])
-  assert.deepEqual(problems([share('p', '/usr/local/link', '/home/u/data')]), [])
-  for (const host of ['/etc/app/config.json', '/work/rules.md', '/tmp/in', '/home/u/data', '/opt/data', '/opt/fleet-tau']) {
-    assert.deepEqual(problems([share('p', host)]), [], host)
-  }
-})
-
-test('a run started in a container places in and out paths as any run does, and refuses its share paths, which it never resolves', () => {
-  assert.equal(placeNested({ name: 'rules', type: 'file', role: 'in', host: '/workspace/style.md' }), '/tau/in/rules/style.md')
-  assert.equal(placeNested({ name: 'report', type: 'file', role: 'out', host: '/tmp/report.md' }), '/tau/out/report/report.md')
-  assert.equal(placeNested({ name: 'src', type: 'dir', role: 'share', host: '/proc/self/root' }), '/proc/self/root')
-  assert.deepEqual(nestedPathProblems([
-    { name: 'rules', role: 'in', host: '/workspace/style.md' },
-    { name: 'src', role: 'share', host: '/workspace/src' },
-  ]).map(problem => problem.split(',')[0]), ['src: /workspace/src is a share path'])
 })

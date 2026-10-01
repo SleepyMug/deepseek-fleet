@@ -300,25 +300,24 @@
 # one-shot subagent of the calling session, which the web UI shows under it,
 # with a container of its own that mounts nothing, and works as any run of
 # an agent directory does: its agent directory and `in` paths are copied out
-# of the caller's container, its `out` paths are copied back into it once
-# the run completes, and a tau with a `share` path is refused, since no
-# other container can mount the caller's files. The call waits for the run, and cancelling it
-# cancels the run. Once the run ends, its container is stopped, and stays
-# until the caller's session is archived.
+# of the caller's container, and its `out` paths are copied back into it once
+# the run completes. The call waits for the run, and cancelling it cancels
+# the run. Once the run ends, its container is stopped, and stays until the
+# caller's session is archived.
 #
-# Path arguments reach the container according to their roles in tau.json,
-# where fleet-tau places them, and the prompt names them there: an `in` path
-# as a snapshot taken when the session is made, which fleet-box copies into
-# the container at /tau/in/<name>/; an `out` path written in
-# /tau/out/<name>/ and published to the caller after a completed turn a
-# `fleet` command waited on; and a `share` path mounted at its real path,
-# the same in the container as on the host. Nothing else of the caller's is
-# in the container. Overlapping `out` paths are published outermost first,
-# and one over an existing folder goes in entry by entry, so a folder that
-# stays a folder keeps any mount of it. Paths may overlap each other, but
-# none may be, hold or lie in the dsh home, and a `share` path may not be,
-# hold or lie in the container's system or fleet folders. The variables
-# tau.json lists are passed from the caller's environment.
+# Path arguments reach the container at their places in the folder the agent
+# works in, as tau.json declares them, and the prompt names them there: an
+# `in` path as a snapshot taken when the session is made, which fleet-box
+# copies into the container; and an `out` path as what the agent leaves at
+# its place, published to the caller after a completed turn a `fleet` command
+# waited on. An `out` that shares its place with an `in` starts as the `in`'s
+# snapshot. Nothing else of the caller's is in the container. Overlapping
+# `out` paths are published outermost first, and one over an existing folder
+# goes in entry by entry, so a folder that stays a folder keeps any mount of
+# it. Paths may overlap each other, but none may be, hold or lie in the dsh
+# home, and no place may be, hold or lie in the container's system or fleet
+# folders. The variables tau.json lists are passed from the caller's
+# environment.
 #
 # A run belongs to a project, the folder `fleet run --project` names (the
 # current one by default), which dsh registers as the session's workspace
@@ -326,8 +325,9 @@
 # to its caller's. To a run of an agent directory that is all the project
 # is: nothing of it is mounted, and the agent works in a folder of the
 # container's own that only has the project's path, since dsh runs a
-# session's tools in its workspace's folder. A run of a prompt (`fleet run
-# -p`) works in the project itself, which its container mounts.
+# session's tools in its workspace's folder, which holds the agent's paths.
+# A run of a prompt (`fleet run -p`) works in the project itself, which its
+# container mounts.
 
 - insert:
     - id: fleet-tau-backends

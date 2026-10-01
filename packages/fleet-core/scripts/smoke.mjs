@@ -71,9 +71,9 @@ try {
   let tau
   await ctx.plugin({ name: 'smoke', inject: ['fleetTau'], apply: (inner) => { tau = inner.fleetTau } })
 
-  /** A session as `fleet run` makes one, and its container and helper as fleet-box starts them. */
+  /** A session as `fleet run` makes one, in the workspace dir as its project, and its container and helper as fleet-box starts them. */
   async function session(id, agent, args) {
-    const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, env: {} })
+    const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, project: workspace, env: {} })
     assert.ok(prepared.ok, JSON.stringify(prepared))
     await tau.create(id, prepared.spec)
     return { spec: prepared.spec, connection: await container(id, workspace) }
@@ -160,10 +160,11 @@ try {
 
   step('archive-dir: an API that takes a folder, packed with tar and sent to the host')
   const archiveSession = await session('archive', 'archive-dir', [join(EXAMPLES, 'hello')])
-  // The snapshot of the in folder, where the container shows it and the prompt names it.
+  // The snapshot of the in folder, at its place in the folder the agent works in, where the prompt names it.
   const dir = archiveSession.spec.paths[0].view
-  assert.equal(dir, '/tau/in/dir/hello')
-  assert.match(archiveSession.spec.prompt, /archive \/tau\/in\/dir\/hello\./u)
+  assert.equal(dir, `${workspace}/dir`)
+  assert.ok(archiveSession.spec.prompt.includes(`archive ${dir}.`), archiveSession.spec.prompt)
+  assert.equal(await bash(archiveSession, 'ls -A'), 'dir\n')
   const archived = await execute(archiveSession, [
     'import { archiveDir, list } from "@api/archives"',
     'export async function main(input: { dir: string }) {',
@@ -196,19 +197,21 @@ try {
     assert.equal(await copyOut(caller.connection, '/tmp/agents/count', copied, { links: true }), true)
     assert.deepEqual(await linksLeaving(copied), [])
     const nested = await tau.prepare({
-      agent: copied, source: '/tmp/agents/count', caller: 'stats', args: ['a.txt', '/tmp/out/report.txt'], bind: true, callerCwd: '/tmp', env: { LANG: 'C.UTF-8' },
+      agent: copied, source: '/tmp/agents/count', caller: 'stats', args: ['a.txt', '/tmp/out/report.txt'], bind: true, callerCwd: '/tmp', project: workspace,
+      env: { LANG: 'C.UTF-8' },
     })
     assert.ok(nested.ok, JSON.stringify(nested))
     assert.deepEqual(nested.spec.agent, { name: 'count', source: '/tmp/agents/count' })
     await tau.create('child', nested.spec, undefined, copied)
-    // It works as its caller's session does, at the workspace dir's path, in a folder of its container's own.
+    // It works as its caller's session does, at the workspace dir's path, in a folder of its container's own, which holds its paths at their places.
     const child = { spec: nested.spec, connection: await container('child', workspace) }
+    assert.deepEqual(nested.spec.paths.map(path => path.view), [`${workspace}/text`, `${workspace}/report`])
     assert.equal(await bash(child, 'pwd'), `${workspace}\n`)
-    assert.equal(await bash(child, 'ls -A'), '')
-    assert.equal(await bash(child, 'cat /tau/in/text/a.txt'), 'one two three')
+    assert.equal(await bash(child, 'ls -A'), 'text\n')
+    assert.equal(await bash(child, 'cat text'), 'one two three')
     assert.equal(await bash(child, 'readlink /tau/agent/prompt-link.md'), 'PROMPT.md\n')
     assert.equal(await bash(child, '/tau/agent/run.sh'), 'run\n', 'a script keeps its mode through the copies')
-    await bash(child, 'wc -w < /tau/in/text/a.txt | tr -d " \n" > /tau/out/report/report.txt')
+    await bash(child, 'wc -w < text | tr -d " \n" > report')
     assert.deepEqual(await tau.publish('child', 0), [])
     // The caller's report is replaced, and nothing else in its folder is touched or left behind.
     assert.equal(await bash(caller, 'cat /tmp/out/report.txt'), '3')

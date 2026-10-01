@@ -15,23 +15,23 @@
  * session's agents what the spec holds, whenever an agent is created or
  * resumed.
  *
- * The container gets the agent's path arguments too, each according to its
- * role, where ./paths.ts places it; tau leaves how to the runtime. An `in`
- * path is its snapshot, which the session keeps however long it lasts,
- * whatever becomes of the caller's path; the folder an `out` path goes in
- * is made; and a `share` path is mounted from the caller at its real path.
- * Nothing else of the caller's is in the container. The container gets the
- * caller's values of the variables tau.json lists as well. After a
- * completed turn, the command that waited on it has the store publish the
- * `out` paths ({@link FleetTau.publish}).
+ * The container gets the agent's path arguments too, each at its place in
+ * the folder the agent works in (./paths.ts). An `in` path is its snapshot,
+ * which the session keeps however long it lasts, whatever becomes of the
+ * caller's path, and the folder an `out` path goes in is made, so an `out`
+ * that shares its place with an `in` starts as the `in`'s snapshot. Nothing
+ * else of the caller's is in the container. The container gets the caller's
+ * values of the variables tau.json lists as well. After a completed turn,
+ * the command that waited on it has the store publish the `out` paths
+ * ({@link FleetTau.publish}).
  *
  * A run belongs to a project, the folder dsh registers as its session's
  * workspace, which the web UI lists it under. To a run of an agent
  * directory that is all the project is: nothing of it is mounted, and the
  * agent works in a folder of the container's own that only has the
  * project's path, since dsh runs a session's tools in its workspace's
- * folder. A run of a prompt, which has no paths, works in the project
- * itself, which its container mounts.
+ * folder, which holds the agent's paths. A run of a prompt, which has no
+ * paths, works in the project itself, which its container mounts.
  *
  * A fork of such a session has no folder in the store: it takes its
  * source's spec, and its container copies of the source's snapshots, which
@@ -56,11 +56,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type { ContainerAdditions, Copy, Mount } from '../box/world.ts'
+import type { ContainerAdditions, Copy } from '../box/world.ts'
 import { z } from 'zod'
 import { InputError, outputFolderProblems, snapshot, snapshotFrom } from './inputs.ts'
 import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, publishTargets, replace } from './outputs.ts'
-import { AGENT_VIEW, shareMount } from './paths.ts'
+import { AGENT_VIEW } from './paths.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
 import type {} from './backends.ts'
 import { SPEC_VERSION, specSchema, type Spec, type SpecPath } from './spec.ts'
@@ -193,7 +193,7 @@ export class FleetTau extends Service {
    * could be changing what is copied. A fork publishes nothing; its
    * source's paths belong to the source's run.
    * @param turn - the turn's place in the session's log.
-   * @returns why the run did not leave what its tau declares, its `out` paths published and its `share` paths as declared, none when it did, or it has none.
+   * @returns why the run did not leave what its tau declares, its `out` paths published, none when it did, or it has none.
    */
   publish(session: SessionId, turn: number): Promise<string[]> {
     const next = (this.publishing.get(session) ?? Promise.resolve()).catch(() => {}).then(() => this.publishOnce(session, turn))
@@ -208,7 +208,7 @@ export class FleetTau extends Service {
     if (found === undefined || found.owner !== owner.id) return []
     const { paths } = found.spec
     const outputs = paths.filter(path => path.role === 'out')
-    if (!paths.some(path => path.role !== 'in')) return []
+    if (outputs.length === 0) return []
     const folder = this.folder(owner.id)
     const record = join(folder, 'published.json')
     const published = await readFile(record, 'utf8').then(text => JSON.parse(text) as { turn: number; problems: string[] }, () => undefined)
@@ -284,19 +284,14 @@ export class FleetTau extends Service {
   }
 
   /**
-   * A run's container additions: copies of its snapshots, and its other
-   * paths and its variables, each path where ./paths.ts places it.
+   * A run's container additions: copies of its snapshots, the folders its
+   * `out` paths go in, and its variables.
    */
   private additions(owner: SessionId, spec: Spec): ContainerAdditions {
-    const mounts: Mount[] = []
-    const directories: string[] = []
-    for (const path of spec.paths) {
-      if (path.role === 'out') directories.push(posix.dirname(path.view))
-      else if (path.role === 'share') mounts.push(shareMount(path))
-    }
+    const directories = spec.paths.filter(path => path.role === 'out').map(path => posix.dirname(path.view))
     return {
       ...ownFolder(spec),
-      mounts,
+      mounts: [],
       copies: this.snapshots(owner, spec),
       ...Object.keys(spec.env).length === 0 ? {} : { env: spec.env },
       ...directories.length === 0 ? {} : { directories },

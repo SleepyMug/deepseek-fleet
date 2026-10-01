@@ -8,7 +8,8 @@
  * the one `--project` names, which the web UI lists it under and which is
  * all the project is to it: the session gets the agent's skills and the APIs
  * it declares, and works in a folder of its container's own, with the
- * caller's files only as its arguments give them. `fleet run -p <prompt>`
+ * caller's files only as its arguments give them, each at the place its
+ * tau.json declares in that folder. `fleet run -p <prompt>`
  * gives a session a prompt as it is, without an agent directory, and its
  * container mounts the project to work in. Either way the session gets
  * TypeScript tools that run programs in its container. The session is an

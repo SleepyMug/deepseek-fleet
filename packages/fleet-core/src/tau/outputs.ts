@@ -50,9 +50,9 @@ export async function copyProblems(copy: string, name: string, view: string, lim
 }
 
 /**
- * What tau's `checkOutputs` checks after a run: each `out` path, here its
- * copy, and each `share` path, the caller's own, is a file or a folder as
- * declared, symlinks followed. fleet-tau checks this itself, not with tau's
+ * What tau's `checkOutputs` checks after a run: what the agent left at each
+ * `out` path's place, here its copy, is a file or a folder as declared,
+ * symlinks followed. fleet-tau checks this itself, not with tau's
  * `checkOutputs`: tau's library loads TypeScript when it is imported, which
  * the host keeps to its worker, and a problem here names the path the agent
  * sees, never its copy in the store.
@@ -65,11 +65,11 @@ export async function outputProblems(paths: readonly SpecPath[], copyOf: (path: 
     if (path.role === 'in') continue
     let info
     try {
-      info = await stat(path.role === 'out' ? copyOf(path) : path.host)
+      info = await stat(copyOf(path))
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code !== 'ENOENT' && code !== 'ENOTDIR') problems.push(`${path.name}: ${path.view} cannot be read: ${message(error)}`)
-      else problems.push(`${path.name}: ${path.role === 'out' ? `the agent left nothing at ${path.view}` : `${path.view} is gone`}`)
+      else problems.push(`${path.name}: the agent left nothing at ${path.view}`)
       continue
     }
     if (path.type === 'dir' ? !info.isDirectory() : !info.isFile()) problems.push(`${path.name}: ${path.view} is not a ${path.type === 'dir' ? 'folder' : 'file'}`)

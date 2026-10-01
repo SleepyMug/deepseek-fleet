@@ -37,10 +37,10 @@ const pathSchema = z.object({
   name: z.string(),
   type: z.enum(['file', 'dir']),
   /** What the agent does with it, which decides how the container gets it (./store.ts). */
-  role: z.enum(['in', 'out', 'share']),
+  role: z.enum(['in', 'out']),
   /** The caller's path, absolute: on the host, or for a run started in a container, in that container. */
   host: z.string(),
-  /** Where the container shows it (./paths.ts), which the prompt names. */
+  /** Where the container shows it, its place in the folder the agent works in (./paths.ts), which the prompt names. */
   view: z.string(),
 })
 

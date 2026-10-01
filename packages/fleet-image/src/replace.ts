@@ -15,8 +15,8 @@ import { dirname, join } from 'node:path'
  * published before it left none. The copy is copied beside the path first,
  * onto its file system, and then renamed in: a folder over a folder entry by
  * entry, recursively, so a folder that stays a folder is the same folder
- * after, which a mount of it, such as a container's of the workspace dir or
- * of a `share` path, and whatever has it open keep seeing. What was there is
+ * after, which a mount of it, such as a container's of the workspace dir,
+ * and whatever has it open keep seeing. What was there is
  * set aside, and removed once the copy is in place; a failure renames
  * everything back, and should that fail too, leaves what was set aside where
  * the error says.

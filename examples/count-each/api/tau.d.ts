@@ -3,9 +3,9 @@
  * host starts it as a subagent of this session, in this session's project,
  * in a container of its own, where it works in a folder of that container's
  * own, with nothing of this container mounted. Its `in` paths are copied
- * from this container when it starts, and its `out` paths are copied back
- * into this container once it completes. A tau with a `share` path cannot
- * run here: no other container can share this one's files.
+ * from this container to their places in that folder when it starts, and
+ * what it leaves at its `out` paths' places is copied back into this
+ * container once it completes.
  *
  * @packageDocumentation
  */

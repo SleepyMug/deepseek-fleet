@@ -122,27 +122,23 @@ test('out paths are published where they are before any is, outermost first, and
   })
 })
 
-test('outputs are checked as tau checks them: each out and share path of the declared type', async () => {
+test('outputs are checked as tau checks them: what the agent left at each out path\'s place, of the declared type', async () => {
   await withDir(async (dir) => {
     await writeFile(join(dir, 'copy.md'), 'x')
     await mkdir(join(dir, 'data'))
+    execFileSync('mkfifo', [join(dir, 'pipe')])
     const paths = [
-      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md', view: '/tau/out/report/report.md' },
-      { name: 'data', type: 'dir' as const, role: 'share' as const, host: join(dir, 'data'), view: join(dir, 'data') },
-      { name: 'rules', type: 'file' as const, role: 'share' as const, host: join(dir, 'rules'), view: join(dir, 'rules') },
-      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing', view: '/tau/in/in/missing' },
+      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md', view: '/w/report.md' },
+      { name: 'data', type: 'dir' as const, role: 'out' as const, host: '/h/data', view: '/w/data' },
+      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing', view: '/w/in' },
     ]
-    const at = (copy: string) => () => join(dir, copy)
-    await writeFile(join(dir, 'rules'), 'x')
-    assert.deepEqual(await outputProblems(paths, at('copy.md')), [])
+    const at = (copies: Record<string, string>) => (path: { name: string }) => join(dir, copies[path.name] ?? 'missing')
+    assert.deepEqual(await outputProblems(paths, at({ report: 'copy.md', data: 'data' })), [])
     // Named where the agent left it.
-    assert.deepEqual(await outputProblems(paths, at('data')), ['report: /tau/out/report/report.md is not a file'])
+    assert.deepEqual(await outputProblems(paths, at({ report: 'data', data: 'data' })), ['report: /w/report.md is not a file'])
     // A pipe is not a file, though it is no folder either.
-    await rm(join(dir, 'rules'))
-    execFileSync('mkfifo', [join(dir, 'rules')])
-    await rm(join(dir, 'data'), { recursive: true })
-    assert.deepEqual(await outputProblems(paths, at('missing')), [
-      'report: the agent left nothing at /tau/out/report/report.md', `data: ${join(dir, 'data')} is gone`, `rules: ${join(dir, 'rules')} is not a file`,
+    assert.deepEqual(await outputProblems(paths, at({ report: 'pipe' })), [
+      'report: /w/report.md is not a file', 'data: the agent left nothing at /w/data',
     ])
   })
 })

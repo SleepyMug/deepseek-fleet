@@ -1,9 +1,10 @@
 /**
  * Read an agent directory for a run or a check: its tau metadata and prompt,
- * the command's arguments bound to them, with its path arguments placed
- * where the container shows them, as is the agent directory, which
- * `${self}` names, and checked as tau checks a run's inputs and as the
- * container can give them (./paths.ts), its skills, and its APIs, each
+ * the command's arguments bound to them, with its path arguments at their
+ * places in the folder the agent works in, which has its project's path, and
+ * the agent directory, which `${self}` names, where the container shows it,
+ * checked as tau checks a run's inputs and as the container can give them
+ * (./paths.ts), its skills, and its APIs, each
  * linked to fleet's implementation of the same name
  * (fleet-image's apis/), which tau checks fits it, and whose backends must
  * be provided, with every problem found reported together. tau's library
@@ -21,7 +22,7 @@ import { basename } from 'node:path'
 import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from '../box/additions.ts'
 import { implementation } from 'fleet-image/apis/registry'
-import { AGENT_VIEW, nestedPathProblems, pathProblems, place, placeNested } from './paths.ts'
+import { AGENT_VIEW, pathProblems, placeProblems } from './paths.ts'
 import { loadSkills } from './skills.ts'
 import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
 
@@ -38,6 +39,12 @@ export interface PrepareRequest {
   bind: boolean
   /** The caller's working folder, which relative path arguments are resolved against. */
   callerCwd: string
+  /**
+   * The run's project, whose path the folder the agent works in has in its
+   * container; a check has none, and places paths as a run would in the
+   * project the `fleet` command gives by default, the caller's folder.
+   */
+  project?: string
   /** The caller's values of the variables the agent's tau.json lists; any others are left out. */
   env: Record<string, string>
   /** The backends fleet's plugins provide now. */
@@ -72,14 +79,14 @@ function prepareFrom(request: PrepareRequest): Prepared {
   let run: Run | undefined
   if (request.bind) {
     try {
-      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, nested ? placeNested : place, AGENT_VIEW)
+      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, request.project ?? request.callerCwd, AGENT_VIEW)
       prompt = run.prompt
       if (prompt.trim() === '') problems.push(`${tau.dir}/PROMPT.md gives an empty prompt`)
     } catch (error) {
       problems.push(`${tau.dir}: ${message(error)}`)
     }
   }
-  if (run !== undefined && nested) problems.push(...nestedPathProblems(run.paths))
+  if (run !== undefined) problems.push(...placeProblems(run.paths))
   if (run !== undefined && !nested) {
     problems.push(...pathProblems(run.paths, request.dshHome))
     try {

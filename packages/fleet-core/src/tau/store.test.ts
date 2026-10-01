@@ -190,39 +190,37 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const spec: Spec = {
       version: 3, agent: { name: 'paths', source: agent }, args: [], prompt: 'x', skills: [], apis: [], env: { LANG: 'C.UTF-8' },
       paths: [
-        { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md'), view: '/tau/in/rules/rules.md' },
-        { name: 'data', type: 'dir', role: 'share', host: join(dir, 'data'), view: join(dir, 'data') },
-        { name: 'report', type: 'file', role: 'out', host: report, view: '/tau/out/report/report.md' },
-        { name: 'summary', type: 'file', role: 'out', host: summary, view: '/tau/out/summary/summary.md' },
+        { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md'), view: '/w/rules.md' },
+        { name: 'report', type: 'file', role: 'out', host: report, view: '/w/out/report.md' },
+        { name: 'summary', type: 'file', role: 'out', host: summary, view: '/w/summary.md' },
       ],
     }
     await tau.create('session-p' as SessionId, spec)
     const folder = join(home, 'fleet', 'sessions', 'session-p')
     const agentCopy = { source: join(folder, 'agent'), target: '/tau/agent' }
-    // An in path is its snapshot, which fleet-box copies into the container as it does the agent's.
-    const rulesCopy = { source: join(folder, 'in', 'rules'), target: '/tau/in/rules/rules.md' }
-    // Of the caller's files, only its share path is mounted; the container's folder is its own.
+    // An in path is its snapshot, which fleet-box copies into the container at its place, as it does the agent's.
+    const rulesCopy = { source: join(folder, 'in', 'rules'), target: '/w/rules.md' }
+    // Nothing of the caller's is mounted; the container's folder is its own.
     assert.deepEqual(configured.get('session-p'), {
       ownFolder: true,
-      mounts: [{ source: join(dir, 'data'), target: join(dir, 'data'), readonly: false }],
+      mounts: [],
       copies: [agentCopy, rulesCopy],
       env: { LANG: 'C.UTF-8' },
-      directories: ['/tau/out/report', '/tau/out/summary'],
+      directories: ['/w/out', '/w'],
     })
     await writeFile(join(dir, 'rules.md'), 'changed later')
     assert.equal(await readFile(join(folder, 'in', 'rules'), 'utf8'), 'be kind')
 
     // The agent left nothing: the check says so, and the caller's file stays.
     const nothing = await tau.publish('session-p' as SessionId, 3)
-    assert.deepEqual(nothing, ['report: the agent left nothing at /tau/out/report/report.md', 'summary: the agent left nothing at /tau/out/summary/summary.md'])
+    assert.deepEqual(nothing, ['report: the agent left nothing at /w/out/report.md', 'summary: the agent left nothing at /w/summary.md'])
     assert.equal(await readFile(report, 'utf8'), 'old report')
 
     // A turn running now keeps the outputs where they are, and the turn unpublished.
-    const reportView = join(container, '/tau/out/report/report.md')
-    await mkdir(join(container, '/tau/out/report'), { recursive: true })
-    await mkdir(join(container, '/tau/out/summary'), { recursive: true })
+    const reportView = join(container, '/w/out/report.md')
+    await mkdir(join(container, '/w/out'), { recursive: true })
     await writeFile(reportView, 'new report')
-    await writeFile(join(container, '/tau/out/summary/summary.md'), 'short')
+    await writeFile(join(container, '/w/summary.md'), 'short')
     running = true
     assert.match((await tau.publish('session-p' as SessionId, 7))[0]!, /started another turn/u)
     running = false
@@ -252,23 +250,30 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await rm(reportView)
     await symlink('/etc/passwd', reportView)
     const linked = await tau.publish('session-p' as SessionId, 9)
-    assert.deepEqual(linked, ['report: /tau/out/report/report.md is a symlink, which is not copied out'])
+    assert.deepEqual(linked, ['report: /w/out/report.md is a symlink, which is not copied out'])
     assert.equal(await readFile(report, 'utf8'), 'new report')
 
-    // A share path the run did not leave as declared fails it, and nothing is published.
-    await rm(reportView)
-    await writeFile(reportView, 'unchecked')
-    await rm(join(dir, 'data'), { recursive: true })
-    assert.deepEqual(await tau.publish('session-p' as SessionId, 10), [`data: ${join(dir, 'data')} is gone`])
-    assert.equal(await readFile(report, 'utf8'), 'new report')
-
-    // A run with only share paths is checked too.
-    await mkdir(join(dir, 'tree'))
-    await tau.create('session-io' as SessionId, { ...spec, env: {}, paths: [{ name: 'tree', type: 'dir', role: 'share', host: join(dir, 'tree'), view: join(dir, 'tree') }] })
-    assert.deepEqual(await tau.publish('session-io' as SessionId, 1), [])
-    await rm(join(dir, 'tree'), { recursive: true })
-    await writeFile(join(dir, 'tree'), 'a file now')
-    assert.deepEqual(await tau.publish('session-io' as SessionId, 2), [`tree: ${join(dir, 'tree')} is not a folder`])
+    // An out that shares its place with an in starts as the in's snapshot, and what the agent leaves there replaces the caller's path.
+    const pages = join(dir, 'pages')
+    await mkdir(pages)
+    await writeFile(join(pages, 'a.md'), 'a')
+    await tau.create('session-update' as SessionId, { ...spec, env: {}, paths: [
+      { name: 'pages', type: 'dir', role: 'in', host: pages, view: '/w/pages' },
+      { name: 'edited', type: 'dir', role: 'out', host: pages, view: '/w/pages' },
+    ] })
+    const updated = join(home, 'fleet', 'sessions', 'session-update')
+    assert.deepEqual(configured.get('session-update'), {
+      ownFolder: true,
+      mounts: [],
+      copies: [{ source: join(updated, 'agent'), target: '/tau/agent' }, { source: join(updated, 'in', 'pages'), target: '/w/pages' }],
+      directories: ['/w'],
+    })
+    await mkdir(join(container, '/w/pages'), { recursive: true })
+    await writeFile(join(container, '/w/pages/a.md'), 'A')
+    await writeFile(join(container, '/w/pages/b.md'), 'B')
+    assert.deepEqual(await tau.publish('session-update' as SessionId, 1), [])
+    assert.deepEqual((await readdir(pages)).sort(), ['a.md', 'b.md'])
+    assert.equal(await readFile(join(pages, 'a.md'), 'utf8'), 'A')
 
     // Out paths that overlap are published outermost first, whatever their order, and a folder over a folder is the same folder after.
     const site = join(dir, 'site')
@@ -276,14 +281,13 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await writeFile(join(site, 'stale.html'), 'stale')
     const siteFolder = (await stat(site)).ino
     await tau.create('session-nested' as SessionId, { ...spec, env: {}, paths: [
-      { name: 'note', type: 'file', role: 'out', host: join(site, 'note.md'), view: '/tau/out/note/note.md' },
-      { name: 'site', type: 'dir', role: 'out', host: site, view: '/tau/out/site/site' },
+      { name: 'note', type: 'file', role: 'out', host: join(site, 'note.md'), view: '/w/note.md' },
+      { name: 'site', type: 'dir', role: 'out', host: site, view: '/w/site' },
     ] })
-    await mkdir(join(container, '/tau/out/site/site'), { recursive: true })
-    await writeFile(join(container, '/tau/out/site/site/index.html'), 'index')
-    await writeFile(join(container, '/tau/out/site/site/note.md'), 'the site\'s own note')
-    await mkdir(join(container, '/tau/out/note'), { recursive: true })
-    await writeFile(join(container, '/tau/out/note/note.md'), 'the note')
+    await mkdir(join(container, '/w/site'), { recursive: true })
+    await writeFile(join(container, '/w/site/index.html'), 'index')
+    await writeFile(join(container, '/w/site/note.md'), 'the site\'s own note')
+    await writeFile(join(container, '/w/note.md'), 'the note')
     assert.deepEqual(await tau.publish('session-nested' as SessionId, 1), [])
     assert.deepEqual((await readdir(site)).sort(), ['index.html', 'note.md'])
     assert.equal(await readFile(join(site, 'note.md'), 'utf8'), 'the note')
@@ -292,7 +296,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     // An in path that cannot be copied is the caller's to fix, and leaves nothing behind.
     await mkdir(join(dir, 'odd'))
     execFileSync('mkfifo', [join(dir, 'odd', 'pipe')])
-    const refused = await tau.create('session-odd' as SessionId, { ...spec, env: {}, paths: [{ name: 'odd', type: 'dir', role: 'in', host: join(dir, 'odd'), view: '/tau/in/odd/odd' }] })
+    const refused = await tau.create('session-odd' as SessionId, { ...spec, env: {}, paths: [{ name: 'odd', type: 'dir', role: 'in', host: join(dir, 'odd'), view: '/w/odd' }] })
       .then(() => undefined, (error: unknown) => error)
     assert.ok(refused instanceof InputError)
     assert.deepEqual(refused.problems, [`odd: ${join(dir, 'odd', 'pipe')} is neither a file, a folder nor a symlink, which fleet does not copy in`])
@@ -368,9 +372,9 @@ test('a run started in a container takes its in paths from the caller\'s contain
     const spec: Spec = {
       version: 3, agent: { name: 'count', source: '/workspace/agents/count' }, caller: 'session-caller', args: [], prompt: 'x', skills: [], apis: [], env: {},
       paths: [
-        { name: 'text', type: 'file', role: 'in', host: '/workspace/a.txt', view: '/tau/in/text/a.txt' },
-        { name: 'data', type: 'dir', role: 'in', host: '/workspace/data', view: '/tau/in/data/data' },
-        { name: 'report', type: 'file', role: 'out', host: '/tmp/out/report.md', view: '/tau/out/report/report.md' },
+        { name: 'text', type: 'file', role: 'in', host: '/workspace/a.txt', view: '/w/text' },
+        { name: 'data', type: 'dir', role: 'in', host: '/workspace/data', view: '/w/data' },
+        { name: 'report', type: 'file', role: 'out', host: '/tmp/out/report.md', view: '/w/out/report.md' },
       ],
     }
     // The paths are checked in the caller's container, as tau checks them.
@@ -396,13 +400,13 @@ test('a run started in a container takes its in paths from the caller\'s contain
     assert.equal(await readFile(join(folder, 'in', 'text'), 'utf8'), 'one two')
     assert.equal(await readlink(join(folder, 'in', 'data', 'link')), 'b.txt')
     // Its container's folder is its own, as any run's is, and so is a fork's of it, as its source's is.
-    assert.deepEqual(configured.get('session-run')?.directories, ['/tau/out/report'])
+    assert.deepEqual(configured.get('session-run')?.directories, ['/w/out'])
     assert.equal(configured.get('session-run')?.ownFolder, true)
     await tau.configureFork('session-run-fork' as SessionId, { spec, owner: 'session-run' as SessionId })
     assert.equal(configured.get('session-run-fork')?.ownFolder, true)
 
-    await mkdir(inside('session-run', '/tau/out/report'), { recursive: true })
-    await writeFile(inside('session-run', '/tau/out/report/report.md'), '2')
+    await mkdir(inside('session-run', '/w/out'), { recursive: true })
+    await writeFile(inside('session-run', '/w/out/report.md'), '2')
     assert.deepEqual(await tau.publish('session-run' as SessionId, 0), [])
     assert.deepEqual(copiedIn, ['session-caller:/tmp/out/report.md'])
     assert.equal(await readFile(inside('session-caller', '/tmp/out/report.md'), 'utf8'), '2')

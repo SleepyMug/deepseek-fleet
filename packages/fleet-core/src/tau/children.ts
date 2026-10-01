@@ -7,18 +7,17 @@
  * this module's subagent provider in a container of its own (fleet-box's
  * world.ts), which mounts nothing. The call names no project: the run
  * belongs to its caller's, which it takes with dsh's other fields of a
- * child's session, so a fork of it belongs there too. As any run, it gets
- * its agent's skills, APIs and TypeScript tools (./agent.ts), so its
- * programs may run taus of their own.
+ * child's session, so a fork of it belongs there too, and places its paths
+ * in it as any run does (./paths.ts). As any run, it gets its agent's
+ * skills, APIs and TypeScript tools (./agent.ts), so its programs may run
+ * taus of their own.
  *
  * The caller's container is the model's, so nothing the call names is read
  * on the host: the agent directory is copied out of the container through
  * its helper, with its symlinks, and refused if one leads out of it, before
  * fleet-tau reads it as it reads any (./prepare.ts); the `in` paths are
  * copied out the same way, and the `out` paths copied back into the caller's
- * container once the run completes (./store.ts). A `share` path would name
- * the caller's files in its container, which no other container can mount,
- * so a procedural tau is refused.
+ * container once the run completes (./store.ts).
  *
  * The call waits for the run, however long it takes. The program going
  * away, as when the tool call that ran it is cancelled, cancels the run, as
@@ -151,8 +150,10 @@ async function start(
     if (leaving.length > 0) {
       throw cannotRun(request.agent, leaving.map(link => `${posix.join(request.agent, link)} is a symlink that leads out of the agent directory`))
     }
+    const project = parent.session.header.cwd
+    if (project === undefined) throw new Error(`the session ${caller} has no project for the run to belong to`)
     const prepared = await ctx.fleetTau.prepare({
-      agent, source: request.agent, caller, args: request.args, bind: true, callerCwd: request.callerCwd, env: request.env,
+      agent, source: request.agent, caller, args: request.args, bind: true, callerCwd: request.callerCwd, project, env: request.env,
     })
     if (!prepared.ok) throw cannotRun(request.agent, prepared.problems)
     const prompt: ContentBlock[] = [{ type: 'text', text: prepared.spec.prompt }]

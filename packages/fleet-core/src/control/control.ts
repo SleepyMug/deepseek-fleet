@@ -71,7 +71,7 @@ export class FleetControl {
         throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
       }
       const prepared = await this.ctx.fleetTau.prepare({
-        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, env: task.env,
+        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, project, env: task.env,
       })
       if (!prepared.ok) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${prepared.problems.join('\n  ')}`)
       spec = prepared.spec

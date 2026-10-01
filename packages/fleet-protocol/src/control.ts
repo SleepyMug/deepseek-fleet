@@ -78,7 +78,7 @@ export interface Outcome {
   text: string
   /** The failure of a turn that ended in `error`. */
   error?: { code: string; message: string }
-  /** Why the run did not leave what its tau declares after its completed turn, its out paths published and its share paths as declared; absent when it did, or it has none. */
+  /** Why the run did not leave what its tau declares after its completed turn, its out paths published; absent when it did, or it has none. */
   outputs?: string[]
 }
 

@@ -41,7 +41,7 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
 test('every problem is reported together', async () => {
   await withAgent({
     'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "share"}], "env": ["FLEET_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
+    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "in"}], "env": ["FLEET_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
     'skills/bad/SKILL.md': 'no frontmatter',
   }, (dir) => {
     const prepared = prepare(request(dir, []))
@@ -53,7 +53,7 @@ test('every problem is reported together', async () => {
   })
 })
 
-test('path arguments are bound where the container shows them, and variables as the caller has them', async () => {
+test('path arguments are bound at their places in the project, and variables as the caller has them', async () => {
   const outside = await mkdtemp(join(tmpdir(), 'fleet-tau-outside-'))
   try {
     await mkdir(join(outside, 'src'))
@@ -62,34 +62,53 @@ test('path arguments are bound where the container shows them, and variables as 
     await withAgent({
       'PROMPT.md': 'Edit ${src} into ${report} with ${rules}',
       'tau.json': JSON.stringify({
-        args: [{ name: 'src', type: 'dir', role: 'share' }, { name: 'report', type: 'file', role: 'out' }, { name: 'rules', type: 'file', role: 'in' }],
+        args: [
+          { name: 'src', type: 'dir', role: 'in', at: 'site' },
+          { name: 'edited', type: 'dir', role: 'out', at: 'site' },
+          { name: 'report', type: 'file', role: 'out' },
+          { name: 'rules', type: 'file', role: 'in', at: 'rules.md' },
+        ],
         env: ['LANG', 'UNSET'],
       }),
     }, (dir) => {
-      const args = [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'PROMPT.md')]
-      const prepared = prepare({ ...request(dir, args), env: { LANG: 'C.UTF-8' } })
+      const args = [join(outside, 'src'), join(outside, 'src'), join(outside, 'report.md'), join(dir, 'PROMPT.md')]
+      const run = (paths: string[]): PrepareRequest => ({ ...request(dir, paths), project: '/home/u/proj' })
+      const prepared = prepare({ ...run(args), env: { LANG: 'C.UTF-8' } })
       assert.ok(prepared.ok, JSON.stringify(prepared))
       assert.deepEqual(prepared.spec.env, { LANG: 'C.UTF-8' })
       assert.deepEqual(prepared.spec.paths.map(({ name, type, role, host, view }) => [name, type, role, host, view]), [
-        ['src', 'dir', 'share', join(outside, 'src'), join(outside, 'src')],
-        ['report', 'file', 'out', join(outside, 'report.md'), '/tau/out/report/report.md'],
-        ['rules', 'file', 'in', join(dir, 'PROMPT.md'), '/tau/in/rules/PROMPT.md'],
+        ['src', 'dir', 'in', join(outside, 'src'), '/home/u/proj/site'],
+        ['edited', 'dir', 'out', join(outside, 'src'), '/home/u/proj/site'],
+        ['report', 'file', 'out', join(outside, 'report.md'), '/home/u/proj/report'],
+        ['rules', 'file', 'in', join(dir, 'PROMPT.md'), '/home/u/proj/rules.md'],
       ])
-      assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into /tau/out/report/report.md with /tau/in/rules/PROMPT.md`)
-      // Paths may overlap, a share path is shown at its real path, and no path may touch the dsh home.
-      const overlapping = prepare(request(dir, [join(outside, 'link'), join(outside, 'link', 'report.md'), join(outside, 'link', 'rules.md')]))
+      assert.equal(prepared.spec.prompt, 'Edit /home/u/proj/site into /home/u/proj/report with /home/u/proj/rules.md')
+      // A check has no project, and places paths in the caller's folder, the project a run gets by default.
+      const checked = prepare(request(dir, args))
+      assert.ok(checked.ok, JSON.stringify(checked))
+      assert.equal(checked.spec.prompt, 'Edit /caller/site into /caller/report with /caller/rules.md')
+      // Paths may overlap, and no path may touch the dsh home.
+      const overlapping = prepare(run([join(outside, 'link'), join(outside, 'link'), join(outside, 'link', 'report.md'), join(outside, 'link', 'rules.md')]))
       assert.ok(overlapping.ok, JSON.stringify(overlapping))
-      assert.deepEqual(overlapping.spec.paths.map(({ view }) => view), [join(outside, 'src'), '/tau/out/report/report.md', '/tau/in/rules/rules.md'])
-      const home = prepare({ ...request(dir, args), dshHome: dir })
+      const home = prepare({ ...run(args), dshHome: dir })
       assert.ok(!home.ok)
       assert.deepEqual(home.problems.map(problem => problem.split(':')[0]), ['rules'])
-      const missing = prepare(request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'missing.md')]))
+      const missing = prepare(run([join(outside, 'src'), join(outside, 'src'), join(outside, 'report.md'), join(dir, 'missing.md')]))
       assert.ok(!missing.ok)
       assert.match(missing.problems.join('\n'), /rules: .*missing\.md/u)
     })
   } finally {
     await rm(outside, { recursive: true, force: true })
   }
+})
+
+test('a place the container cannot give, in a project at a system folder, is refused', async () => {
+  await withAgent({ 'PROMPT.md': 'Read ${lib}', 'tau.json': '{"args": [{"name": "lib", "type": "dir", "role": "in"}]}' }, (dir) => {
+    const prepared = prepare({ ...request(dir, [dir]), project: '/usr' })
+    assert.ok(!prepared.ok)
+    assert.deepEqual(prepared.problems, ['lib: its place /usr/lib lies in /usr, which the container keeps for itself'])
+    assert.ok(prepare({ ...request(dir, [dir]), project: '/srv/proj' }).ok)
+  })
 })
 
 test('a directory that is no tau, or whose tau.json breaks the spec, is refused', async () => {
@@ -154,7 +173,9 @@ test('a run started in a container reads a copy, names it where the caller has i
     'PROMPT.md': 'Count ${text} into ${report}',
     'tau.json': '{"args": [{"name": "text", "type": "file", "role": "in"}, {"name": "report", "type": "file", "role": "out"}], "env": ["LANG"]}',
   }, (dir) => {
-    const nested = (args: string[]): PrepareRequest => ({ ...request(dir, args), source: '/workspace/agents/count', caller: 'session-caller', callerCwd: '/workspace' })
+    const nested = (args: string[]): PrepareRequest => ({
+      ...request(dir, args), source: '/workspace/agents/count', caller: 'session-caller', callerCwd: '/workspace', project: '/home/u/proj',
+    })
     // Neither path exists anywhere on the host: the caller's are in its container.
     const prepared = prepare({ ...nested(['a.txt', '/tmp/out/report.md']), env: { LANG: 'C', PATH: '/bin' } })
     assert.ok(prepared.ok, JSON.stringify(prepared))
@@ -162,27 +183,14 @@ test('a run started in a container reads a copy, names it where the caller has i
     assert.equal(prepared.spec.caller, 'session-caller')
     assert.equal(prepared.title, 'count a.txt /tmp/out/report.md')
     assert.deepEqual(prepared.spec.env, { LANG: 'C' })
+    // Placed in the caller's project, as any run's are.
     assert.deepEqual(prepared.spec.paths.map(({ host, view }) => [host, view]), [
-      ['/workspace/a.txt', '/tau/in/text/a.txt'],
-      ['/tmp/out/report.md', '/tau/out/report/report.md'],
+      ['/workspace/a.txt', '/home/u/proj/text'],
+      ['/tmp/out/report.md', '/home/u/proj/report'],
     ])
     const refused = prepare(nested(['a.txt']))
     assert.ok(!refused.ok)
     assert.match(refused.problems[0]!, /^\/workspace\/agents\/count: /u)
     assert.ok(refused.problems.every(problem => !problem.includes(dir)), JSON.stringify(refused.problems))
-  })
-})
-
-test('a run started in a container takes no share path', async () => {
-  await withAgent({
-    'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "share"}]}',
-  }, (dir) => {
-    const prepared = prepare({ ...request(dir, ['/workspace/src']), source: '/workspace/edit', caller: 'session-caller' })
-    assert.ok(!prepared.ok)
-    assert.deepEqual(prepared.problems, [
-      'src: /workspace/src is a share path, which a run started in a container cannot take: no other container can mount the caller\'s files, '
-      + 'so only a tau without share paths runs here',
-    ])
   })
 })
