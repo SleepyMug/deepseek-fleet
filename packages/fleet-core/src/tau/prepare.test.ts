@@ -102,15 +102,6 @@ test('path arguments are bound at their places in the project, and variables as 
   }
 })
 
-test('a place the container cannot give, in a project at a system folder, is refused', async () => {
-  await withAgent({ 'PROMPT.md': 'Read ${lib}', 'tau.json': '{"args": [{"name": "lib", "type": "dir", "role": "in"}]}' }, (dir) => {
-    const prepared = prepare({ ...request(dir, [dir]), project: '/usr' })
-    assert.ok(!prepared.ok)
-    assert.deepEqual(prepared.problems, ['lib: its place /usr/lib lies in /usr, which the container keeps for itself'])
-    assert.ok(prepare({ ...request(dir, [dir]), project: '/srv/proj' }).ok)
-  })
-})
-
 test('a directory that is no tau, or whose tau.json breaks the spec, is refused', async () => {
   await withAgent({ 'README.md': 'x' }, (dir) => {
     const prepared = prepare(request(dir, []))

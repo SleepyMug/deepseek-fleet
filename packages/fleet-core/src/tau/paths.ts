@@ -1,16 +1,12 @@
 /**
  * Where a session's container shows its agent and the agent's path
- * arguments, and the paths it cannot give. The agent's snapshot is copied to
+ * arguments, and the paths it cannot take. The agent's snapshot is copied to
  * /tau/agent, which the prompt names as `${self}`. The agent works in a
  * folder of the container's own that has its project's path (./store.ts),
  * where tau puts each path argument at its place, as tau.json declares it,
  * and the prompt names it there: an `in` path is a snapshot copied there, and
  * an `out` path is what the agent leaves there, which is copied out once the
  * run completes. Nothing else of the caller's is in the container.
- *
- * A place may not be, hold or lie in the container's system folders, the
- * kernel's or fleet's own, as it would in a project at such a path, or at
- * `/`: a copy there could replace what the container runs on.
  *
  * The caller's paths may overlap each other, but none may be, hold or lie in
  * the dsh home, where fleet keeps its sessions: a snapshot would copy it into
@@ -27,24 +23,10 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { BoundPath } from '@sleepymug/tau'
-import { PACKAGE_ROOT, RUN_ROOT, TAU_ROOT } from 'fleet-image/layout'
+import { TAU_ROOT } from 'fleet-image/layout'
 
 /** Where a session's container sees its agent's snapshot. */
 export const AGENT_VIEW = `${TAU_ROOT}/agent`
-
-/** Folders a place may not be, hold or lie in: the system's, the kernel's, and fleet's own. */
-const KEPT = ['/bin', '/sbin', '/lib', '/lib64', '/usr', '/etc', '/var', '/proc', '/sys', '/dev', PACKAGE_ROOT, TAU_ROOT, RUN_ROOT]
-
-/** @returns a problem for each path argument whose place, its view, the container cannot give it. */
-export function placeProblems(paths: readonly Pick<BoundPath, 'name' | 'view'>[]): string[] {
-  return paths.flatMap(({ name, view }) => {
-    const covered = KEPT.find(folder => within(folder, view))
-    if (covered !== undefined) return [`${name}: its place ${view} would cover ${covered} in the container`]
-    const enclosing = KEPT.find(folder => within(view, folder))
-    if (enclosing !== undefined) return [`${name}: its place ${view} lies in ${enclosing}, which the container keeps for itself`]
-    return []
-  })
-}
 
 /**
  * @param paths - the bound path arguments of a run started on the host.

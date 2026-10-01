@@ -315,8 +315,7 @@
 # `out` paths are published outermost first, and one over an existing folder
 # goes in entry by entry, so a folder that stays a folder keeps any mount of
 # it. Paths may overlap each other, but none may be, hold or lie in the dsh
-# home, and no place may be, hold or lie in the container's system or fleet
-# folders. The variables tau.json lists are passed from the caller's
+# home. The variables tau.json lists are passed from the caller's
 # environment.
 #
 # A run belongs to a project, the folder `fleet run --project` names (the

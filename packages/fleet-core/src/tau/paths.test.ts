@@ -3,22 +3,9 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { pathProblems, placeProblems } from './paths.ts'
+import { pathProblems } from './paths.ts'
 
 const problems = (paths: Parameters<typeof pathProblems>[0]) => pathProblems(paths, '/dsh')
-
-test('a place may not be, hold or lie in the system\'s, the kernel\'s or fleet\'s folders', () => {
-  const refused = ['/usr', '/etc', '/usr/lib', '/usr/local/src/proj/a', '/var/www/a', '/opt/fleet', '/tau', '/tau/in/x', '/run', '/proc/x', '/dev/shm', '/run/fleet/x', '/']
-  for (const view of refused) assert.equal(placeProblems([{ name: 'p', view }]).length, 1, view)
-  assert.deepEqual(placeProblems([{ name: 'all', view: '/' }, { name: 'lib', view: '/usr/lib' }, { name: 'shm', view: '/dev/shm' }]), [
-    'all: its place / would cover /bin in the container',
-    'lib: its place /usr/lib lies in /usr, which the container keeps for itself',
-    'shm: its place /dev/shm lies in /dev, which the container keeps for itself',
-  ])
-  for (const view of ['/home/u/proj/site', '/srv/proj/report.md', '/tmp/in', '/opt/data', '/opt/fleet-tau', '/run/user/1000/x', '/root/x']) {
-    assert.deepEqual(placeProblems([{ name: 'p', view }]), [], view)
-  }
-})
 
 test('the caller\'s paths may be anywhere but the dsh home, the container\'s own folders included', () => {
   for (const host of ['/work/a.md', '/work', '/usr', '/tau/x', '/proc/x']) {

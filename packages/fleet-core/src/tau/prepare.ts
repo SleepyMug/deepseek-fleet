@@ -3,7 +3,7 @@
  * the command's arguments bound to them, with its path arguments at their
  * places in the folder the agent works in, which has its project's path, and
  * the agent directory, which `${self}` names, where the container shows it,
- * checked as tau checks a run's inputs and as the container can give them
+ * checked as tau checks a run's inputs and as the host can give them
  * (./paths.ts), its skills, and its APIs, each
  * linked to fleet's implementation of the same name
  * (fleet-image's apis/), which tau checks fits it, and whose backends must
@@ -22,7 +22,7 @@ import { basename } from 'node:path'
 import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from '../box/additions.ts'
 import { implementation } from 'fleet-image/apis/registry'
-import { AGENT_VIEW, pathProblems, placeProblems } from './paths.ts'
+import { AGENT_VIEW, pathProblems } from './paths.ts'
 import { loadSkills } from './skills.ts'
 import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
 
@@ -86,7 +86,6 @@ function prepareFrom(request: PrepareRequest): Prepared {
       problems.push(`${tau.dir}: ${message(error)}`)
     }
   }
-  if (run !== undefined) problems.push(...placeProblems(run.paths))
   if (run !== undefined && !nested) {
     problems.push(...pathProblems(run.paths, request.dshHome))
     try {
