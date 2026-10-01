@@ -313,17 +313,21 @@
 # /tau/out/<name>/ and published to the caller after a completed turn a
 # `fleet` command waited on; and a `share` path mounted at its real path,
 # the same in the container as on the host. Nothing else of the caller's is
-# mounted: the agent works in a folder of the container's own at the path of
-# the project, the workspace dir, so it sees the project's files only through
-# a `share` path; a `share` path that is the project mounts it as fleet-box
-# mounts it for any other session. A run of a prompt (`fleet run -p`) works
-# in the project, which its container mounts. Overlapping `out` paths are
-# published outermost first, and one over an existing folder goes in entry
-# by entry, so a folder that stays a folder keeps any mount of it. Paths may
-# overlap each other and the project, but none may be, hold or lie in the
-# dsh home, and a `share` path may not be, hold or lie in the container's
-# system or fleet folders. The variables tau.json lists are passed from the
-# caller's environment.
+# in the container. Overlapping `out` paths are published outermost first,
+# and one over an existing folder goes in entry by entry, so a folder that
+# stays a folder keeps any mount of it. Paths may overlap each other, but
+# none may be, hold or lie in the dsh home, and a `share` path may not be,
+# hold or lie in the container's system or fleet folders. The variables
+# tau.json lists are passed from the caller's environment.
+#
+# A run belongs to a project, the folder `fleet run --project` names (the
+# current one by default), which dsh registers as the session's workspace
+# and the web UI lists it under; a run started inside a container belongs
+# to its caller's. To a run of an agent directory that is all the project
+# is: nothing of it is mounted, and the agent works in a folder of the
+# container's own that only has the project's path, since dsh runs a
+# session's tools in its workspace's folder. A run of a prompt (`fleet run
+# -p`) works in the project itself, which its container mounts.
 
 - insert:
     - id: fleet-tau-backends
@@ -358,7 +362,7 @@
 # It listens at $DSH_HOME/fleet/control.sock, which only the owner can open,
 # and refuses to start while another dsh process serves that socket. A run
 # has fleet-tau read and store its agent directory, then starts its session
-# through dsh's session controller, so the web UI lists it.
+# through dsh's session controller, so the web UI lists it under its project.
 
 - insert:
     - id: fleet-control

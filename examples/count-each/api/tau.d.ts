@@ -1,12 +1,11 @@
 /**
  * Runs other agents in the tau format, each as a run of its own: the fleet
- * host starts it as a subagent of this session, in a container of its own,
- * where it works in a folder of that container's own, at the same path as
- * this session works in, with nothing of this container mounted. Its
- * `in` paths are copied from this container when it starts, and its `out`
- * paths are copied back into this container once it completes. A tau with
- * a `share` path cannot run here: no other container can share this one's
- * files.
+ * host starts it as a subagent of this session, in this session's project,
+ * in a container of its own, where it works in a folder of that container's
+ * own, with nothing of this container mounted. Its `in` paths are copied
+ * from this container when it starts, and its `out` paths are copied back
+ * into this container once it completes. A tau with a `share` path cannot
+ * run here: no other container can share this one's files.
  *
  * @packageDocumentation
  */

@@ -51,13 +51,15 @@ export class FleetControl {
   }
 
   /**
-   * Start a session in a folder, registered as a workspace so the web UI
-   * lists it there, and give it its task: a prompt, or an agent directory,
-   * which is read first, so one with problems is refused before anything exists.
+   * Start a session in a project, a folder registered as a dsh workspace,
+   * which the web UI lists it under, and give it its task: a prompt, which
+   * works in the project, or an agent directory, which is read first, so one
+   * with problems is refused before anything exists, and which belongs to the
+   * project and nothing more (../tau/store.ts).
    * @param started - told the session once its task is accepted, so its turn can be cancelled, before the wait.
    */
   async run(request: RequestOf<'run'>, signal: AbortSignal, started: (session: string) => void): Promise<Results['run']> {
-    const workspaceDir = await this.workspaceDir(request.cwd)
+    const project = await this.project(request.project)
     const { task } = request
     // What the session gets, its prompt included, and its title, which only an agent directory gives.
     let spec: Spec
@@ -75,7 +77,7 @@ export class FleetControl {
       spec = prepared.spec
       title = prepared.title
     }
-    const workspace = await this.ctx.workspaceRegistry.create(workspaceDir)
+    const workspace = await this.ctx.workspaceRegistry.create(project)
     const sessionId = await this.create(workspace.id, spec, signal).catch((error: unknown) => {
       if (error instanceof InputError && 'agent' in task) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${error.problems.join('\n  ')}`)
       throw error
@@ -139,7 +141,7 @@ export class FleetControl {
         return {
           session: item.sessionId,
           ...typeof title === 'string' ? { title } : {},
-          ...item.cwd === undefined ? {} : { cwd: item.cwd },
+          ...item.cwd === undefined ? {} : { project: item.cwd },
           running: item.running,
           updatedAt: item.updatedAt,
         }
@@ -203,11 +205,11 @@ export class FleetControl {
     return {}
   }
 
-  /** A run's project, the workspace dir, as dsh's workspaces have it, through symlinks, refused before anything is read when it cannot be one. */
-  private async workspaceDir(cwd: string): Promise<string> {
-    if (!isAbsolute(cwd)) throw new ControlError('fleet/bad-request', `the project must be an absolute path: ${cwd}`)
-    return await realpathNormalize(cwd).catch((error: unknown) => {
-      throw new ControlError('fleet/bad-request', `the project ${cwd} cannot be used: ${message(error)}`)
+  /** A run's project as dsh's workspaces have it, through symlinks, refused before anything is read when it cannot be one. */
+  private async project(folder: string): Promise<string> {
+    if (!isAbsolute(folder)) throw new ControlError('fleet/bad-request', `the project must be an absolute path: ${folder}`)
+    return await realpathNormalize(folder).catch((error: unknown) => {
+      throw new ControlError('fleet/bad-request', `the project ${folder} cannot be used: ${message(error)}`)
     })
   }
 

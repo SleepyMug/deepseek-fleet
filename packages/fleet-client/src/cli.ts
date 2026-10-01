@@ -4,15 +4,16 @@
  * through the host's control socket. An agent is a directory in the tau
  * format, as for pi-run (@sleepymug/tau's SPEC.md): `fleet run <agent-dir>
  * [args...]` has the host fill its PROMPT.md with the arguments its tau.json
- * declares and give it to a new session of a project, the current folder or
- * the one `--project` names; the session gets the agent's skills, and the
- * APIs it declares, and works in a folder of its container's own, with the
+ * declares and give it to a new session in a project, the current folder or
+ * the one `--project` names, which the web UI lists it under and which is
+ * all the project is to it: the session gets the agent's skills and the APIs
+ * it declares, and works in a folder of its container's own, with the
  * caller's files only as its arguments give them. `fleet run -p <prompt>`
  * gives a session a prompt as it is, without an agent directory, and its
  * container mounts the project to work in. Either way the session gets
  * TypeScript tools that run programs in its container. The session is an
- * ordinary one of the fleet host, so the web UI lists it under its project,
- * and a person can follow or steer it there.
+ * ordinary one of the fleet host, so a person can follow or steer it in the
+ * web UI.
  *
  * A run is one-shot, as a tau's is: its session gets its task, and no
  * later message from the command. `run` and `wait` wait until the session is
@@ -118,7 +119,7 @@ async function main(args: readonly string[]): Promise<number> {
 
 async function run(args: readonly string[]): Promise<number> {
   const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--project': 'value', '--sid-file': 'value', '-p': 'value' })
-  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: projectDir(values.get('--project') ?? process.cwd()) } as const
+  const request = { op: 'run', task: task(positional, values.get('-p')), project: projectDir(values.get('--project') ?? process.cwd()) } as const
   const sidFile = sidFilePath(values.get('--sid-file'))
   if (flags.has('--async')) {
     const { session } = await call({ ...request, wait: false })
@@ -226,7 +227,7 @@ async function list(args: readonly string[]): Promise<number> {
   if (args.length > 0) throw new UsageError('ls takes no arguments')
   const { sessions } = await call({ op: 'list' })
   for (const row of sessions) {
-    const fields = [row.session, row.running ? 'running' : 'idle   ', formatTime(row.updatedAt), row.title ?? '-', row.cwd ?? '-']
+    const fields = [row.session, row.running ? 'running' : 'idle   ', formatTime(row.updatedAt), row.title ?? '-', row.project ?? '-']
     process.stdout.write(`${fields.join('  ')}\n`)
   }
   return EXIT_OK

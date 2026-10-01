@@ -5,12 +5,11 @@
  * here, which runs the tau as a child of the calling session's agent: a
  * one-shot dsh subagent, which the web UI shows under it, started through
  * this module's subagent provider in a container of its own (fleet-box's
- * world.ts), which mounts nothing: as any run of an agent directory, it
- * works in a folder of the container's own at the workspace dir's path,
- * which its caller's session has (./paths.ts), so a fork of it is one of
- * that workspace.
- * As any run, it gets its agent's skills, APIs and TypeScript tools
- * (./agent.ts), so its programs may run taus of their own.
+ * world.ts), which mounts nothing. The call names no project: the run
+ * belongs to its caller's, which it takes with dsh's other fields of a
+ * child's session, so a fork of it belongs there too. As any run, it gets
+ * its agent's skills, APIs and TypeScript tools (./agent.ts), so its
+ * programs may run taus of their own.
  *
  * The caller's container is the model's, so nothing the call names is read
  * on the host: the agent directory is copied out of the container through
@@ -63,6 +62,14 @@ const PROVIDER = 'fleet-tau'
  */
 const runArgs = z.tuple([z.string(), z.array(z.string()), z.string(), z.record(z.string(), z.string())])
 
+/** A call's arguments, named. */
+interface RunRequest {
+  agent: string
+  args: string[]
+  callerCwd: string
+  env: Record<string, string>
+}
+
 /** How a run ended, as fleet-image's apis/tau/ declares it. */
 interface Result {
   ok: boolean
@@ -87,7 +94,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.fleetBackends.provide({
     name: 'tau',
     methods: {
-      run: method(runArgs, ([agent, args, cwd, env], call) => runChild(ctx, home, pending, call.session, { agent, args, cwd, env }, call.signal)),
+      run: method(runArgs, ([agent, args, callerCwd, env], call) => runChild(ctx, home, pending, call.session, { agent, args, callerCwd, env }, call.signal)),
     },
   }), 'fleet-tau backend tau')
 }
@@ -100,9 +107,9 @@ export function apply(ctx: Context): void {
  */
 async function runChild(
   ctx: Context, home: string, pending: Pending, caller: SessionId,
-  request: { agent: string; args: string[]; cwd: string; env: Record<string, string> }, signal: AbortSignal,
+  request: RunRequest, signal: AbortSignal,
 ): Promise<Result> {
-  if (!posix.isAbsolute(request.agent) || !posix.isAbsolute(request.cwd)) {
+  if (!posix.isAbsolute(request.agent) || !posix.isAbsolute(request.callerCwd)) {
     throw new Error('the agent directory and the folder the run is started from must be absolute paths in the container')
   }
   const parent = ctx.agents.get(caller)
@@ -131,7 +138,7 @@ async function runChild(
  */
 async function start(
   ctx: Context, home: string, pending: Pending, parent: Agent, caller: SessionId,
-  request: { agent: string; args: string[]; cwd: string; env: Record<string, string> }, signal: AbortSignal,
+  request: RunRequest, signal: AbortSignal,
 ): Promise<SubagentRun> {
   await mkdir(join(home, 'fleet', 'staging'), { recursive: true, mode: 0o700 })
   const staging = await mkdtemp(join(home, 'fleet', 'staging', 'run-'))
@@ -145,7 +152,7 @@ async function start(
       throw cannotRun(request.agent, leaving.map(link => `${posix.join(request.agent, link)} is a symlink that leads out of the agent directory`))
     }
     const prepared = await ctx.fleetTau.prepare({
-      agent, source: request.agent, caller, args: request.args, bind: true, callerCwd: request.cwd, env: request.env,
+      agent, source: request.agent, caller, args: request.args, bind: true, callerCwd: request.callerCwd, env: request.env,
     })
     if (!prepared.ok) throw cannotRun(request.agent, prepared.problems)
     const prompt: ContentBlock[] = [{ type: 'text', text: prepared.spec.prompt }]

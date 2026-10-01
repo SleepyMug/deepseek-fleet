@@ -20,26 +20,31 @@
  * path is its snapshot, which the session keeps however long it lasts,
  * whatever becomes of the caller's path; the folder an `out` path goes in
  * is made; and a `share` path is mounted from the caller at its real path.
- * Nothing else of the caller's is: the workspace dir is not mounted, and the
- * agent works in a folder of the container's own at its path, so it has the
- * caller's files only as its paths give them. The container gets the
+ * Nothing else of the caller's is in the container. The container gets the
  * caller's values of the variables tau.json lists as well. After a
  * completed turn, the command that waited on it has the store publish the
- * `out` paths ({@link FleetTau.publish}). A run of a prompt, which has no
- * paths, works in the workspace dir, which its container mounts.
+ * `out` paths ({@link FleetTau.publish}).
+ *
+ * A run belongs to a project, the folder dsh registers as its session's
+ * workspace, which the web UI lists it under. To a run of an agent
+ * directory that is all the project is: nothing of it is mounted, and the
+ * agent works in a folder of the container's own that only has the
+ * project's path, since dsh runs a session's tools in its workspace's
+ * folder. A run of a prompt, which has no paths, works in the project
+ * itself, which its container mounts.
  *
  * A fork of such a session has no folder in the store: it takes its
  * source's spec, and its container copies of the source's snapshots, which
- * never change, and mounts the workspace dir only if its source's does; but
- * none of its other paths or its variables, which belong to the run that
- * started the source.
+ * never change, and mounts the project only if its source's does; but none
+ * of its other paths or its variables, which belong to the run that started
+ * the source.
  *
  * A run started inside a session's container (./children.ts) is stored the
  * same way, as a subagent of the calling session that owns a container of
- * its own, but its caller's paths are in the calling session's container:
- * its `in` paths are copied out of that container, and checked there with
- * the folders of its `out` paths (./inputs.ts), and its `out` paths are
- * published back into it.
+ * its own and belongs to the caller's project, but its caller's paths are
+ * in the calling session's container: its `in` paths are copied out of that
+ * container, and checked there with the folders of its `out` paths
+ * (./inputs.ts), and its `out` paths are published back into it.
  * @module fleet-core/tau/store
  */
 
@@ -271,7 +276,7 @@ export class FleetTau extends Service {
    * fork has no folder in the store; but none of its other paths or its
    * variables. It works in a folder of its container's own when its source
    * does, as the source's additions say, so a fork of a run made before runs
-   * had one still mounts the workspace dir, as its source does.
+   * had one still mounts the project, as its source does.
    */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
     const ownFolder = this.self.fleetBox.hasOwnFolder(found.owner)
@@ -404,10 +409,9 @@ export class FleetTau extends Service {
 }
 
 /**
- * A run of an agent directory works in a folder of its own container's
- * (./paths.ts), not a mounted workspace dir, so that the agent has the
- * caller's files only as its paths give them; a run of a prompt has nothing
- * else, and works in the workspace dir.
+ * A run of an agent directory works in a folder of its container's own, not
+ * in its project, so that the agent has the caller's files only as its paths
+ * give them; a run of a prompt has nothing else, and works in the project.
  */
 function ownFolder(spec: Spec): Pick<ContainerAdditions, 'ownFolder'> {
   return spec.agent === undefined ? {} : { ownFolder: true }

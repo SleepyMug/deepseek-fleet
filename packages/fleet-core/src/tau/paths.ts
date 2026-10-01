@@ -12,15 +12,13 @@
  * other or hold each other, and symlinks between them lead where they do on
  * the host. Where it really is, though, a `share` path may not be or hold
  * the container's system folders or fleet's own, nor lie in the kernel's or
- * fleet's. Nothing else of the caller's is mounted: the agent works in a
- * folder of the container's own at the workspace dir's path (../box/world.ts),
- * and sees the workspace dir's files only through a `share` path that is,
- * holds or lies in it.
+ * fleet's. Nothing else of the caller's is in the container, its project
+ * included (./store.ts).
  *
- * Paths may overlap each other and the workspace dir, but none may be, hold or
- * lie in the dsh home, where fleet keeps its sessions: a snapshot would copy it
- * into itself, a publish could replace it, and a mount would show the agent
- * every session. Each path is compared with the dsh home as given and as the
+ * Paths may overlap each other, but none may be, hold or lie in the dsh
+ * home, where fleet keeps its sessions: a snapshot would copy it into itself,
+ * a publish could replace it, and a mount would show the agent every
+ * session. Each path is compared with the dsh home as given and as the
  * host resolves it, but for an `out` path's own name, which the publish
  * replaces, not follows.
  *
