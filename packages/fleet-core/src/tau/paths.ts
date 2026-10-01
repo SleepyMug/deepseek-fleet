@@ -14,12 +14,12 @@
  * really is, though, a `share` path may not be or hold the container's
  * system folders or fleet's own, nor lie in the kernel's or fleet's.
  *
- * Paths may overlap each other and the workspace dir, each keeping its role
- * (tau's SPEC.md), but none may be, hold or lie in the dsh home, where fleet
- * keeps its sessions: a snapshot would copy it into itself, a publish could
- * replace it, and a mount would show the agent every session. Each path is
- * compared with the dsh home as given and as the host resolves it, but for
- * an `out` path's own name, which the publish replaces, not follows.
+ * Paths may overlap each other and the workspace dir, but none may be, hold or
+ * lie in the dsh home, where fleet keeps its sessions: a snapshot would copy it
+ * into itself, a publish could replace it, and a mount would show the agent
+ * every session. Each path is compared with the dsh home as given and as the
+ * host resolves it, but for an `out` path's own name, which the publish
+ * replaces, not follows.
  * @module fleet-core/tau/paths
  */
 

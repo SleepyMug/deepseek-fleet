@@ -17,8 +17,8 @@
  *
  * The container gets the agent's path arguments too, each according to its
  * role, where ./paths.ts places it; tau leaves how to the runtime. An `in`
- * path is its snapshot, so the agent sees the input as it was when it was
- * given, however long the session lasts; the folder an `out` path goes in
+ * path is its snapshot, which the session keeps however long it lasts,
+ * whatever becomes of the caller's path; the folder an `out` path goes in
  * is made; and a `share` path is mounted from the caller at its real path,
  * which composes with fleet-box's mount of the workspace dir. The
  * container gets the caller's values of the variables tau.json lists as

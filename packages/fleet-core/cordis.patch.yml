@@ -299,9 +299,9 @@
 # workspace dir as the agent's cwd. Overlapping `out` paths are published
 # outermost first, and one over an existing folder goes in entry by entry,
 # so a folder that stays a folder keeps any mount of it. Paths may overlap
-# each other and the workspace dir, each keeping its role, but none may be,
-# hold or lie in the dsh home, and a `share` path may not be, hold or lie in
-# the container's system or fleet folders. The variables tau.json lists are
+# each other and the workspace dir, but none may be, hold or lie in the dsh
+# home, and a `share` path may not be, hold or lie in the container's system
+# or fleet folders. The variables tau.json lists are
 # passed from the caller's environment.
 
 - insert:

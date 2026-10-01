@@ -78,11 +78,11 @@ export async function outputProblems(paths: readonly SpecPath[], copyOf: (path: 
 
 /**
  * Where each `out` path is published, and in what order. Each is found
- * before any is published, as tau's SPEC.md compares paths: its folder as
- * the host resolves it, and its own name, which the publish replaces, not
- * followed; so publishing one cannot move where another goes. They go
- * outermost first, and those at the same path in their order, so where they
- * overlap, the caller finds the inner, or later, one.
+ * before any is published: its folder as the host resolves it, and its own
+ * name, which the publish replaces, not followed; so publishing one cannot
+ * move where another goes. They go outermost first, and those at the same
+ * path in their order, so that each exists once all are published (tau's
+ * SPEC.md); where two share a path, the later one wins.
  */
 export async function publishTargets<Path extends Pick<SpecPath, 'host'>>(outputs: readonly Path[]): Promise<{ path: Path; at: string }[]> {
   const targets = await Promise.all(outputs.map(async (path) => {
@@ -93,15 +93,15 @@ export async function publishTargets<Path extends Pick<SpecPath, 'host'>>(output
 }
 
 /**
- * Put a checked copy in place of the caller's path, in a folder made for it
- * if an `out` path published before it left none (tau's SPEC.md). The copy
- * is copied beside the path first, onto its file system, and then renamed
- * in: a folder over a folder entry by entry, recursively, so a folder that
- * stays a folder is the same folder after, which a mount of it, such as a
- * container's of the workspace dir or of a `share` path, and whatever has
- * it open keep seeing. What the caller had is set aside, and removed once
- * the copy is in place; a failure renames everything back, and should that
- * fail too, leaves what was set aside where the error says.
+ * Put a checked copy in place of the caller's path, in a folder made for it if
+ * an `out` path published before it left none. The copy is copied beside the
+ * path first, onto its file system, and then renamed in: a folder over a folder
+ * entry by entry, recursively, so a folder that stays a folder is the same
+ * folder after, which a mount of it, such as a container's of the workspace dir
+ * or of a `share` path, and whatever has it open keep seeing. What the caller
+ * had is set aside, and removed once the copy is in place; a failure renames
+ * everything back, and should that fail too, leaves what was set aside where
+ * the error says.
  */
 export async function replace(host: string, copy: string): Promise<void> {
   const incoming = `${host}.fleet-${randomUUID()}`
