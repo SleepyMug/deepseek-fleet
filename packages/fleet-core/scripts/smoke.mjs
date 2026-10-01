@@ -23,7 +23,7 @@ import { FleetBackends } from '../lib/tau/backends.js'
 import * as archives from '../lib/tau/examples/archives.js'
 import * as notes from '../lib/tau/examples/notes.js'
 import * as relay from '../lib/tau/relay.js'
-import { AGENT_VIEW } from '../lib/tau/spec.js'
+import { AGENT_VIEW } from '../lib/tau/paths.js'
 import { FleetTau } from '../lib/tau/store.js'
 
 const EXAMPLES = fileURLToPath(new URL('../../../examples/', import.meta.url))
@@ -59,9 +59,9 @@ try {
 
   /** A session as `fleet run` makes one, and its container and helper as fleet-box starts them. */
   async function session(id, agent, args) {
-    const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, cwd: workspace, env: {} })
+    const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, sessionFolder: workspace, env: {} })
     assert.ok(prepared.ok, JSON.stringify(prepared))
-    await tau.create(id, prepared.spec)
+    await tau.create(id, prepared.spec, workspace)
     const additions = additionsOf.get(id)
     const name = `fleet-smoke-${id}`
     execFileSync('docker', ['rm', '--force', name], { stdio: 'ignore' })
@@ -129,8 +129,11 @@ try {
   assert.match(refused, /links no API that calls the backend archives/u)
 
   step('archive-dir: an API that takes a folder, packed with tar and sent to the host')
-  const dir = join(EXAMPLES, 'hello')
-  const archiveSession = await session('archive', 'archive-dir', [dir])
+  const archiveSession = await session('archive', 'archive-dir', [join(EXAMPLES, 'hello')])
+  // The snapshot of the in folder, where the container shows it and the prompt names it.
+  const dir = archiveSession.spec.paths[0].view
+  assert.equal(dir, '/tau/in/dir/hello')
+  assert.match(archiveSession.spec.prompt, /archive \/tau\/in\/dir\/hello\./u)
   const archived = await execute(archiveSession, [
     'import { archiveDir, list } from "@api/archives"',
     'export async function main(input: { dir: string }) {',

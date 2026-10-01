@@ -16,8 +16,9 @@ export const PACKAGE_ROOT = '/opt/fleet'
 export const RUN_ROOT = '/run/fleet'
 
 /**
- * fleet-tau's folder in a container, which the image leaves empty: the
- * agent's snapshot, which the host copies in, and the runner's TypeScript
- * root (./runner/protocol.ts).
+ * fleet-tau's folder in a container, which the image leaves empty. It holds
+ * the agent's snapshot and its `in` paths, which the host copies in; the
+ * folders its `out` paths are made in (fleet-core's tau/paths.ts); and the
+ * runner's TypeScript root (./runner/protocol.ts).
  */
-export const TAU_ROOT = '/opt/fleet-tau'
+export const TAU_ROOT = '/tau'

@@ -8,8 +8,8 @@ Agent directories in the tau format (../../agent_fleet_project/tau/SPEC.md), for
 | `skilled` | a skill with a script, run from the session's container | `fleet run examples/skilled "one two three"` |
 | `notes` | an API whose implementation keeps its notes on the fleet host, and gives back dates as dates | `fleet check examples/notes`, then `fleet run examples/notes "buy milk" shopping,errands` |
 | `text-stats` | an API whose implementation runs in the program alone | `fleet run examples/text-stats "the cat and the hat and the bat"` |
-| `count-words` | an `in` file and an `out` report, outside the session folder, and a variable from the caller | `fleet run --cwd <folder> examples/count-words <file> <report>`, with both paths outside `<folder>` |
-| `archive-dir` | an API that takes a folder, which its implementation packs with tar and sends to the fleet host | `fleet check examples/archive-dir`, then `fleet run --cwd <folder> examples/archive-dir <dir>`, with `<dir>` outside `<folder>` |
+| `count-words` | an `in` file and an `out` report, and a variable from the caller | `fleet run examples/count-words <file> <report>` |
+| `archive-dir` | an API that takes a folder, which its implementation packs with tar and sends to the fleet host | `fleet check examples/archive-dir`, then `fleet run examples/archive-dir <dir>` |
 
 A tau declares its APIs, and fleet links each to its own implementation of the same name, which
 the session image carries (packages/fleet-image/src/apis); `fleet apis` lists them, and `fleet apis <name>`

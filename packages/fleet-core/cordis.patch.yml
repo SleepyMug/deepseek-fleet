@@ -267,10 +267,10 @@
 # fleet-tau reads the directory in a worker, checking its APIs, refuses one
 # with problems before any session exists, and keeps a snapshot of it, whole
 # and with its symlinks, per session in $DSH_HOME/fleet/sessions/<id>/,
-# which fleet-box copies into each of the session's containers at
-# /opt/fleet-tau/agent; nothing of the store is mounted. The session's
-# agents get the snapshot's skills, with dsh's `skill` tool, in a scope of
-# their own; sessions started any other way keep the fleet preset unchanged.
+# which fleet-box copies into each of the session's containers at /tau/agent;
+# nothing of the store is mounted. The session's agents get the snapshot's
+# skills, with dsh's `skill` tool, in a scope of their own; sessions started
+# any other way keep the fleet preset unchanged.
 #
 # fleet links each API an agent declares to its own implementation of the
 # same name (fleet-image's apis/), which the session image carries; there is no
@@ -289,14 +289,19 @@
 # import the agent's APIs as @api/<name>, typed by the agent's declarations,
 # which the runner links to fleet's implementations (/opt/fleet/apis).
 #
-# Path arguments reach the container where the caller has them, each
-# according to its role in tau.json, as fleet-tau chooses: an `in` path as a
-# snapshot taken when the session is made, which fleet-box copies into the
-# container; an `inout` path mounted from the caller; and an `out` path
-# published to the caller after a completed turn a `fleet` command waited
-# on. The session folder counts as an implicit `inout` folder, so a path
-# that is, holds or lies in it is refused. The variables tau.json lists are
-# passed from the caller's environment.
+# Path arguments reach the container according to their roles in tau.json,
+# where fleet-tau places them, and the prompt names them there: an `in` path
+# as a snapshot taken when the session is made, which fleet-box copies into
+# the container at /tau/in/<name>/; an `out` path written in
+# /tau/out/<name>/ and published to the caller after a completed turn a
+# `fleet` command waited on; and a `share` path mounted where the caller has
+# it, or, in the session folder, as that folder's mount shows it. The session
+# folder is not an argument but the agent's working folder, which fleet-box
+# mounts at its own path, so any path argument may lie in it; but an `out`
+# path may not be or hold it, a `share` path may not hold it, nor lie in it
+# and lead out through a symlink, and no path may be, hold or lie in the dsh
+# home. The variables tau.json lists are passed from the caller's
+# environment.
 
 - insert:
     - id: fleet-tau-backends

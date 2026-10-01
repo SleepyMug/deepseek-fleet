@@ -3,8 +3,8 @@ import { test } from 'node:test'
 import { parseRunnerReply } from './runner-reply.ts'
 
 test('each kind of reply is read', () => {
-  assert.deepEqual(parseRunnerReply('{"ok":true,"modules":[{"specifier":"@api/notes","packageRoot":"/opt/fleet-tau/ts/apis/notes-0123456789abcdef"}]}'),
-    { ok: true, modules: [{ specifier: '@api/notes', packageRoot: '/opt/fleet-tau/ts/apis/notes-0123456789abcdef' }] })
+  assert.deepEqual(parseRunnerReply('{"ok":true,"modules":[{"specifier":"@api/notes","packageRoot":"/tau/ts/apis/notes-0123456789abcdef"}]}'),
+    { ok: true, modules: [{ specifier: '@api/notes', packageRoot: '/tau/ts/apis/notes-0123456789abcdef' }] })
   assert.deepEqual(parseRunnerReply('{"ok":true,"value":null,"stdout":"","stderr":"","durationMs":3}'), { ok: true, value: null, stdout: '', stderr: '', durationMs: 3 })
   assert.deepEqual(parseRunnerReply('{"ok":false,"error":{"name":"TypeCheckError","message":"bad"}}'), { ok: false, error: { name: 'TypeCheckError', message: 'bad' } })
 })

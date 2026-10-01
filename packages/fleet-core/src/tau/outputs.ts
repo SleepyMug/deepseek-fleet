@@ -49,11 +49,11 @@ export async function copyProblems(copy: string, name: string, view: string, lim
 
 /**
  * What tau's `checkOutputs` checks after a run: each `out` path, here its
- * copy, and each `inout` path, which the container mounts from the caller,
- * is a file or a folder as declared, symlinks followed. fleet-tau checks
- * this itself, not with tau's `checkOutputs`: tau's library loads TypeScript
- * when it is imported, which the host keeps to its worker, and a problem
- * here names the path the agent sees, never its copy in the store.
+ * copy, and each `share` path, the caller's own, is a file or a folder as
+ * declared, symlinks followed. fleet-tau checks this itself, not with tau's
+ * `checkOutputs`: tau's library loads TypeScript when it is imported, which
+ * the host keeps to its worker, and a problem here names the path the agent
+ * sees, never its copy in the store.
  * @param copyOf - where an out path's copy is.
  * @returns a problem for each path that is missing or not of its type.
  */
@@ -66,11 +66,11 @@ export async function outputProblems(paths: readonly SpecPath[], copyOf: (path: 
       info = await stat(path.role === 'out' ? copyOf(path) : path.host)
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'ENOENT' && code !== 'ENOTDIR') problems.push(`${path.name}: ${path.host} cannot be read: ${message(error)}`)
-      else problems.push(`${path.name}: ${path.role === 'out' ? `the agent left nothing at ${path.host}` : `${path.host} is gone`}`)
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') problems.push(`${path.name}: ${path.view} cannot be read: ${message(error)}`)
+      else problems.push(`${path.name}: ${path.role === 'out' ? `the agent left nothing at ${path.view}` : `${path.view} is gone`}`)
       continue
     }
-    if (path.type === 'dir' ? !info.isDirectory() : !info.isFile()) problems.push(`${path.name}: ${path.host} is not a ${path.type === 'dir' ? 'folder' : 'file'}`)
+    if (path.type === 'dir' ? !info.isDirectory() : !info.isFile()) problems.push(`${path.name}: ${path.view} is not a ${path.type === 'dir' ? 'folder' : 'file'}`)
   }
   return problems
 }

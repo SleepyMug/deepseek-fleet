@@ -58,26 +58,27 @@ test('a copy replaces a file at once, and a folder whole, leaving nothing beside
   })
 })
 
-test('outputs are checked as tau checks them: each out and inout path of the declared type', async () => {
+test('outputs are checked as tau checks them: each out and share path of the declared type', async () => {
   await withDir(async (dir) => {
     await writeFile(join(dir, 'copy.md'), 'x')
     await mkdir(join(dir, 'data'))
     const paths = [
-      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md' },
-      { name: 'data', type: 'dir' as const, role: 'inout' as const, host: join(dir, 'data') },
-      { name: 'rules', type: 'file' as const, role: 'inout' as const, host: join(dir, 'rules') },
-      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing' },
+      { name: 'report', type: 'file' as const, role: 'out' as const, host: '/h/report.md', view: '/tau/out/report/report.md' },
+      { name: 'data', type: 'dir' as const, role: 'share' as const, host: join(dir, 'data'), view: join(dir, 'data') },
+      { name: 'rules', type: 'file' as const, role: 'share' as const, host: join(dir, 'rules'), view: join(dir, 'rules') },
+      { name: 'in', type: 'file' as const, role: 'in' as const, host: '/missing', view: '/tau/in/in/missing' },
     ]
     const at = (copy: string) => () => join(dir, copy)
     await writeFile(join(dir, 'rules'), 'x')
     assert.deepEqual(await outputProblems(paths, at('copy.md')), [])
-    assert.deepEqual(await outputProblems(paths, at('data')), ['report: /h/report.md is not a file'])
+    // Named where the agent left it.
+    assert.deepEqual(await outputProblems(paths, at('data')), ['report: /tau/out/report/report.md is not a file'])
     // A pipe is not a file, though it is no folder either.
     await rm(join(dir, 'rules'))
     execFileSync('mkfifo', [join(dir, 'rules')])
     await rm(join(dir, 'data'), { recursive: true })
     assert.deepEqual(await outputProblems(paths, at('missing')), [
-      'report: the agent left nothing at /h/report.md', `data: ${join(dir, 'data')} is gone`, `rules: ${join(dir, 'rules')} is not a file`,
+      'report: the agent left nothing at /tau/out/report/report.md', `data: ${join(dir, 'data')} is gone`, `rules: ${join(dir, 'rules')} is not a file`,
     ])
   })
 })

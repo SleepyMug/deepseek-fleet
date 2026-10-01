@@ -1,8 +1,8 @@
 /**
  * Snapshotting an agent's `in` paths when its session is made: each is
  * copied into the session's folder in the store, and fleet-box copies the
- * snapshot into each of the session's containers, where the caller has the
- * path, when it creates the container. The caller's path is followed if it
+ * snapshot into each of the session's containers, at /tau/in/<name>/
+ * (./paths.ts), when it creates the container. The caller's path is followed if it
  * is a symlink, as tau follows it; a symlink inside it is copied as the link
  * it is, never as what it leads to, which could be anywhere on the host. A
  * copy is plain files, folders and symlinks, so a device, a pipe or a socket

@@ -1,11 +1,11 @@
 /**
  * Read an agent directory for a run or a check: its tau metadata and prompt,
- * the command's arguments bound to them, with its path arguments checked as
- * tau checks a run's inputs and where the container can give them
- * (./paths.ts), its skills, and its APIs, each linked to fleet's
- * implementation of the same name (fleet-image's apis/), which tau checks fits it,
- * and whose backends must be provided, with every problem found reported
- * together. tau's library loads TypeScript as it is imported, so this runs
+ * the command's arguments bound to them, with its path arguments placed
+ * where the container shows them and checked as tau checks a run's inputs
+ * and as the container can give them (./paths.ts), its skills, and its
+ * APIs, each linked to fleet's implementation of the same name
+ * (fleet-image's apis/), which tau checks fits it, and whose backends must
+ * be provided, with every problem found reported together. tau's library loads TypeScript as it is imported, so this runs
  * in a worker (./worker.ts), never in the fleet host's own thread.
  * @module fleet-core/tau/prepare
  */
@@ -14,7 +14,7 @@ import { basename } from 'node:path'
 import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from '../box/additions.ts'
 import { implementation } from 'fleet-image/apis/registry'
-import { pathProblems } from './paths.ts'
+import { pathProblems, place } from './paths.ts'
 import { loadSkills } from './skills.ts'
 import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
 
@@ -27,12 +27,14 @@ export interface PrepareRequest {
   bind: boolean
   /** The command's working folder, which relative path arguments are resolved against. */
   callerCwd: string
-  /** The session folder, as its real path, which no path argument may be, hold or lie in. */
-  cwd: string
+  /** The session folder, as its real path, which the container mounts as the agent's working folder. */
+  sessionFolder: string
   /** The command's values of the variables the agent's tau.json lists. */
   env: Record<string, string>
   /** The backends fleet's plugins provide now. */
   backends: string[]
+  /** The dsh home, where fleet keeps its sessions. */
+  dshHome: string
 }
 
 export type Prepared =
@@ -53,7 +55,7 @@ export function prepare(request: PrepareRequest): Prepared {
   let run: Run | undefined
   if (request.bind) {
     try {
-      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env })
+      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, place)
       prompt = run.prompt
       if (prompt.trim() === '') problems.push(`${tau.dir}/PROMPT.md gives an empty prompt`)
     } catch (error) {
@@ -61,7 +63,7 @@ export function prepare(request: PrepareRequest): Prepared {
     }
   }
   if (run !== undefined) {
-    const placed = pathProblems(run.paths, request.cwd)
+    const placed = pathProblems(run.paths, request.sessionFolder, request.dshHome)
     problems.push(...placed)
     if (placed.length === 0) {
       try {
@@ -86,7 +88,7 @@ export function prepare(request: PrepareRequest): Prepared {
       skills: skills.skills,
       apis,
       env: { ...run?.env },
-      paths: (run?.paths ?? []).map(({ name, type, role, host }) => ({ name, type, role, host })),
+      paths: (run?.paths ?? []).map(({ name, type, role, host, view }) => ({ name, type, role, host, view })),
     },
     title: [name, ...request.args].join(' '),
   }

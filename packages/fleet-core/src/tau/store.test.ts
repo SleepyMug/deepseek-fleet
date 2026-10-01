@@ -64,11 +64,11 @@ async function setup() {
 
 test('a run is read in a worker, and its spec is stored with a snapshot of the agent before the session exists', async () => {
   const { tau, configured, headers } = await setup()
-  const prepared = await tau.prepare({ agent, args: ['World'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} })
+  const prepared = await tau.prepare({ agent, args: ['World'], bind: true, callerCwd: '/caller', sessionFolder: '/session', env: {} })
   assert.ok(prepared.ok, JSON.stringify(prepared))
   assert.equal(prepared.spec.prompt, 'Greet World.')
 
-  await tau.create('session-a' as SessionId, prepared.spec)
+  await tau.create('session-a' as SessionId, prepared.spec, '/w')
   const folder = join(home, 'fleet', 'sessions', 'session-a')
   assert.equal((await stat(folder)).mode & 0o777, 0o700)
   assert.equal(await readFile(join(folder, 'agent', 'PROMPT.md'), 'utf8'), 'Greet ${name}.')
@@ -77,19 +77,19 @@ test('a run is read in a worker, and its spec is stored with a snapshot of the a
   assert.ok((await stat(join(folder, 'agent', 'skills', 'shout', 'SKILL.md'))).isFile())
   assert.equal(await readFile(join(folder, 'agent', 'notes.txt'), 'utf8'), 'the author\'s own')
   // Nothing of the store is mounted: fleet-box copies the snapshot into the container.
-  assert.deepEqual(configured.get('session-a'), { mounts: [], copies: [{ source: join(folder, 'agent'), target: '/opt/fleet-tau/agent' }] })
+  assert.deepEqual(configured.get('session-a'), { mounts: [], copies: [{ source: join(folder, 'agent'), target: '/tau/agent' }] })
 
   assert.deepEqual((await tau.specOf(headers['session-a']!))?.spec, prepared.spec)
   assert.equal(await tau.specOf(headers['session-web']!), undefined)
   // A second spec never lands in a session's folder.
-  await assert.rejects(tau.create('session-a' as SessionId, prepared.spec))
+  await assert.rejects(tau.create('session-a' as SessionId, prepared.spec, '/w'))
 })
 
 test('a fork, even one of a subagent, takes its source\'s spec and snapshot', async () => {
   const { tau, configured, headers } = await setup()
-  const prepared = await tau.prepare({ agent, args: ['Fork'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} })
+  const prepared = await tau.prepare({ agent, args: ['Fork'], bind: true, callerCwd: '/caller', sessionFolder: '/session', env: {} })
   assert.ok(prepared.ok)
-  await tau.create('session-src' as SessionId, prepared.spec)
+  await tau.create('session-src' as SessionId, prepared.spec, '/w')
   headers['session-src'] = header('session-src', { cwd: '/w' })
   headers['session-fork'] = header('session-fork', { cwd: '/w', parentSession: 'session-src' as SessionId })
   headers['session-sub'] = header('session-sub', { cwd: '/w', origin: 'subagent', parentSession: 'session-src' as SessionId })
@@ -103,25 +103,25 @@ test('a fork, even one of a subagent, takes its source\'s spec and snapshot', as
 
 test('a spec is removed with its additions, and a broken one fails to read', async () => {
   const { tau, configured } = await setup()
-  const prepared = await tau.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} })
+  const prepared = await tau.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', sessionFolder: '/session', env: {} })
   assert.ok(prepared.ok)
-  await tau.create('session-gone' as SessionId, prepared.spec)
+  await tau.create('session-gone' as SessionId, prepared.spec, '/w')
   await tau.remove('session-gone' as SessionId)
   await assert.rejects(stat(join(home, 'fleet', 'sessions', 'session-gone')))
   assert.equal(configured.has('session-gone'), false)
 
-  await tau.create('session-broken' as SessionId, prepared.spec)
+  await tau.create('session-broken' as SessionId, prepared.spec, '/w')
   await writeFile(join(home, 'fleet', 'sessions', 'session-broken', 'spec.json'), '{"version": 99}')
   await assert.rejects(tau.specOf(header('session-broken')), /not valid/u)
   // One an older fleet made says so, and what to do instead.
-  await tau.create('session-older' as SessionId, prepared.spec)
+  await tau.create('session-older' as SessionId, prepared.spec, '/w')
   await writeFile(join(home, 'fleet', 'sessions', 'session-older', 'spec.json'), '{"version": 2, "paths": [{"mode": "copy-out"}]}')
   await assert.rejects(tau.specOf(header('session-older')), /made by an older fleet, with a spec of version 2, .*start a new session with `fleet run`$/u)
 })
 
 test('a problem in the agent directory comes back from the worker as problems', async () => {
   const { tau } = await setup()
-  const prepared = await tau.prepare({ agent, args: [], bind: true, callerCwd: '/caller', cwd: '/session', env: {} })
+  const prepared = await tau.prepare({ agent, args: [], bind: true, callerCwd: '/caller', sessionFolder: '/session', env: {} })
   assert.ok(!prepared.ok)
   assert.match(prepared.problems.join('\n'), /expected 1 argument/u)
 })
@@ -165,35 +165,37 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const spec: Spec = {
       version: 3, args: [], prompt: 'x', skills: [], apis: [], env: { LANG: 'C.UTF-8' },
       paths: [
-        { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md') },
-        { name: 'data', type: 'dir', role: 'inout', host: join(dir, 'data') },
-        { name: 'report', type: 'file', role: 'out', host: report },
-        { name: 'summary', type: 'file', role: 'out', host: summary },
+        { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md'), view: '/tau/in/rules/rules.md' },
+        { name: 'data', type: 'dir', role: 'share', host: join(dir, 'data'), view: join(dir, 'data') },
+        { name: 'report', type: 'file', role: 'out', host: report, view: '/tau/out/report/report.md' },
+        { name: 'summary', type: 'file', role: 'out', host: summary, view: '/tau/out/summary/summary.md' },
       ],
     }
-    await tau.create('session-p' as SessionId, spec)
+    await tau.create('session-p' as SessionId, spec, '/w')
     const folder = join(home, 'fleet', 'sessions', 'session-p')
-    const agentCopy = { source: join(folder, 'agent'), target: '/opt/fleet-tau/agent' }
+    const agentCopy = { source: join(folder, 'agent'), target: '/tau/agent' }
     // An in path is its snapshot, which fleet-box copies into the container as it does the agent's.
-    const rulesCopy = { source: join(folder, 'in', 'rules'), target: join(dir, 'rules.md') }
+    const rulesCopy = { source: join(folder, 'in', 'rules'), target: '/tau/in/rules/rules.md' }
     assert.deepEqual(configured.get('session-p'), {
       mounts: [{ source: join(dir, 'data'), target: join(dir, 'data'), readonly: false }],
       copies: [agentCopy, rulesCopy],
       env: { LANG: 'C.UTF-8' },
-      directories: [join(dir, 'out'), dir],
+      directories: ['/tau/out/report', '/tau/out/summary'],
     })
     await writeFile(join(dir, 'rules.md'), 'changed later')
     assert.equal(await readFile(join(folder, 'in', 'rules'), 'utf8'), 'be kind')
 
     // The agent left nothing: the check says so, and the caller's file stays.
     const nothing = await tau.publish('session-p' as SessionId, 3)
-    assert.deepEqual(nothing, [`report: the agent left nothing at ${report}`, `summary: the agent left nothing at ${summary}`])
+    assert.deepEqual(nothing, ['report: the agent left nothing at /tau/out/report/report.md', 'summary: the agent left nothing at /tau/out/summary/summary.md'])
     assert.equal(await readFile(report, 'utf8'), 'old report')
 
     // A turn running now keeps the outputs where they are, and the turn unpublished.
-    await mkdir(join(container, dir, 'out'), { recursive: true })
-    await writeFile(join(container, report), 'new report')
-    await writeFile(join(container, summary), 'short')
+    const reportView = join(container, '/tau/out/report/report.md')
+    await mkdir(join(container, '/tau/out/report'), { recursive: true })
+    await mkdir(join(container, '/tau/out/summary'), { recursive: true })
+    await writeFile(reportView, 'new report')
+    await writeFile(join(container, '/tau/out/summary/summary.md'), 'short')
     running = true
     assert.match((await tau.publish('session-p' as SessionId, 7))[0]!, /started another turn/u)
     running = false
@@ -205,7 +207,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     assert.equal(copied.length - before, 2, 'one publish copied both outputs; the other found the turn published')
     assert.equal(await readFile(report, 'utf8'), 'new report')
     assert.equal(await readFile(summary, 'utf8'), 'short')
-    await writeFile(join(container, report), 'later')
+    await writeFile(reportView, 'later')
     assert.deepEqual(await tau.publish('session-p' as SessionId, 7), [])
     assert.equal(await readFile(report, 'utf8'), 'new report')
     assert.deepEqual((await readdir(join(home, 'fleet', 'sessions', 'session-p'))).sort(), ['agent', 'in', 'published.json', 'spec.json'])
@@ -220,35 +222,35 @@ test('a run\'s paths reach its container, and its outputs are published once per
     assert.equal(copied.length, copiedBefore)
 
     // A symlink left there is refused.
-    await rm(join(container, report))
-    await symlink('/etc/passwd', join(container, report))
+    await rm(reportView)
+    await symlink('/etc/passwd', reportView)
     const linked = await tau.publish('session-p' as SessionId, 9)
-    assert.deepEqual(linked, [`report: ${report} is a symlink, which is not copied out`])
+    assert.deepEqual(linked, ['report: /tau/out/report/report.md is a symlink, which is not copied out'])
     assert.equal(await readFile(report, 'utf8'), 'new report')
 
-    // An inout path the run did not leave as declared fails it, and nothing is published.
-    await rm(join(container, report))
-    await writeFile(join(container, report), 'unchecked')
+    // A share path the run did not leave as declared fails it, and nothing is published.
+    await rm(reportView)
+    await writeFile(reportView, 'unchecked')
     await rm(join(dir, 'data'), { recursive: true })
     assert.deepEqual(await tau.publish('session-p' as SessionId, 10), [`data: ${join(dir, 'data')} is gone`])
     assert.equal(await readFile(report, 'utf8'), 'new report')
 
-    // A run with only inout paths is checked too.
+    // A run with only share paths is checked too.
     await mkdir(join(dir, 'tree'))
-    await tau.create('session-io' as SessionId, { ...spec, env: {}, paths: [{ name: 'tree', type: 'dir', role: 'inout', host: join(dir, 'tree') }] })
+    await tau.create('session-io' as SessionId, { ...spec, env: {}, paths: [{ name: 'tree', type: 'dir', role: 'share', host: join(dir, 'tree'), view: join(dir, 'tree') }] }, '/w')
     assert.deepEqual(await tau.publish('session-io' as SessionId, 1), [])
     await rm(join(dir, 'tree'), { recursive: true })
     await writeFile(join(dir, 'tree'), 'a file now')
     assert.deepEqual(await tau.publish('session-io' as SessionId, 2), [`tree: ${join(dir, 'tree')} is not a folder`])
 
-    // The container's root is always there, so an out path directly in it needs no folder made.
-    await tau.create('session-root' as SessionId, { ...spec, env: {}, paths: [{ name: 'top', type: 'file', role: 'out', host: '/top.md' }] })
-    assert.deepEqual(configured.get('session-root'), { mounts: [], copies: [{ ...agentCopy, source: join(home, 'fleet', 'sessions', 'session-root', 'agent') }] })
+    // The session folder, which fleet-box mounts on its own, shows a share path in it already.
+    await tau.create('session-in-folder' as SessionId, { ...spec, env: {}, paths: [{ name: 'tree', type: 'dir', role: 'share', host: join(dir, 'tree'), view: join(dir, 'tree') }] }, dir)
+    assert.deepEqual(configured.get('session-in-folder'), { mounts: [], copies: [{ ...agentCopy, source: join(home, 'fleet', 'sessions', 'session-in-folder', 'agent') }] })
 
     // An in path that cannot be copied is the caller's to fix, and leaves nothing behind.
     await mkdir(join(dir, 'odd'))
     execFileSync('mkfifo', [join(dir, 'odd', 'pipe')])
-    const refused = await tau.create('session-odd' as SessionId, { ...spec, env: {}, paths: [{ name: 'odd', type: 'dir', role: 'in', host: join(dir, 'odd') }] })
+    const refused = await tau.create('session-odd' as SessionId, { ...spec, env: {}, paths: [{ name: 'odd', type: 'dir', role: 'in', host: join(dir, 'odd'), view: '/tau/in/odd/odd' }] }, '/w')
       .then(() => undefined, (error: unknown) => error)
     assert.ok(refused instanceof InputError)
     assert.deepEqual(refused.problems, [`odd: ${join(dir, 'odd', 'pipe')} is neither a file, a folder nor a symlink, which fleet does not copy in`])
@@ -267,12 +269,12 @@ test('an agent directory that takes too long to read fails, and the next is read
   let tau: FleetTau | undefined
   await ctx.plugin({ name: 'caller', inject: ['fleetTau'], apply: (inner: Context) => { tau = inner.fleetTau } })
   assert.ok(tau !== undefined)
-  await assert.rejects(tau.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} }), /took longer than 0\.001 s/u)
+  await assert.rejects(tau.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', sessionFolder: '/session', env: {} }), /took longer than 0\.001 s/u)
   const patient = new Context()
   patient.provide('fleetBackends', { list: () => [] })
   patient.provide('fleetBox', {})
   await patient.plugin(FleetTau, { prepareTimeoutMs: 60_000 })
   let other: FleetTau | undefined
   await patient.plugin({ name: 'caller', inject: ['fleetTau'], apply: (inner: Context) => { other = inner.fleetTau } })
-  assert.ok((await other!.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', cwd: '/session', env: {} })).ok)
+  assert.ok((await other!.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', sessionFolder: '/session', env: {} })).ok)
 })

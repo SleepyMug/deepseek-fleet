@@ -24,7 +24,8 @@ import {
   MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
 } from 'fleet-image/runner/protocol'
 import { parseRunnerReply } from './runner-reply.ts'
-import { AGENT_VIEW, type Spec } from './spec.ts'
+import { AGENT_VIEW } from './paths.ts'
+import type { Spec } from './spec.ts'
 
 /** How long a program may run, type-checking included. */
 const EXECUTE_TIMEOUT_MS = 120_000

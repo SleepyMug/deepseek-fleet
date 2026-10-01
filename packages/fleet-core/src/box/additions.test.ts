@@ -13,12 +13,12 @@ test('no additions add no arguments, so a container keeps its spec', () => {
 test('mounts become bind mounts, read-only when asked', () => {
   const args = additionArgs({
     mounts: [
-      { source: '/home/u/.dsh/fleet/sessions/s/agent', target: '/opt/fleet-tau/agent', readonly: true },
+      { source: '/home/u/.dsh/fleet/sessions/s/agent', target: '/tau/agent', readonly: true },
       { source: '/data,x', target: '/data', readonly: false },
     ],
   }, '/work')
   assert.deepEqual(args, [
-    '--mount', 'type=bind,src=/home/u/.dsh/fleet/sessions/s/agent,dst=/opt/fleet-tau/agent,readonly',
+    '--mount', 'type=bind,src=/home/u/.dsh/fleet/sessions/s/agent,dst=/tau/agent,readonly',
     '--mount', 'type=bind,"src=/data,x",dst=/data',
   ])
 })
@@ -42,9 +42,9 @@ test('a mount may not cover the session folder or fleet-box\'s own folders', () 
 })
 
 test('copies are not docker run arguments, and may overlap no mount, copy, session folder or fleet-box folder', () => {
-  const agent = { source: '/store/agent', target: '/opt/fleet-tau/agent', readonly: true }
+  const agent = { source: '/store/agent', target: '/tau/agent', readonly: true }
   assert.deepEqual(additionArgs({ mounts: [], copies: [{ source: '/store/in/rules', target: '/home/u/rules.md' }] }, '/work'), [])
-  for (const target of ['/work/rules.md', '/opt/fleet/x', '/opt/fleet-tau/agent/x', '/opt']) {
+  for (const target of ['/work/rules.md', '/opt/fleet/x', '/tau/agent/x', '/tau']) {
     assert.throws(() => additionArgs({ mounts: [agent], copies: [{ source: '/s', target }] }, '/work'), /copies to .*overlaps/u, target)
   }
   assert.throws(() => additionArgs({ mounts: [], copies: [{ source: '/a', target: '/data' }, { source: '/b', target: '/data/b' }] }, '/work'), /overlaps/u)
@@ -69,11 +69,11 @@ test('additions round-trip through their file, which only the owner can read', a
   const home = await mkdtemp(join(tmpdir(), 'fleet-box-additions-'))
   try {
     assert.equal(await readAdditions(home, 'session-1'), undefined)
-    const additions = { mounts: [{ source: '/src', target: '/opt/fleet-tau/agent', readonly: true }] }
+    const additions = { mounts: [{ source: '/src', target: '/tau/agent', readonly: true }] }
     await writeAdditions(home, 'session-1', additions)
     assert.deepEqual(await readAdditions(home, 'session-1'), additions)
     assert.equal((await stat(additionsFile(home, 'session-1'))).mode & 0o777, 0o600)
-    assert.match(await readFile(additionsFile(home, 'session-1'), 'utf8'), /opt\/fleet-tau\/agent/u)
+    assert.match(await readFile(additionsFile(home, 'session-1'), 'utf8'), /\/tau\/agent/u)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

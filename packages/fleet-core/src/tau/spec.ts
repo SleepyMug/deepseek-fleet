@@ -6,14 +6,10 @@
  * @module fleet-core/tau/spec
  */
 
-import { TAU_ROOT } from 'fleet-image/layout'
 import { z } from 'zod'
 
 /** Bumped when a stored spec changes shape so that older ones would be misread; they are refused instead. */
 export const SPEC_VERSION = 3
-
-/** Where a session's container sees its agent's snapshot. */
-export const AGENT_VIEW = `${TAU_ROOT}/agent`
 
 const skillSchema = z.object({
   name: z.string(),
@@ -41,9 +37,11 @@ const pathSchema = z.object({
   name: z.string(),
   type: z.enum(['file', 'dir']),
   /** What the agent does with it, which decides how the container gets it (./store.ts). */
-  role: z.enum(['in', 'out', 'inout']),
-  /** The caller's path, absolute, which is where the container sees it too. */
+  role: z.enum(['in', 'out', 'share']),
+  /** The caller's path, absolute. */
   host: z.string(),
+  /** Where the container shows it (./paths.ts), which the prompt names. */
+  view: z.string(),
 })
 
 export const specSchema = z.object({

@@ -15,14 +15,15 @@
  * session's agents what the spec holds, whenever an agent is created or
  * resumed.
  *
- * The container gets the agent's path arguments too, where the caller has
- * them, each according to its role; tau leaves how to the runtime. An `in`
+ * The container gets the agent's path arguments too, each according to its
+ * role, where ./paths.ts places it; tau leaves how to the runtime. An `in`
  * path is its snapshot, so the agent sees the input as it was when it was
- * given, however long the session lasts; an `inout` path is mounted from
- * the caller; and the folder an `out` path goes in is made. The container
- * gets the caller's values of the variables tau.json lists as well. After a
- * completed turn, the command that waited on it has the store publish the
- * `out` paths ({@link FleetTau.publish}).
+ * given, however long the session lasts; the folder an `out` path goes in
+ * is made; and a `share` path is mounted from the caller, unless the
+ * session folder, which fleet-box mounts on its own, holds it already. The
+ * container gets the caller's values of the variables tau.json lists as
+ * well. After a completed turn, the command that waited on it has the store
+ * publish the `out` paths ({@link FleetTau.publish}).
  *
  * A fork of such a session has no folder of its own: it takes its source's
  * spec, and its container copies of the source's snapshots, which never
@@ -43,9 +44,10 @@ import type { ContainerAdditions, Copy, Mount } from '../box/world.ts'
 import { z } from 'zod'
 import { InputError, snapshot } from './inputs.ts'
 import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, replace } from './outputs.ts'
+import { AGENT_VIEW, shareMount } from './paths.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
 import type {} from './backends.ts'
-import { AGENT_VIEW, SPEC_VERSION, specSchema, type Spec, type SpecPath } from './spec.ts'
+import { SPEC_VERSION, specSchema, type Spec, type SpecPath } from './spec.ts'
 import type { Answer, Job } from './worker.ts'
 
 export { InputError } from './inputs.ts'
@@ -115,12 +117,12 @@ export class FleetTau extends Service {
    * checked against the backends provided now.
    * @returns the session's spec and title, or every problem found.
    */
-  prepare(request: Omit<PrepareRequest, 'backends'>): Promise<Prepared> {
+  prepare(request: Omit<PrepareRequest, 'backends' | 'dshHome'>): Promise<Prepared> {
     const result = Promise.withResolvers<Prepared>()
     const id = this.nextJob++
     const timer = setTimeout(() => { this.timedOut(id) }, this.config.prepareTimeoutMs)
     timer.unref()
-    this.jobs.set(id, { request: { ...request, backends: this.self.fleetBackends.list() }, result, timer })
+    this.jobs.set(id, { request: { ...request, backends: this.self.fleetBackends.list(), dshHome: this.home }, result, timer })
     this.post(id)
     return result.promise
   }
@@ -130,10 +132,11 @@ export class FleetTau extends Service {
    * snapshots of its agent and its `in` paths, then its container's
    * additions. A failure leaves nothing behind.
    * @param session - the id the session will have.
+   * @param sessionFolder - the session folder, as its real path, which its container mounts on its own.
    * @param signal - stops copying, for a command that has gone.
    * @throws an {@link InputError} when an `in` path cannot be copied.
    */
-  async create(session: SessionId, spec: Spec, signal?: AbortSignal): Promise<void> {
+  async create(session: SessionId, spec: Spec, sessionFolder: string, signal?: AbortSignal): Promise<void> {
     const folder = this.folder(session)
     await mkdir(join(this.home, 'fleet', 'sessions'), { recursive: true, mode: 0o700 })
     // Fails if the folder exists, so a spec is never mixed with another's.
@@ -149,7 +152,7 @@ export class FleetTau extends Service {
       // A tau's symlinks stay inside it, and the runtime keeps them as they are.
       if (spec.agent !== undefined) await cp(spec.agent.source, join(folder, 'agent'), { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true })
       await writeFile(join(folder, 'spec.json'), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 })
-      await this.self.fleetBox.configure(session, this.additions(session, spec))
+      await this.self.fleetBox.configure(session, this.additions(session, spec, sessionFolder))
     } catch (error) {
       await this.remove(session).catch((removeError: unknown) => {
         this.self.logger.warn(`fleet-tau: could not remove the spec of ${session}, which was never made: ${message(removeError)}`)
@@ -168,7 +171,7 @@ export class FleetTau extends Service {
    * the agent could be changing what is copied. A fork publishes nothing;
    * its source's paths belong to the source's run.
    * @param turn - the turn's place in the session's log.
-   * @returns why the run did not give back its outputs, its `out` and `inout` paths, none when it did, or it has none.
+   * @returns why the run did not leave what its tau declares, its `out` paths published and its `share` paths as declared, none when it did, or it has none.
    */
   publish(session: SessionId, turn: number): Promise<string[]> {
     const next = (this.publishing.get(session) ?? Promise.resolve()).catch(() => {}).then(() => this.publishOnce(session, turn))
@@ -197,8 +200,8 @@ export class FleetTau extends Service {
       for (const path of outputs) {
         // Nothing left there makes no copy, which the output check reports.
         try {
-          await this.self.fleetBox.copyOut(root.id, path.host, copyOf(path), MAX_OUTPUT_BYTES, signal)
-          problems.push(...await copyProblems(copyOf(path), path.name, path.host))
+          await this.self.fleetBox.copyOut(root.id, path.view, copyOf(path), MAX_OUTPUT_BYTES, signal)
+          problems.push(...await copyProblems(copyOf(path), path.name, path.view))
         } catch (error) {
           problems.push(`${path.name}: ${signal.aborted ? `copying took longer than ${PUBLISH_TIMEOUT_MS / 60_000} minutes` : message(error)}`)
         }
@@ -249,33 +252,39 @@ export class FleetTau extends Service {
    * variables.
    */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
-    await this.self.fleetBox.configure(fork, this.additions(found.owner, found.spec, true))
+    await this.self.fleetBox.configure(fork, { mounts: [], copies: this.snapshots(found.owner, found.spec) })
   }
 
   /**
-   * A session's container additions: copies of its snapshots, of the agent
-   * and its `in` paths, and, unless it is a fork's, its other paths and
-   * variables. The container sees each path where the caller has it.
+   * A run's container additions: copies of its snapshots, and its other
+   * paths and its variables, each path where ./paths.ts places it.
+   * @param sessionFolder - the session folder, as its real path, which the container mounts on its own.
    */
-  private additions(owner: SessionId, spec: Spec, fork = false): ContainerAdditions {
-    const folder = this.folder(owner)
+  private additions(owner: SessionId, spec: Spec, sessionFolder: string): ContainerAdditions {
     const mounts: Mount[] = []
-    const copies: Copy[] = [{ source: join(folder, 'agent'), target: AGENT_VIEW }]
     const directories: string[] = []
     for (const path of spec.paths) {
-      if (path.role === 'in') copies.push({ source: join(folder, 'in', path.name), target: path.host })
-      else if (fork) continue
-      else if (path.role === 'inout') mounts.push({ source: path.host, target: path.host, readonly: false })
-      // The folder an out path goes in, unless it is the container's root, which is always there.
-      else if (posix.dirname(path.host) !== '/') directories.push(posix.dirname(path.host))
+      if (path.role === 'out') directories.push(posix.dirname(path.view))
+      else if (path.role === 'share') {
+        const mount = shareMount(path, sessionFolder)
+        if (mount !== undefined) mounts.push(mount)
+      }
     }
-    const env = fork ? {} : spec.env
     return {
       mounts,
-      copies,
-      ...Object.keys(env).length === 0 ? {} : { env },
-      ...directories.length === 0 ? {} : { directories: [...new Set(directories)] },
+      copies: this.snapshots(owner, spec),
+      ...Object.keys(spec.env).length === 0 ? {} : { env: spec.env },
+      ...directories.length === 0 ? {} : { directories },
     }
+  }
+
+  /** Copies of a session's snapshots, of the agent and its `in` paths, which its forks get too. */
+  private snapshots(owner: SessionId, spec: Spec): Copy[] {
+    const folder = this.folder(owner)
+    return [
+      { source: join(folder, 'agent'), target: AGENT_VIEW },
+      ...spec.paths.filter(path => path.role === 'in').map(path => ({ source: join(folder, 'in', path.name), target: path.view })),
+    ]
   }
 
   private async find(root: SessionHeader): Promise<Found | undefined> {

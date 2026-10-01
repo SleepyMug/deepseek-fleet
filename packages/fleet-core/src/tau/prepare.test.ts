@@ -20,7 +20,7 @@ async function withAgent(files: Record<string, string>, check: (dir: string) => 
 }
 
 const request = (agent: string, args: string[], bind = true, backends: string[] = []): PrepareRequest =>
-  ({ agent, args, bind, callerCwd: '/caller', cwd: '/session', env: {}, backends })
+  ({ agent, args, bind, callerCwd: '/caller', sessionFolder: '/session', env: {}, backends, dshHome: '/dsh' })
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
@@ -40,7 +40,7 @@ test('a run fills PROMPT.md with the arguments and titles the session after the 
 test('every problem is reported together', async () => {
   await withAgent({
     'PROMPT.md': 'Edit ${src}',
-    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "inout"}], "env": ["FLEET_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
+    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "share"}], "env": ["FLEET_SOCKET", "LANG", "NODE_OPTIONS", "LD_PRELOAD"]}',
     'skills/bad/SKILL.md': 'no frontmatter',
   }, (dir) => {
     const prepared = prepare(request(dir, []))
@@ -52,14 +52,14 @@ test('every problem is reported together', async () => {
   })
 })
 
-test('path arguments and variables are bound, outside the session folder only', async () => {
+test('path arguments are bound where the container shows them, and variables as the caller has them', async () => {
   const outside = await mkdtemp(join(tmpdir(), 'fleet-tau-outside-'))
   try {
     await mkdir(join(outside, 'src'))
     await withAgent({
       'PROMPT.md': 'Edit ${src} into ${report} with ${rules}',
       'tau.json': JSON.stringify({
-        args: [{ name: 'src', type: 'dir', role: 'inout' }, { name: 'report', type: 'file', role: 'out' }, { name: 'rules', type: 'file', role: 'in' }],
+        args: [{ name: 'src', type: 'dir', role: 'share' }, { name: 'report', type: 'file', role: 'out' }, { name: 'rules', type: 'file', role: 'in' }],
         env: ['LANG', 'UNSET'],
       }),
     }, (dir) => {
@@ -67,14 +67,17 @@ test('path arguments and variables are bound, outside the session folder only', 
       const prepared = prepare({ ...request(dir, args), env: { LANG: 'C.UTF-8' } })
       assert.ok(prepared.ok, JSON.stringify(prepared))
       assert.deepEqual(prepared.spec.env, { LANG: 'C.UTF-8' })
-      assert.deepEqual(prepared.spec.paths.map(({ name, type, role, host }) => [name, type, role, host]), [
-        ['src', 'dir', 'inout', join(outside, 'src')], ['report', 'file', 'out', join(outside, 'report.md')], ['rules', 'file', 'in', join(dir, 'PROMPT.md')],
+      assert.deepEqual(prepared.spec.paths.map(({ name, type, role, host, view }) => [name, type, role, host, view]), [
+        ['src', 'dir', 'share', join(outside, 'src'), join(outside, 'src')],
+        ['report', 'file', 'out', join(outside, 'report.md'), '/tau/out/report/report.md'],
+        ['rules', 'file', 'in', join(dir, 'PROMPT.md'), '/tau/in/rules/PROMPT.md'],
       ])
-      assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into ${join(outside, 'report.md')} with ${join(dir, 'PROMPT.md')}`)
-      // The same paths inside the session folder are refused, and so is a missing input.
-      const inside = prepare({ ...request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'PROMPT.md')]), cwd: outside })
-      assert.ok(!inside.ok)
-      assert.equal(inside.problems.filter(problem => /the session folder/u.test(problem)).length, 2)
+      assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into /tau/out/report/report.md with /tau/in/rules/PROMPT.md`)
+      // The session folder may hold any of them, but a share path may not hold the session folder, nor any path the dsh home.
+      assert.ok(prepare({ ...request(dir, args), sessionFolder: outside }).ok)
+      const holding = prepare({ ...request(dir, args), sessionFolder: join(outside, 'src', 'sub'), dshHome: dir })
+      assert.ok(!holding.ok)
+      assert.deepEqual(holding.problems.map(problem => problem.split(':')[0]), ['src', 'rules'])
       const missing = prepare(request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'missing.md')]))
       assert.ok(!missing.ok)
       assert.match(missing.problems.join('\n'), /rules: .*missing\.md/u)
