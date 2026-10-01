@@ -31,9 +31,3 @@ export function lastTurnStart(events: readonly SessionEvent[]): number {
   const index = events.findLastIndex(event => event.type === 'turn/start')
   return index === -1 ? events.length : index
 }
-
-/** Where a turn still open at the end of the log starts; past the end when none is open. */
-export function openTurnStart(events: readonly SessionEvent[]): number {
-  const start = lastTurnStart(events)
-  return events.slice(start).some(event => event.type === 'turn/end') ? events.length : start
-}

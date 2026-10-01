@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
+import { lastTurnStart, summarize } from './outcome.ts'
 
 /** Just the fields the outcome reads. */
 const start = { type: 'turn/start', data: {} }
@@ -24,17 +24,4 @@ test('an error turn carries its failure', () => {
 test('a log without a finished turn has no reason', () => {
   assert.deepEqual(summarize(log(user), 0), { reason: null, text: '' })
   assert.deepEqual(summarize(log(user, start, say('working')), 0), { reason: null, text: 'working' })
-})
-
-test('steering joins the open turn, so its outcome counts from that turn\'s start', () => {
-  const running = log(start, end({ kind: 'completed' }), user, start, say('busy'))
-  assert.equal(openTurnStart(running), 3)
-  const finished = log(...running as unknown as object[], user, say('STEERED'), end({ kind: 'completed' }))
-  assert.deepEqual(summarize(finished, openTurnStart(running)), { reason: 'completed', text: 'STEERED' })
-})
-
-test('with no open turn, a message\'s outcome starts after the log', () => {
-  const idle = log(start, end({ kind: 'completed' }))
-  assert.equal(openTurnStart(idle), 2)
-  assert.equal(openTurnStart(log()), 0)
 })

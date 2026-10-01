@@ -86,7 +86,6 @@ async function answer(ctx: Context, control: FleetControl, line: string, socket:
 function dispatch(control: FleetControl, request: Request, signal: AbortSignal, started: (session: string) => void): unknown {
   switch (request.op) {
     case 'run': return control.run(request, signal, started)
-    case 'send': return control.send(request, signal)
     case 'wait': return control.wait(request, signal)
     case 'list': return control.list(signal)
     case 'cancel': return control.cancel(request)

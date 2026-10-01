@@ -26,7 +26,7 @@ import type {} from '../box/world.ts'
 import type {} from '../tau/backends.ts'
 import { promptSpec } from '../tau/spec.ts'
 import { InputError, type Spec } from '../tau/store.ts'
-import { lastTurnStart, openTurnStart, summarize } from './outcome.ts'
+import { lastTurnStart, summarize } from './outcome.ts'
 
 type RequestOf<K extends Request['op']> = Extract<Request, { op: K }>
 
@@ -88,7 +88,7 @@ export class FleetControl {
         })
       }
       // Once the session exists it gets its task even if the client has gone, which then only stops the wait.
-      await this.prompt(sessionId, spec.prompt, 'queue', UNCANCELLED)
+      await this.prompt(sessionId, spec.prompt, UNCANCELLED)
     } catch (error) {
       // Without its task the session would sit empty in the web UI, and the client never learns it.
       await this.ctx.workspaceRegistry.archiveSession(sessionId).catch((archiveError: unknown) => {
@@ -123,16 +123,6 @@ export class FleetControl {
       throw error
     }
     return sessionId
-  }
-
-  /** Send a message to a session, a later turn or steering for the running one. */
-  async send(request: RequestOf<'send'>, signal: AbortSignal): Promise<Results['send']> {
-    const sessionId = request.session as SessionId
-    // The message leads to what the session logs from now on, and joins a turn already open.
-    const from = openTurnStart((await this.ctx.sessionController.inspect(sessionId, signal)).events)
-    await this.prompt(sessionId, request.prompt, request.steer ? 'steer' : 'queue', signal)
-    if (!request.wait) return {}
-    return { outcome: await this.settle(sessionId, from, signal) }
   }
 
   /** Wait until a session is idle and report its last turn; a session no agent holds is only read. */
@@ -221,11 +211,11 @@ export class FleetControl {
     })
   }
 
-  private async prompt(sessionId: SessionId, text: string, mode: 'queue' | 'steer', signal: AbortSignal): Promise<void> {
+  private async prompt(sessionId: SessionId, text: string, signal: AbortSignal): Promise<void> {
     await this.ctx.sessionController.prompt({
       requestId: randomUUID() as SessionRequestId,
       sessionId,
-      mode,
+      mode: 'queue',
       content: [{ type: 'text', text }],
     }, signal)
   }

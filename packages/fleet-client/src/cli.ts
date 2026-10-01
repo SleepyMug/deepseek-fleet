@@ -12,13 +12,14 @@
  * session is an ordinary one of the fleet host, so the web UI lists it and a
  * person can follow or steer it there.
  *
- * `run`, `send` and `wait` wait until the session is idle, print only the
- * last answer, exit 0 when the last turn completed and 1 otherwise, and stop
- * the session's container, which its next use starts again. The session id
- * is never printed: `run --sid-file <file>` writes it to a file once its
- * task is accepted. With `--async`, `run` and `send` return once their
- * message is accepted. Ctrl-C cancels the turn being waited on; a second one
- * leaves it.
+ * A run is one-shot, as a tau's is: its session gets its task, and no
+ * later message from the command. `run` and `wait` wait until the session is
+ * idle, print only the last answer, exit 0 when the last turn completed and
+ * 1 otherwise, and stop the session's container, which its next use starts
+ * again. The session id is never printed: `run --sid-file <file>` writes it
+ * to a file once its task is accepted. With `--async`, `run` returns once
+ * the task is accepted. Ctrl-C cancels the turn being waited on; a second
+ * one leaves it.
  *
  * `fleet setup image` sets this machine up for the host instead, without
  * it: it builds the session image fleet-box uses (./setup/image.ts). In the
@@ -50,7 +51,6 @@ const USAGE = [
   '      --cwd <dir>                             the workspace dir its container mounts; default: this one',
   '      --sid-file <file>                       write the session id to <file> once the task is accepted',
   '      --async                                 return once the task is accepted',
-  '  send [--async] [--steer] <session> <text>   send a session a message, or steer its running turn',
   '  wait <session>                              wait until a session is idle and print its last answer',
   '  ls                                          list the sessions',
   '  cancel <session>                            cancel a session\'s running turn',
@@ -65,7 +65,7 @@ const USAGE = [
   `                                              or on the --from image; tagged ${DEFAULT_IMAGE}, which fleet-box uses,`,
   '                                              or --tag, which its `image` setting must name',
   '',
-  'Options come before the other arguments. run, send and wait print only the answer, exit 0',
+  'Options come before the other arguments. run and wait print only the answer, exit 0',
   'when the turn completed and 1 otherwise, and stop the session\'s container. Ctrl-C cancels',
   'the turn they wait on.',
 ].join('\n')
@@ -87,7 +87,6 @@ async function main(args: readonly string[]): Promise<number> {
   const [command, ...rest] = args
   switch (command) {
     case 'run': return run(rest)
-    case 'send': return send(rest)
     case 'wait': {
       const session = only(rest, 'wait')
       return attend({ op: 'wait', session }, { session })
@@ -124,22 +123,6 @@ async function run(args: readonly string[]): Promise<number> {
     return EXIT_OK
   }
   return attend({ ...request, wait: true }, { sidFile })
-}
-
-async function send(args: readonly string[]): Promise<number> {
-  const kinds = { '--async': 'flag', '--steer': 'flag' } as const
-  const { flags, positional } = parseOptions(args, kinds)
-  const [session, ...words] = positional
-  const text = words.join(' ')
-  if (session === undefined || text.trim() === '') throw new UsageError('send needs a session and a message')
-  // An option right after the session would be sent as the message.
-  if (Object.hasOwn(kinds, words[0]!)) throw new UsageError(`${words[0]} goes before the session`)
-  const request = { op: 'send', session, prompt: text, steer: flags.has('--steer') } as const
-  if (flags.has('--async')) {
-    await call({ ...request, wait: false })
-    return EXIT_OK
-  }
-  return attend({ ...request, wait: true }, { session })
 }
 
 /**
@@ -260,7 +243,7 @@ async function stop(session: string): Promise<number> {
  * @param known.session - the session, when the request names it; a `run` learns it from the host.
  * @param known.sidFile - where to write the session a `run` learns, as soon as it does.
  */
-async function attend(request: Extract<Request, { op: 'run' | 'send' | 'wait' }>, known: { session?: string; sidFile?: string }): Promise<number> {
+async function attend(request: Extract<Request, { op: 'run' | 'wait' }>, known: { session?: string; sidFile?: string }): Promise<number> {
   let session = known.session
   let interrupted = false
   let unrecorded = false

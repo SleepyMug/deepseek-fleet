@@ -48,8 +48,6 @@ export type Task = z.infer<typeof taskSchema>
 export const requestSchema = z.discriminatedUnion('op', [
   /** Start a session in the workspace dir `cwd` with a task; `wait` stays until it is idle. */
   z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
-  /** Send `prompt` to a session, queued as a later turn or, with `steer`, into the running one. */
-  z.object({ op: z.literal('send'), session, prompt, steer: z.boolean(), wait: z.boolean() }),
   /** Wait until a session is idle, and report its last turn. */
   z.object({ op: z.literal('wait'), session }),
   z.object({ op: z.literal('list') }),
@@ -105,7 +103,6 @@ export interface ApiRow {
 /** The result of each request. */
 export interface Results {
   run: { session: string; outcome?: Outcome }
-  send: { outcome?: Outcome }
   wait: { outcome: Outcome }
   list: { sessions: SessionRow[] }
   cancel: Record<string, never>
