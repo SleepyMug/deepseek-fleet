@@ -2,16 +2,17 @@
  * Publishing an agent's `out` paths: what the agent left in its
  * container, copied out to the store by fleet-box, which copies plain files
  * and folders only, is checked again here, and as tau checks a run's
- * outputs, and then replaces the caller's path. The copy comes from the container, which the model controls, so it
- * is taken only as plain files and folders of bounded size: a symlink, a
- * hard link, a device, a pipe or a socket in it refuses it, so nothing
- * published points elsewhere on the host or shares its data.
+ * outputs, and then put in place of the caller's path, outermost first.
+ * The copy comes from the container, which the model controls, so it is
+ * taken only as plain files and folders of bounded size: a symlink, a hard
+ * link, a device, a pipe or a socket in it refuses it, so nothing published
+ * points elsewhere on the host or shares its data.
  * @module fleet-core/tau/outputs
  */
 
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, readdir, rename, rm, stat } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { cp, lstat, mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join, relative } from 'node:path'
 import type { SpecPath } from './spec.ts'
 
 /** Most bytes one output may hold. */
@@ -76,26 +77,71 @@ export async function outputProblems(paths: readonly SpecPath[], copyOf: (path: 
 }
 
 /**
- * Replace the caller's path with a checked copy, at once for a file; a
- * folder there is set aside first, since a rename cannot replace a folder
- * that holds anything, and removed once the copy is in place.
+ * Where each `out` path is published, and in what order. Each is found
+ * before any is published, as tau's SPEC.md compares paths: its folder as
+ * the host resolves it, and its own name, which the publish replaces, not
+ * followed; so publishing one cannot move where another goes. They go
+ * outermost first, and those at the same path in their order, so where they
+ * overlap, the caller finds the inner, or later, one.
+ */
+export async function publishTargets<Path extends Pick<SpecPath, 'host'>>(outputs: readonly Path[]): Promise<{ path: Path; at: string }[]> {
+  const targets = await Promise.all(outputs.map(async (path) => {
+    const folder = await realpath(dirname(path.host)).catch(() => dirname(path.host))
+    return { path, at: join(folder, basename(path.host)) }
+  }))
+  return targets.toSorted((a, b) => a.at.split('/').length - b.at.split('/').length)
+}
+
+/**
+ * Put a checked copy in place of the caller's path, in a folder made for it
+ * if an `out` path published before it left none (tau's SPEC.md). The copy
+ * is copied beside the path first, onto its file system, and then renamed
+ * in: a folder over a folder entry by entry, recursively, so a folder that
+ * stays a folder is the same folder after, which a mount of it, such as a
+ * container's of the workspace dir or of a `share` path, and whatever has
+ * it open keep seeing. What the caller had is set aside, and removed once
+ * the copy is in place; a failure renames everything back, and should that
+ * fail too, leaves what was set aside where the error says.
  */
 export async function replace(host: string, copy: string): Promise<void> {
   const incoming = `${host}.fleet-${randomUUID()}`
-  await cp(copy, incoming, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true })
-  let setAside: string | undefined
-  try {
-    if ((await lstat(host).catch(() => undefined))?.isDirectory() === true) {
-      setAside = `${host}.fleet-old-${randomUUID()}`
-      await rename(host, setAside)
-    }
-    await rename(incoming, host)
-  } catch (error) {
-    if (setAside !== undefined) await rename(setAside, host).catch(() => {})
-    await rm(incoming, { recursive: true, force: true })
-    throw error
+  const aside = `${host}.fleet-old-${randomUUID()}`
+  /** Each rename done, which a failure undoes in reverse. */
+  const moved: [from: string, to: string][] = []
+  /** Whether nothing of the caller's is left in `aside`. */
+  let restored = true
+  const move = async (from: string, to: string): Promise<void> => {
+    await rename(from, to)
+    moved.push([from, to])
   }
-  if (setAside !== undefined) await rm(setAside, { recursive: true, force: true })
+  const put = async (target: string, source: string): Promise<void> => {
+    const [had, comes] = await Promise.all([lstat(target).catch(() => undefined), lstat(source)])
+    if (had?.isDirectory() === true && comes.isDirectory()) {
+      const entries = new Set(await readdir(source))
+      for (const entry of await readdir(target)) {
+        if (!entries.has(entry)) await move(join(target, entry), join(aside, String(moved.length)))
+      }
+      for (const entry of entries) await put(join(target, entry), join(source, entry))
+      return
+    }
+    if (had !== undefined) await move(target, join(aside, String(moved.length)))
+    await move(source, target)
+  }
+  try {
+    await mkdir(dirname(host), { recursive: true })
+    await cp(copy, incoming, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true })
+    await mkdir(aside)
+    await put(host, incoming)
+  } catch (error) {
+    for (const [from, to] of moved.toReversed()) await rename(to, from).catch(() => { restored = false })
+    if (restored) throw error
+    throw new Error(`${message(error)}; what could not be put back is in ${aside}, and the copy in ${incoming}`, { cause: error })
+  } finally {
+    if (restored) {
+      await rm(incoming, { recursive: true, force: true })
+      await rm(aside, { recursive: true, force: true })
+    }
+  }
 }
 
 function message(error: unknown): string {

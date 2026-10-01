@@ -294,14 +294,15 @@
 # as a snapshot taken when the session is made, which fleet-box copies into
 # the container at /tau/in/<name>/; an `out` path written in
 # /tau/out/<name>/ and published to the caller after a completed turn a
-# `fleet` command waited on; and a `share` path mounted where the caller has
-# it, or, in the session folder, as that folder's mount shows it. The session
-# folder is not an argument but the agent's working folder, which fleet-box
-# mounts at its own path, so any path argument may lie in it; but an `out`
-# path may not be or hold it, a `share` path may not hold it, nor lie in it
-# and lead out through a symlink, and no path may be, hold or lie in the dsh
-# home. The variables tau.json lists are passed from the caller's
-# environment.
+# `fleet` command waited on; and a `share` path mounted at its real path,
+# the same in the container as on the host, just as fleet-box mounts the
+# workspace dir as the agent's cwd. Overlapping `out` paths are published
+# outermost first, and one over an existing folder goes in entry by entry,
+# so a folder that stays a folder keeps any mount of it. Paths may overlap
+# each other and the workspace dir, each keeping its role, but none may be,
+# hold or lie in the dsh home, and a `share` path may not be, hold or lie in
+# the container's system or fleet folders. The variables tau.json lists are
+# passed from the caller's environment.
 
 - insert:
     - id: fleet-tau-backends

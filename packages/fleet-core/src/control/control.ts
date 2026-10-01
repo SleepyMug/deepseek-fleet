@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import { realpathNormalize, WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type Workspace } from '@deepseek-ai/dsh-workspace'
+import { realpathNormalize, WorkspaceActiveSessionError, WorkspaceUnknownSessionError, type WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { declarations, implementations } from 'fleet-image/apis/registry'
 import type { Outcome, Request, Results } from 'fleet-protocol/control'
 import type {} from '../box/world.ts'
@@ -57,7 +57,7 @@ export class FleetControl {
    * @param started - told the session once its task is accepted, so its turn can be cancelled, before the wait.
    */
   async run(request: RequestOf<'run'>, signal: AbortSignal, started: (session: string) => void): Promise<Results['run']> {
-    const sessionFolder = await this.sessionFolder(request.cwd)
+    const workspaceDir = await this.workspaceDir(request.cwd)
     const { task } = request
     // What the session gets, its prompt included, and its title, which only an agent directory gives.
     let spec: Spec
@@ -69,14 +69,14 @@ export class FleetControl {
         throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
       }
       const prepared = await this.ctx.fleetTau.prepare({
-        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, sessionFolder, env: task.env,
+        agent: task.agent, args: task.args, bind: true, callerCwd: task.callerCwd, env: task.env,
       })
       if (!prepared.ok) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${prepared.problems.join('\n  ')}`)
       spec = prepared.spec
       title = prepared.title
     }
-    const workspace = await this.ctx.workspaceRegistry.create(sessionFolder)
-    const sessionId = await this.create(workspace, spec, signal).catch((error: unknown) => {
+    const workspace = await this.ctx.workspaceRegistry.create(workspaceDir)
+    const sessionId = await this.create(workspace.id, spec, signal).catch((error: unknown) => {
       if (error instanceof InputError && 'agent' in task) throw new ControlError('fleet/agent-invalid', `${task.agent} cannot run:\n  ${error.problems.join('\n  ')}`)
       throw error
     })
@@ -108,13 +108,12 @@ export class FleetControl {
    * gone stops the spec from being stored, which can take a while for large
    * `in` paths.
    */
-  private async create(workspace: Workspace, spec: Spec, signal: AbortSignal): Promise<SessionId> {
+  private async create(workspaceId: WorkspaceId, spec: Spec, signal: AbortSignal): Promise<SessionId> {
     // The session controller's own format for new sessions.
     const sessionId = `session-${randomUUID()}` as SessionId
-    // The workspace's path is the session folder, which its container mounts.
-    await this.ctx.fleetTau.create(sessionId, spec, workspace.path, signal)
+    await this.ctx.fleetTau.create(sessionId, spec, signal)
     try {
-      await this.ctx.sessionController.create({ sessionId, workspaceId: workspace.id })
+      await this.ctx.sessionController.create({ sessionId, workspaceId })
     } catch (error) {
       if (!await this.exists(sessionId, signal).catch(() => true)) {
         await this.ctx.fleetTau.remove(sessionId).catch((removeError: unknown) => {
@@ -180,9 +179,8 @@ export class FleetControl {
     if (!isAbsolute(request.agent) || !isAbsolute(request.callerCwd)) {
       throw new ControlError('fleet/bad-request', 'the agent directory and the command\'s folder must be absolute paths')
     }
-    const sessionFolder = await this.sessionFolder(request.cwd)
     const prepared = await this.ctx.fleetTau.prepare({
-      agent: request.agent, args: request.args, bind: request.bind, callerCwd: request.callerCwd, sessionFolder, env: request.env,
+      agent: request.agent, args: request.args, bind: request.bind, callerCwd: request.callerCwd, env: request.env,
     })
     return { problems: prepared.ok ? [] : prepared.problems }
   }
@@ -213,14 +211,11 @@ export class FleetControl {
     return {}
   }
 
-  /**
-   * A session folder as dsh's workspaces have it, through symlinks, so a
-   * run's path arguments are checked against the folder its container mounts.
-   */
-  private async sessionFolder(cwd: string): Promise<string> {
-    if (!isAbsolute(cwd)) throw new ControlError('fleet/bad-request', `the session folder must be an absolute path: ${cwd}`)
+  /** A run's workspace dir as dsh's workspaces have it, through symlinks, refused before anything is read when it cannot be one. */
+  private async workspaceDir(cwd: string): Promise<string> {
+    if (!isAbsolute(cwd)) throw new ControlError('fleet/bad-request', `the workspace dir must be an absolute path: ${cwd}`)
     return await realpathNormalize(cwd).catch((error: unknown) => {
-      throw new ControlError('fleet/bad-request', `the session folder ${cwd} cannot be used: ${message(error)}`)
+      throw new ControlError('fleet/bad-request', `the workspace dir ${cwd} cannot be used: ${message(error)}`)
     })
   }
 

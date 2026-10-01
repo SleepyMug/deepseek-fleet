@@ -5,8 +5,9 @@
  * and as the container can give them (./paths.ts), its skills, and its
  * APIs, each linked to fleet's implementation of the same name
  * (fleet-image's apis/), which tau checks fits it, and whose backends must
- * be provided, with every problem found reported together. tau's library loads TypeScript as it is imported, so this runs
- * in a worker (./worker.ts), never in the fleet host's own thread.
+ * be provided, with every problem found reported together. tau's library
+ * loads TypeScript as it is imported, so this runs in a worker
+ * (./worker.ts), never in the fleet host's own thread.
  * @module fleet-core/tau/prepare
  */
 
@@ -27,8 +28,6 @@ export interface PrepareRequest {
   bind: boolean
   /** The command's working folder, which relative path arguments are resolved against. */
   callerCwd: string
-  /** The session folder, as its real path, which the container mounts as the agent's working folder. */
-  sessionFolder: string
   /** The command's values of the variables the agent's tau.json lists. */
   env: Record<string, string>
   /** The backends fleet's plugins provide now. */
@@ -63,14 +62,11 @@ export function prepare(request: PrepareRequest): Prepared {
     }
   }
   if (run !== undefined) {
-    const placed = pathProblems(run.paths, request.sessionFolder, request.dshHome)
-    problems.push(...placed)
-    if (placed.length === 0) {
-      try {
-        checkInputs(run)
-      } catch (error) {
-        problems.push(message(error))
-      }
+    problems.push(...pathProblems(run.paths, request.dshHome))
+    try {
+      checkInputs(run)
+    } catch (error) {
+      problems.push(message(error))
     }
   }
   const skills = loadSkills(tau.dir)

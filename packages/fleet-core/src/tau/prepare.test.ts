@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -20,7 +20,7 @@ async function withAgent(files: Record<string, string>, check: (dir: string) => 
 }
 
 const request = (agent: string, args: string[], bind = true, backends: string[] = []): PrepareRequest =>
-  ({ agent, args, bind, callerCwd: '/caller', sessionFolder: '/session', env: {}, backends, dshHome: '/dsh' })
+  ({ agent, args, bind, callerCwd: '/caller', env: {}, backends, dshHome: '/dsh' })
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
@@ -56,6 +56,8 @@ test('path arguments are bound where the container shows them, and variables as 
   const outside = await mkdtemp(join(tmpdir(), 'fleet-tau-outside-'))
   try {
     await mkdir(join(outside, 'src'))
+    await writeFile(join(outside, 'src', 'rules.md'), 'be kind')
+    await symlink(join(outside, 'src'), join(outside, 'link'))
     await withAgent({
       'PROMPT.md': 'Edit ${src} into ${report} with ${rules}',
       'tau.json': JSON.stringify({
@@ -73,11 +75,13 @@ test('path arguments are bound where the container shows them, and variables as 
         ['rules', 'file', 'in', join(dir, 'PROMPT.md'), '/tau/in/rules/PROMPT.md'],
       ])
       assert.equal(prepared.spec.prompt, `Edit ${join(outside, 'src')} into /tau/out/report/report.md with /tau/in/rules/PROMPT.md`)
-      // The session folder may hold any of them, but a share path may not hold the session folder, nor any path the dsh home.
-      assert.ok(prepare({ ...request(dir, args), sessionFolder: outside }).ok)
-      const holding = prepare({ ...request(dir, args), sessionFolder: join(outside, 'src', 'sub'), dshHome: dir })
-      assert.ok(!holding.ok)
-      assert.deepEqual(holding.problems.map(problem => problem.split(':')[0]), ['src', 'rules'])
+      // Paths may overlap, a share path is shown at its real path, and no path may touch the dsh home.
+      const overlapping = prepare(request(dir, [join(outside, 'link'), join(outside, 'link', 'report.md'), join(outside, 'link', 'rules.md')]))
+      assert.ok(overlapping.ok, JSON.stringify(overlapping))
+      assert.deepEqual(overlapping.spec.paths.map(({ view }) => view), [join(outside, 'src'), '/tau/out/report/report.md', '/tau/in/rules/rules.md'])
+      const home = prepare({ ...request(dir, args), dshHome: dir })
+      assert.ok(!home.ok)
+      assert.deepEqual(home.problems.map(problem => problem.split(':')[0]), ['rules'])
       const missing = prepare(request(dir, [join(outside, 'src'), join(outside, 'report.md'), join(dir, 'missing.md')]))
       assert.ok(!missing.ok)
       assert.match(missing.problems.join('\n'), /rules: .*missing\.md/u)

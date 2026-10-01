@@ -19,8 +19,8 @@
  * role, where ./paths.ts places it; tau leaves how to the runtime. An `in`
  * path is its snapshot, so the agent sees the input as it was when it was
  * given, however long the session lasts; the folder an `out` path goes in
- * is made; and a `share` path is mounted from the caller, unless the
- * session folder, which fleet-box mounts on its own, holds it already. The
+ * is made; and a `share` path is mounted from the caller at its real path,
+ * which composes with fleet-box's mount of the workspace dir. The
  * container gets the caller's values of the variables tau.json lists as
  * well. After a completed turn, the command that waited on it has the store
  * publish the `out` paths ({@link FleetTau.publish}).
@@ -43,7 +43,7 @@ import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { ContainerAdditions, Copy, Mount } from '../box/world.ts'
 import { z } from 'zod'
 import { InputError, snapshot } from './inputs.ts'
-import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, replace } from './outputs.ts'
+import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, publishTargets, replace } from './outputs.ts'
 import { AGENT_VIEW, shareMount } from './paths.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
 import type {} from './backends.ts'
@@ -132,11 +132,10 @@ export class FleetTau extends Service {
    * snapshots of its agent and its `in` paths, then its container's
    * additions. A failure leaves nothing behind.
    * @param session - the id the session will have.
-   * @param sessionFolder - the session folder, as its real path, which its container mounts on its own.
    * @param signal - stops copying, for a command that has gone.
    * @throws an {@link InputError} when an `in` path cannot be copied.
    */
-  async create(session: SessionId, spec: Spec, sessionFolder: string, signal?: AbortSignal): Promise<void> {
+  async create(session: SessionId, spec: Spec, signal?: AbortSignal): Promise<void> {
     const folder = this.folder(session)
     await mkdir(join(this.home, 'fleet', 'sessions'), { recursive: true, mode: 0o700 })
     // Fails if the folder exists, so a spec is never mixed with another's.
@@ -152,7 +151,7 @@ export class FleetTau extends Service {
       // A tau's symlinks stay inside it, and the runtime keeps them as they are.
       if (spec.agent !== undefined) await cp(spec.agent.source, join(folder, 'agent'), { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true })
       await writeFile(join(folder, 'spec.json'), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 })
-      await this.self.fleetBox.configure(session, this.additions(session, spec, sessionFolder))
+      await this.self.fleetBox.configure(session, this.additions(session, spec))
     } catch (error) {
       await this.remove(session).catch((removeError: unknown) => {
         this.self.logger.warn(`fleet-tau: could not remove the spec of ${session}, which was never made: ${message(removeError)}`)
@@ -165,11 +164,11 @@ export class FleetTau extends Service {
    * Publish a session's `out` paths after a completed turn, once per
    * turn: copy each out of the container into a staging folder of this
    * publish's own, check the copies (./outputs.ts) and that the run left
-   * what the tau declares, and only then replace the caller's paths. A
-   * session's publishes run one at a time, so two commands waiting on it
-   * never copy over each other, and none happens while a turn runs, since
-   * the agent could be changing what is copied. A fork publishes nothing;
-   * its source's paths belong to the source's run.
+   * what the tau declares, and only then replace the caller's paths,
+   * outermost first. A session's publishes run one at a time, so two
+   * commands waiting on it never copy over each other, and none happens
+   * while a turn runs, since the agent could be changing what is copied. A
+   * fork publishes nothing; its source's paths belong to the source's run.
    * @param turn - the turn's place in the session's log.
    * @returns why the run did not leave what its tau declares, its `out` paths published and its `share` paths as declared, none when it did, or it has none.
    */
@@ -209,8 +208,8 @@ export class FleetTau extends Service {
       if (problems.length === 0) problems.push(...await outputProblems(paths, copyOf))
       // A turn that started while copying may have changed what was copied.
       if (this.self.fleetBox.turnRunning(root.id)) return [BUSY]
-      for (const path of problems.length === 0 ? outputs : []) {
-        await replace(path.host, copyOf(path)).catch((error: unknown) => {
+      for (const { path, at } of problems.length === 0 ? await publishTargets(outputs) : []) {
+        await replace(at, copyOf(path)).catch((error: unknown) => {
           problems.push(`${path.name}: could not replace ${path.host}: ${message(error)}`)
         })
       }
@@ -258,17 +257,13 @@ export class FleetTau extends Service {
   /**
    * A run's container additions: copies of its snapshots, and its other
    * paths and its variables, each path where ./paths.ts places it.
-   * @param sessionFolder - the session folder, as its real path, which the container mounts on its own.
    */
-  private additions(owner: SessionId, spec: Spec, sessionFolder: string): ContainerAdditions {
+  private additions(owner: SessionId, spec: Spec): ContainerAdditions {
     const mounts: Mount[] = []
     const directories: string[] = []
     for (const path of spec.paths) {
       if (path.role === 'out') directories.push(posix.dirname(path.view))
-      else if (path.role === 'share') {
-        const mount = shareMount(path, sessionFolder)
-        if (mount !== undefined) mounts.push(mount)
-      }
+      else if (path.role === 'share') mounts.push(shareMount(path))
     }
     return {
       mounts,

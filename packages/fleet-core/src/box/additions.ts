@@ -32,7 +32,11 @@ export function reservedVariable(name: string): boolean {
   return RESERVED_ENV.includes(name) || name.startsWith('LD_')
 }
 
-/** A host path bind-mounted into the container. */
+/**
+ * A host path bind-mounted into the container. One that is writable and at
+ * the same path as on the host composes with the workspace dir's mount,
+ * which is such a mount too: where the two meet, they show the same files.
+ */
 export interface Mount {
   /** Absolute host path. */
   source: string
@@ -49,7 +53,7 @@ export interface Copy {
   target: string
 }
 
-/** What a root session's container gets beyond the session folder. */
+/** What a root session's container gets beyond the workspace dir. */
 export interface ContainerAdditions {
   mounts: Mount[]
   /**
@@ -148,27 +152,38 @@ export async function removeAdditions(home: string, session: string): Promise<vo
 
 /**
  * The `docker run` arguments of a container's additions, none without any,
- * so a container without additions keeps its spec.
- * @param workspace - the session folder, which no addition may cover or lie in.
- * @throws when an addition would cover the session folder or fleet-box's own
- * folders, or a copy would overlap a mount, whose host files it would write,
- * or another copy.
+ * so a container without additions keeps its spec. A mount that composes
+ * with the workspace dir's ({@link Mount}) may lie in the workspace dir,
+ * hold it, or meet another such mount. One that the workspace dir's mount
+ * or another such mount shows already is left out, since a bind mount shows
+ * what lies below it: mounting a file there on its own would keep programs
+ * from renaming another file over it.
+ * @param workspace - the workspace dir, which fleet-box mounts at its own path.
+ * @throws when an addition would cover fleet-box's own folders, or a mount
+ * that does not compose with the workspace dir's would overlap it or another
+ * mount, or a copy would overlap the workspace dir, a mount, whose host
+ * files it would write, or another copy.
  */
 export function additionArgs(additions: ContainerAdditions | undefined, workspace: string): string[] {
   if (additions === undefined) return []
   const copies = additions.copies ?? []
-  const targets = [...additions.mounts.map(({ target }) => ({ verb: 'mounts', target })), ...copies.map(({ target }) => ({ verb: 'copies to', target }))]
-  for (const { verb, target } of targets) {
-    for (const taken of [workspace, ...RESERVED]) {
-      if (overlaps(target, taken)) throw new Error(`fleet-box: a container addition ${verb} ${target}, which overlaps ${taken}`)
+  const all = additions.mounts
+  /** Whether the workspace dir's mount, or another that composes with it, shows a mount's target already; of two at one path, the first is kept. */
+  const shown = (target: string, index: number): boolean => within(target, workspace)
+    || all.some((other, at) => at !== index && composes(other) && within(target, other.target) && (other.target !== target || at < index))
+  const kept = all.filter((mount, index) => !composes(mount) || !shown(mount.target, index))
+  for (const mount of kept) {
+    const taken = composes(mount) ? RESERVED : [workspace, ...RESERVED, ...kept.filter(other => other !== mount).map(other => other.target)]
+    for (const folder of taken) {
+      if (overlaps(mount.target, folder)) throw new Error(`fleet-box: a container addition mounts ${mount.target}, which overlaps ${folder}`)
     }
   }
   for (const [index, { target }] of copies.entries()) {
-    for (const other of [...additions.mounts, ...copies.slice(index + 1)]) {
-      if (overlaps(target, other.target)) throw new Error(`fleet-box: a container addition copies to ${target}, which overlaps ${other.target}`)
+    for (const folder of [workspace, ...RESERVED, ...kept.map(mount => mount.target), ...copies.slice(index + 1).map(copy => copy.target)]) {
+      if (overlaps(target, folder)) throw new Error(`fleet-box: a container addition copies to ${target}, which overlaps ${folder}`)
     }
   }
-  const mounts = additions.mounts.flatMap(mount => [
+  const mounts = kept.flatMap(mount => [
     '--mount', `type=bind,${mountField(`src=${mount.source}`)},${mountField(`dst=${mount.target}`)}${mount.readonly ? ',readonly' : ''}`,
   ])
   const env = Object.entries(additions.env ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).flatMap(([name, value]) => ['--env', `${name}=${value}`])
@@ -180,9 +195,18 @@ export function mountField(field: string): string {
   return /[",\r\n]/u.test(field) ? `"${field.replaceAll('"', '""')}"` : field
 }
 
+/** Whether a mount shows a host path writable at the same path, as the workspace dir's mount does. */
+function composes(mount: Mount): boolean {
+  return mount.source === mount.target && !mount.readonly
+}
+
 /** Whether one container path is, or lies inside, the other. */
 function overlaps(a: string, b: string): boolean {
-  const [outer, inner] = a.length <= b.length ? [a, b] : [b, a]
+  return within(a, b) || within(b, a)
+}
+
+/** Whether a container path is, or lies inside, a folder. */
+function within(inner: string, outer: string): boolean {
   return outer === '/' || inner === outer || inner.startsWith(`${outer}/`)
 }
 

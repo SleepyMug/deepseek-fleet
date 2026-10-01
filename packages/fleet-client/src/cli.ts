@@ -47,7 +47,7 @@ const USAGE = [
   'Usage: fleet <command>',
   '  run [options] <agent-dir> [args...]         run an agent directory (tau format) in a new session',
   '  run [options] -p <prompt>                   run a new session on a prompt, without an agent directory',
-  '      --cwd <dir>                             the session\'s folder, which its container mounts; default: this one',
+  '      --cwd <dir>                             the workspace dir its container mounts; default: this one',
   '      --sid-file <file>                       write the session id to <file> once the task is accepted',
   '      --async                                 return once the task is accepted',
   '  send [--async] [--steer] <session> <text>   send a session a message, or steer its running turn',
@@ -57,9 +57,9 @@ const USAGE = [
   '  stop <session>                              stop a session\'s container unless the session is busy',
   '  rm [--force] <session>                      archive a session and remove its container;',
   '                                              --force stops what it still runs',
-  '  check [--cwd <dir>] <agent-dir> [args...]   report what would keep an agent directory from running',
-  '                                              in a session in <dir>, its APIs checked against',
-  '                                              fleet\'s implementations; with arguments, bind them too',
+  '  check <agent-dir> [args...]                 report what would keep an agent directory from running,',
+  '                                              its APIs checked against fleet\'s implementations;',
+  '                                              with arguments, bind them too',
   '  apis [name]                                 list the APIs fleet implements, or print one\'s declarations',
   '  setup image [--from <image>] [--tag <tag>]  build the session image: fleet\'s runtime on its own environment,',
   `                                              or on the --from image; tagged ${DEFAULT_IMAGE}, which fleet-box uses,`,
@@ -116,7 +116,7 @@ async function main(args: readonly string[]): Promise<number> {
 
 async function run(args: readonly string[]): Promise<number> {
   const { flags, values, positional } = parseOptions(args, { '--async': 'flag', '--cwd': 'value', '--sid-file': 'value', '-p': 'value' })
-  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: sessionFolder(values.get('--cwd') ?? process.cwd()) } as const
+  const request = { op: 'run', task: task(positional, values.get('-p')), cwd: workspaceDir(values.get('--cwd') ?? process.cwd()) } as const
   const sidFile = sidFilePath(values.get('--sid-file'))
   if (flags.has('--async')) {
     const { session } = await call({ ...request, wait: false })
@@ -160,13 +160,12 @@ function task(positional: readonly string[], prompt: string | undefined): Task {
 }
 
 async function check(args: readonly string[]): Promise<number> {
-  const { values, positional } = parseOptions(args, { '--cwd': 'value' })
+  const { positional } = parseOptions(args, {})
   const [dir, ...agentArgs] = positional
   if (dir === undefined) throw new UsageError('check needs an agent directory')
   const agent = resolve(dir)
   const { problems } = await call({
-    op: 'check', agent, args: agentArgs, bind: agentArgs.length > 0, callerCwd: process.cwd(),
-    cwd: sessionFolder(values.get('--cwd') ?? process.cwd()), env: agentEnv(agent, process.env),
+    op: 'check', agent, args: agentArgs, bind: agentArgs.length > 0, callerCwd: process.cwd(), env: agentEnv(agent, process.env),
   })
   if (problems.length === 0) {
     process.stdout.write('ok\n')
@@ -205,8 +204,8 @@ async function setup(args: readonly string[]): Promise<number> {
   return EXIT_OK
 }
 
-/** The real path of a session's folder, where its workspace is registered. */
-function sessionFolder(dir: string): string {
+/** The real path of a session's workspace dir, as dsh registers it. */
+function workspaceDir(dir: string): string {
   let path: string
   try {
     path = realpathSync(resolve(dir))

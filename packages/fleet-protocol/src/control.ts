@@ -46,7 +46,7 @@ const taskSchema = z.union([
 export type Task = z.infer<typeof taskSchema>
 
 export const requestSchema = z.discriminatedUnion('op', [
-  /** Start a session in `cwd` with a task; `wait` stays until it is idle. */
+  /** Start a session in the workspace dir `cwd` with a task; `wait` stays until it is idle. */
   z.object({ op: z.literal('run'), cwd: z.string().min(1), task: taskSchema, wait: z.boolean() }),
   /** Send `prompt` to a session, queued as a later turn or, with `steer`, into the running one. */
   z.object({ op: z.literal('send'), session, prompt, steer: z.boolean(), wait: z.boolean() }),
@@ -59,11 +59,8 @@ export const requestSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('stop'), session }),
   /** Archive a session, which removes its container; `force` stops what runs instead of refusing. */
   z.object({ op: z.literal('archive'), session, force: z.boolean() }),
-  /**
-   * Read an agent directory as a run in `cwd` would, and report its problems;
-   * the arguments are bound only when `bind`.
-   */
-  z.object({ op: z.literal('check'), ...agentFields, cwd: z.string().min(1), bind: z.boolean() }),
+  /** Read an agent directory as a run would, and report its problems; the arguments are bound only when `bind`. */
+  z.object({ op: z.literal('check'), ...agentFields, bind: z.boolean() }),
   /** The APIs fleet implements. */
   z.object({ op: z.literal('apis') }),
 ])

@@ -47,7 +47,7 @@ Besides running commands, you can write TypeScript programs and run them in this
 1. Call \`ts_modules({ query? })\` to list what programs can import. It gives each package's specifier, description and \`packageRoot\`, a folder in this container.
 2. Read a package's \`package.json\` and the declaration files its \`types\` and \`exports\` name, under \`packageRoot\`, before writing calls; descriptions are summaries, not contracts.
 3. Write strict ES2022 TypeScript with ESM imports.
-4. Call \`ts_execute({ source, cwd?, input? })\`. It type-checks before running; fix the reported errors and retry. \`cwd\`, the session folder by default, is where relative paths resolve; packages are imported by specifier wherever it is.
+4. Call \`ts_execute({ source, cwd?, input? })\`. It type-checks before running; fix the reported errors and retry. \`cwd\`, your working directory by default, is where relative paths resolve; packages are imported by specifier wherever it is.
 5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. What an API does outside the container is not undone when a program fails.
 
 ## JSON
@@ -112,7 +112,7 @@ export function registerTsTools(ctx: Context, spec: Spec): void {
       + 'and the processes it started are killed when it ends, unless they left its process group.',
     parameters: {
       source: { type: 'string', required: true, description: 'A complete TypeScript ES module exporting `main(input)`.' },
-      cwd: { type: 'string', description: 'Absolute folder the program runs in; the session folder by default.' },
+      cwd: { type: 'string', description: 'Absolute folder the program runs in; your working directory by default.' },
       input: { type: 'json', description: 'JSON value passed to main; left out, main gets undefined.' },
     },
     output: {
@@ -129,7 +129,7 @@ export function registerTsTools(ctx: Context, spec: Spec): void {
     },
     timeoutMs: EXECUTE_TIMEOUT_MS + REPORT_MARGIN_MS,
     async execute(args, exec) {
-      const cwd = args.cwd ?? sessionFolder(exec)
+      const cwd = args.cwd ?? fleetCwd(exec)
       if (!posix.isAbsolute(cwd)) throw new Error('cwd must be an absolute folder')
       const reply = await runner(ctx, exec, {
         command: 'execute', ...packages(), source: args.source, cwd, timeoutMs: EXECUTE_TIMEOUT_MS, ...args.input === undefined ? {} : { input: args.input },
@@ -153,7 +153,7 @@ async function runner(ctx: Context, exec: ToolRunContext, request: RunnerRequest
   }
   const handle = ctx.subprocess.spawn({
     argv: [HELPER_NODE, RUNNER_ENTRY],
-    cwd: sessionFolder(exec),
+    cwd: fleetCwd(exec),
     stdio: { stdin: { data: JSON.stringify(request) }, stdout: { maxBytes: 2 * MAX_REPLY_BYTES }, stderr: { maxBytes: 64 * 1024 } },
     graceMs: GRACE_MS,
     signal: exec.signal,
@@ -167,9 +167,10 @@ async function runner(ctx: Context, exec: ToolRunContext, request: RunnerRequest
   throw new Error(`the TypeScript runner failed or answered something else (${ended})${stderr === '' ? '' : `: ${stderr.slice(-4096)}`}`)
 }
 
-function sessionFolder(exec: ToolRunContext): string {
+/** The session's working folder in its container: its workspace dir, which fleet-box mounts at its own path. */
+function fleetCwd(exec: ToolRunContext): string {
   const cwd = exec.agent?.session.header.cwd
-  if (cwd === undefined) throw new Error('the TypeScript tools need a session with a folder')
+  if (cwd === undefined) throw new Error('the TypeScript tools need a session with a working directory')
   return cwd
 }
 

@@ -343,7 +343,7 @@ export class FleetBox extends Service {
   }
 
   /**
-   * Set what a root session's container gets beyond the session folder
+   * Set what a root session's container gets beyond the workspace dir
    * (./additions.ts), before or after the session exists. The container gets
    * them from its next use on, which recreates it if it exists; a container
    * gets its copies when it is created.

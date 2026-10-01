@@ -59,9 +59,9 @@ try {
 
   /** A session as `fleet run` makes one, and its container and helper as fleet-box starts them. */
   async function session(id, agent, args) {
-    const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, sessionFolder: workspace, env: {} })
+    const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, env: {} })
     assert.ok(prepared.ok, JSON.stringify(prepared))
-    await tau.create(id, prepared.spec, workspace)
+    await tau.create(id, prepared.spec)
     const additions = additionsOf.get(id)
     const name = `fleet-smoke-${id}`
     execFileSync('docker', ['rm', '--force', name], { stdio: 'ignore' })

@@ -6,19 +6,20 @@
  * /tau/out/<name>/, each keeping the base name of the caller's path, so
  * neither meets the caller's paths or the container's own, and the prompt
  * names them there. A `share` path is the caller's own, which the agent
- * changes as the caller sees it, so the container mounts it where the
- * caller has it; it may not cover or replace the container's system folders
- * or fleet's own.
+ * changes as the caller sees it, so the container mounts it at its real
+ * path, the same in the container as on the host, as fleet-box mounts the
+ * workspace dir: such mounts show the same files where they meet, so
+ * `share` paths may lie in the workspace dir or in each other, or hold
+ * them, and symlinks between them lead where they do on the host. Where it
+ * really is, though, a `share` path may not be or hold the container's
+ * system folders or fleet's own, nor lie in the kernel's or fleet's.
  *
- * The session folder is no argument but the agent's working folder, which
- * fleet-box mounts at its own path. A `share` path in it is there already,
- * unless it leads out of it through a symlink, which the container resolves
- * among its own files; one that holds it cannot be mounted over it; and an
- * `out` path that is or holds it would replace it when published. No path
- * may be, hold or lie in the dsh home either, where fleet keeps its
- * sessions, which a snapshot would copy into itself. Paths are compared as
- * given, which is where the container shows them, and as the host resolves
- * them, through symlinks.
+ * Paths may overlap each other and the workspace dir, each keeping its role
+ * (tau's SPEC.md), but none may be, hold or lie in the dsh home, where fleet
+ * keeps its sessions: a snapshot would copy it into itself, a publish could
+ * replace it, and a mount would show the agent every session. Each path is
+ * compared with the dsh home as given and as the host resolves it, but for
+ * an `out` path's own name, which the publish replaces, not follows.
  * @module fleet-core/tau/paths
  */
 
@@ -38,60 +39,42 @@ const ENCLOSED = ['/proc', '/sys', '/dev', PACKAGE_ROOT, TAU_ROOT, RUN_ROOT]
 
 /** Where the container shows a path argument, and the prompt names it; tau's `place`. */
 export function place(path: Omit<BoundPath, 'view'>): string {
-  if (path.role === 'share') return path.host
+  if (path.role === 'share') return realPath(path.host)
   return posix.join(TAU_ROOT, path.role, path.name, posix.basename(path.host))
 }
 
-/**
- * The mount a `share` path that {@link pathProblems} accepts needs: none
- * when the session folder's own mount shows it already.
- * @param sessionFolder - the session folder, as its real path.
- */
-export function shareMount(path: Pick<BoundPath, 'host' | 'view'>, sessionFolder: string): Mount | undefined {
-  return within(path.host, sessionFolder) ? undefined : { source: path.host, target: path.view, readonly: false }
+/** The mount that shows a `share` path {@link pathProblems} accepts: its real path, at the same path. */
+export function shareMount(path: Pick<BoundPath, 'view'>): Mount {
+  return { source: path.view, target: path.view, readonly: false }
 }
 
 /**
- * @param paths - the bound path arguments.
- * @param sessionFolder - the session folder, as its real path.
+ * @param paths - the bound path arguments, placed by {@link place}.
  * @param dshHome - the dsh home, where fleet keeps its sessions.
  * @returns a problem for each path the container cannot be given.
  */
-export function pathProblems(paths: readonly Pick<BoundPath, 'name' | 'role' | 'host'>[], sessionFolder: string, dshHome: string): string[] {
+export function pathProblems(paths: readonly Pick<BoundPath, 'name' | 'role' | 'host' | 'view'>[], dshHome: string): string[] {
   const home = realPath(dshHome)
   const problems: string[] = []
   for (const path of paths) {
-    const real = realPath(path.host)
+    const real = path.role === 'out' ? join(realPath(dirname(path.host)), basename(path.host)) : realPath(path.host)
     const touching = relation(path.host, dshHome) ?? relation(real, home)
     if (touching !== undefined) {
       problems.push(`${path.name}: ${path.host} ${touching} the dsh home ${dshHome}, where fleet keeps its sessions`)
       continue
     }
-    if (path.role === 'out' && (within(sessionFolder, path.host) || within(sessionFolder, real))) {
-      problems.push(`${path.name}: ${path.host} is or holds the session folder ${sessionFolder}, which publishing it would replace`)
-      continue
-    }
-    if (path.role === 'share') {
-      const problem = shareProblem(path.host, real, sessionFolder)
-      if (problem !== undefined) problems.push(`${path.name}: ${path.host} ${problem}`)
-    }
+    const problem = path.role === 'share' ? mountProblem(path.view) : undefined
+    if (problem !== undefined) problems.push(`${path.name}: ${path.view === path.host ? path.host : `${path.host}, which is ${path.view},`} ${problem}`)
   }
   return problems
 }
 
-/** Why the container cannot be given a `share` path, if it cannot. */
-function shareProblem(host: string, real: string, sessionFolder: string): string | undefined {
-  if (within(host, sessionFolder)) {
-    return within(real, sessionFolder) ? undefined
-      : `lies in the session folder ${sessionFolder} but leads out of it through a symlink, which the container resolves among its own files`
-  }
-  const covered = COVERED.find(folder => within(folder, host))
+/** Why the container cannot show a host path at the same path, if it cannot. */
+function mountProblem(real: string): string | undefined {
+  const covered = COVERED.find(folder => within(folder, real))
   if (covered !== undefined) return `would cover ${covered} in the container`
-  const enclosing = ENCLOSED.find(folder => within(host, folder))
+  const enclosing = ENCLOSED.find(folder => within(real, folder))
   if (enclosing !== undefined) return `lies in ${enclosing}, which the container keeps for itself`
-  if (within(sessionFolder, host)) {
-    return `holds the session folder ${sessionFolder}, which the container mounts on its own; run the agent in ${host}, or in a folder outside it, with --cwd`
-  }
   return undefined
 }
 

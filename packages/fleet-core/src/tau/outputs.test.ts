@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { link, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, link, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { copyProblems, outputProblems, replace } from './outputs.ts'
+import { copyProblems, outputProblems, publishTargets, replace } from './outputs.ts'
 
 async function withDir(check: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-tau-outputs-'))
@@ -41,20 +41,84 @@ test('symlinks, hard links and oversized copies are refused', async () => {
   })
 })
 
-test('a copy replaces a file at once, and a folder whole, leaving nothing beside it', async () => {
+test('a copy replaces a file, and a folder entry by entry, leaving nothing beside it', async () => {
   await withDir(async (dir) => {
     await writeFile(join(dir, 'copy.txt'), 'new')
     await writeFile(join(dir, 'report.txt'), 'old')
     await replace(join(dir, 'report.txt'), join(dir, 'copy.txt'))
     assert.equal(await readFile(join(dir, 'report.txt'), 'utf8'), 'new')
-    await mkdir(join(dir, 'copy'))
+    // In a folder made for it, as when an outer out path published before it left none.
+    await replace(join(dir, 'created', 'in', 'report.txt'), join(dir, 'copy.txt'))
+    assert.equal(await readFile(join(dir, 'created', 'in', 'report.txt'), 'utf8'), 'new')
+    await mkdir(join(dir, 'copy', 'kept', 'deep'), { recursive: true })
     await writeFile(join(dir, 'copy', 'fresh'), '1')
-    await mkdir(join(dir, 'site'))
+    await writeFile(join(dir, 'copy', 'kept', 'deep', 'page'), 'new page')
+    await mkdir(join(dir, 'copy', 'was-a-file'))
+    await writeFile(join(dir, 'copy', 'was-a-folder'), 'now a file')
+    await mkdir(join(dir, 'site', 'kept', 'deep'), { recursive: true })
     await writeFile(join(dir, 'site', 'stale'), '0')
+    await writeFile(join(dir, 'site', 'kept', 'deep', 'page'), 'old page')
+    await writeFile(join(dir, 'site', 'kept', 'gone'), 'x')
+    await writeFile(join(dir, 'site', 'was-a-file'), 'x')
+    await mkdir(join(dir, 'site', 'was-a-folder'))
+    const folders = await Promise.all(['site', 'site/kept', 'site/kept/deep'].map(async folder => (await stat(join(dir, folder))).ino))
     await replace(join(dir, 'site'), join(dir, 'copy'))
-    assert.deepEqual(await readdir(join(dir, 'site')), ['fresh'])
-    await replace(join(dir, 'created'), join(dir, 'copy.txt'))
+    assert.deepEqual((await readdir(join(dir, 'site'))).sort(), ['fresh', 'kept', 'was-a-file', 'was-a-folder'])
+    assert.deepEqual(await readdir(join(dir, 'site', 'kept')), ['deep'])
+    assert.equal(await readFile(join(dir, 'site', 'kept', 'deep', 'page'), 'utf8'), 'new page')
+    assert.ok((await stat(join(dir, 'site', 'was-a-file'))).isDirectory())
+    assert.equal(await readFile(join(dir, 'site', 'was-a-folder'), 'utf8'), 'now a file')
+    // A mount of a folder that stays a folder, such as the container's of the workspace dir, still shows it.
+    assert.deepEqual(await Promise.all(['site', 'site/kept', 'site/kept/deep'].map(async folder => (await stat(join(dir, folder))).ino)), folders)
+    // A folder over a file, and nothing beside what was replaced.
+    await replace(join(dir, 'report.txt'), join(dir, 'copy'))
+    assert.deepEqual(await readdir(join(dir, 'report.txt', 'kept')), ['deep'])
     assert.deepEqual((await readdir(dir)).sort(), ['copy', 'copy.txt', 'created', 'report.txt', 'site'])
+  })
+})
+
+test('a copy that cannot be put in place leaves the caller\'s path as it was', async () => {
+  await withDir(async (dir) => {
+    await mkdir(join(dir, 'copy', 'locked'), { recursive: true })
+    await writeFile(join(dir, 'copy', 'a'), 'new a')
+    await writeFile(join(dir, 'copy', 'locked', 'b'), 'new b')
+    await mkdir(join(dir, 'site', 'locked'), { recursive: true })
+    await writeFile(join(dir, 'site', 'a'), 'old a')
+    await writeFile(join(dir, 'site', 'locked', 'old'), 'old')
+    // Nothing can be moved out of or into the locked folder.
+    await chmod(join(dir, 'site', 'locked'), 0o500)
+    try {
+      await assert.rejects(replace(join(dir, 'site'), join(dir, 'copy')), { code: 'EACCES' })
+    } finally {
+      await chmod(join(dir, 'site', 'locked'), 0o700)
+    }
+    assert.equal(await readFile(join(dir, 'site', 'a'), 'utf8'), 'old a')
+    assert.deepEqual(await readdir(join(dir, 'site', 'locked')), ['old'])
+    assert.deepEqual((await readdir(dir)).sort(), ['copy', 'site'])
+  })
+})
+
+test('out paths are published where they are before any is, outermost first, and in their order at the same path', async () => {
+  await withDir(async (dir) => {
+    await mkdir(join(dir, 'site'))
+    await mkdir(join(dir, 'data'))
+    await symlink(join(dir, 'site'), join(dir, 'l'))
+    await symlink(join(dir, 'data'), join(dir, 'to-data'))
+    const hosts = [join(dir, 'l', 'a', 'b'), join(dir, 'l', 'x'), join(dir, 'site'), join(dir, 'site', 'x'), join(dir, 'site', 'a')]
+    assert.deepEqual((await publishTargets(hosts.map(host => ({ host })))).map(({ path, at }) => [path.host, at]), [
+      [join(dir, 'site'), join(dir, 'site')],
+      [join(dir, 'l', 'x'), join(dir, 'site', 'x')],
+      [join(dir, 'site', 'x'), join(dir, 'site', 'x')],
+      [join(dir, 'site', 'a'), join(dir, 'site', 'a')],
+      [join(dir, 'l', 'a', 'b'), join(dir, 'l', 'a', 'b')],
+    ])
+    // An out path that is a symlink is replaced, not followed, and publishing it first does not move one through it.
+    const linked = await publishTargets([{ host: join(dir, 'to-data') }, { host: join(dir, 'to-data', 'r.md') }])
+    assert.deepEqual(linked.map(({ at }) => at), [join(dir, 'to-data'), join(dir, 'data', 'r.md')])
+    await writeFile(join(dir, 'copy.md'), 'r')
+    await replace(join(dir, 'to-data'), join(dir, 'copy.md'))
+    assert.equal(await readFile(join(dir, 'to-data'), 'utf8'), 'r')
+    assert.deepEqual(await readdir(join(dir, 'data')), [])
   })
 })
 
