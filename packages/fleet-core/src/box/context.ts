@@ -2,10 +2,11 @@
  * What the model is told about its container: a standing system-prompt
  * section, and a one-time notice when a session's container is newer than its
  * conversation. That happens after an unarchive, a fork, an image update, or a
- * container removed by hand, and everything earlier turns installed or created
- * outside the workspace is gone. A brand-new session never gets the notice,
- * since its container exists before its first message; an ordinary resume
- * never does either, since its container is the same.
+ * container removed by hand, and everything earlier turns installed or
+ * created outside the workspace is gone, or anywhere in a container whose
+ * folder is its own. A brand-new session never gets the notice, since its
+ * container exists before its first message; an ordinary resume never does
+ * either, since its container is the same.
  *
  * The notice is an ordinary `user/message` with a `fleet-box` source, added
  * to the next step that already sends messages, so it never makes a model
@@ -16,7 +17,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -46,17 +47,36 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
 }
 
-const ENVIRONMENT = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, with {{cwd}} '
+const OUTPUT = 'When a command\'s output is long, only its end is kept, so send output you need in full to a file and read that.'
+
+/** For a container that mounts the workspace dir. */
+const MOUNTED = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, with {{cwd}} '
   + 'mounted from the user\'s machine at the same path. Everything else in the container, such as installed packages and '
-  + 'files in /tmp, persists from turn to turn, and you are told if the container is ever replaced. When a command\'s '
-  + 'output is long, only its end is kept, so send output you need in full to a file and read that.'
+  + `files in /tmp, persists from turn to turn, and you are told if the container is ever replaced. ${OUTPUT}`
+
+/** For a subagent's container of its own, which mounts nothing. */
+const OWN = 'Your commands and file tools run inside this session\'s own Docker container: Debian, as root, working in {{cwd}}, '
+  + 'a folder of the container\'s own; nothing in the container is mounted from the user\'s machine. Everything in it, such as '
+  + `installed packages and files in /tmp, persists from turn to turn, and you are told if the container is ever replaced. ${OUTPUT}`
 
 export const name = 'fleet-box-context'
 export const inject = ['fleetBox', 'systemPrompt', 'sessionProjections']
 
 export function apply(ctx: Context): void {
+  /** Whether the container an agent's work uses mounts the workspace dir; one whose lineage is not loaded is described as most are. */
+  const mounted = (agent: Agent): boolean => {
+    try {
+      return ctx.fleetBox.mountsWorkspace(agent)
+    } catch {
+      return true
+    }
+  }
   // The web surface's slot among the local paths and endpoints; this bundle turns that section off, since it describes the host.
-  ctx.systemPrompt.section({ name: 'fleet-box:environment', order: ctx.systemPrompt.getSectionOrder('WEB_SURFACE'), text: ENVIRONMENT })
+  ctx.systemPrompt.section({
+    name: 'fleet-box:environment',
+    order: ctx.systemPrompt.getSectionOrder('WEB_SURFACE'),
+    text: ({ agent }) => agent === undefined || mounted(agent) ? MOUNTED : OWN,
+  })
 
   ctx.sessionProjections.register({
     key: 'fleetBoxContainer',
@@ -85,8 +105,10 @@ export function apply(ctx: Context): void {
 
 function notice(container: SessionContainer) {
   const text = `This session's container is new: it was created after earlier parts of this conversation. `
-    + `Anything installed or created outside ${container.workspace} in the previous container, such as packages and files in /tmp, `
-    + `is gone; the files in ${container.workspace} are unchanged.`
+    + (container.mounted
+      ? `Anything installed or created outside ${container.workspace} in the previous container, such as packages and files in /tmp, `
+        + `is gone; the files in ${container.workspace} are unchanged.`
+      : `Anything installed or created in the previous container, the files in ${container.workspace} included, is gone.`)
   return createUserMessage({
     content: [{ type: 'text', text }],
     source: {

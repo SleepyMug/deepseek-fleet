@@ -10,10 +10,11 @@
  * @module fleet-core/tau/outputs
  */
 
-import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
-import { basename, dirname, join, relative } from 'node:path'
+import { lstat, readdir, realpath, stat } from 'node:fs/promises'
+import { basename, dirname, join, posix, relative } from 'node:path'
 import type { SpecPath } from './spec.ts'
+
+export { replace } from 'fleet-image/replace'
 
 /** Most bytes one output may hold. */
 export const MAX_OUTPUT_BYTES = 1024 * 1024 * 1024
@@ -78,70 +79,21 @@ export async function outputProblems(paths: readonly SpecPath[], copyOf: (path: 
 
 /**
  * Where each `out` path is published, and in what order. Each is found
- * before any is published: its folder as the host resolves it, and its own
- * name, which the publish replaces, not followed; so publishing one cannot
- * move where another goes. They go outermost first, and those at the same
- * path in their order, so that each exists once all are published (tau's
- * SPEC.md); where two share a path, the later one wins.
+ * before any is published: on the host, its folder as the host resolves it,
+ * and its own name, which the publish replaces, not followed; so publishing
+ * one cannot move where another goes. In a caller's container, which the
+ * host never reads, it is the path as given. They go outermost first, and
+ * those at the same path in their order, so that each exists once all are
+ * published (tau's SPEC.md); where two share a path, the later one wins.
+ * @param onHost - whether the caller's paths are the host's, or else a container's.
  */
-export async function publishTargets<Path extends Pick<SpecPath, 'host'>>(outputs: readonly Path[]): Promise<{ path: Path; at: string }[]> {
+export async function publishTargets<Path extends Pick<SpecPath, 'host'>>(outputs: readonly Path[], onHost = true): Promise<{ path: Path; at: string }[]> {
   const targets = await Promise.all(outputs.map(async (path) => {
+    if (!onHost) return { path, at: posix.normalize(path.host) }
     const folder = await realpath(dirname(path.host)).catch(() => dirname(path.host))
     return { path, at: join(folder, basename(path.host)) }
   }))
   return targets.toSorted((a, b) => a.at.split('/').length - b.at.split('/').length)
-}
-
-/**
- * Put a checked copy in place of the caller's path, in a folder made for it if
- * an `out` path published before it left none. The copy is copied beside the
- * path first, onto its file system, and then renamed in: a folder over a folder
- * entry by entry, recursively, so a folder that stays a folder is the same
- * folder after, which a mount of it, such as a container's of the workspace dir
- * or of a `share` path, and whatever has it open keep seeing. What the caller
- * had is set aside, and removed once the copy is in place; a failure renames
- * everything back, and should that fail too, leaves what was set aside where
- * the error says.
- */
-export async function replace(host: string, copy: string): Promise<void> {
-  const incoming = `${host}.fleet-${randomUUID()}`
-  const aside = `${host}.fleet-old-${randomUUID()}`
-  /** Each rename done, which a failure undoes in reverse. */
-  const moved: [from: string, to: string][] = []
-  /** Whether nothing of the caller's is left in `aside`. */
-  let restored = true
-  const move = async (from: string, to: string): Promise<void> => {
-    await rename(from, to)
-    moved.push([from, to])
-  }
-  const put = async (target: string, source: string): Promise<void> => {
-    const [had, comes] = await Promise.all([lstat(target).catch(() => undefined), lstat(source)])
-    if (had?.isDirectory() === true && comes.isDirectory()) {
-      const entries = new Set(await readdir(source))
-      for (const entry of await readdir(target)) {
-        if (!entries.has(entry)) await move(join(target, entry), join(aside, String(moved.length)))
-      }
-      for (const entry of entries) await put(join(target, entry), join(source, entry))
-      return
-    }
-    if (had !== undefined) await move(target, join(aside, String(moved.length)))
-    await move(source, target)
-  }
-  try {
-    await mkdir(dirname(host), { recursive: true })
-    await cp(copy, incoming, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true })
-    await mkdir(aside)
-    await put(host, incoming)
-  } catch (error) {
-    for (const [from, to] of moved.toReversed()) await rename(to, from).catch(() => { restored = false })
-    if (restored) throw error
-    throw new Error(`${message(error)}; what could not be put back is in ${aside}, and the copy in ${incoming}`, { cause: error })
-  } finally {
-    if (restored) {
-      await rm(incoming, { recursive: true, force: true })
-      await rm(aside, { recursive: true, force: true })
-    }
-  }
 }
 
 function message(error: unknown): string {

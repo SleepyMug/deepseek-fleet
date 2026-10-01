@@ -2,12 +2,16 @@
   "name": "fleet-image",
   "version": "0.0.1",
   "private": true,
-  "description": "The session image: its Dockerfile, which `fleet setup image` builds, the folders of a container that are fleet's own (layout), and what the image carries at /opt/fleet: fleet-box's helper, which serves a session container's files and processes to the host from inside it; fleet-tau's TypeScript runner, which type-checks and runs the model's programs there with ts-executor; and fleet's implementations of the APIs a tau declares, which those programs import as @api/<name>. The layout and each part's protocol module are shared with the host",
+  "description": "The session image: its Dockerfile, which `fleet setup image` builds, the folders of a container that are fleet's own (layout), and what the image carries at /opt/fleet: fleet-box's helper, which serves a session container's files and processes to the host from inside it; fleet-tau's TypeScript runner, which type-checks and runs the model's programs there with ts-executor; fleet's implementations of the APIs a tau declares, which those programs import as @api/<name>; and the `tau` command, which runs a tau from the model's commands through the implementation of the API of that name. The layout and each part's protocol module are shared with the host",
   "type": "module",
   "exports": {
     "./layout": {
       "types": "./lib/layout.d.ts",
       "default": "./lib/layout.js"
+    },
+    "./replace": {
+      "types": "./lib/replace.d.ts",
+      "default": "./lib/replace.js"
     },
     "./helper/protocol": {
       "types": "./lib/helper/protocol.d.ts",

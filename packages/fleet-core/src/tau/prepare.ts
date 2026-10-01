@@ -8,6 +8,11 @@
  * be provided, with every problem found reported together. tau's library
  * loads TypeScript as it is imported, so this runs in a worker
  * (./worker.ts), never in the fleet host's own thread.
+ *
+ * A run started inside a session's container (./children.ts) reads a copy
+ * of the agent directory, and its caller's paths are in that container, so
+ * they are not checked here but when the run's spec is stored (./store.ts);
+ * what is reported names the directory where the caller has it.
  * @module fleet-core/tau/prepare
  */
 
@@ -15,20 +20,24 @@ import { basename } from 'node:path'
 import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from '../box/additions.ts'
 import { implementation } from 'fleet-image/apis/registry'
-import { pathProblems, place } from './paths.ts'
+import { nestedPathProblems, pathProblems, place, placeNested } from './paths.ts'
 import { loadSkills } from './skills.ts'
 import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
 
 export interface PrepareRequest {
-  /** The agent directory, absolute. */
+  /** The agent directory, absolute: where the caller has it, or a copy of it. */
   agent: string
+  /** Where the caller has the agent directory, when `agent` is a copy of it. */
+  source?: string
+  /** The session from whose container the run is started, which has the caller's paths; none for a run started on the host. */
+  caller?: string
   /** The command's arguments to the agent. */
   args: string[]
   /** Whether to bind the arguments: always for a run, and for a check only when it was given some. */
   bind: boolean
-  /** The command's working folder, which relative path arguments are resolved against. */
+  /** The caller's working folder, which relative path arguments are resolved against. */
   callerCwd: string
-  /** The command's values of the variables the agent's tau.json lists. */
+  /** The caller's values of the variables the agent's tau.json lists; any others are left out. */
   env: Record<string, string>
   /** The backends fleet's plugins provide now. */
   backends: string[]
@@ -41,6 +50,14 @@ export type Prepared =
   | { ok: false; problems: string[] }
 
 export function prepare(request: PrepareRequest): Prepared {
+  const prepared = prepareFrom(request)
+  const { source } = request
+  if (prepared.ok || source === undefined) return prepared
+  return { ok: false, problems: prepared.problems.map(problem => problem.replaceAll(request.agent, source)) }
+}
+
+function prepareFrom(request: PrepareRequest): Prepared {
+  const nested = request.caller !== undefined
   let tau: Tau
   try {
     tau = loadTau(request.agent)
@@ -54,14 +71,15 @@ export function prepare(request: PrepareRequest): Prepared {
   let run: Run | undefined
   if (request.bind) {
     try {
-      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, place)
+      run = tau.bind(request.args, { cwd: request.callerCwd, env: request.env }, nested ? placeNested : place)
       prompt = run.prompt
       if (prompt.trim() === '') problems.push(`${tau.dir}/PROMPT.md gives an empty prompt`)
     } catch (error) {
       problems.push(`${tau.dir}: ${message(error)}`)
     }
   }
-  if (run !== undefined) {
+  if (run !== undefined && nested) problems.push(...nestedPathProblems(run.paths))
+  if (run !== undefined && !nested) {
     problems.push(...pathProblems(run.paths, request.dshHome))
     try {
       checkInputs(run)
@@ -73,12 +91,14 @@ export function prepare(request: PrepareRequest): Prepared {
   problems.push(...skills.problems)
   const apis = linkedApis(tau.dir, request.backends, problems)
   if (problems.length > 0) return { ok: false, problems }
-  const name = basename(tau.dir)
+  const source = request.source ?? tau.dir
+  const name = basename(source)
   return {
     ok: true,
     spec: {
       version: SPEC_VERSION,
-      agent: { name, source: tau.dir },
+      agent: { name, source },
+      ...request.caller === undefined ? {} : { caller: request.caller },
       args: request.args,
       prompt,
       skills: skills.skills,

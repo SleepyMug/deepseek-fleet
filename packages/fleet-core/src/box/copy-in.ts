@@ -12,9 +12,11 @@
  * @module fleet-core/box/copy-in
  */
 
+import { randomUUID } from 'node:crypto'
 import { lstat, open, readdir, readlink } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { z } from 'zod'
+import { INCOMING } from 'fleet-image/helper/protocol'
 import type { HelperConnection } from './connection.ts'
 
 /** Bytes sent to the container per request. */
@@ -56,4 +58,25 @@ export async function copyIn(connection: Pick<HelperConnection, 'request'>, sour
   }
   await request('copyIn.begin', { path: target })
   await copy(source, target)
+}
+
+/**
+ * Copy a host path into the container and put it in place of what is at
+ * `target` there, as fleet-tau publishes an output on the host: copied into
+ * the container's {@link INCOMING} first, so nothing at `target` changes
+ * unless the whole copy got there, then renamed in, a folder over a folder
+ * entry by entry, and everything put back if that fails (fleet-image's
+ * replace.ts).
+ * @param target - an absolute path in the container.
+ */
+export async function replaceIn(connection: Pick<HelperConnection, 'request'>, source: string, target: string, signal?: AbortSignal): Promise<void> {
+  const incoming = posix.join(INCOMING, randomUUID())
+  try {
+    await copyIn(connection, source, incoming, signal)
+  } catch (error) {
+    // What was copied so far goes; nothing at the target was touched.
+    await connection.request('copyIn.begin', { path: incoming }, z.null()).catch(() => {})
+    throw error
+  }
+  await connection.request('copyIn.replace', { source: incoming, path: target }, z.null(), signal)
 }

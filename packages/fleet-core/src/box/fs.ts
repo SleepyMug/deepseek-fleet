@@ -6,8 +6,8 @@
  * access itself, since the container is the boundary, so `sandboxMode` stays
  * unset and the file tools offer no sandbox escalation.
  *
- * A target names its world: its key is `fleet-box://<root session><path>`,
- * the path in that root session's container, which dsh's consumers treat as
+ * A target names its world: its key is `fleet-box://<owner><path>`, the path
+ * in the container of that session, its owner, which dsh's consumers treat as
  * opaque, while its display and process paths are the plain container path.
  * A path or a `cwd` may name its world the same way: a relative path joins
  * the container path of such a `cwd`, and an absolute plain path with one is
@@ -16,13 +16,13 @@
  * `FS_PERMISSION_DENIED`, and nothing reads the host instead:
  *
  * - A session's own work: its turn makes the call, or the call comes through
- *   the session agent's own context (./world.ts). A plain path is in its
- *   root session's container, and a container its arguments name must be
+ *   the session agent's own context (./world.ts). A plain path is in the
+ *   container the session uses, and a container its arguments name must be
  *   that one, so the model never reaches another session's container. It
  *   reads and writes.
  * - Any other call must name its container, and only reads. This serves the
  *   file viewer: dsh's `workspaceFileScope` lookup, configured here, gives a
- *   session's folder as a path in its root session's container, and the
+ *   session's folder as a path in the container it uses, and the
  *   `workspaceFiles` service passes that on to every file call as the path or
  *   the `cwd`, so the sidebar's file tree and previews, which the chat's file
  *   links open, and the change feed behind live refresh all read that
@@ -63,7 +63,7 @@ const FS_ERROR_CODES: ReadonlySet<string> = new Set<FsErrorCode>([
   'FS_SANDBOX_DENIED', 'FS_IO_ERROR', 'FS_STALE_VERSION', 'FS_NOT_OBSERVED', 'FS_AMBIGUOUS_EDIT', 'FS_EDIT_NOT_FOUND', 'FS_ABORTED',
 ])
 
-/** How a target key, or a path naming its container, begins; the root session and the container path follow. */
+/** How a target key, or a path naming its container, begins; the container's owner and the container path follow. */
 const KEY_PREFIX = 'fleet-box://'
 
 /** A target as the helper names it: by its canonical path in the container. */
@@ -87,16 +87,16 @@ const chunkSchema = z.object({ done: z.boolean(), value: z.string() })
 
 /** Whose container serves a call. */
 interface Scope {
-  /** The root session whose container it is. */
-  root: SessionHeader
+  /** The session that owns the container. */
+  owner: SessionHeader
   /** Only a session's own work writes; any other call only reads. */
   writable: boolean
 }
 
 /** A path in a container, or a plain path, which names none. */
 interface Place {
-  /** The root session whose container the path names, if it names one. */
-  root: SessionId | undefined
+  /** The owner of the container the path names, if it names one. */
+  owner: SessionId | undefined
   /** The path as the helper takes it. */
   path: string
 }
@@ -119,7 +119,7 @@ export class FleetBoxFileSystem extends FileSystem {
   override async resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<FsTarget> {
     const { scope, params } = await this.onPath('ctx.fs.resolve', path, opts?.cwd)
     const target = await this.call(scope, 'fs.resolve', params, targetSchema, opts?.signal)
-    return qualify(scope.root.id, target)
+    return qualify(scope.owner.id, target)
   }
 
   /** The path in the target's container, where its processes see the file too. */
@@ -135,7 +135,7 @@ export class FleetBoxFileSystem extends FileSystem {
   override contains(parent: FsTarget, child: FsTarget): boolean {
     const outer = located(parent)
     const inner = located(child)
-    if (outer.root !== inner.root) return false
+    if (outer.owner !== inner.owner) return false
     const path = posix.relative(outer.path, inner.path)
     return path === '' || (path !== '..' && !path.startsWith('../') && !posix.isAbsolute(path))
   }
@@ -159,7 +159,7 @@ export class FleetBoxFileSystem extends FileSystem {
     const { scope, inContainer } = await this.onTarget('ctx.fs.streamText', target)
     const release = this.occupy(scope)
     try {
-      const { connection } = await translate(this.self.fleetBox.forRoot(scope.root, signal), signal)
+      const { connection } = await translate(this.self.fleetBox.forOwner(scope.owner, signal), signal)
       const stream = await translate(connection.request('fs.streamOpen', { target: inContainer }, z.number().int(), signal), signal)
       return new TextStream(connection, stream, release, signal)
     } catch (error) {
@@ -182,7 +182,7 @@ export class FleetBoxFileSystem extends FileSystem {
   override async listDir(target: FsTarget, signal?: AbortSignal): Promise<FsDirEntry[]> {
     const { scope, inContainer } = await this.onTarget('ctx.fs.listDir', target)
     const entries = await this.call(scope, 'fs.listDir', { target: inContainer }, entriesSchema, signal)
-    return entries.map(entry => ({ ...entry, target: qualify(scope.root.id, entry.target) }))
+    return entries.map(entry => ({ ...entry, target: qualify(scope.owner.id, entry.target) }))
   }
 
   /** No sandbox policy applies: the container is the boundary. */
@@ -209,58 +209,56 @@ export class FleetBoxFileSystem extends FileSystem {
   private async onPath(operation: string, path: string, cwd: string | undefined): Promise<{ scope: Scope; params: { path: string; cwd: string | null } }> {
     const place = placeOf(path)
     const base = cwd === undefined ? undefined : placeOf(cwd)
-    if (place.root !== undefined && base?.root !== undefined && place.root !== base.root) {
-      throw new FsError(`${operation} names two containers, ${place.root}'s and ${base.root}'s`, 'FS_PERMISSION_DENIED')
+    if (place.owner !== undefined && base?.owner !== undefined && place.owner !== base.owner) {
+      throw new FsError(`${operation} names two containers, ${place.owner}'s and ${base.owner}'s`, 'FS_PERMISSION_DENIED')
     }
-    const scope = await this.scope(operation, place.root ?? base?.root)
+    const scope = await this.scope(operation, place.owner ?? base?.owner)
     return { scope, params: { path: place.path, cwd: base?.path ?? null } }
   }
 
   /** Whose container serves a call on a target, and the target as the helper there names it. */
   private async onTarget(operation: string, target: FsTarget): Promise<{ scope: Scope; inContainer: HelperTarget }> {
-    const { root, path } = located(target)
-    return { scope: await this.scope(operation, root), inContainer: { targetKey: path, displayPath: target.displayPath } }
+    const { owner, path } = located(target)
+    return { scope: await this.scope(operation, owner), inContainer: { targetKey: path, displayPath: target.displayPath } }
   }
 
   /**
    * Whose container serves the current call. A session's own work is served
-   * in its root session's container, which any container its arguments name
-   * must be; any other call is served in the container its arguments name,
-   * and only reads.
+   * in the container it uses, which any container its arguments name must
+   * be; any other call is served in the container its arguments name, and
+   * only reads.
    * @param operation - the provider method, named in the error for a call this world does not serve.
-   * @param named - the root session whose container the call's arguments name, if they name one.
+   * @param named - the owner of the container the call's arguments name, if they name one.
    */
   private async scope(operation: string, named: SessionId | undefined): Promise<Scope> {
     const fleetBox = this.self.fleetBox
     const agent = fleetBox.sessionAgent(this.ctx)
     if (agent !== undefined) {
-      const root = await translate(fleetBox.rootHeaderOf(agent.session.header.id), undefined)
-      if (named !== undefined && named !== root.id) {
+      const owner = await translate(fleetBox.ownerHeaderOf(agent.session.header.id), undefined)
+      if (named !== undefined && named !== owner.id) {
         throw new FsError(`${operation} names the container of session ${named}; a session's work reaches only its own`, 'FS_PERMISSION_DENIED')
       }
-      return { root, writable: true }
+      return { owner, writable: true }
     }
     if (named === undefined) {
       throw new FsError(`${operation} was called outside a session's work with a path that names no container; `
         + 'the container world serves a plain path only to a session\'s own work', 'FS_PERMISSION_DENIED')
     }
-    const root = await translate(fleetBox.rootHeaderOf(named), undefined)
-    if (root.id !== named || root.origin === 'subagent') {
-      throw new FsError(`${operation} names session ${named}, which has no container of its own`, 'FS_PERMISSION_DENIED')
-    }
-    return { root, writable: false }
+    const owner = await translate(fleetBox.ownerHeaderOf(named), undefined)
+    if (owner.id !== named) throw new FsError(`${operation} names session ${named}, which has no container of its own`, 'FS_PERMISSION_DENIED')
+    return { owner, writable: false }
   }
 
   /** Occupy the scope's container for one call; the release is idempotent. */
   private occupy(scope: Scope): () => void {
-    return this.self.fleetBox.occupy(scope.root.id, { kind: 'file', id: randomUUID() })
+    return this.self.fleetBox.occupy(scope.owner.id, { kind: 'file', id: randomUUID() })
   }
 
   /** One request to the helper in the scope's container, which it occupies until the answer. */
   private async call<T>(scope: Scope, method: string, params: Record<string, unknown>, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
     const release = this.occupy(scope)
     try {
-      const { connection } = await translate(this.self.fleetBox.forRoot(scope.root, signal), signal)
+      const { connection } = await translate(this.self.fleetBox.forOwner(scope.owner, signal), signal)
       return await translate(connection.request(method, params, schema, signal), signal)
     } finally {
       release()
@@ -331,25 +329,25 @@ class TextStream implements AsyncIterableIterator<string> {
 
 /**
  * dsh's `workspaceFileScope` lookup, which the file viewer's service resolves
- * a session with: the session's folder as a path in its root session's
- * container, which that service passes on to every file call it makes for
- * the session, so each call names the container.
- * @param fleetBox - the world, which knows the session's header and its root's.
+ * a session with: the session's folder as a path in the container it uses,
+ * which that service passes on to every file call it makes for the session,
+ * so each call names the container.
+ * @param fleetBox - the world, which knows the session's header and its container's owner.
  * @returns the scope, or undefined for a session not known, without an absolute folder, or with no container.
  */
 async function workspaceFileScope(
-  fleetBox: Pick<FleetBox, 'sessionHeader' | 'rootHeaderOf'>, sessionId: SessionId,
+  fleetBox: Pick<FleetBox, 'sessionHeader' | 'ownerHeaderOf'>, sessionId: SessionId,
 ): Promise<WorkspaceFileScope | undefined> {
   const header = await fleetBox.sessionHeader(sessionId)
   if (header?.cwd === undefined || !posix.isAbsolute(header.cwd)) return undefined
-  const root = await fleetBox.rootHeaderOf(sessionId)
-  if (root.origin === 'subagent' || !usableAsContainerName(root.id)) return undefined
-  return { sessionId, workspaceRoot: qualifiedPath(root.id, header.cwd) }
+  const owner = await fleetBox.ownerHeaderOf(sessionId).catch(() => undefined)
+  if (owner === undefined || !usableAsContainerName(owner.id)) return undefined
+  return { sessionId, workspaceRoot: qualifiedPath(owner.id, header.cwd) }
 }
 
-/** A path in a root session's container, written to name the container; a target's key is one. */
-function qualifiedPath(root: SessionId, path: string): string {
-  return `${KEY_PREFIX}${root}${path}`
+/** A path in a session's container, written to name the container; a target's key is one. */
+function qualifiedPath(owner: SessionId, path: string): string {
+  return `${KEY_PREFIX}${owner}${path}`
 }
 
 /**
@@ -358,26 +356,26 @@ function qualifiedPath(root: SessionId, path: string): string {
  *   a container a session id could name.
  */
 function placeOf(path: string): Place {
-  if (!path.startsWith(KEY_PREFIX)) return { root: undefined, path }
+  if (!path.startsWith(KEY_PREFIX)) return { owner: undefined, path }
   const slash = path.indexOf('/', KEY_PREFIX.length)
-  const root = slash === -1 ? '' : path.slice(KEY_PREFIX.length, slash)
-  if (!usableAsContainerName(root)) throw new FsError(`"${path}" names no path in a session's container`, 'FS_PERMISSION_DENIED')
-  return { root: root as SessionId, path: path.slice(slash) }
+  const owner = slash === -1 ? '' : path.slice(KEY_PREFIX.length, slash)
+  if (!usableAsContainerName(owner)) throw new FsError(`"${path}" names no path in a session's container`, 'FS_PERMISSION_DENIED')
+  return { owner: owner as SessionId, path: path.slice(slash) }
 }
 
-/** A target the helper names, as a target of a root session's container. */
-function qualify(root: SessionId, target: HelperTarget): FsTarget {
-  return { targetKey: FsTargetKey(qualifiedPath(root, target.targetKey)), displayPath: target.displayPath }
+/** A target the helper names, as a target of an owner's container. */
+function qualify(owner: SessionId, target: HelperTarget): FsTarget {
+  return { targetKey: FsTargetKey(qualifiedPath(owner, target.targetKey)), displayPath: target.displayPath }
 }
 
 /**
- * The root session and container path a target names.
+ * The container's owner and the container path a target names.
  * @throws FS_PERMISSION_DENIED for a target this world did not make.
  */
-function located(target: FsTarget): { root: SessionId; path: string } {
-  const { root, path } = placeOf(String(target.targetKey))
-  if (root === undefined) throw new FsError(`"${target.displayPath}" is not a target of the container world`, 'FS_PERMISSION_DENIED')
-  return { root, path }
+function located(target: FsTarget): { owner: SessionId; path: string } {
+  const { owner, path } = placeOf(String(target.targetKey))
+  if (owner === undefined) throw new FsError(`"${target.displayPath}" is not a target of the container world`, 'FS_PERMISSION_DENIED')
+  return { owner, path }
 }
 
 function readOnlyError(target: FsTarget): FsError {

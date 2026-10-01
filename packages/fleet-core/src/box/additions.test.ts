@@ -57,6 +57,13 @@ test('a writable mount at its host path composes with the workspace dir\'s and o
   assert.throws(() => additionArgs({ mounts: [at('/opt')] }, '/work'), /overlaps \/opt\/fleet$/u)
 })
 
+test('a container that mounts no workspace dir, as a subagent\'s own, takes copies and folders anywhere but fleet-box\'s own', () => {
+  const copies = [{ source: '/store/agent', target: '/tau/agent' }, { source: '/store/in/rules', target: '/tau/in/rules/rules.md' }]
+  assert.deepEqual(additionArgs({ mounts: [], copies, env: { LANG: 'C' }, directories: ['/tau/out/report'] }, undefined), ['--env', 'LANG=C'])
+  assert.deepEqual(additionArgs({ mounts: [], copies: [{ source: '/s', target: '/workspace/x' }] }, undefined), [])
+  assert.throws(() => additionArgs({ mounts: [], copies: [{ source: '/s', target: '/opt/fleet/x' }] }, undefined), /overlaps \/opt\/fleet$/u)
+})
+
 test('copies are not docker run arguments, and may overlap no mount, copy, workspace dir or fleet-box folder', () => {
   const agent = { source: '/store/agent', target: '/tau/agent', readonly: true }
   assert.deepEqual(additionArgs({ mounts: [], copies: [{ source: '/store/in/rules', target: '/home/u/rules.md' }] }, '/work'), [])

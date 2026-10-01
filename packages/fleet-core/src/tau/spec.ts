@@ -38,7 +38,7 @@ const pathSchema = z.object({
   type: z.enum(['file', 'dir']),
   /** What the agent does with it, which decides how the container gets it (./store.ts). */
   role: z.enum(['in', 'out', 'share']),
-  /** The caller's path, absolute. */
+  /** The caller's path, absolute: on the host, or for a run started in a container, in that container. */
   host: z.string(),
   /** Where the container shows it (./paths.ts), which the prompt names. */
   view: z.string(),
@@ -46,8 +46,14 @@ const pathSchema = z.object({
 
 export const specSchema = z.object({
   version: z.literal(SPEC_VERSION),
-  /** The agent directory the session was started from, and its name; none for a prompt run. */
+  /** The agent directory the session was started from, where the caller has it, and its name; none for a prompt run. */
   agent: z.object({ name: z.string(), source: z.string() }).optional(),
+  /**
+   * The session from whose container the run was started, which holds the
+   * caller's paths, the agent directory's included; none for a run started on
+   * the host, by the `fleet` command.
+   */
+  caller: z.string().optional(),
   /** The command's arguments to the agent. */
   args: z.array(z.string()),
   /** PROMPT.md with the arguments filled in, or the prompt as given: the session's task. */

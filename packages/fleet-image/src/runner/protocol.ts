@@ -57,8 +57,8 @@ interface Packages {
 export type RunnerRequest =
   /** List the packages a program may import, filtered by `query` as ts-executor filters them. */
   | Packages & { command: 'modules'; query?: string }
-  /** Type-check and run one program, killed after `timeoutMs`. */
-  | Packages & { command: 'execute'; source: string; cwd: string; input?: unknown; timeoutMs: number }
+  /** Type-check and run one program, killed after `timeoutMs` if given, or else when the host cancels it. */
+  | Packages & { command: 'execute'; source: string; cwd: string; input?: unknown; timeoutMs?: number }
 
 /** One package a program may import. */
 export interface ModuleSummary {

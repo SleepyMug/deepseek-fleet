@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -49,7 +49,7 @@ async function setup() {
     configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
     unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
     turnRunning: () => false,
-    rootHeaderOf: (id: string) => {
+    ownerHeaderOf: (id: string) => {
       let current = headers[id]
       while (current?.origin === 'subagent' && current.parentSession !== undefined) current = headers[current.parentSession]
       return current === undefined ? Promise.reject(new Error(`unknown ${id}`)) : Promise.resolve(current)
@@ -139,7 +139,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: () => Promise.resolve(),
       turnRunning: () => running,
-      rootHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', ...id === 'session-p-fork' ? { parentSession: 'session-p' as SessionId } : {} })),
+      ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', ...id === 'session-p-fork' ? { parentSession: 'session-p' as SessionId } : {} })),
       // The container's files are under `container`, at their view paths; fleet-box refuses a symlink as it copies.
       copyOut: async (_root: string, view: string, target: string) => {
         copied.push(view)
@@ -292,4 +292,93 @@ test('an agent directory that takes too long to read fails, and the next is read
   let other: FleetTau | undefined
   await patient.plugin({ name: 'caller', inject: ['fleetTau'], apply: (inner: Context) => { other = inner.fleetTau } })
   assert.ok((await other!.prepare({ agent, args: ['X'], bind: true, callerCwd: '/caller', env: {} })).ok)
+})
+
+test('a run started in a container takes its in paths from the caller\'s container, and publishes its outputs back into it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-tau-nested-'))
+  try {
+    // Each container's files are under a folder of its own, at their paths in the container.
+    const roots: Record<string, string> = { 'session-caller': join(dir, 'caller'), 'session-run': join(dir, 'run') }
+    const inside = (owner: string, path: string): string => join(roots[owner]!, path)
+    await mkdir(inside('session-caller', '/workspace/data'), { recursive: true })
+    await writeFile(inside('session-caller', '/workspace/a.txt'), 'one two')
+    await writeFile(inside('session-caller', '/workspace/data/b.txt'), 'three')
+    await symlink('b.txt', inside('session-caller', '/workspace/data/link'))
+    await mkdir(inside('session-caller', '/tmp/out'), { recursive: true })
+
+    const ctx = new Context()
+    const configured = new Map<string, ContainerAdditions>()
+    const copiedIn: string[] = []
+    ctx.provide('fleetBackends', { list: () => [] })
+    ctx.provide('fleetBox', {
+      configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
+      unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
+      turnRunning: () => false,
+      ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/workspace', origin: 'subagent', parentSession: 'session-caller' as SessionId })),
+      // As fleet-box copies: keeping links, the path is followed and the links in it copied as they are.
+      copyOut: async (owner: string, source: string, target: string, options: { links?: boolean } = {}) => {
+        const from = inside(owner, source)
+        if ((await lstat(from).catch(() => undefined)) === undefined) return false
+        await cp(options.links === true ? await realpath(from) : from, target, { recursive: true, verbatimSymlinks: true })
+        return true
+      },
+      copyIn: async (owner: string, source: string, target: string) => {
+        copiedIn.push(`${owner}:${target}`)
+        await rm(inside(owner, target), { recursive: true, force: true })
+        await cp(source, inside(owner, target), { recursive: true, verbatimSymlinks: true })
+      },
+      pathType: async (owner: string, path: string) => {
+        const info = await stat(inside(owner, path)).catch(() => undefined)
+        return info === undefined ? undefined : info.isDirectory() ? 'directory' : info.isFile() ? 'file' : 'other'
+      },
+    })
+    await ctx.plugin(FleetTau)
+    let tau: FleetTau | undefined
+    await ctx.plugin({ name: 'caller', inject: ['fleetTau'], apply: (inner: Context) => { tau = inner.fleetTau } })
+    assert.ok(tau !== undefined)
+
+    const spec: Spec = {
+      version: 3, agent: { name: 'count', source: '/workspace/agents/count' }, caller: 'session-caller', args: [], prompt: 'x', skills: [], apis: [], env: {},
+      paths: [
+        { name: 'text', type: 'file', role: 'in', host: '/workspace/a.txt', view: '/tau/in/text/a.txt' },
+        { name: 'data', type: 'dir', role: 'in', host: '/workspace/data', view: '/tau/in/data/data' },
+        { name: 'report', type: 'file', role: 'out', host: '/tmp/out/report.md', view: '/tau/out/report/report.md' },
+      ],
+    }
+    // The paths are checked in the caller's container, as tau checks them.
+    const missing = await tau.create('session-bad' as SessionId, {
+      ...spec,
+      paths: [
+        { ...spec.paths[0]!, host: '/workspace/none.txt' },
+        { ...spec.paths[1]!, host: '/workspace/a.txt' },
+        { ...spec.paths[2]!, host: '/nowhere/report.md' },
+      ],
+    }, undefined, agent).then(() => undefined, (error: unknown) => error)
+    assert.ok(missing instanceof InputError)
+    assert.deepEqual(missing.problems, [
+      'text: /workspace/none.txt does not exist',
+      'data: /workspace/a.txt is not a directory',
+      'report: cannot go in /nowhere, which does not exist',
+    ])
+
+    // The agent's snapshot is taken from the copy the call made, not from where the caller has it.
+    await tau.create('session-run' as SessionId, spec, undefined, agent)
+    const folder = join(home, 'fleet', 'sessions', 'session-run')
+    assert.equal(await readFile(join(folder, 'agent', 'PROMPT.md'), 'utf8'), 'Greet ${name}.')
+    assert.equal(await readFile(join(folder, 'in', 'text'), 'utf8'), 'one two')
+    assert.equal(await readlink(join(folder, 'in', 'data', 'link')), 'b.txt')
+    // Its container's folder is its own, and so is a fork's of it, which has no workspace dir on the host either.
+    assert.deepEqual(configured.get('session-run')?.directories, ['/tau/out/report'])
+    assert.equal(configured.get('session-run')?.ownFolder, true)
+    await tau.configureFork('session-run-fork' as SessionId, { spec, owner: 'session-run' as SessionId })
+    assert.equal(configured.get('session-run-fork')?.ownFolder, true)
+
+    await mkdir(inside('session-run', '/tau/out/report'), { recursive: true })
+    await writeFile(inside('session-run', '/tau/out/report/report.md'), '2')
+    assert.deepEqual(await tau.publish('session-run' as SessionId, 0), [])
+    assert.deepEqual(copiedIn, ['session-caller:/tmp/out/report.md'])
+    assert.equal(await readFile(inside('session-caller', '/tmp/out/report.md'), 'utf8'), '2')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })

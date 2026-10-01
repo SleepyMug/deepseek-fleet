@@ -68,7 +68,7 @@ export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
   private readonly self: Context
   /** Processes whose group may still have members. */
   private readonly live = new Set<ContainerProcess>()
-  /** Terminals with processes left, by root session. */
+  /** Terminals with processes left, by the session that owns their container. */
   private readonly terminals = new Map<SessionId, Set<ContainerTerminal>>()
   private disposed = false
 
@@ -102,7 +102,7 @@ export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
   override async resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
     const fleetBox = this.self.fleetBox
     const agent = fleetBox.agentOf('ctx.subprocess.resolveExecutable', this.ctx)
-    const release = fleetBox.occupy(fleetBox.rootOf(agent), { kind: 'call', id: randomUUID() })
+    const release = fleetBox.occupy(fleetBox.ownerOf(agent), { kind: 'call', id: randomUUID() })
     try {
       const world = await fleetBox.forAgent(agent, signal)
       return await world.connection.request('executable', { command, env: env ?? null }, z.string(), signal)
@@ -133,7 +133,7 @@ export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
     const stderr = collected(spec.stdio.stderr, 'stderr')
     const fleetBox = this.self.fleetBox
     const agent = fleetBox.agentOf('ctx.subprocess.spawn', this.ctx)
-    const release = fleetBox.occupy(fleetBox.rootOf(agent), { kind: 'process', id: randomUUID() })
+    const release = fleetBox.occupy(fleetBox.ownerOf(agent), { kind: 'process', id: randomUUID() })
     let handle: ContainerProcess
     try {
       handle = new ContainerProcess(fleetBox, agent, spec, stdout, stderr)
@@ -163,9 +163,9 @@ export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
     }
     const fleetBox = this.self.fleetBox
     const agent = fleetBox.agentOf('ctx.subprocess.spawnTerminal', this.ctx)
-    const root = fleetBox.rootOf(agent)
+    const owner = fleetBox.ownerOf(agent)
     const id = randomUUID()
-    const release = fleetBox.occupy(root, { kind: 'terminal', id })
+    const release = fleetBox.occupy(owner, { kind: 'terminal', id })
     let terminal: ContainerTerminal
     try {
       const world = await fleetBox.forAgent(agent, spec.signal)
@@ -176,16 +176,16 @@ export class FleetBoxSubprocessRuntime extends SubprocessRuntime {
       release()
       throw error
     }
-    let open = this.terminals.get(root)
+    let open = this.terminals.get(owner)
     if (open === undefined) {
       open = new Set()
-      this.terminals.set(root, open)
+      this.terminals.set(owner, open)
     }
     const held = open
     held.add(terminal)
     void terminal.gone.then(() => {
       held.delete(terminal)
-      if (held.size === 0 && this.terminals.get(root) === held) this.terminals.delete(root)
+      if (held.size === 0 && this.terminals.get(owner) === held) this.terminals.delete(owner)
       release()
     })
     return terminal

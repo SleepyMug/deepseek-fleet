@@ -142,8 +142,11 @@
 # snapshot and an agent's path arguments), which fleet-box keeps in
 # $DSH_HOME/fleet/containers/<id>.json; everything else (/tmp included) is
 # the container's own, and processes run as the container's root (you,
-# under rootless Docker). Subagent sessions share their root's container; a
-# fork gets its own. A container runs while dsh has its helper connected: it
+# under rootless Docker). A subagent session uses its parent's container,
+# unless another plugin configured one for it, as fleet-tau does for a tau
+# run started inside a container, whose container mounts nothing; a fork
+# gets its own, and archiving a session removes the containers of the
+# subagents under it too. A container runs while dsh has its helper connected: it
 # starts when something of its session needs it, keeps running while
 # anything occupies it (a running turn, a sidebar terminal, a process, a file
 # access), stops once nothing has for a minute (`idleStopMs` on the
@@ -283,11 +286,24 @@
 #
 # Every session `fleet run` starts gets TypeScript tools: ts_modules and
 # ts_execute, which run programs in the session's container with
-# fleet-tau's runner. `fleet setup image` builds the runner into the
-# session image (/opt/fleet/runner), and labels the image with the
-# runner's protocol, which the tools check before they start it. Programs
-# import the agent's APIs as @api/<name>, typed by the agent's declarations,
-# which the runner links to fleet's implementations (/opt/fleet/apis).
+# fleet-tau's runner, for as long as a program takes unless its call is
+# cancelled. `fleet setup image` builds the runner into the session image
+# (/opt/fleet/runner), and labels the image with the runner's protocol,
+# which the tools check before they start it. Programs import the agent's
+# APIs as @api/<name>, typed by the agent's declarations, which the runner
+# links to fleet's implementations (/opt/fleet/apis).
+#
+# An agent that declares fleet's `tau` API (`fleet apis tau` prints it) can
+# run other taus, from a program through the API, or from a command with the
+# image's `tau` command: `tau run <agent-dir> [args...]`. Each run is a
+# one-shot subagent of the calling session, which the web UI shows under it,
+# with a container of its own that works in /workspace and mounts nothing:
+# its agent directory and `in` paths are copied out of the caller's
+# container, its `out` paths are copied back into it once the run completes,
+# and a tau with a `share` path is refused, since no other container can
+# mount the caller's files. The call waits for the run, and cancelling it
+# cancels the run. Once the run ends, its container is stopped, and stays
+# until the caller's session is archived.
 #
 # Path arguments reach the container according to their roles in tau.json,
 # where fleet-tau places them, and the prompt names them there: an `in` path
@@ -316,6 +332,11 @@
 
     - id: fleet-tau-relay
       name: fleet-core/tau/relay
+
+    # The `tau` backend, which runs a tau started inside a container as a
+    # subagent of the caller, through a subagent provider of its own.
+    - id: fleet-tau-children
+      name: fleet-core/tau/children
 
     # An example backend: a per-session notebook, for examples/notes.
     - id: fleet-tau-notes

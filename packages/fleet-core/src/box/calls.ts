@@ -1,17 +1,15 @@
 /**
  * The host's side of one container's service calls: the calls its helper
  * relays from programs in the container (fleet-image's helper/services.ts),
- * served by a handler within fixed bounds, and each answered once unless the
- * program went away. The helper is in the model's reach, so nothing it sends is
- * trusted: names are checked, sizes bounded both ways, the calls in flight
- * capped, and an id already in flight gets no second answer.
+ * served by a handler, and each answered once unless the program went away.
+ * The helper is in the model's reach, so nothing it sends is trusted: names
+ * are checked, sizes bounded both ways, and an id already in flight gets no
+ * second answer.
  * @module fleet-core/box/calls
  */
 
 import { MAX_CALL_BYTES, type HostMessage } from 'fleet-image/helper/protocol'
 
-/** Calls one container may have in flight; more are refused at once. */
-const MAX_CALLS = 16
 /** Characters of a failed call's message sent back to the container. */
 const MAX_CALL_ERROR = 16 * 1024
 /** Service and function names: identifiers or file-name-like names, no longer than this. */
@@ -53,7 +51,6 @@ export class ServiceCalls {
     const refuse = (reason: string): void => { this.answer({ type: 'call-error', call: request.call, message: reason.slice(0, MAX_CALL_ERROR) }) }
     if (bytes > MAX_CALL_BYTES) return refuse(`the call is over the ${MAX_CALL_BYTES / MIB} MiB limit`)
     if (!CALL_NAME.test(request.service) || !CALL_NAME.test(request.function)) return refuse('the call names no valid service and function')
-    if (this.inFlight.size >= MAX_CALLS) return refuse(`too many service calls at once; at most ${MAX_CALLS} run together`)
     const handler = this.handler
     if (handler === undefined) return refuse('no services are provided here')
     const controller = new AbortController()

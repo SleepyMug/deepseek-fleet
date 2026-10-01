@@ -29,6 +29,14 @@
  * spec, and its container copies of the source's snapshots, which never
  * change; but none of its other paths or its variables, which belong to the
  * run that started the source.
+ *
+ * A run started inside a session's container (./children.ts) is stored the
+ * same way, as a subagent of the calling session that owns a container of
+ * its own, whose folder is the container's own rather than a mounted
+ * workspace dir, but its caller's paths are in the calling session's
+ * container: its `in` paths are copied out of that container, and checked
+ * there with the folders of its `out` paths (./inputs.ts), and its `out`
+ * paths are published back into it.
  * @module fleet-core/tau/store
  */
 
@@ -42,7 +50,7 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { ContainerAdditions, Copy, Mount } from '../box/world.ts'
 import { z } from 'zod'
-import { InputError, snapshot } from './inputs.ts'
+import { InputError, outputFolderProblems, snapshot, snapshotFrom } from './inputs.ts'
 import { MAX_OUTPUT_BYTES, copyProblems, outputProblems, publishTargets, replace } from './outputs.ts'
 import { AGENT_VIEW, shareMount } from './paths.ts'
 import type { Prepared, PrepareRequest } from './prepare.ts'
@@ -132,10 +140,11 @@ export class FleetTau extends Service {
    * snapshots of its agent and its `in` paths, then its container's
    * additions. A failure leaves nothing behind.
    * @param session - the id the session will have.
-   * @param signal - stops copying, for a command that has gone.
-   * @throws an {@link InputError} when an `in` path cannot be copied.
+   * @param signal - stops copying, for a caller that has gone.
+   * @param agent - the agent directory to snapshot: where the caller has it, unless it was copied from the caller's container.
+   * @throws an {@link InputError} when an `in` path cannot be copied, or, for a run started in a container, a path does not fit.
    */
-  async create(session: SessionId, spec: Spec, signal?: AbortSignal): Promise<void> {
+  async create(session: SessionId, spec: Spec, signal?: AbortSignal, agent = spec.agent?.source): Promise<void> {
     const folder = this.folder(session)
     await mkdir(join(this.home, 'fleet', 'sessions'), { recursive: true, mode: 0o700 })
     // Fails if the folder exists, so a spec is never mixed with another's.
@@ -146,10 +155,15 @@ export class FleetTau extends Service {
       const inputs = spec.paths.filter(path => path.role === 'in')
       if (inputs.length > 0) await mkdir(join(folder, 'in'), { mode: 0o700 })
       const problems: string[] = []
-      for (const path of inputs) problems.push(...await snapshot(path.name, path.host, join(folder, 'in', path.name), signal))
+      const { caller } = spec
+      for (const path of inputs) {
+        const copy = join(folder, 'in', path.name)
+        problems.push(...caller === undefined ? await snapshot(path.name, path.host, copy, signal) : await snapshotFrom(this.self.fleetBox, caller as SessionId, path, copy, signal))
+      }
+      if (caller !== undefined) problems.push(...await outputFolderProblems(this.self.fleetBox, caller as SessionId, spec.paths, signal))
       if (problems.length > 0) throw new InputError(problems)
       // A tau's symlinks stay inside it, and the runtime keeps them as they are.
-      if (spec.agent !== undefined) await cp(spec.agent.source, join(folder, 'agent'), { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true })
+      if (agent !== undefined) await cp(agent, join(folder, 'agent'), { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true })
       await writeFile(join(folder, 'spec.json'), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 })
       await this.self.fleetBox.configure(session, this.additions(session, spec))
     } catch (error) {
@@ -165,10 +179,11 @@ export class FleetTau extends Service {
    * turn: copy each out of the container into a staging folder of this
    * publish's own, check the copies (./outputs.ts) and that the run left
    * what the tau declares, and only then replace the caller's paths,
-   * outermost first. A session's publishes run one at a time, so two
-   * commands waiting on it never copy over each other, and none happens
-   * while a turn runs, since the agent could be changing what is copied. A
-   * fork publishes nothing; its source's paths belong to the source's run.
+   * outermost first, on the host or in the caller's container. A session's
+   * publishes run one at a time, so two callers waiting on it never copy
+   * over each other, and none happens while a turn runs, since the agent
+   * could be changing what is copied. A fork publishes nothing; its
+   * source's paths belong to the source's run.
    * @param turn - the turn's place in the session's log.
    * @returns why the run did not leave what its tau declares, its `out` paths published and its `share` paths as declared, none when it did, or it has none.
    */
@@ -180,17 +195,17 @@ export class FleetTau extends Service {
   }
 
   private async publishOnce(session: SessionId, turn: number): Promise<string[]> {
-    const root = await this.self.fleetBox.rootHeaderOf(session)
-    const found = await this.specOf(root)
-    if (found === undefined || found.owner !== root.id) return []
+    const owner = await this.self.fleetBox.ownerHeaderOf(session)
+    const found = await this.specOf(owner)
+    if (found === undefined || found.owner !== owner.id) return []
     const { paths } = found.spec
     const outputs = paths.filter(path => path.role === 'out')
     if (!paths.some(path => path.role !== 'in')) return []
-    const folder = this.folder(root.id)
+    const folder = this.folder(owner.id)
     const record = join(folder, 'published.json')
     const published = await readFile(record, 'utf8').then(text => JSON.parse(text) as { turn: number; problems: string[] }, () => undefined)
     if (published !== undefined && published.turn >= turn) return published.problems
-    if (this.self.fleetBox.turnRunning(root.id)) return [BUSY]
+    if (this.self.fleetBox.turnRunning(owner.id)) return [BUSY]
     const staging = await mkdtemp(join(folder, 'out-'))
     try {
       const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS)
@@ -199,7 +214,7 @@ export class FleetTau extends Service {
       for (const path of outputs) {
         // Nothing left there makes no copy, which the output check reports.
         try {
-          await this.self.fleetBox.copyOut(root.id, path.view, copyOf(path), MAX_OUTPUT_BYTES, signal)
+          await this.self.fleetBox.copyOut(owner.id, path.view, copyOf(path), { maxBytes: MAX_OUTPUT_BYTES, signal })
           problems.push(...await copyProblems(copyOf(path), path.name, path.view))
         } catch (error) {
           problems.push(`${path.name}: ${signal.aborted ? `copying took longer than ${PUBLISH_TIMEOUT_MS / 60_000} minutes` : message(error)}`)
@@ -207,9 +222,11 @@ export class FleetTau extends Service {
       }
       if (problems.length === 0) problems.push(...await outputProblems(paths, copyOf))
       // A turn that started while copying may have changed what was copied.
-      if (this.self.fleetBox.turnRunning(root.id)) return [BUSY]
-      for (const { path, at } of problems.length === 0 ? await publishTargets(outputs) : []) {
-        await replace(at, copyOf(path)).catch((error: unknown) => {
+      if (this.self.fleetBox.turnRunning(owner.id)) return [BUSY]
+      const { caller } = found.spec
+      for (const { path, at } of problems.length === 0 ? await publishTargets(outputs, caller === undefined) : []) {
+        const put = caller === undefined ? replace(at, copyOf(path)) : this.self.fleetBox.copyIn(caller as SessionId, copyOf(path), at, signal)
+        await put.catch((error: unknown) => {
           problems.push(`${path.name}: could not replace ${path.host}: ${message(error)}`)
         })
       }
@@ -230,28 +247,30 @@ export class FleetTau extends Service {
   }
 
   /**
-   * A root session's spec: its own, or else, for a fork, its source's.
-   * @param root - the header of a session that is not a subagent.
-   * @returns the spec, or undefined for a session the `fleet` command did not start from an agent directory.
+   * The spec of a session that owns a container: its own, or else, for a
+   * fork, its source's.
+   * @param owner - the header of a session that owns a container (fleet-box's world.ts).
+   * @returns the spec, or undefined for a session not started from an agent directory.
    * @throws when a stored spec cannot be read.
    */
-  specOf(root: SessionHeader): Promise<Found | undefined> {
-    let found = this.specs.get(root.id)
+  specOf(owner: SessionHeader): Promise<Found | undefined> {
+    let found = this.specs.get(owner.id)
     if (found === undefined) {
-      found = this.find(root)
-      this.specs.set(root.id, found)
-      found.catch(() => { if (this.specs.get(root.id) === found) this.specs.delete(root.id) })
+      found = this.find(owner)
+      this.specs.set(owner.id, found)
+      found.catch(() => { if (this.specs.get(owner.id) === found) this.specs.delete(owner.id) })
     }
     return found
   }
 
   /**
    * A fork's container additions: copies of its source's snapshots, since a
-   * fork has no folder of its own; but none of its other paths or its
-   * variables.
+   * fork has no folder in the store; but none of its other paths or its
+   * variables. A fork of a run started inside a container works in a folder
+   * of its container's own, as the run did.
    */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
-    await this.self.fleetBox.configure(fork, { mounts: [], copies: this.snapshots(found.owner, found.spec) })
+    await this.self.fleetBox.configure(fork, { ...ownFolder(found.spec), mounts: [], copies: this.snapshots(found.owner, found.spec) })
   }
 
   /**
@@ -266,6 +285,7 @@ export class FleetTau extends Service {
       else if (path.role === 'share') mounts.push(shareMount(path))
     }
     return {
+      ...ownFolder(spec),
       mounts,
       copies: this.snapshots(owner, spec),
       ...Object.keys(spec.env).length === 0 ? {} : { env: spec.env },
@@ -282,12 +302,12 @@ export class FleetTau extends Service {
     ]
   }
 
-  private async find(root: SessionHeader): Promise<Found | undefined> {
-    const spec = await this.read(root.id)
-    if (spec !== undefined) return { spec, owner: root.id }
+  private async find(owner: SessionHeader): Promise<Found | undefined> {
+    const spec = await this.read(owner.id)
+    if (spec !== undefined) return { spec, owner: owner.id }
     // A fork is a root of its own whose parent is the session it was forked from.
-    if (root.origin === 'subagent' || root.parentSession === undefined) return undefined
-    return this.specOf(await this.self.fleetBox.rootHeaderOf(root.parentSession))
+    if (owner.origin === 'subagent' || owner.parentSession === undefined) return undefined
+    return this.specOf(await this.self.fleetBox.ownerHeaderOf(owner.parentSession))
   }
 
   private async read(session: SessionId): Promise<Spec | undefined> {
@@ -376,6 +396,15 @@ export class FleetTau extends Service {
     }
     this.jobs.clear()
   }
+}
+
+/**
+ * A run started inside a container works in a folder of its own container's
+ * (./paths.ts), and so does a fork of one, whose folder is the run's: neither
+ * has a workspace dir on the host to mount.
+ */
+function ownFolder(spec: Spec): Pick<ContainerAdditions, 'ownFolder'> {
+  return spec.caller === undefined ? {} : { ownFolder: true }
 }
 
 function message(error: unknown): string {

@@ -17,7 +17,7 @@ function setup(agents: Agent[]) {
   const vacated: SessionId[] = []
   const occupancy = new Occupancy({
     agents: () => agents,
-    rootOf: (header: SessionHeader) => {
+    ownerOf: (header: SessionHeader) => {
       if (header.id === 'session-orphan') return undefined
       return (header.parentSession ?? header.id) as SessionId
     },

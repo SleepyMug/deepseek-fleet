@@ -21,6 +21,7 @@ export const IMAGE_APIS = `${PACKAGE_ROOT}/apis`
 const BACKENDS: Readonly<Record<string, readonly string[]>> = {
   archives: ['archives'],
   notes: ['notes'],
+  tau: ['tau'],
   'text-stats': [],
 }
 

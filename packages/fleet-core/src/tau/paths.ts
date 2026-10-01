@@ -20,6 +20,13 @@
  * every session. Each path is compared with the dsh home as given and as the
  * host resolves it, but for an `out` path's own name, which the publish
  * replaces, not follows.
+ *
+ * A run started inside a session's container (./children.ts) works in
+ * {@link NESTED_CWD}, its own container's, with nothing mounted, and its
+ * `in` and `out` paths are placed as any run's are, while the caller's paths
+ * are in the caller's container. A `share` path there would name the caller's
+ * files in its container, which no other container can mount, so such a run
+ * takes none: only a functional tau runs inside a container.
  * @module fleet-core/tau/paths
  */
 
@@ -31,6 +38,9 @@ import type { Mount } from '../box/additions.ts'
 
 /** Where a session's container sees its agent's snapshot. */
 export const AGENT_VIEW = `${TAU_ROOT}/agent`
+
+/** The folder a run started inside a container works in, its own container's. */
+export const NESTED_CWD = '/workspace'
 
 /** Folders a `share` path may neither be nor hold: the system's, and fleet's own. */
 const COVERED = ['/bin', '/sbin', '/lib', '/lib64', '/usr', '/etc', '/var', PACKAGE_ROOT, TAU_ROOT, RUN_ROOT]
@@ -46,6 +56,21 @@ export function place(path: Omit<BoundPath, 'view'>): string {
 /** The mount that shows a `share` path {@link pathProblems} accepts: its real path, at the same path. */
 export function shareMount(path: Pick<BoundPath, 'view'>): Mount {
   return { source: path.view, target: path.view, readonly: false }
+}
+
+/**
+ * Where the container of a run started inside another shows a path
+ * argument: an `in` or `out` path as {@link place} puts it, and a `share`
+ * path, which {@link nestedPathProblems} refuses, where the caller has it.
+ */
+export function placeNested(path: Omit<BoundPath, 'view'>): string {
+  return path.role === 'share' ? path.host : place(path)
+}
+
+/** @returns a problem for each path argument a run started inside a container cannot be given: its `share` paths. */
+export function nestedPathProblems(paths: readonly Pick<BoundPath, 'name' | 'role' | 'host'>[]): string[] {
+  return paths.filter(path => path.role === 'share').map(path => `${path.name}: ${path.host} is a share path, which a run started in a `
+    + 'container cannot take: no other container can mount the caller\'s files, so only a tau without share paths runs here')
 }
 
 /**

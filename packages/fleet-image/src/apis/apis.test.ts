@@ -8,6 +8,7 @@ import { after, before, test } from 'node:test'
 import * as archives from './archives/index.ts'
 import { call, SOCKET_VARIABLE } from './client.ts'
 import * as notes from './notes/index.ts'
+import * as tau from './tau/index.ts'
 import { declarations, implementation, implementations } from './registry.ts'
 import * as textStats from './text-stats/index.ts'
 
@@ -19,6 +20,7 @@ const answers: Record<string, (args: unknown[]) => unknown> = {
   'notes.addNote': ([text, tags]) => ({ result: { id: 1, text, tags, written: '2026-09-30T12:00:00.000Z' } }),
   'notes.byTag': () => ({ result: [{ id: 1, text: 'milk', tags: ['shopping'], written: '2026-09-30T12:00:00.000Z' }] }),
   'archives.store': ([name, tarball]) => ({ result: { name, bytes: Buffer.from(tarball as string, 'base64').length, sha256: 'x', entries: [] } }),
+  'tau.run': ([agent]) => ({ result: { ok: true, message: `ran ${String(agent)}` } }),
   'slow.wait': () => undefined,
 }
 
@@ -88,8 +90,22 @@ test('a failed call carries the host\'s reason, and an aborted one closes its co
   }
 })
 
+test('a tau is run from this folder, its agent directory resolved here, with this environment', async () => {
+  process.env.FLEET_APIS_TEST = 'seen'
+  try {
+    assert.deepEqual(await tau.run('agents/reviewer', ['a.md', 'b.md']), { ok: true, message: `ran ${join(process.cwd(), 'agents/reviewer')}` })
+    const sent = calls.at(-1)
+    assert.deepEqual(sent?.args.slice(0, 3), [join(process.cwd(), 'agents/reviewer'), ['a.md', 'b.md'], process.cwd()])
+    assert.equal((sent?.args[3] as Record<string, string>).FLEET_APIS_TEST, 'seen')
+  } finally {
+    delete process.env.FLEET_APIS_TEST
+  }
+})
+
 test('the registry lists each implementation, its backends, and its declarations', () => {
-  assert.deepEqual(implementations().map(({ name, backends }) => [name, backends]), [['archives', ['archives']], ['notes', ['notes']], ['text-stats', []]])
+  assert.deepEqual(implementations().map(({ name, backends }) => [name, backends]), [
+    ['archives', ['archives']], ['notes', ['notes']], ['tau', ['tau']], ['text-stats', []],
+  ])
   const found = implementation('notes')
   assert.ok(found !== undefined)
   assert.ok(existsSync(found.file))

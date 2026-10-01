@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { pathProblems, place, shareMount } from './paths.ts'
+import { nestedPathProblems, pathProblems, place, placeNested, shareMount } from './paths.ts'
 
 const share = (name: string, host: string, view = host) => ({ name, role: 'share' as const, host, view })
 const problems = (paths: Parameters<typeof pathProblems>[0]) => pathProblems(paths, '/dsh')
@@ -67,4 +67,14 @@ test('a share path may not cover system or fleet folders, nor lie in the kernel\
   for (const host of ['/etc/app/config.json', '/work/rules.md', '/tmp/in', '/home/u/data', '/opt/data', '/opt/fleet-tau']) {
     assert.deepEqual(problems([share('p', host)]), [], host)
   }
+})
+
+test('a run started in a container places in and out paths as any run does, and refuses its share paths, which it never resolves', () => {
+  assert.equal(placeNested({ name: 'rules', type: 'file', role: 'in', host: '/workspace/style.md' }), '/tau/in/rules/style.md')
+  assert.equal(placeNested({ name: 'report', type: 'file', role: 'out', host: '/tmp/report.md' }), '/tau/out/report/report.md')
+  assert.equal(placeNested({ name: 'src', type: 'dir', role: 'share', host: '/proc/self/root' }), '/proc/self/root')
+  assert.deepEqual(nestedPathProblems([
+    { name: 'rules', role: 'in', host: '/workspace/style.md' },
+    { name: 'src', role: 'share', host: '/workspace/src' },
+  ]).map(problem => problem.split(',')[0]), ['src: /workspace/src is a share path'])
 })

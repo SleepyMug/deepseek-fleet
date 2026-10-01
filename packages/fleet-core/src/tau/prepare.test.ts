@@ -147,3 +147,41 @@ test('an API fleet does not implement, one its implementation does not fit, and 
     assert.match(prepared.problems[0]!, /its APIs break the spec:[^]*Missing/u)
   })
 })
+
+test('a run started in a container reads a copy, names it where the caller has it, and leaves the caller\'s paths to the store', async () => {
+  await withAgent({
+    'PROMPT.md': 'Count ${text} into ${report}',
+    'tau.json': '{"args": [{"name": "text", "type": "file", "role": "in"}, {"name": "report", "type": "file", "role": "out"}], "env": ["LANG"]}',
+  }, (dir) => {
+    const nested = (args: string[]): PrepareRequest => ({ ...request(dir, args), source: '/workspace/agents/count', caller: 'session-caller', callerCwd: '/workspace' })
+    // Neither path exists anywhere on the host: the caller's are in its container.
+    const prepared = prepare({ ...nested(['a.txt', '/tmp/out/report.md']), env: { LANG: 'C', PATH: '/bin' } })
+    assert.ok(prepared.ok, JSON.stringify(prepared))
+    assert.deepEqual(prepared.spec.agent, { name: 'count', source: '/workspace/agents/count' })
+    assert.equal(prepared.spec.caller, 'session-caller')
+    assert.equal(prepared.title, 'count a.txt /tmp/out/report.md')
+    assert.deepEqual(prepared.spec.env, { LANG: 'C' })
+    assert.deepEqual(prepared.spec.paths.map(({ host, view }) => [host, view]), [
+      ['/workspace/a.txt', '/tau/in/text/a.txt'],
+      ['/tmp/out/report.md', '/tau/out/report/report.md'],
+    ])
+    const refused = prepare(nested(['a.txt']))
+    assert.ok(!refused.ok)
+    assert.match(refused.problems[0]!, /^\/workspace\/agents\/count: /u)
+    assert.ok(refused.problems.every(problem => !problem.includes(dir)), JSON.stringify(refused.problems))
+  })
+})
+
+test('a run started in a container takes no share path', async () => {
+  await withAgent({
+    'PROMPT.md': 'Edit ${src}',
+    'tau.json': '{"args": [{"name": "src", "type": "dir", "role": "share"}]}',
+  }, (dir) => {
+    const prepared = prepare({ ...request(dir, ['/workspace/src']), source: '/workspace/edit', caller: 'session-caller' })
+    assert.ok(!prepared.ok)
+    assert.deepEqual(prepared.problems, [
+      'src: /workspace/src is a share path, which a run started in a container cannot take: no other container can mount the caller\'s files, '
+      + 'so only a tau without share paths runs here',
+    ])
+  })
+})

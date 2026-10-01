@@ -15,8 +15,8 @@
  * host does at the container's request: it runs a plugin's code for the
  * session whose container the call came from, which the host knows from the
  * connection and never takes from the message, and only a call that session
- * may make, with arguments the plugin accepts. The host bounds the calls in
- * flight, and each call's size both ways.
+ * may make, with arguments the plugin accepts. The host bounds each call's
+ * size both ways.
  *
  * Shared by the host and the helper, so it holds only types and constants.
  * @module fleet-image/helper/protocol
@@ -32,6 +32,12 @@ export const PROTOCOL_VERSION = 3
  * connection, one JSON line each way (./services.ts).
  */
 export const SERVICE_SOCKET = `${RUN_ROOT}/services.sock`
+
+/**
+ * Where the host copies what it then puts in place of a path in the
+ * container, as it publishes the outputs of a run this container started.
+ */
+export const INCOMING = `${RUN_ROOT}/incoming`
 
 /** The variable that names {@link SERVICE_SOCKET} to every process in the container. */
 export const SOCKET_VARIABLE = 'FLEET_SOCKET'

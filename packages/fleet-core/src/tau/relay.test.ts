@@ -11,7 +11,7 @@ async function setup(backends: string[] | undefined) {
   const served: unknown[] = []
   ctx.provide('fleetBox', {
     serveCalls: (serve: ServiceHandler) => { handler = serve; return () => { handler = undefined } },
-    rootHeaderOf: (id: string) => Promise.resolve({ id }),
+    ownerHeaderOf: (id: string) => Promise.resolve({ id }),
   })
   const spec = backends === undefined ? undefined : { apis: [{ name: 'notes', backends }, { name: 'text-stats', backends: [] }] }
   ctx.provide('fleetTau', { specOf: () => Promise.resolve(spec === undefined ? undefined : { spec, owner: 'session-a' }) })

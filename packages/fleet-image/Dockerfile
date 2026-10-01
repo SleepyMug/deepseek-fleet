@@ -2,15 +2,16 @@
 # it outside dsh: an environment for the model's commands, with fleet's
 # runtime on top, this package: fleet-box's helper, which serves each
 # session's files and processes from inside its container, fleet-tau's
-# TypeScript runner, which runs the model's programs there, and fleet's
-# implementations of the APIs those programs import. The environment is the
+# TypeScript runner, which runs the model's programs there, fleet's
+# implementations of the APIs those programs import, and the `tau` command,
+# which runs a tau from the model's commands. The environment is the
 # `environment` stage below unless `--from` names an image, which the
 # ENVIRONMENT build arg puts in its place. The build context's fleet/ holds
 # this package, compiled into lib/, with every package it depends on as
 # installed on the host, so nothing is installed or compiled here. The
 # folders are src/layout.ts's: `fleet setup image` checks the helper, the
-# runner and the implementations where the host will look for them before
-# it tags a build.
+# runner, the implementations and the `tau` command where the host and the
+# model will look for them before it tags a build.
 
 # The Node image the default environment builds on, whose Node the helper and the runner run on.
 ARG NODE_IMAGE=node:26.9.0-trixie-slim
@@ -29,10 +30,13 @@ FROM ${ENVIRONMENT}
 # The helper's own copy of Node, under a name of its own; the runner runs on it too.
 COPY --from=node /usr/local/bin/node /opt/fleet/bin/fleet-node
 # This package's lib/ at the top of /opt/fleet (PACKAGE_ROOT), beside its package.json
-# and node_modules: helper/, runner/ and apis/.
+# and node_modules: helper/, runner/, apis/ and cli/.
 COPY fleet/package.json /opt/fleet/
 COPY fleet/node_modules/ /opt/fleet/node_modules/
 COPY fleet/lib/ /opt/fleet/
 # fleet-box runs `sleep infinity` as root in every container, whatever the environment set.
 USER root
+# The `tau` command (TAU_COMMAND), on the PATH of the model's commands, on the helper's Node.
+RUN printf '#!/bin/sh\nexec /opt/fleet/bin/fleet-node /opt/fleet/cli/tau.js "$@"\n' > /usr/local/bin/tau \
+ && chmod 755 /usr/local/bin/tau
 ENTRYPOINT []

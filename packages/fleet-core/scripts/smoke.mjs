@@ -2,8 +2,10 @@
 // they go without a model: fleet-tau reads and stores each agent as `fleet run` has it, a
 // container starts from the image as fleet-box starts one, and its helper, driven as fleet-box
 // drives it, runs bash commands and the TypeScript runner as the agent's tools would, with its
-// service calls relayed to fleet-tau's backends. Build the image first (`pnpm image`); `pnpm smoke`
-// in the repository runs this. Needs Docker, and exits 1 at the first check that fails.
+// service calls relayed to fleet-tau's backends. A tau started inside one of them is read, stored
+// and published as fleet-tau's `tau` backend has it, its own container started as fleet-box starts
+// a subagent's, though no subagent runs it. Build the image first (`pnpm image`); `pnpm smoke` in
+// the repository runs this. Needs Docker, and exits 1 at the first check that fails.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
@@ -18,12 +20,14 @@ import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT } from 'f
 import { z } from 'zod'
 import { additionArgs } from '../lib/box/additions.js'
 import { HelperConnection } from '../lib/box/connection.js'
-import { copyIn } from '../lib/box/copy-in.js'
+import { copyIn, replaceIn } from '../lib/box/copy-in.js'
+import { copyOut } from '../lib/box/copy-out.js'
 import { FleetBackends } from '../lib/tau/backends.js'
 import * as archives from '../lib/tau/examples/archives.js'
 import * as notes from '../lib/tau/examples/notes.js'
 import * as relay from '../lib/tau/relay.js'
-import { AGENT_VIEW } from '../lib/tau/paths.js'
+import { linksLeaving } from '../lib/tau/children.js'
+import { AGENT_VIEW, NESTED_CWD } from '../lib/tau/paths.js'
 import { FleetTau } from '../lib/tau/store.js'
 
 const EXAMPLES = fileURLToPath(new URL('../../../examples/', import.meta.url))
@@ -41,13 +45,22 @@ try {
   // fleet-tau as the fleet profile loads it, with both example backends; ctx.fleetBox is this script.
   const ctx = new Context()
   const additionsOf = new Map()
+  /** Each session's helper, which its container's copies and lookups go through. */
+  const helpers = new Map()
   let serve
   ctx.provide('fleetBox', {
     configure: async (id, additions) => { additionsOf.set(id, additions) },
     unconfigure: async () => {},
     turnRunning: () => false,
-    rootHeaderOf: async id => ({ id, cwd: workspace }),
+    ownerHeaderOf: async id => ({ id, cwd: workspace }),
     serveCalls: (handler) => { serve = handler; return () => {} },
+    copyOut: (id, source, target, options) => copyOut(helpers.get(id), source, target, options),
+    copyIn: (id, source, target) => replaceIn(helpers.get(id), source, target),
+    // As fleet-box looks a path up: resolved, then its type, symlinks followed.
+    pathType: async (id, path) => {
+      const target = await helpers.get(id).request('fs.resolve', { path }, z.object({ targetKey: z.string(), displayPath: z.string() }))
+      return (await helpers.get(id).request('fs.stat', { target }, z.object({ type: z.string() }).nullable()))?.type
+    },
   })
   await ctx.plugin(FleetBackends)
   await ctx.plugin(notes)
@@ -62,31 +75,42 @@ try {
     const prepared = await tau.prepare({ agent: join(EXAMPLES, agent), args, bind: true, callerCwd: EXAMPLES, env: {} })
     assert.ok(prepared.ok, JSON.stringify(prepared))
     await tau.create(id, prepared.spec)
+    return { spec: prepared.spec, connection: await container(id, workspace) }
+  }
+
+  /**
+   * A session's container and helper, as fleet-box starts them: a root
+   * session's mounts the workspace dir, a subagent's own works in a folder of
+   * its own, mounting nothing.
+   */
+  async function container(id, folder, mounted = true) {
     const additions = additionsOf.get(id)
     const name = `fleet-smoke-${id}`
     execFileSync('docker', ['rm', '--force', name], { stdio: 'ignore' })
     execFileSync('docker', ['run', '--detach', '--name', name, '--init',
-      '--mount', `type=bind,src=${workspace},dst=${workspace}`, '--env', `${SOCKET_VARIABLE}=${SERVICE_SOCKET}`,
-      ...additionArgs(additions, workspace), '--workdir', workspace, DEFAULT_IMAGE, 'sleep', 'infinity'], { stdio: 'ignore' })
+      ...mounted ? ['--mount', `type=bind,src=${folder},dst=${folder}`] : [], '--env', `${SOCKET_VARIABLE}=${SERVICE_SOCKET}`,
+      ...additionArgs(additions, mounted ? folder : undefined), '--workdir', folder, DEFAULT_IMAGE, 'sleep', 'infinity'], { stdio: 'ignore' })
     containers.push(name)
-    const connection = new HelperConnection({ docker: 'docker', container: name, workspace, node: HELPER_NODE, entry: HELPER_ENTRY })
+    const connection = new HelperConnection({ docker: 'docker', container: name, workspace: folder, node: HELPER_NODE, entry: HELPER_ENTRY })
     await connection.start()
     connections.push(connection)
+    helpers.set(id, connection)
     connection.serveCalls((call, signal) => serve(id, call, signal))
+    if ((additions.directories ?? []).length > 0) execFileSync('docker', ['exec', name, 'mkdir', '-p', '--', ...additions.directories])
     for (const { source, target } of additions.copies ?? []) await copyIn(connection, source, target)
-    return { spec: prepared.spec, connection }
+    return connection
   }
 
   let processes = 0
   /** One process through the helper, as ctx.subprocess spawns bash's commands and the runner. */
-  async function run({ connection }, argv, stdin) {
+  async function run({ connection, cwd = workspace }, argv, stdin) {
     const id = `smoke-${processes++}`
     const out = []
     const err = []
     const done = new Promise((resolve, reject) => {
       connection.watch(id, { output: (stream, data) => { (stream === 'stdout' ? out : err).push(data) }, exit: (exitCode) => { resolve(exitCode) }, lost: reject })
     })
-    await connection.request('process.spawn', { process: id, argv, cwd: workspace, env: {}, stdin: stdin ?? null, graceMs: 5000 }, z.object({ pid: z.number() }))
+    await connection.request('process.spawn', { process: id, argv, cwd, env: {}, stdin: stdin ?? null, graceMs: 5000 }, z.object({ pid: z.number() }))
     const exitCode = await done
     return { exitCode, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') }
   }
@@ -154,6 +178,47 @@ try {
   const counted = await execute(statsSession, 'import { wordFrequencies } from "@api/text-stats"\nexport function main() { return wordFrequencies("the cat and the hat") }')
   console.log('ts_execute:', JSON.stringify(counted))
   assert.deepEqual(counted, { the: 2, cat: 1, and: 1, hat: 1 })
+
+  step('a run started in a container: its agent and in paths copied out of the caller\'s, its outputs copied back')
+  const caller = statsSession
+  await copyIn(caller.connection, join(EXAMPLES, 'count-words'), '/tmp/agents/count')
+  await bash(caller, 'ln -s PROMPT.md /tmp/agents/count/prompt-link.md && printf "#!/bin/sh\\necho run\\n" > /tmp/agents/count/run.sh && chmod 755 /tmp/agents/count/run.sh'
+    + ' && printf "one two three" > /tmp/a.txt && mkdir -p /tmp/out && printf old > /tmp/out/report.txt && printf kept > /tmp/out/other.txt')
+  const staging = await mkdtemp(join(tmpdir(), 'fleet-smoke-staging-'))
+  try {
+    const copied = join(staging, 'agent')
+    assert.equal(await copyOut(caller.connection, '/tmp/agents/count', copied, { links: true }), true)
+    assert.deepEqual(await linksLeaving(copied), [])
+    const nested = await tau.prepare({
+      agent: copied, source: '/tmp/agents/count', caller: 'stats', args: ['a.txt', '/tmp/out/report.txt'], bind: true, callerCwd: '/tmp', env: { LANG: 'C.UTF-8' },
+    })
+    assert.ok(nested.ok, JSON.stringify(nested))
+    assert.deepEqual(nested.spec.agent, { name: 'count', source: '/tmp/agents/count' })
+    await tau.create('child', nested.spec, undefined, copied)
+    const child = { spec: nested.spec, connection: await container('child', NESTED_CWD, false), cwd: NESTED_CWD }
+    assert.equal(await bash(child, 'pwd'), `${NESTED_CWD}\n`)
+    assert.equal(await bash(child, 'cat /tau/in/text/a.txt'), 'one two three')
+    assert.equal(await bash(child, 'readlink /tau/agent/prompt-link.md'), 'PROMPT.md\n')
+    assert.equal(await bash(child, '/tau/agent/run.sh'), 'run\n', 'a script keeps its mode through the copies')
+    await bash(child, 'wc -w < /tau/in/text/a.txt | tr -d " \n" > /tau/out/report/report.txt')
+    assert.deepEqual(await tau.publish('child', 0), [])
+    // The caller's report is replaced, and nothing else in its folder is touched or left behind.
+    assert.equal(await bash(caller, 'cat /tmp/out/report.txt'), '3')
+    assert.equal(await bash(caller, 'ls -A /tmp/out'), 'other.txt\nreport.txt\n')
+    // A path that is not there fails the run's start, checked in the caller's container.
+    const missing = await tau.create('child-missing', { ...nested.spec, paths: nested.spec.paths.map(path => ({ ...path, host: `${path.host}.none` })) }, undefined, copied)
+      .then(() => undefined, error => error)
+    console.log('missing paths:', missing?.problems)
+    assert.deepEqual(missing?.problems, ['text: /tmp/a.txt.none does not exist'])
+  } finally {
+    await rm(staging, { recursive: true, force: true })
+  }
+  // The tau command reaches the host through the container's socket, which refuses an agent that does not declare the API.
+  assert.match(await bash(caller, 'tau --help'), /^Usage: tau run/u)
+  const refusedRun = await run(caller, ['tau', 'run', '/tmp/agents/count', 'a.txt', 'out.txt'])
+  console.log('tau run, from an agent without the tau API:', refusedRun.stderr.trim())
+  assert.equal(refusedRun.exitCode, 1)
+  assert.match(refusedRun.stderr, /links no API that calls the backend tau/u)
 
   console.log('\nevery check passed')
 } finally {

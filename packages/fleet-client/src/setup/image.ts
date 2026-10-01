@@ -3,15 +3,16 @@
  * as dsh-ssh's operator installs its helper on a host. The image is an
  * environment, fleet-image's Dockerfile's own or one the caller names, with
  * fleet's runtime on top: fleet-image, which holds fleet-box's helper,
- * fleet-tau's TypeScript runner and fleet's API implementations, copied with
- * the packages it depends on as they are installed here (./stage.ts), so the
- * image runs what the host has installed. The helper and the runner label
- * the image with their protocols, which their users check before starting
- * them. A build is tagged only once its helper answers its handshake, its
- * runner answers a request, and every implementation loads, each where the
- * host will look for it, so a tag always names a working image. Nothing is
- * removed: the build a new one untags is left for `docker image prune`,
- * since a container may still use it.
+ * fleet-tau's TypeScript runner, fleet's API implementations and the `tau`
+ * command, copied with the packages it depends on as they are installed here
+ * (./stage.ts), so the image runs what the host has installed. The helper
+ * and the runner label the image with their protocols, which their users
+ * check before starting them. A build is tagged only once its helper answers
+ * its handshake, its runner answers a request, every implementation loads,
+ * and the `tau` command answers, each where the host or the model will look
+ * for it, so a tag always names a working image. Nothing is removed: the
+ * build a new one untags is left for `docker image prune`, since a container
+ * may still use it.
  * @module fleet-client/setup/image
  */
 
@@ -22,6 +23,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL, PROTOCOL_VERSION } from 'fleet-image/helper/image'
 import { implementations } from 'fleet-image/apis/registry'
+import { TAU_COMMAND } from 'fleet-image/layout'
 import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerRequest } from 'fleet-image/runner/protocol'
 import { installedPackage, stagePackage } from './stage.ts'
 
@@ -72,6 +74,7 @@ export async function buildImage(options: BuildOptions): Promise<string> {
     await checkHelper(options, id)
     await checkRunner(options, id)
     await checkImplementations(options, id)
+    await checkTauCommand(options, id)
     const earlier = await docker(options, ['image', 'inspect', '--format', '{{.Id}}', options.tag]).catch(() => undefined)
     await docker(options, ['tag', id, options.tag])
     options.log(`fleet: built ${options.tag} (${short(id)})`)
@@ -149,6 +152,12 @@ async function checkImplementations(options: BuildOptions, id: string): Promise<
   const code = `for (const module of ${JSON.stringify(images)}) await import(module); console.log('loaded')`
   const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, ['--input-type=module', '--eval', code], '', 'input')
   if (stdout.trim() !== 'loaded') throw failure(id, 'API implementations did not load', late, stderr || stdout)
+}
+
+/** Check that the `tau` command runs in the build, as the model's commands find it. */
+async function checkTauCommand(options: BuildOptions, id: string): Promise<void> {
+  const { stdout, stderr, late } = await probe(options, id, TAU_COMMAND, ['--help'], '', 'input')
+  if (!stdout.startsWith('Usage: tau run')) throw failure(id, '`tau` command did not answer', late, stderr || stdout)
 }
 
 function failure(id: string, what: string, late: boolean, output: string): Error {

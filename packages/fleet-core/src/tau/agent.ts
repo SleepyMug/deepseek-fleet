@@ -71,16 +71,16 @@ export function apply(ctx: Context): void {
 }
 
 /**
- * Give an agent what its root session's spec holds.
- * @returns the agent's scope, or undefined when its session has no spec.
+ * Give an agent what the spec of the session whose container it uses holds.
+ * @returns the agent's scope, or undefined when that session has no spec.
  */
 async function customize(ctx: Context, agent: Agent): Promise<Scope | undefined> {
   const header = agent.session.header
-  const root = header.origin === 'subagent' ? await ctx.fleetBox.rootHeaderOf(agent.id) : header
-  const found = await ctx.fleetTau.specOf(root)
+  const owner = header.origin === 'subagent' ? await ctx.fleetBox.ownerHeaderOf(agent.id) : header
+  const found = await ctx.fleetTau.specOf(owner)
   if (found === undefined) return undefined
   // A fork's container takes its source's snapshot; set before the fork's first step opens the container.
-  if (found.owner !== root.id) await ctx.fleetTau.configureFork(root.id, found)
+  if (found.owner !== owner.id) await ctx.fleetTau.configureFork(owner.id, found)
   const { skills } = found.spec
   const scope = createScope(ctx, agent)
   try {

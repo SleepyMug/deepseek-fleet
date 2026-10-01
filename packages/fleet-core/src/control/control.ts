@@ -166,9 +166,11 @@ export class FleetControl {
   async stop(request: RequestOf<'stop'>, signal: AbortSignal): Promise<Results['stop']> {
     const sessionId = request.session as SessionId
     await this.known(sessionId, signal)
-    const header = this.ctx.sessions.get(sessionId)?.header
-    if (header?.origin === 'subagent') {
-      throw new ControlError('fleet/subagent-session', `${sessionId} is a subagent session, which shares the container of ${header.parentSession ?? 'its root'}; stop that one`)
+    const owner = await this.ctx.fleetBox.ownerHeaderOf(sessionId).catch(() => undefined)
+    if (owner?.id !== sessionId) {
+      throw new ControlError('fleet/subagent-session', owner === undefined
+        ? `${sessionId} is a subagent session with no container of its own`
+        : `${sessionId} is a subagent session, which uses the container of ${owner.id}; stop that one`)
     }
     const outcome = await this.ctx.fleetBox.stopSession(sessionId)
     return outcome.stopped ? { stopped: true } : { stopped: false, activity: [...new Set(outcome.occupants.map(occupant => occupant.kind))] }

@@ -27,10 +27,6 @@ import { parseRunnerReply } from './runner-reply.ts'
 import { AGENT_VIEW } from './paths.ts'
 import type { Spec } from './spec.ts'
 
-/** How long a program may run, type-checking included. */
-const EXECUTE_TIMEOUT_MS = 120_000
-/** Time the runner gets beyond its own deadline to report before the tool gives up on it. */
-const REPORT_MARGIN_MS = 30_000
 /** Time the runner gets to end its program once the call is cancelled. */
 const GRACE_MS = 5000
 /** Of stdout and stderr, the first and last this many characters each are kept (fleet-image's runner/report.ts). */
@@ -108,8 +104,8 @@ export function registerTsTools(ctx: Context, spec: Spec): void {
       + '`async function main(input)` returning JSON (returning nothing gives null); it may import the packages `ts_modules` lists. '
       + 'Returns { value, stdout, stderr, durationMs }; a type error or a failure is a tool error carrying the diagnostics and the output. '
       + `Of stdout and stderr, the first and last ${OUTPUT_KEPT} characters each are kept, and a large return value is shown as a preview, `
-      + `so write large results to a file. The program is killed after ${EXECUTE_TIMEOUT_MS / 1000} s, type-checking included, `
-      + 'and the processes it started are killed when it ends, unless they left its process group.',
+      + 'so write large results to a file. The program runs until it returns, however long that takes, unless the call is cancelled; '
+      + 'the processes it started are killed when it ends, unless they left its process group.',
     parameters: {
       source: { type: 'string', required: true, description: 'A complete TypeScript ES module exporting `main(input)`.' },
       cwd: { type: 'string', description: 'Absolute folder the program runs in; your working directory by default.' },
@@ -127,12 +123,11 @@ export function registerTsTools(ctx: Context, spec: Spec): void {
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
-    timeoutMs: EXECUTE_TIMEOUT_MS + REPORT_MARGIN_MS,
     async execute(args, exec) {
       const cwd = args.cwd ?? fleetCwd(exec)
       if (!posix.isAbsolute(cwd)) throw new Error('cwd must be an absolute folder')
       const reply = await runner(ctx, exec, {
-        command: 'execute', ...packages(), source: args.source, cwd, timeoutMs: EXECUTE_TIMEOUT_MS, ...args.input === undefined ? {} : { input: args.input },
+        command: 'execute', ...packages(), source: args.source, cwd, ...args.input === undefined ? {} : { input: args.input },
       })
       if (!('value' in reply)) throw failed(reply)
       // ts-executor returns JSON only; its type here is dsh's, as the tool's input is.
@@ -167,7 +162,7 @@ async function runner(ctx: Context, exec: ToolRunContext, request: RunnerRequest
   throw new Error(`the TypeScript runner failed or answered something else (${ended})${stderr === '' ? '' : `: ${stderr.slice(-4096)}`}`)
 }
 
-/** The session's working folder in its container: its workspace dir, which fleet-box mounts at its own path. */
+/** The session's working folder in its container: the workspace dir, which fleet-box mounts at its own path, or a run's own folder. */
 function fleetCwd(exec: ToolRunContext): string {
   const cwd = exec.agent?.session.header.cwd
   if (cwd === undefined) throw new Error('the TypeScript tools need a session with a working directory')

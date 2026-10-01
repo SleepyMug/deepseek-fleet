@@ -15,13 +15,14 @@
  */
 
 import { constants } from 'node:fs'
-import { access, appendFile, chmod, mkdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { access, appendFile, chmod, lstat, mkdir, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, posix } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FileSystem, FsEditRequest, FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
+import { replace } from '../replace.ts'
 import {
   EXECUTABLE_NOT_FOUND, MAX_MESSAGE_BYTES, MAX_WRITE_TEXT, PROTOCOL_VERSION,
   type HelperMessage, type HostMessage, type SpawnParams, type WireError,
@@ -145,6 +146,20 @@ const handlers: Record<string, (params: Params, signal: AbortSignal) => Promise<
     await symlink(text(p.link), absolutePath(p.path))
     return null
   },
+  // What the host copied into INCOMING, put in place of a path as the host puts one of its own (../replace.ts).
+  'copyIn.replace': async (p) => {
+    const source = absolutePath(p.source)
+    try {
+      await replace(absolutePath(p.path), source)
+    } finally {
+      await rm(source, { recursive: true, force: true })
+    }
+    return null
+  },
+  // Copying a symlink out as the link it is (fleet-box's copy-out.ts), which dsh's file system never reads.
+  'copyOut.readlink': p => readlink(absolutePath(p.path)),
+  // A path's permission bits, which a copy that keeps them sets on the host.
+  'copyOut.mode': async p => (await lstat(absolutePath(p.path))).mode & 0o7777,
 
   'process.spawn': p => processes.spawn(p as unknown as SpawnParams),
   'process.terminate': (p) => {

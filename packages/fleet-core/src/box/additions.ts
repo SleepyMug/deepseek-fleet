@@ -1,8 +1,8 @@
 /**
- * What a root session's container gets beyond fleet-box's own: bind mounts,
+ * What a session's container gets beyond fleet-box's own: bind mounts,
  * copies, environment variables and folders that another plugin asks for,
- * such as fleet-tau's snapshot of the agent a `fleet run` started and the
- * paths its arguments name. They are kept in one file per session in the dsh
+ * such as fleet-tau's snapshot of the agent a run started and the paths its
+ * arguments name. They are kept in one file per session in the dsh
  * home, and the world reads that file itself each time it creates or starts
  * the container, so a container never loses them because the plugin that
  * asked is not loaded, or not loaded yet. The additions are part of the
@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, posix } from 'node:path'
 import { PACKAGE_ROOT, RUN_ROOT } from 'fleet-image/layout'
@@ -53,8 +54,14 @@ export interface Copy {
   target: string
 }
 
-/** What a root session's container gets beyond the workspace dir. */
+/** What a session's container gets beyond fleet-box's own, the workspace dir's mount included. */
 export interface ContainerAdditions {
+  /**
+   * Whether the session's folder is the container's own, which Docker makes
+   * as its working folder, rather than the workspace dir mounted from the host:
+   * so for a run started inside another container, and for a fork of one.
+   */
+  ownFolder?: boolean
   mounts: Mount[]
   /**
    * Host paths copied into the container, through its helper, when it is
@@ -72,6 +79,7 @@ const containerPath = z.string().refine(path => posix.isAbsolute(path) && posix.
   'must be an absolute, normalized path in the container, other than /')
 
 const additionsSchema = z.object({
+  ownFolder: z.boolean().optional(),
   mounts: z.array(z.object({
     source: z.string().refine(isAbsolute, 'must be an absolute host path'),
     target: containerPath,
@@ -88,28 +96,28 @@ const additionsSchema = z.object({
   directories: z.array(containerPath).optional(),
 }).strict()
 
-/** The file that holds a root session's additions. */
+/** The file that holds a session's additions, which a subagent session has only when it owns a container. */
 export function additionsFile(home: string, session: string): string {
   return join(home, 'fleet', 'containers', `${session}.json`)
 }
 
-/** The file that names the container a root session's copies went into last. */
+/** The file that names the container a session's copies went into last. */
 function copiedFile(home: string, session: string): string {
   return join(home, 'fleet', 'containers', `${session}.copied`)
 }
 
-/** @returns the id of the container a root session's copies went into last, if any did. */
+/** @returns the id of the container a session's copies went into last, if any did. */
 export async function readCopied(home: string, session: string): Promise<string | undefined> {
   return (await readFile(copiedFile(home, session), 'utf8').catch(() => '')).trim() || undefined
 }
 
-/** Record that a root session's copies are all in a container. */
+/** Record that a session's copies are all in a container. */
 export async function writeCopied(home: string, session: string, container: string): Promise<void> {
   await writeFile(copiedFile(home, session), `${container}\n`, { mode: 0o600 })
 }
 
 /**
- * A root session's additions.
+ * A session's additions.
  * @returns them, or undefined when the session has none.
  * @throws when the file exists but cannot be read or is not valid.
  */
@@ -129,7 +137,19 @@ export async function readAdditions(home: string, session: string): Promise<Cont
   }
 }
 
-/** Replace a root session's additions at once, readable only by the owner. */
+/**
+ * A session's additions, read at once, for a caller that cannot wait.
+ * @returns them, or undefined when the session has none, or its file cannot be read or is not valid.
+ */
+export function readAdditionsNow(home: string, session: string): ContainerAdditions | undefined {
+  try {
+    return additionsSchema.parse(JSON.parse(readFileSync(additionsFile(home, session), 'utf8')))
+  } catch {
+    return undefined
+  }
+}
+
+/** Replace a session's additions at once, readable only by the owner. */
 export async function writeAdditions(home: string, session: string, additions: ContainerAdditions): Promise<void> {
   const parsed = additionsSchema.parse(additions)
   const file = additionsFile(home, session)
@@ -144,7 +164,7 @@ export async function writeAdditions(home: string, session: string, additions: C
   }
 }
 
-/** Remove a root session's additions, if it has any. */
+/** Remove a session's additions, if it has any. */
 export async function removeAdditions(home: string, session: string): Promise<void> {
   await rm(additionsFile(home, session), { force: true })
   await rm(copiedFile(home, session), { force: true })
@@ -158,28 +178,30 @@ export async function removeAdditions(home: string, session: string): Promise<vo
  * or another such mount shows already is left out, since a bind mount shows
  * what lies below it: mounting a file there on its own would keep programs
  * from renaming another file over it.
- * @param workspace - the workspace dir, which fleet-box mounts at its own path.
+ * @param workspace - the workspace dir, which fleet-box mounts at its own path;
+ *   none for a container whose folder is its own.
  * @throws when an addition would cover fleet-box's own folders, or a mount
  * that does not compose with the workspace dir's would overlap it or another
  * mount, or a copy would overlap the workspace dir, a mount, whose host
  * files it would write, or another copy.
  */
-export function additionArgs(additions: ContainerAdditions | undefined, workspace: string): string[] {
+export function additionArgs(additions: ContainerAdditions | undefined, workspace: string | undefined): string[] {
   if (additions === undefined) return []
   const copies = additions.copies ?? []
   const all = additions.mounts
   /** Whether the workspace dir's mount, or another that composes with it, shows a mount's target already; of two at one path, the first is kept. */
-  const shown = (target: string, index: number): boolean => within(target, workspace)
+  const shown = (target: string, index: number): boolean => (workspace !== undefined && within(target, workspace))
     || all.some((other, at) => at !== index && composes(other) && within(target, other.target) && (other.target !== target || at < index))
   const kept = all.filter((mount, index) => !composes(mount) || !shown(mount.target, index))
+  const mounted = workspace === undefined ? [] : [workspace]
   for (const mount of kept) {
-    const taken = composes(mount) ? RESERVED : [workspace, ...RESERVED, ...kept.filter(other => other !== mount).map(other => other.target)]
+    const taken = composes(mount) ? RESERVED : [...mounted, ...RESERVED, ...kept.filter(other => other !== mount).map(other => other.target)]
     for (const folder of taken) {
       if (overlaps(mount.target, folder)) throw new Error(`fleet-box: a container addition mounts ${mount.target}, which overlaps ${folder}`)
     }
   }
   for (const [index, { target }] of copies.entries()) {
-    for (const folder of [workspace, ...RESERVED, ...kept.map(mount => mount.target), ...copies.slice(index + 1).map(copy => copy.target)]) {
+    for (const folder of [...mounted, ...RESERVED, ...kept.map(mount => mount.target), ...copies.slice(index + 1).map(copy => copy.target)]) {
       if (overlaps(target, folder)) throw new Error(`fleet-box: a container addition copies to ${target}, which overlaps ${folder}`)
     }
   }

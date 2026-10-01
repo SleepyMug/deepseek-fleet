@@ -2,7 +2,7 @@
   "name": "fleet-core",
   "version": "0.0.1",
   "private": true,
-  "description": "The fleet host's core: fleet-box, the Docker execution world, one container per root session, served by fleet-image's helper inside it, with the session folder bind-mounted at the same path; fleet-tau, which runs agent directories in the tau format as sessions, each with its agent's skills and its APIs linked to fleet's implementations, whose backends fleet's plugins provide; and fleet-control, the Unix socket through which fleet-client's `fleet` command runs them, speaking fleet-protocol",
+  "description": "The fleet host's core: fleet-box, the Docker execution world, one container per root session, and per tau run started inside a container, served by fleet-image's helper inside it, with a root session's folder bind-mounted at the same path; fleet-tau, which runs agent directories in the tau format as sessions, each with its agent's skills and its APIs linked to fleet's implementations, whose backends fleet's plugins provide, and runs those its programs start as subagents; and fleet-control, the Unix socket through which fleet-client's `fleet` command runs them, speaking fleet-protocol",
   "type": "module",
   "exports": {
     "./box/world": {
@@ -45,6 +45,10 @@
       "types": "./lib/tau/relay.d.ts",
       "default": "./lib/tau/relay.js"
     },
+    "./tau/children": {
+      "types": "./lib/tau/children.d.ts",
+      "default": "./lib/tau/children.js"
+    },
     "./tau/examples/notes": {
       "types": "./lib/tau/examples/notes.d.ts",
       "default": "./lib/tau/examples/notes.js"
@@ -85,11 +89,13 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
     "@deepseek-ai/dsh-home-paths": "0.1.7-rc.2",
     "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
     "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
     "@deepseek-ai/dsh-skill": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subagent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",
@@ -101,6 +107,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-rc.2",
     "@deepseek-ai/dsh-api-session-controller": "0.1.7-rc.2",
     "@deepseek-ai/dsh-api-workspace-files": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
@@ -112,6 +119,7 @@
     "@deepseek-ai/dsh-session-projection": "0.1.7-rc.2",
     "@deepseek-ai/dsh-skill": "0.1.7-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subagent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",

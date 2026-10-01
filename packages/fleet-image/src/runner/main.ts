@@ -46,7 +46,7 @@ async function run(request: RunnerRequest): Promise<RunnerReply> {
 }
 
 async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest, { command: 'execute' }>): Promise<RunnerReply> {
-  const deadline = AbortSignal.timeout(request.timeoutMs)
+  const deadline = request.timeoutMs === undefined ? undefined : AbortSignal.timeout(request.timeoutMs)
   const output = outputCaptures()
   try {
     const result = await executor.execute({
@@ -55,14 +55,14 @@ async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest,
       // Tool arguments arrive as parsed JSON, so a present input is a JSON value.
       ...request.input === undefined ? {} : { input: request.input as JsonValue },
       check: true,
-      signal: AbortSignal.any([cancelled.signal, deadline]),
+      signal: deadline === undefined ? cancelled.signal : AbortSignal.any([cancelled.signal, deadline]),
       onStdout: output.stdout.push,
       onStderr: output.stderr.push,
     })
     return reportResult(result.value, result.durationMs, output)
   } catch (error) {
-    const timedOut = error instanceof ExecutionAbortedError && deadline.aborted && !cancelled.signal.aborted
-    return { ok: false, error: reportFailure(error, output, request.timeoutMs, timedOut) }
+    const timedOut = error instanceof ExecutionAbortedError && deadline?.aborted === true && !cancelled.signal.aborted
+    return { ok: false, error: reportFailure(error, output, request.timeoutMs ?? 0, timedOut) }
   }
 }
 

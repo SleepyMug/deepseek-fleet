@@ -15,7 +15,8 @@
  *
  * A call comes from the container, where the agent can send anything, so a
  * method runs only with arguments its schema accepts, and returns JSON, or
- * nothing for null. One that runs past the backend's time is cancelled.
+ * nothing for null. A call runs until the program that made it goes away, or
+ * until the backend's time, if it sets one, runs out.
  * Calls come from fleet-tau's relay (./relay.ts), only for a backend that an
  * API the session's agent links calls, and an agent is run only when those
  * backends are provided (./prepare.ts).
@@ -33,12 +34,9 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** How long a call may take unless its backend says otherwise. */
-const DEFAULT_TIMEOUT_MS = 10 * 60_000
-
 /** What a method learns about the call. */
 export interface BackendCall {
-  /** The root session whose container the call came from. */
+  /** The session whose container the call came from. */
   session: SessionId
   /** Aborts when the program goes away, the call runs out of time, or the backend is removed. */
   signal: AbortSignal
@@ -59,7 +57,7 @@ export function method<Args extends unknown[]>(args: z.ZodType<Args>, run: (args
 export interface Backend {
   /** What implementations call it by. */
   name: string
-  /** How long a call may take before it is cancelled; ten minutes by default. */
+  /** How long a call may take before it is cancelled; no limit by default. */
   timeoutMs?: number
   // A method is typed by its own arguments; bivariance lets them share a record.
   methods: Record<string, BackendMethod<any>>
@@ -109,13 +107,13 @@ export class FleetBackends extends Service {
     const { args: schema, run } = backend.methods[request.function]!
     const parsed = schema.safeParse(request.args)
     if (!parsed.success) throw new Error(`${where}: its arguments do not fit: ${z.prettifyError(parsed.error).replace(/\n\s*/gu, ' ')}`)
-    const timeoutMs = backend.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    const timeout = AbortSignal.timeout(timeoutMs)
-    const cancelled = AbortSignal.any([signal, timeout, backend.removed.signal])
+    const { timeoutMs } = backend
+    const timeout = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs)
+    const cancelled = AbortSignal.any([signal, backend.removed.signal, ...timeout === undefined ? [] : [timeout]])
     try {
       return await abortable(Promise.resolve().then(() => run(parsed.data, { session, signal: cancelled })), cancelled) ?? null
     } catch (error) {
-      if (timeout.aborted) throw new Error(`${where} ran longer than ${timeoutMs / 1000} s and was cancelled`)
+      if (timeout?.aborted === true) throw new Error(`${where} ran longer than ${(timeoutMs ?? 0) / 1000} s and was cancelled`)
       throw error
     }
   }

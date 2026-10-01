@@ -33,19 +33,24 @@ test('a failing call, and any call before something serves them, gets its reason
   ])
 })
 
-test('oversized calls and results, bad names, and too many calls at once are refused', async () => {
+test('oversized calls and results, and bad names, are refused; any number of calls run at once', async () => {
   const { calls, sent } = setup()
   const held = Promise.withResolvers<unknown>()
-  calls.serve(request => request.function === 'huge' ? Promise.resolve('x'.repeat(MAX_CALL_BYTES)) : held.promise)
+  let waiting = 0
+  calls.serve((request) => {
+    if (request.function === 'huge') return Promise.resolve('x'.repeat(MAX_CALL_BYTES))
+    waiting++
+    return held.promise
+  })
   calls.receive(call(1), MAX_CALL_BYTES + 1)
   calls.receive(call(2, { service: '../notes' }), 100)
   calls.receive(call(3, { function: 'f'.repeat(200) }), 100)
   calls.receive(call(4, { function: 'huge' }), 100)
-  for (let id = 10; id < 26; id++) calls.receive(call(id), 100)
+  for (let id = 10; id < 74; id++) calls.receive(call(id), 100)
   await delay(0)
-  assert.deepEqual(sent.map(message => [message.call, message.type]), [[1, 'call-error'], [2, 'call-error'], [3, 'call-error'], [25, 'call-error'], [4, 'call-error']])
-  assert.match(String(sent[3]?.message), /too many service calls/u)
-  assert.match(String(sent[4]?.message), /result is over/u)
+  assert.deepEqual(sent.map(message => [message.call, message.type]), [[1, 'call-error'], [2, 'call-error'], [3, 'call-error'], [4, 'call-error']])
+  assert.match(String(sent[3]?.message), /result is over/u)
+  assert.equal(waiting, 64)
 })
 
 test('a cancelled call, or one in flight when the connection ends, is not answered; a reused id in flight is ignored', async () => {

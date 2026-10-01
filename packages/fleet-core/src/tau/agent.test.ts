@@ -12,7 +12,7 @@ async function setup(specOf: () => Promise<unknown>) {
   const ctx = new Context()
   const warnings: string[] = []
   ctx.provide('fleetTau', { specOf, configureFork: () => Promise.resolve() })
-  ctx.provide('fleetBox', { rootHeaderOf: () => Promise.reject(new Error('no lineage')) })
+  ctx.provide('fleetBox', { ownerHeaderOf: () => Promise.reject(new Error('no lineage')) })
   ctx.provide('agents', { list: () => [] })
   ctx.provide('skills', { register: () => () => {} })
   for (const service of ['tools', 'subprocess', 'systemPrompt']) ctx.provide(service, {})
