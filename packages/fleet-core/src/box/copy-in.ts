@@ -64,9 +64,8 @@ export async function copyIn(connection: Pick<HelperConnection, 'request'>, sour
  * Copy a host path into the container and put it in place of what is at
  * `target` there, as fleet-tau publishes an output on the host: copied into
  * the container's {@link INCOMING} first, so nothing at `target` changes
- * unless the whole copy got there, then renamed in, a folder over a folder
- * entry by entry, and everything put back if that fails (fleet-image's
- * replace.ts).
+ * unless the whole copy got there, then swapped in whole for what was
+ * there, which is put back if that fails (fleet-image's replace.ts).
  * @param target - an absolute path in the container.
  */
 export async function replaceIn(connection: Pick<HelperConnection, 'request'>, source: string, target: string, signal?: AbortSignal): Promise<void> {

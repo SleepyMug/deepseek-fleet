@@ -7,7 +7,9 @@
  * it is, never as what it leads to, which could be anywhere on the host. A
  * copy is plain files, folders and symlinks, so a device, a pipe or a socket
  * in it refuses it. Each folder keeps its mode, but stays writable by its
- * owner, so the store can remove it.
+ * owner, so the store can remove it. A path that holds the store, as a
+ * home folder may, is copied without the snapshot itself, which the copy
+ * would otherwise go into.
  *
  * For a run started inside a session's container, the caller's paths are in
  * that container, the model's, so they are never read on the host: each `in`
@@ -19,7 +21,7 @@
 
 import { constants } from 'node:fs'
 import { chmod, copyFile, lstat, mkdir, readdir, readlink, realpath, symlink } from 'node:fs/promises'
-import { join, posix } from 'node:path'
+import { basename, dirname, join, posix } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { FleetBox } from '../box/world.ts'
 import type { SpecPath } from './spec.ts'
@@ -39,8 +41,11 @@ export class InputError extends Error {
  */
 export async function snapshot(name: string, host: string, copy: string, signal?: AbortSignal): Promise<string[]> {
   const problems: string[] = []
+  /** The snapshot as the walk would meet it, which it leaves out rather than copying into itself. */
+  const own = join(await realpath(dirname(copy)), basename(copy))
   const visit = async (source: string, target: string, shown: string): Promise<void> => {
     signal?.throwIfAborted()
+    if (source === own) return
     try {
       const info = await lstat(source)
       if (info.isSymbolicLink()) await symlink(await readlink(source), target)

@@ -8,9 +8,9 @@
  * ({@link FleetBox.configure}), such as fleet-tau's run of a tau started
  * inside a container; any other subagent session uses its parent's. The
  * owner's folder, the workspace dir, is bind-mounted at the same absolute
- * path, beside any mounts another plugin configured for the session
- * (./additions.ts), unless the plugin made the folder the container's own,
- * as fleet-tau does for its runs of agent directories and their forks.
+ * path, unless the plugin that configured the session's additions
+ * (./additions.ts) made the folder the container's own, as fleet-tau does
+ * for its runs of agent directories and their forks.
  * Everything else, `/tmp` included, is the container's own, as are the host
  * paths such a plugin has copied in when the container was created
  * (./copy-in.ts). Processes run as the container's root, which rootless
@@ -71,7 +71,7 @@ import { copyIn, replaceIn } from './copy-in.ts'
 import { copyOut as copyOutOf, type CopyOutOptions } from './copy-out.ts'
 import { Occupancy, type Occupant } from './occupancy.ts'
 
-export type { ContainerAdditions, Copy, Mount } from './additions.ts'
+export type { ContainerAdditions, Copy } from './additions.ts'
 export type { ServiceCallRequest } from './calls.ts'
 
 /**
@@ -339,12 +339,7 @@ export class FleetBox extends Service {
 
   /** Whether the container an agent's work uses mounts the workspace dir, rather than having a folder of its own. */
   mountsWorkspace(agent: Agent): boolean {
-    return !this.hasOwnFolder(this.ownerHeader(agent.session.header).id)
-  }
-
-  /** Whether a session's additions make its folder its container's own, so that the workspace dir is not mounted. */
-  hasOwnFolder(id: SessionId): boolean {
-    return this.configuredOf(id).ownFolder
+    return !this.configuredOf(this.ownerHeader(agent.session.header).id).ownFolder
   }
 
   /**
@@ -794,13 +789,14 @@ export class FleetBox extends Service {
     }
 
     try {
-      if (directories.length > 0) await this.docker(['exec', container.name, 'mkdir', '-p', '--', ...directories])
       await connection.start()
       // Once per container, before anything uses it; a copy cut short is made again on the next open.
       if (copies.length > 0 && await readCopied(this.home, owner.id) !== container.id) {
         for (const { source, target } of copies) await copyIn(connection, source, target)
         await writeCopied(this.home, owner.id, container.id)
       }
+      // After the copies, which replace what is at their targets, so a folder made in one stays.
+      if (directories.length > 0) await this.docker(['exec', container.name, 'mkdir', '-p', '--', ...directories])
       const world: OpenWorld = { world: { container, connection, docker: this.config.docker, stopped: stopped.promise }, close }
       opened = world
       state.open = world
@@ -850,7 +846,7 @@ export class FleetBox extends Service {
       ...mounted ? ['--mount', `type=bind,${mountField(`src=${workspace}`)},${mountField(`dst=${workspace}`)}`] : [],
       // Every process in the container finds the service socket.
       '--env', `${SOCKET_VARIABLE}=${SERVICE_SOCKET}`,
-      ...additionArgs(additions, mounted ? workspace : undefined),
+      ...additionArgs(additions),
       '--workdir', workspace,
       // By id: the image checked at startup, which a rebuild under the same tag replaces in the spec.
       this.image.id, 'sleep', 'infinity',

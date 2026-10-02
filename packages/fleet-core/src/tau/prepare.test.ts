@@ -20,7 +20,7 @@ async function withAgent(files: Record<string, string>, check: (dir: string) => 
 }
 
 const request = (agent: string, args: string[], bind = true, backends: string[] = []): PrepareRequest =>
-  ({ agent, args, bind, callerCwd: '/caller', env: {}, backends, dshHome: '/dsh' })
+  ({ agent, args, bind, callerCwd: '/caller', env: {}, backends })
 
 test('a run fills PROMPT.md with the arguments and titles the session after the agent', async () => {
   await withAgent({
@@ -87,12 +87,9 @@ test('path arguments are bound at their places in the project, and variables as 
       const checked = prepare(request(dir, args))
       assert.ok(checked.ok, JSON.stringify(checked))
       assert.equal(checked.spec.prompt, 'Edit /caller/site into /caller/report with /caller/rules.md')
-      // Paths may overlap, and no path may touch the dsh home.
+      // Paths may overlap.
       const overlapping = prepare(run([join(outside, 'link'), join(outside, 'link'), join(outside, 'link', 'report.md'), join(outside, 'link', 'rules.md')]))
       assert.ok(overlapping.ok, JSON.stringify(overlapping))
-      const home = prepare({ ...run(args), dshHome: dir })
-      assert.ok(!home.ok)
-      assert.deepEqual(home.problems.map(problem => problem.split(':')[0]), ['rules'])
       const missing = prepare(run([join(outside, 'src'), join(outside, 'src'), join(outside, 'report.md'), join(dir, 'missing.md')]))
       assert.ok(!missing.ok)
       assert.match(missing.problems.join('\n'), /rules: .*missing\.md/u)

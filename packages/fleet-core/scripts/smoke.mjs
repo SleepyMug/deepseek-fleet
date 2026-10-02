@@ -91,15 +91,15 @@ try {
     execFileSync('docker', ['rm', '--force', name], { stdio: 'ignore' })
     execFileSync('docker', ['run', '--detach', '--name', name, '--init',
       ...mounted ? ['--mount', `type=bind,src=${folder},dst=${folder}`] : [], '--env', `${SOCKET_VARIABLE}=${SERVICE_SOCKET}`,
-      ...additionArgs(additions, mounted ? folder : undefined), '--workdir', folder, DEFAULT_IMAGE, 'sleep', 'infinity'], { stdio: 'ignore' })
+      ...additionArgs(additions), '--workdir', folder, DEFAULT_IMAGE, 'sleep', 'infinity'], { stdio: 'ignore' })
     containers.push(name)
     const connection = new HelperConnection({ docker: 'docker', container: name, workspace: folder, node: HELPER_NODE, entry: HELPER_ENTRY })
     await connection.start()
     connections.push(connection)
     helpers.set(id, connection)
     connection.serveCalls((call, signal) => serve(id, call, signal))
-    if ((additions.directories ?? []).length > 0) execFileSync('docker', ['exec', name, 'mkdir', '-p', '--', ...additions.directories])
     for (const { source, target } of additions.copies ?? []) await copyIn(connection, source, target)
+    if ((additions.directories ?? []).length > 0) execFileSync('docker', ['exec', name, 'mkdir', '-p', '--', ...additions.directories])
     return connection
   }
 

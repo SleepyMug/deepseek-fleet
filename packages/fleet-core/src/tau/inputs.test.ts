@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -48,5 +48,18 @@ test('a file is copied, a path that is gone is a problem, and a command that has
     const [missing] = await snapshot('rules', join(dir, 'gone.md'), join(dir, 'other.md'))
     assert.match(missing!, /^rules: could not copy .*gone\.md: ENOENT/u)
     await assert.rejects(snapshot('rules', join(dir, 'rules.md'), join(dir, 'aborted.md'), AbortSignal.abort()), { name: 'AbortError' })
+  })
+})
+
+test('a folder that holds the snapshot, as a home folder holds the dsh home, is copied without it', async () => {
+  await withDir(async (dir) => {
+    const home = join(dir, 'home')
+    const store = join(home, '.dsh', 'fleet', 'sessions', 's', 'in')
+    await mkdir(store, { recursive: true })
+    await writeFile(join(home, 'notes.txt'), 'mine')
+    await symlink(home, join(dir, 'link'))
+    assert.deepEqual(await snapshot('src', join(dir, 'link'), join(store, 'src')), [])
+    assert.equal(await readFile(join(store, 'src', 'notes.txt'), 'utf8'), 'mine')
+    assert.deepEqual(await readdir(join(store, 'src', '.dsh', 'fleet', 'sessions', 's', 'in')), [])
   })
 })

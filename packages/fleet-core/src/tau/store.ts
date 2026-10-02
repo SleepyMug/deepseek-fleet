@@ -18,8 +18,10 @@
  * The container gets the agent's path arguments too, each at its place in
  * the folder the agent works in (./paths.ts). An `in` path is its snapshot,
  * which the session keeps however long it lasts, whatever becomes of the
- * caller's path, and the folder an `out` path goes in is made, so an `out`
- * that shares its place with an `in` starts as the `in`'s snapshot. Nothing
+ * caller's path, copied in after those whose places hold its own, so the
+ * inner one wins; then the folder an `out` path goes in is made, and the
+ * `out`'s place holds what the snapshots put there, as one that shares its
+ * place with an `in` starts as the `in`'s snapshot. Nothing
  * else of the caller's is in the container. The container gets the caller's
  * values of the variables tau.json lists as well. After a completed turn,
  * the command that waited on it has the store publish the `out` paths
@@ -35,9 +37,9 @@
  *
  * A fork of such a session has no folder in the store: it takes its
  * source's spec, and its container copies of the source's snapshots, which
- * never change, and mounts the project only if its source's does; but none
- * of its other paths or its variables, which belong to the run that started
- * the source.
+ * never change, and works in a folder of its container's own, as its source
+ * does; but none of its other paths or its variables, which belong to the
+ * run that started the source.
  *
  * A run started inside a session's container (./children.ts) is stored the
  * same way, as a subagent of the calling session that owns a container of
@@ -133,12 +135,12 @@ export class FleetTau extends Service {
    * checked against the backends provided now.
    * @returns the session's spec and title, or every problem found.
    */
-  prepare(request: Omit<PrepareRequest, 'backends' | 'dshHome'>): Promise<Prepared> {
+  prepare(request: Omit<PrepareRequest, 'backends'>): Promise<Prepared> {
     const result = Promise.withResolvers<Prepared>()
     const id = this.nextJob++
     const timer = setTimeout(() => { this.timedOut(id) }, this.config.prepareTimeoutMs)
     timer.unref()
-    this.jobs.set(id, { request: { ...request, backends: this.self.fleetBackends.list(), dshHome: this.home }, result, timer })
+    this.jobs.set(id, { request: { ...request, backends: this.self.fleetBackends.list() }, result, timer })
     this.post(id)
     return result.promise
   }
@@ -273,14 +275,11 @@ export class FleetTau extends Service {
 
   /**
    * A fork's container additions: copies of its source's snapshots, since a
-   * fork has no folder in the store; but none of its other paths or its
-   * variables. It works in a folder of its container's own when its source
-   * does, as the source's additions say, so a fork of a run made before runs
-   * had one still mounts the project, as its source does.
+   * fork has no folder in the store, and its folder as a run's; but none of
+   * its other paths or its variables.
    */
   async configureFork(fork: SessionId, found: Found): Promise<void> {
-    const ownFolder = this.self.fleetBox.hasOwnFolder(found.owner)
-    await this.self.fleetBox.configure(fork, { ...ownFolder ? { ownFolder } : {}, mounts: [], copies: this.snapshots(found.owner, found.spec) })
+    await this.self.fleetBox.configure(fork, { ...ownFolder(found.spec), copies: this.snapshots(found.owner, found.spec) })
   }
 
   /**
@@ -291,19 +290,23 @@ export class FleetTau extends Service {
     const directories = spec.paths.filter(path => path.role === 'out').map(path => posix.dirname(path.view))
     return {
       ...ownFolder(spec),
-      mounts: [],
       copies: this.snapshots(owner, spec),
       ...Object.keys(spec.env).length === 0 ? {} : { env: spec.env },
       ...directories.length === 0 ? {} : { directories },
     }
   }
 
-  /** Copies of a session's snapshots, of the agent and its `in` paths, which its forks get too. */
+  /**
+   * Copies of a session's snapshots, of the agent and its `in` paths, which
+   * its forks get too; the `in` paths outermost first, so where places lie
+   * in one another, the inner one replaces what the outer one holds there.
+   */
   private snapshots(owner: SessionId, spec: Spec): Copy[] {
     const folder = this.folder(owner)
+    const inputs = spec.paths.filter(path => path.role === 'in').toSorted((a, b) => a.view.split('/').length - b.view.split('/').length)
     return [
       { source: join(folder, 'agent'), target: AGENT_VIEW },
-      ...spec.paths.filter(path => path.role === 'in').map(path => ({ source: join(folder, 'in', path.name), target: path.view })),
+      ...inputs.map(path => ({ source: join(folder, 'in', path.name), target: path.view })),
     ]
   }
 

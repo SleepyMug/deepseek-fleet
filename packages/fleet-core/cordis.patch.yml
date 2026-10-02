@@ -137,11 +137,11 @@
 # ═══ fleet-box: the Docker execution world ═══
 #
 # Every root session owns one container while it is unarchived: the session
-# folder is bind-mounted at the same path, beside any mounts, variables and
-# folders another plugin configured for the session (fleet-tau's agent
-# snapshot and an agent's path arguments), which fleet-box keeps in
-# $DSH_HOME/fleet/containers/<id>.json, unless that plugin made the folder
-# the container's own, as fleet-tau does for a run of an agent directory;
+# folder is bind-mounted at the same path, unless another plugin made it the
+# container's own, as fleet-tau does for a run of an agent directory; with
+# any copies, variables and folders that plugin configured for the session
+# (fleet-tau's agent snapshot and an agent's path arguments), which fleet-box
+# keeps in $DSH_HOME/fleet/containers/<id>.json;
 # everything else (/tmp included) is the container's own, and processes run
 # as the container's root (you, under rootless Docker). A subagent session
 # uses its parent's container, unless another plugin configured one for it,
@@ -310,13 +310,14 @@
 # `in` path as a snapshot taken when the session is made, which fleet-box
 # copies into the container; and an `out` path as what the agent leaves at
 # its place, published to the caller after a completed turn a `fleet` command
-# waited on. An `out` that shares its place with an `in` starts as the `in`'s
-# snapshot. Nothing else of the caller's is in the container. Overlapping
-# `out` paths are published outermost first, and one over an existing folder
-# goes in entry by entry, so a folder that stays a folder keeps any mount of
-# it. Paths may overlap each other, but none may be, hold or lie in the dsh
-# home. The variables tau.json lists are passed from the caller's
-# environment.
+# waited on. Where places lie in one another, the inner `in` replaces what
+# the outer one holds there, and an `out`'s place holds what the `in` paths
+# put there, as one that shares its place with an `in` starts as the `in`'s
+# snapshot. Nothing else of the caller's is in the container. The caller's
+# paths may overlap each other, and be anything the caller can read or
+# write; overlapping `out` paths are published outermost first, each swapped
+# in whole for what was there. The variables tau.json lists are passed from
+# the caller's environment.
 #
 # A run belongs to a project, the folder `fleet run --project` names (the
 # current one by default), which dsh registers as the session's workspace

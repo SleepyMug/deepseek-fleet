@@ -49,7 +49,6 @@ async function setup() {
   ctx.provide('fleetBox', {
     configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
     unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
-    hasOwnFolder: (id: string) => configured.get(id)?.ownFolder === true,
     turnRunning: () => false,
     ownerHeaderOf: (id: string) => {
       let current = headers[id]
@@ -79,7 +78,7 @@ test('a run is read in a worker, and its spec is stored with a snapshot of the a
   assert.ok((await stat(join(folder, 'agent', 'skills', 'shout', 'SKILL.md'))).isFile())
   assert.equal(await readFile(join(folder, 'agent', 'notes.txt'), 'utf8'), 'the author\'s own')
   // Nothing of the store is mounted: fleet-box copies the snapshot into the container, whose folder is its own, not the workspace dir.
-  assert.deepEqual(configured.get('session-a'), { ownFolder: true, mounts: [], copies: [{ source: join(folder, 'agent'), target: '/tau/agent' }] })
+  assert.deepEqual(configured.get('session-a'), { ownFolder: true, copies: [{ source: join(folder, 'agent'), target: '/tau/agent' }] })
 
   assert.deepEqual((await tau.specOf(headers['session-a']!))?.spec, prepared.spec)
   assert.equal(await tau.specOf(headers['session-web']!), undefined)
@@ -104,7 +103,7 @@ test('a fork, even one of a subagent, takes its source\'s spec and snapshot', as
   assert.equal(configured.get('session-fork')?.ownFolder, true)
 })
 
-test('a run of a prompt works in the workspace dir, and a fork mounts it only as its source does', async () => {
+test('a run of a prompt works in the workspace dir, and so does a fork of it', async () => {
   const { tau, configured, headers } = await setup()
   await tau.create('session-prompt' as SessionId, promptSpec('Say hi.'))
   assert.equal(configured.get('session-prompt')?.ownFolder, undefined)
@@ -112,17 +111,6 @@ test('a run of a prompt works in the workspace dir, and a fork mounts it only as
   const fromPrompt = await tau.specOf(header('session-prompt-fork', { cwd: '/w', parentSession: 'session-prompt' as SessionId }))
   await tau.configureFork('session-prompt-fork' as SessionId, fromPrompt!)
   assert.equal(configured.get('session-prompt-fork')?.ownFolder, undefined)
-
-  // A run made before runs had folders of their own mounts the workspace dir, as its additions say, and so do its forks.
-  const prepared = await tau.prepare({ agent, args: ['Old'], bind: true, callerCwd: '/caller', env: {} })
-  assert.ok(prepared.ok)
-  await tau.create('session-old' as SessionId, prepared.spec)
-  const { ownFolder: _, ...before } = configured.get('session-old')!
-  configured.set('session-old', before)
-  headers['session-old'] = header('session-old', { cwd: '/w' })
-  const fromOld = await tau.specOf(header('session-old-fork', { cwd: '/w', parentSession: 'session-old' as SessionId }))
-  await tau.configureFork('session-old-fork' as SessionId, fromOld!)
-  assert.deepEqual(configured.get('session-old-fork'), before)
 })
 
 test('a spec is removed with its additions, and a broken one fails to read', async () => {
@@ -162,7 +150,6 @@ test('a run\'s paths reach its container, and its outputs are published once per
     ctx.provide('fleetBox', {
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: () => Promise.resolve(),
-      hasOwnFolder: (id: string) => configured.get(id)?.ownFolder === true,
       turnRunning: () => running,
       ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', ...id === 'session-p-fork' ? { parentSession: 'session-p' as SessionId } : {} })),
       // The container's files are under `container`, at their view paths; fleet-box refuses a symlink as it copies.
@@ -203,7 +190,6 @@ test('a run\'s paths reach its container, and its outputs are published once per
     // Nothing of the caller's is mounted; the container's folder is its own.
     assert.deepEqual(configured.get('session-p'), {
       ownFolder: true,
-      mounts: [],
       copies: [agentCopy, rulesCopy],
       env: { LANG: 'C.UTF-8' },
       directories: ['/w/out', '/w'],
@@ -241,7 +227,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const found = await tau.specOf(header('session-p-fork', { cwd: '/w', parentSession: 'session-p' as SessionId }))
     assert.equal(found?.owner, 'session-p')
     await tau.configureFork('session-p-fork' as SessionId, found!)
-    assert.deepEqual(configured.get('session-p-fork'), { ownFolder: true, mounts: [], copies: [agentCopy, rulesCopy] })
+    assert.deepEqual(configured.get('session-p-fork'), { ownFolder: true, copies: [agentCopy, rulesCopy] })
     const copiedBefore = copied.length
     assert.deepEqual(await tau.publish('session-p-fork' as SessionId, 11), [])
     assert.equal(copied.length, copiedBefore)
@@ -264,7 +250,6 @@ test('a run\'s paths reach its container, and its outputs are published once per
     const updated = join(home, 'fleet', 'sessions', 'session-update')
     assert.deepEqual(configured.get('session-update'), {
       ownFolder: true,
-      mounts: [],
       copies: [{ source: join(updated, 'agent'), target: '/tau/agent' }, { source: join(updated, 'in', 'pages'), target: '/w/pages' }],
       directories: ['/w'],
     })
@@ -275,11 +260,25 @@ test('a run\'s paths reach its container, and its outputs are published once per
     assert.deepEqual((await readdir(pages)).sort(), ['a.md', 'b.md'])
     assert.equal(await readFile(join(pages, 'a.md'), 'utf8'), 'A')
 
-    // Out paths that overlap are published outermost first, whatever their order, and a folder over a folder is the same folder after.
+    // Where places lie in one another, the inner in is copied after the outer one, whose copy it replaces there, and out folders are made after both.
+    await writeFile(join(dir, 'config.json'), '{}')
+    await tau.create('session-places' as SessionId, { ...spec, env: {}, paths: [
+      { name: 'config', type: 'file', role: 'in', host: join(dir, 'config.json'), view: '/w/pages/config.json' },
+      { name: 'dist', type: 'dir', role: 'out', host: join(dir, 'dist'), view: '/w/pages/dist' },
+      { name: 'pages', type: 'dir', role: 'in', host: pages, view: '/w/pages' },
+    ] })
+    const placed = join(home, 'fleet', 'sessions', 'session-places')
+    assert.deepEqual(configured.get('session-places')?.copies, [
+      { source: join(placed, 'agent'), target: '/tau/agent' },
+      { source: join(placed, 'in', 'pages'), target: '/w/pages' },
+      { source: join(placed, 'in', 'config'), target: '/w/pages/config.json' },
+    ])
+    assert.deepEqual(configured.get('session-places')?.directories, ['/w/pages'])
+
+    // Out paths that overlap are published outermost first, whatever their order, each in place of what was there.
     const site = join(dir, 'site')
     await mkdir(site)
     await writeFile(join(site, 'stale.html'), 'stale')
-    const siteFolder = (await stat(site)).ino
     await tau.create('session-nested' as SessionId, { ...spec, env: {}, paths: [
       { name: 'note', type: 'file', role: 'out', host: join(site, 'note.md'), view: '/w/note.md' },
       { name: 'site', type: 'dir', role: 'out', host: site, view: '/w/site' },
@@ -291,7 +290,6 @@ test('a run\'s paths reach its container, and its outputs are published once per
     assert.deepEqual(await tau.publish('session-nested' as SessionId, 1), [])
     assert.deepEqual((await readdir(site)).sort(), ['index.html', 'note.md'])
     assert.equal(await readFile(join(site, 'note.md'), 'utf8'), 'the note')
-    assert.equal((await stat(site)).ino, siteFolder)
 
     // An in path that cannot be copied is the caller's to fix, and leaves nothing behind.
     await mkdir(join(dir, 'odd'))
@@ -344,7 +342,6 @@ test('a run started in a container takes its in paths from the caller\'s contain
     ctx.provide('fleetBox', {
       configure: (id: string, additions: ContainerAdditions) => { configured.set(id, additions); return Promise.resolve() },
       unconfigure: (id: string) => { configured.delete(id); return Promise.resolve() },
-      hasOwnFolder: (id: string) => configured.get(id)?.ownFolder === true,
       turnRunning: () => false,
       ownerHeaderOf: (id: string) => Promise.resolve(header(id, { cwd: '/w', origin: 'subagent', parentSession: 'session-caller' as SessionId })),
       // As fleet-box copies: keeping links, the path is followed and the links in it copied as they are.
