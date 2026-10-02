@@ -289,14 +289,19 @@
 # as a program takes unless its call is cancelled. `fleet setup image`
 # builds the runner into the session image (/opt/fleet/runner), and labels
 # the image with the runner's protocol, which the tools check before they
-# start it. Programs import the session's APIs as @api/<name>, typed by
-# their declarations, which the runner links to fleet's implementations
-# (/opt/fleet/apis). A session started from an agent directory has the APIs
-# its agent declares; any other, one the web UI starts or a prompt run, has
-# fleet's `tau` API, typed by fleet's own declarations of it.
+# start it. Programs import what the session exposes: its APIs as
+# @api/<name>, typed by their declarations, which the runner links to
+# fleet's implementations (/opt/fleet/apis). A session started from an agent
+# directory has the APIs its agent declares, and exposes those its tau.json
+# `exposes` names, or all of them, and the packages of its own it names,
+# which import the APIs from the same implementations: the runner links each
+# API in /tau/node_modules, above the agent's snapshot. Any other session,
+# one the web UI starts or a prompt run, has and exposes fleet's `tau` API,
+# typed by fleet's own declarations of it.
 #
-# A session with fleet's `tau` API, any not started from an agent directory
-# or one whose agent declares it (`fleet apis tau` prints it), can run other
+# A session that exposes fleet's `tau` API, any not started from an agent
+# directory or one whose agent declares it (`fleet apis tau` prints it) and
+# does not hide it behind a package of its own, can run other
 # taus, from a program through the API, or from a command with the image's
 # `tau` command: `tau run <agent-dir> [args...]`, and is told so. Each run is a
 # one-shot subagent of the calling session, which the web UI shows under it,

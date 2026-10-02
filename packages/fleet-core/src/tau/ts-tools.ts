@@ -5,10 +5,12 @@
  * starts the runner (fleet-image's runner/), which the session image
  * carries, in the session's container through `ctx.subprocess`, so programs
  * run there, never on the host, and see what bash sees; the runner
- * type-checks and runs them with ts-executor. Programs import each of the
- * session's APIs (./apis.ts) as `@api/<name>`, typed by its declarations in
- * the container and running fleet's implementation, which the image carries
- * (fleet-image's apis/).
+ * type-checks and runs them with ts-executor. Programs import what the
+ * session's agent exposes (./apis.ts): its APIs, each as `@api/<name>`, typed
+ * by its declarations in the container and running fleet's implementation,
+ * which the image carries (fleet-image's apis/), and the agent's own
+ * packages in its snapshot, which import the APIs from the same
+ * implementations.
  * @module fleet-core/tau/ts-tools
  */
 
@@ -21,9 +23,9 @@ import { HELPER_NODE } from 'fleet-image/helper/image'
 import { implementation } from 'fleet-image/apis/registry'
 import type {} from '../box/world.ts'
 import {
-  MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
+  API_MODULES, MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
 } from 'fleet-image/runner/protocol'
-import type { SessionApi } from './apis.ts'
+import type { SessionApi, SessionPackage } from './apis.ts'
 import { parseRunnerReply } from './runner-reply.ts'
 
 /** Time the runner gets to end its program once the call is cancelled. */
@@ -34,7 +36,7 @@ const OUTPUT_KEPT = '16 Ki'
 const INSTRUCTIONS = `# TypeScript programs
 
 Besides running commands, you can write TypeScript programs and run them in this session's container with \`ts_execute\`. A program is one self-contained ES module that exports \`main(input)\`; it is type-checked strictly, then run in a fresh Node process. It imports, by package name:
-- this session's APIs, as \`@api/<name>\`, typed by their declarations. Some run in the program alone; others reach the fleet host, outside the container;
+- what this session exposes: APIs, as \`@api/<name>\`, typed by their declarations, some running in the program alone and others reaching the fleet host, outside the container; and packages built on them, by their names;
 - Node's built-ins, as \`node:\` specifiers.
 
 ## Workflow
@@ -52,24 +54,28 @@ Besides running commands, you can write TypeScript programs and run them in this
 /**
  * Register the TypeScript tools and their instructions in an agent's scope.
  * @param ctx - the agent's scope, with `tools`, `subprocess` and `systemPrompt`.
- * @param apis - the session's APIs, which programs import.
+ * @param apis - the session's APIs, those programs are given and those only its agent's packages use.
+ * @param agentPackages - the packages of the session's agent that programs are given.
  */
-export function registerTsTools(ctx: Context, apis: readonly SessionApi[]): void {
+export function registerTsTools(ctx: Context, apis: readonly SessionApi[], agentPackages: readonly SessionPackage[]): void {
   const packages = (): Omit<Extract<RunnerRequest, { command: 'modules' }>, 'command'> => ({
     root: TS_ROOT,
+    modules: API_MODULES,
     apis: apis.map(api => ({
       name: api.name,
       ...api.description === undefined ? {} : { description: api.description },
       types: api.types,
       implementation: implementationIn(api.name),
+      exposed: api.exposed,
     })),
+    packages: agentPackages.map(({ specifier, description, root }) => ({ specifier, ...description === undefined ? {} : { description }, root })),
   })
 
   ctx.systemPrompt.section({ name: 'fleet-tau:typescript', order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX') - 1, interpolate: false, text: INSTRUCTIONS })
 
   ctx.tools.register(defineTool({
     name: 'ts_modules',
-    description: 'List the packages a `ts_execute` program may import: this session\'s APIs (`@api/<name>`). '
+    description: 'List the packages a `ts_execute` program may import: what this session exposes, APIs (`@api/<name>`) and packages built on them. '
       + 'Returns each package\'s specifier, description and packageRoot, a folder in this container; read its package.json and declaration files to learn its API.',
     parameters: {
       query: { type: 'string', description: 'Case-insensitive filter on specifier and description.' },

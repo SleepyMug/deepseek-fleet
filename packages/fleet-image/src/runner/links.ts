@@ -7,12 +7,13 @@
  * implementation, whose own imports resolve from where it is. A container's
  * runs share the packages: each is written once, under a name its content
  * decides, and moved into place whole, so runs at the same time never see
- * one half-written.
+ * one half-written. Each is also linked as `@api/<name>` in the node_modules
+ * folder above the agent's snapshot, where the agent's own packages find it.
  * @module fleet-image/runner/links
  */
 
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -53,6 +54,22 @@ export async function linkApi(root: string, api: LinkedApi): Promise<string> {
     throw error
   }
   return folder
+}
+
+/**
+ * Make `@api/<name>` in `modules`, a node_modules folder above the agent's
+ * snapshot, the API's package, `folder`, so that the agent's own packages
+ * import the implementation programs do (tau's SPEC.md, Implementations).
+ */
+export async function bindApi(modules: string, name: string, folder: string): Promise<void> {
+  const link = join(modules, `${API_SCOPE}${name}`)
+  if (await readlink(link).catch(() => undefined) === folder) return
+  await mkdir(dirname(link), { recursive: true })
+  const staging = `${link}.${process.pid}`
+  await rm(staging, { force: true })
+  await symlink(folder, staging)
+  // Renaming one symlink over another is atomic, whichever run gets there first.
+  await rename(staging, link)
 }
 
 /**

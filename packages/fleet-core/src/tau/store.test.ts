@@ -175,7 +175,7 @@ test('a run\'s paths reach its container, and its outputs are published once per
     await writeFile(report, 'old report')
     const summary = join(dir, 'summary.md')
     const spec: Spec = {
-      version: 3, agent: { name: 'paths', source: agent }, args: [], prompt: 'x', skills: [], apis: [], env: { LANG: 'C.UTF-8' },
+      version: 3, agent: { name: 'paths', source: agent }, args: [], prompt: 'x', skills: [], apis: [], packages: [], env: { LANG: 'C.UTF-8' },
       paths: [
         { name: 'rules', type: 'file', role: 'in', host: join(dir, 'rules.md'), view: '/w/rules.md' },
         { name: 'report', type: 'file', role: 'out', host: report, view: '/w/out/report.md' },
@@ -367,7 +367,7 @@ test('a run started in a container takes its in paths from the caller\'s contain
     assert.ok(tau !== undefined)
 
     const spec: Spec = {
-      version: 3, agent: { name: 'count', source: '/workspace/agents/count' }, caller: 'session-caller', args: [], prompt: 'x', skills: [], apis: [], env: {},
+      version: 3, agent: { name: 'count', source: '/workspace/agents/count' }, caller: 'session-caller', args: [], prompt: 'x', skills: [], apis: [], packages: [], env: {},
       paths: [
         { name: 'text', type: 'file', role: 'in', host: '/workspace/a.txt', view: '/w/text' },
         { name: 'data', type: 'dir', role: 'in', host: '/workspace/data', view: '/w/data' },

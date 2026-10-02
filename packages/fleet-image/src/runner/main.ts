@@ -6,9 +6,11 @@
  * session image carries it: `fleet setup image` installs this package there
  * with the packages it depends on, as they are installed on the host.
  * It runs programs with ts-executor, so each one is type-checked and runs in
- * a fresh Node process of its own, and it imports each API of the session
- * as `@api/<name>`, typed by its declarations and running fleet's
- * implementation, which the image carries (./links.ts). An
+ * a fresh Node process of its own, and it imports what the session's agent
+ * exposes: its APIs, each as `@api/<name>`, typed by its declarations and
+ * running fleet's implementation, which the image carries (./links.ts), and
+ * the agent's own packages, which import the APIs from the same
+ * implementations, whether exposed or not. An
  * implementation runs in the program's process, and calls the host through
  * fleet-box's service socket, if at all, itself.
  *
@@ -20,7 +22,7 @@
 
 import { mkdir } from 'node:fs/promises'
 import { ExecutionAbortedError, TSFuncExecutor, packageModule, type JsonValue } from '@sleepymug/ts-executor'
-import { API_SCOPE, linkApi, linkNodeTypes } from './links.ts'
+import { API_SCOPE, bindApi, linkApi, linkNodeTypes } from './links.ts'
 import type { ModuleSummary, RunnerReply, RunnerRequest } from './protocol.ts'
 import { outputCaptures, replyLine, reportFailure, reportResult } from './report.ts'
 
@@ -66,16 +68,25 @@ async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest,
   }
 }
 
-/** An executor over the TypeScript root with each of the session's APIs linked and registered, for one operation. */
+/**
+ * An executor over the TypeScript root with each of the session's APIs
+ * linked, and what its agent exposes registered, for one operation.
+ */
 async function withExecutor(request: RunnerRequest, operation: (executor: TSFuncExecutor) => Promise<RunnerReply>): Promise<RunnerReply> {
   await mkdir(request.root, { recursive: true })
   await linkNodeTypes(request.root)
   const executor = new TSFuncExecutor({ resolutionRoot: request.root })
   for (const api of request.apis) {
     const root = await linkApi(request.root, api)
-    executor.modules.register(packageModule({ specifier: `${API_SCOPE}${api.name}`, root, ...api.description === undefined ? {} : { description: api.description } }))
+    await bindApi(request.modules, api.name, root)
+    if (api.exposed) executor.modules.register(packageModule({ specifier: `${API_SCOPE}${api.name}`, root, ...described(api) }))
   }
+  for (const found of request.packages) executor.modules.register(packageModule({ specifier: found.specifier, root: found.root, ...described(found) }))
   return await operation(executor)
+}
+
+function described(found: { description?: string }): { description?: string } {
+  return found.description === undefined ? {} : { description: found.description }
 }
 
 function summary(module: { specifier: string; packageRoot: string; description?: string }): ModuleSummary {

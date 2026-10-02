@@ -33,10 +33,19 @@ export const RUNNER_PROTOCOL_LABEL = 'fleet-tau.runner-protocol'
  */
 export const TS_ROOT = `${TAU_ROOT}/ts`
 
+/**
+ * The node_modules folder above the agent's snapshot (fleet-core's
+ * tau/paths.ts) and {@link TS_ROOT}, where the runner links each API of the
+ * session as `@api/<name>` (./links.ts), so that the agent's own packages,
+ * which Node.js and TypeScript resolve from where they are in the snapshot,
+ * import the implementation programs do (tau's SPEC.md, Implementations).
+ */
+export const API_MODULES = `${TAU_ROOT}/node_modules`
+
 /** Most bytes of a reply; the runner shrinks what it reports to fit. */
 export const MAX_REPLY_BYTES = 1024 * 1024
 
-/** An API of the session, which the runner links for programs to import as `@api/<name>` (./links.ts). */
+/** An API of the session, which the runner links for programs, and the agent's own packages, to import as `@api/<name>` (./links.ts). */
 export interface LinkedApi {
   name: string
   /** Its description: the agent's, or fleet's for an API of fleet's own declarations. */
@@ -45,13 +54,27 @@ export interface LinkedApi {
   types: string
   /** fleet's implementation in the container, which runs it. */
   implementation: string
+  /** Whether programs are given it, as the agent's tau.json `exposes` says, or else imports it only through the agent's own packages. */
+  exposed: boolean
+}
+
+/** A package of the agent's own that programs are given (tau's SPEC.md, Packages). */
+export interface AgentPackage {
+  /** Its name, which programs import. */
+  specifier: string
+  description?: string
+  /** Its folder in the agent's snapshot: `node_modules/<name>`, where Node.js finds it. */
+  root: string
 }
 
 /** What every request says about the program's world. */
 interface Packages {
   /** The TypeScript root, {@link TS_ROOT} in a container. */
   root: string
+  /** Where the APIs are linked for the agent's own packages, {@link API_MODULES} in a container. */
+  modules: string
   apis: LinkedApi[]
+  packages: AgentPackage[]
 }
 
 export type RunnerRequest =

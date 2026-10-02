@@ -6,8 +6,9 @@
  * checked as tau checks a run's inputs, its skills, and its APIs, each
  * linked to fleet's implementation of the same name
  * (fleet-image's apis/), which tau checks fits it, and whose backends must
- * be provided, with every problem found reported together. tau's library
- * loads TypeScript as it is imported, so this runs in a worker
+ * be provided, and what it exposes to its programs, its own packages
+ * included, as tau checks it, with every problem found reported together.
+ * tau's library loads TypeScript as it is imported, so this runs in a worker
  * (./worker.ts), never in the fleet host's own thread.
  *
  * A run started inside a session's container (./children.ts) reads a copy
@@ -18,12 +19,12 @@
  */
 
 import { basename } from 'node:path'
-import { checkImplementation, checkInputs, loadApis, loadTau, type Api, type Run, type Tau } from '@sleepymug/tau'
+import { checkImplementation, checkInputs, loadApis, loadExposed, loadTau, type Api, type Exposed, type Run, type Tau } from '@sleepymug/tau'
 import { reservedVariable } from '../box/additions.ts'
 import { implementation } from 'fleet-image/apis/registry'
 import { AGENT_VIEW } from './paths.ts'
 import { loadSkills } from './skills.ts'
-import { SPEC_VERSION, type Spec, type SpecApi } from './spec.ts'
+import { SPEC_VERSION, type Spec, type SpecApi, type SpecPackage } from './spec.ts'
 
 export interface PrepareRequest {
   /** The agent directory, absolute: where the caller has it, or a copy of it. */
@@ -92,8 +93,19 @@ function prepareFrom(request: PrepareRequest): Prepared {
   }
   const skills = loadSkills(tau.dir)
   problems.push(...skills.problems)
-  const apis = linkedApis(tau.dir, request.backends, problems)
+  let declared: Api[] | undefined
+  try {
+    declared = loadApis(tau.dir)
+  } catch (error) {
+    problems.push(message(error))
+  }
+  const linked = linkedApis(declared ?? [], request.backends, problems)
+  const exposed = declared === undefined ? [] : exposedBy(tau, declared, problems)
   if (problems.length > 0) return { ok: false, problems }
+  const apis = linked.map(api => ({ ...api, exposed: exposed.some(found => found.kind === 'api' && found.api.name === api.name) }))
+  const packages = exposed.flatMap((found): SpecPackage[] => found.kind === 'package'
+    ? [{ specifier: found.specifier, ...found.description === undefined ? {} : { description: found.description } }]
+    : [])
   const source = request.source ?? tau.dir
   const name = basename(source)
   return {
@@ -106,6 +118,7 @@ function prepareFrom(request: PrepareRequest): Prepared {
       prompt,
       skills: skills.skills,
       apis,
+      packages,
       env: { ...run?.env },
       paths: (run?.paths ?? []).map(({ name, type, role, host, view }) => ({ name, type, role, host, view })),
     },
@@ -116,16 +129,9 @@ function prepareFrom(request: PrepareRequest): Prepared {
 /**
  * The agent's APIs, each linked to fleet's implementation of the same name,
  * which must fit it as tau checks, and whose backends must be provided now;
- * each problem is reported.
+ * each problem is reported. Whether each is exposed is for the caller.
  */
-function linkedApis(dir: string, provided: readonly string[], problems: string[]): SpecApi[] {
-  let apis: Api[]
-  try {
-    apis = loadApis(dir)
-  } catch (error) {
-    problems.push(message(error))
-    return []
-  }
+function linkedApis(apis: readonly Api[], provided: readonly string[], problems: string[]): Omit<SpecApi, 'exposed'>[] {
   return apis.flatMap((api) => {
     const found = implementation(api.name)
     if (found === undefined) {
@@ -145,6 +151,16 @@ function linkedApis(dir: string, provided: readonly string[], problems: string[]
     }
     return [{ name: api.name, ...api.description === undefined ? {} : { description: api.description }, backends: [...found.backends] }]
   })
+}
+
+/** What the agent exposes to its programs, as tau checks it; its problems are reported. */
+function exposedBy(tau: Tau, apis: readonly Api[], problems: string[]): Exposed[] {
+  try {
+    return loadExposed(tau, apis)
+  } catch (error) {
+    problems.push(message(error))
+    return []
+  }
 }
 
 function message(error: unknown): string {

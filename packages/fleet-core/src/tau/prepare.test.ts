@@ -129,7 +129,9 @@ test('each API is linked to fleet\'s implementation of its name, whose backends 
     assert.deepEqual(missing.problems, ['@api/notes: fleet\'s implementation calls the backend notes, which no fleet plugin provides now'])
     const prepared = prepare(request(dir, [], true, ['notes']))
     assert.ok(prepared.ok, JSON.stringify(prepared))
-    assert.deepEqual(prepared.spec.apis.map(({ name, backends }) => [name, backends]), [['notes', ['notes']], ['text-stats', []]])
+    // Without tau.json's `exposes`, programs are given every API.
+    assert.deepEqual(prepared.spec.apis.map(({ name, backends, exposed }) => [name, backends, exposed]), [['notes', ['notes'], true], ['text-stats', [], true]])
+    assert.deepEqual(prepared.spec.packages, [])
     // The agent's own description of each, if it gives one.
     assert.match(prepared.spec.apis[0]?.description ?? '', /^A notebook of short notes/u)
     assert.equal(prepared.spec.apis[1]?.description, undefined)
@@ -153,6 +155,29 @@ test('an API fleet does not implement, one its implementation does not fit, and 
     const prepared = prepare(request(dir, []))
     assert.ok(!prepared.ok)
     assert.match(prepared.problems[0]!, /its APIs break the spec:[^]*Missing/u)
+  })
+})
+
+test('what the agent exposes is recorded: the APIs it names, and packages of its own built on them, which tau checks', async () => {
+  const stats = 'export declare function wordFrequencies(text: string): Record<string, number>;\n'
+  const report = {
+    'node_modules/word-report/package.json': JSON.stringify({ name: 'word-report', description: 'Reports on words.', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
+    'node_modules/word-report/index.d.ts': 'export declare function topWords(text: string, count: number): string[];\n',
+    'node_modules/word-report/index.js': 'import { wordFrequencies } from "@api/text-stats";\nexport const topWords = (text, count) => Object.keys(wordFrequencies(text)).slice(0, count);\n',
+  }
+  await withAgent({ 'PROMPT.md': 'Count.', 'tau.json': '{"exposes": ["word-report"]}', 'api/text-stats.d.ts': stats, ...report }, (dir) => {
+    const prepared = prepare(request(dir, []))
+    assert.ok(prepared.ok, JSON.stringify(prepared))
+    // The API is linked for the package, though programs are not given it.
+    assert.deepEqual(prepared.spec.apis.map(({ name, exposed }) => [name, exposed]), [['text-stats', false]])
+    assert.deepEqual(prepared.spec.packages, [{ specifier: 'word-report', description: 'Reports on words.' }])
+  })
+  await withAgent({ 'PROMPT.md': 'Count.', 'tau.json': '{"exposes": ["@api/notes", "word-count"]}', 'api/text-stats.d.ts': stats, ...report }, (dir) => {
+    const prepared = prepare(request(dir, []))
+    assert.ok(!prepared.ok)
+    assert.deepEqual(prepared.problems, [
+      `${dir}: what it exposes breaks the spec:\n  exposes @api/notes, but the tau has no api/notes.d.ts\n  exposes word-count, which is not a package in node_modules/`,
+    ])
   })
 })
 

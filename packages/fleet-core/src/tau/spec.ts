@@ -30,6 +30,15 @@ const apiSchema = z.object({
   description: z.string().optional(),
   /** The fleet host's backends its implementation calls, which are all the session's programs may call. */
   backends: z.array(z.string()),
+  /** Whether the agent's programs are given it, as tau.json's `exposes` says; one they are not is for the agent's own packages. */
+  exposed: z.boolean().default(true),
+})
+
+const packageSchema = z.object({
+  /** Its name, which programs import, and its folder in the agent directory: `node_modules/<name>`. */
+  specifier: z.string(),
+  /** Its documentation, or its package.json's description. */
+  description: z.string().optional(),
 })
 
 const pathSchema = z.object({
@@ -61,6 +70,8 @@ export const specSchema = z.object({
   skills: z.array(skillSchema),
   /** The APIs the agent declares, each linked to fleet's implementation. */
   apis: z.array(apiSchema),
+  /** The packages of the agent's own, built on its APIs, that tau.json's `exposes` gives its programs. */
+  packages: z.array(packageSchema).default([]),
   /** The caller's values of the variables tau.json lists, which every process in the container sees. */
   env: z.record(z.string(), z.string()),
   /** The path arguments, as tau binds them. */
@@ -70,9 +81,10 @@ export const specSchema = z.object({
 export type Spec = z.output<typeof specSchema>
 export type Skill = z.output<typeof skillSchema>
 export type SpecApi = z.output<typeof apiSchema>
+export type SpecPackage = z.output<typeof packageSchema>
 export type SpecPath = z.output<typeof pathSchema>
 
 /** The spec of a prompt run: no agent, nothing else. */
 export function promptSpec(prompt: string): Spec {
-  return { version: SPEC_VERSION, args: [], prompt, skills: [], apis: [], env: {}, paths: [] }
+  return { version: SPEC_VERSION, args: [], prompt, skills: [], apis: [], packages: [], env: {}, paths: [] }
 }

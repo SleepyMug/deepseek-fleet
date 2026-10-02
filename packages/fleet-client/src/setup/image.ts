@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE, PROTOCOL_LABEL, PROTOCOL_VERSION } from 'fleet-image/helper/image'
 import { implementations } from 'fleet-image/apis/registry'
 import { TAU_COMMAND } from 'fleet-image/layout'
-import { RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerRequest } from 'fleet-image/runner/protocol'
+import { API_MODULES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerRequest } from 'fleet-image/runner/protocol'
 import { installedPackage, stagePackage } from './stage.ts'
 
 /** This package's folder, from which fleet-image is found as Node finds it. */
@@ -134,7 +134,7 @@ async function checkHelper(options: BuildOptions, id: string): Promise<void> {
  * program may import.
  */
 async function checkRunner(options: BuildOptions, id: string): Promise<void> {
-  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, apis: [] }
+  const request: RunnerRequest = { command: 'modules', root: TS_ROOT, modules: API_MODULES, apis: [], packages: [] }
   // The runner reads its request to the end of its stdin.
   const { stdout, stderr, late } = await probe(options, id, HELPER_NODE, [RUNNER_ENTRY], JSON.stringify(request), 'input')
   let reply: { ok?: unknown; modules?: unknown } | null

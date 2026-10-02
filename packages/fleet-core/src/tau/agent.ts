@@ -1,12 +1,12 @@
 /**
  * Gives each agent the TypeScript tools (./ts-tools.ts), whose programs
- * import its session's APIs (./apis.ts), and, for a session the `fleet`
- * command started from an agent directory, what the session's spec holds
- * (./store.ts): the agent's skills, with dsh's `skill` tool to load them. A
- * session with fleet's `tau` API, as any not started from an agent
- * directory has, such as those the web UI starts, is also told how to run
- * taus. Everything is registered in a scope of that agent alone, since each
- * session's APIs and skills are its own. It happens as dsh announces the
+ * import what its session exposes (./apis.ts), and, for a session the
+ * `fleet` command started from an agent directory, what the session's spec
+ * holds (./store.ts): the agent's skills, with dsh's `skill` tool to load
+ * them. A session that exposes fleet's `tau` API, as any not started from an
+ * agent directory does, such as those the web UI starts, is also told how to
+ * run taus. Everything is registered in a scope of that agent alone, since
+ * each session's APIs and skills are its own. It happens as dsh announces the
  * agent, for a new session and for every resume, so a session keeps its
  * skills across host restarts; agents already running when this plugin
  * loads get theirs before their next step.
@@ -25,7 +25,7 @@ import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import type {} from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import type {} from '../box/world.ts'
-import { sessionApis } from './apis.ts'
+import { sessionApis, sessionPackages } from './apis.ts'
 import { AGENT_VIEW } from './paths.ts'
 import type { Skill } from './spec.ts'
 import type {} from './store.ts'
@@ -97,8 +97,8 @@ async function customize(ctx: Context, agent: Agent): Promise<Scope> {
       await scope.ctx.plugin(ToolSkill)
       for (const skill of skills) scope.ctx.skills.register(registration(skill))
     }
-    registerTsTools(scope.ctx, apis)
-    if (apis.some(api => api.name === 'tau')) {
+    registerTsTools(scope.ctx, apis, sessionPackages(found?.spec))
+    if (apis.some(api => api.name === 'tau' && api.exposed)) {
       scope.ctx.systemPrompt.section({ name: 'fleet-tau:taus', order: scope.ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX') - 1, interpolate: false, text: RUNNING_TAUS })
     }
     return scope

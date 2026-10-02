@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+# but those an example agent carries, as a compiled tau holds what it uses
+!/examples/*/node_modules/
 
 # Build output of each package (tsc -b)
 /packages/*/lib/

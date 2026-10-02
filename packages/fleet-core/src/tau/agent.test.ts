@@ -44,7 +44,16 @@ test('an agent of a session not started from an agent directory gets the TypeScr
 })
 
 test('an agent whose tau declares no tau API is not told how to run taus', async () => {
-  const spec = { ...promptSpec('Count.'), agent: { name: 'count', source: '/a/count' }, apis: [{ name: 'text-stats', backends: [] }] }
+  const spec = { ...promptSpec('Count.'), agent: { name: 'count', source: '/a/count' }, apis: [{ name: 'text-stats', backends: [], exposed: true }] }
+  const { ctx, warnings, tools, sections } = await setup(() => Promise.resolve({ spec, owner: 'session-a' }))
+  await ctx.serial('agent/created', { agent: fakeAgent('session-a'), source: 'startup' })
+  assert.deepEqual(warnings, [])
+  assert.deepEqual(tools, ['ts_modules', 'ts_execute'])
+  assert.deepEqual(sections, ['fleet-tau:typescript'])
+})
+
+test('an agent whose tau links the tau API only for its own packages is not told how to run taus', async () => {
+  const spec = { ...promptSpec('Fan out.'), agent: { name: 'fan', source: '/a/fan' }, apis: [{ name: 'tau', backends: ['tau'], exposed: false }], packages: [{ specifier: 'fan-out' }] }
   const { ctx, warnings, tools, sections } = await setup(() => Promise.resolve({ spec, owner: 'session-a' }))
   await ctx.serial('agent/created', { agent: fakeAgent('session-a'), source: 'startup' })
   assert.deepEqual(warnings, [])
