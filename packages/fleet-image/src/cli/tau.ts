@@ -1,10 +1,12 @@
 /**
  * `tau`, the command on a session container's PATH: `tau run <agent-dir>
  * [args...]` runs an agent directory in the tau format as fleet's `tau` API
- * does (../apis/tau/), and so works only in a session whose agent declares
- * that API. As tau's SPEC.md has a command do, it writes the agent's final
- * message to stdout and why the run failed to stderr, and exits with 0 only
- * when the run succeeded. Ctrl-C, or any signal that ends it, cancels the run.
+ * does (../apis/tau/), and so works only in a session that has that API: one
+ * whose agent declares it, or any not started from an agent directory
+ * (fleet-core's tau/apis.ts). As tau's SPEC.md has a command do, it writes
+ * the agent's final message to stdout and why the run failed to stderr, and
+ * exits with 0 only when the run succeeded. Ctrl-C, or any signal that ends
+ * it, cancels the run.
  * @module fleet-image/cli/tau
  */
 

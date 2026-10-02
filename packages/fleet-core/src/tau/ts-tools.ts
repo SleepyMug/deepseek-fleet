@@ -1,14 +1,14 @@
 /**
- * The TypeScript tools the agents of every session the `fleet` command
- * started get (./agent.ts): `ts_modules` and `ts_execute`, as pi-run gives
- * its agents `listModules` and `execute`, with a system-prompt section on
- * how to use them. Each call starts the runner (fleet-image's runner/), which
- * the session image carries, in the session's container through
- * `ctx.subprocess`, so programs run there, never on the host, and see what
- * bash sees; the runner type-checks and runs them with ts-executor. Programs
- * import each API the agent declares as `@api/<name>`, typed by the agent's
- * declarations in its snapshot and running fleet's implementation, which
- * the image carries (fleet-image's apis/).
+ * The TypeScript tools every session's agents get (./agent.ts):
+ * `ts_modules` and `ts_execute`, as pi-run gives its agents `listModules`
+ * and `execute`, with a system-prompt section on how to use them. Each call
+ * starts the runner (fleet-image's runner/), which the session image
+ * carries, in the session's container through `ctx.subprocess`, so programs
+ * run there, never on the host, and see what bash sees; the runner
+ * type-checks and runs them with ts-executor. Programs import each of the
+ * session's APIs (./apis.ts) as `@api/<name>`, typed by its declarations in
+ * the container and running fleet's implementation, which the image carries
+ * (fleet-image's apis/).
  * @module fleet-core/tau/ts-tools
  */
 
@@ -23,9 +23,8 @@ import type {} from '../box/world.ts'
 import {
   MAX_REPLY_BYTES, RUNNER_ENTRY, RUNNER_PROTOCOL, RUNNER_PROTOCOL_LABEL, TS_ROOT, type RunnerFailure, type RunnerReply, type RunnerRequest,
 } from 'fleet-image/runner/protocol'
+import type { SessionApi } from './apis.ts'
 import { parseRunnerReply } from './runner-reply.ts'
-import { AGENT_VIEW } from './paths.ts'
-import type { Spec } from './spec.ts'
 
 /** Time the runner gets to end its program once the call is cancelled. */
 const GRACE_MS = 5000
@@ -35,7 +34,7 @@ const OUTPUT_KEPT = '16 Ki'
 const INSTRUCTIONS = `# TypeScript programs
 
 Besides running commands, you can write TypeScript programs and run them in this session's container with \`ts_execute\`. A program is one self-contained ES module that exports \`main(input)\`; it is type-checked strictly, then run in a fresh Node process. It imports, by package name:
-- the APIs this session's agent declares, as \`@api/<name>\`, typed by the agent's declarations. Some run in the program alone; others reach the fleet host, outside the container;
+- this session's APIs, as \`@api/<name>\`, typed by their declarations. Some run in the program alone; others reach the fleet host, outside the container;
 - Node's built-ins, as \`node:\` specifiers.
 
 ## Workflow
@@ -53,15 +52,15 @@ Besides running commands, you can write TypeScript programs and run them in this
 /**
  * Register the TypeScript tools and their instructions in an agent's scope.
  * @param ctx - the agent's scope, with `tools`, `subprocess` and `systemPrompt`.
- * @param spec - the session's spec, whose APIs programs import.
+ * @param apis - the session's APIs, which programs import.
  */
-export function registerTsTools(ctx: Context, spec: Spec): void {
+export function registerTsTools(ctx: Context, apis: readonly SessionApi[]): void {
   const packages = (): Omit<Extract<RunnerRequest, { command: 'modules' }>, 'command'> => ({
     root: TS_ROOT,
-    apis: spec.apis.map(api => ({
+    apis: apis.map(api => ({
       name: api.name,
       ...api.description === undefined ? {} : { description: api.description },
-      types: posix.join(AGENT_VIEW, 'api', `${api.name}.d.ts`),
+      types: api.types,
       implementation: implementationIn(api.name),
     })),
   })
@@ -70,7 +69,7 @@ export function registerTsTools(ctx: Context, spec: Spec): void {
 
   ctx.tools.register(defineTool({
     name: 'ts_modules',
-    description: 'List the packages a `ts_execute` program may import: the APIs of this session\'s agent (`@api/<name>`). '
+    description: 'List the packages a `ts_execute` program may import: this session\'s APIs (`@api/<name>`). '
       + 'Returns each package\'s specifier, description and packageRoot, a folder in this container; read its package.json and declaration files to learn its API.',
     parameters: {
       query: { type: 'string', description: 'Case-insensitive filter on specifier and description.' },
@@ -175,10 +174,10 @@ function failed(reply: RunnerReply): Error {
   return new Error(JSON.stringify(failure))
 }
 
-/** Where the image holds fleet's implementation of an API the spec links. */
+/** Where the image holds fleet's implementation of an API of the session. */
 function implementationIn(name: string): string {
   const found = implementation(name)
-  // The spec was stored only once fleet's implementation fitted the API.
+  // The session got the API only once fleet's implementation fitted it.
   if (found === undefined) throw new Error(`fleet no longer implements the API ${name}`)
   return found.image
 }

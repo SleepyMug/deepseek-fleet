@@ -273,8 +273,7 @@
 # and with its symlinks, per session in $DSH_HOME/fleet/sessions/<id>/,
 # which fleet-box copies into each of the session's containers at /tau/agent,
 # which `${self}` in PROMPT.md names; nothing of the store is mounted. The session's agents get the snapshot's
-# skills, with dsh's `skill` tool, in a scope of their own; sessions started
-# any other way keep the fleet preset unchanged.
+# skills, with dsh's `skill` tool, in a scope of their own.
 #
 # fleet links each API an agent declares to its own implementation of the
 # same name (fleet-image's apis/), which the session image carries; there is no
@@ -285,18 +284,21 @@
 # checks, and the backends it calls are provided (`fleet check` tells ahead
 # of time); its programs may then call those backends, and no others.
 #
-# Every session `fleet run` starts gets TypeScript tools: ts_modules and
-# ts_execute, which run programs in the session's container with
-# fleet-tau's runner, for as long as a program takes unless its call is
-# cancelled. `fleet setup image` builds the runner into the session image
-# (/opt/fleet/runner), and labels the image with the runner's protocol,
-# which the tools check before they start it. Programs import the agent's
-# APIs as @api/<name>, typed by the agent's declarations, which the runner
-# links to fleet's implementations (/opt/fleet/apis).
+# Every session gets TypeScript tools: ts_modules and ts_execute, which run
+# programs in the session's container with fleet-tau's runner, for as long
+# as a program takes unless its call is cancelled. `fleet setup image`
+# builds the runner into the session image (/opt/fleet/runner), and labels
+# the image with the runner's protocol, which the tools check before they
+# start it. Programs import the session's APIs as @api/<name>, typed by
+# their declarations, which the runner links to fleet's implementations
+# (/opt/fleet/apis). A session started from an agent directory has the APIs
+# its agent declares; any other, one the web UI starts or a prompt run, has
+# fleet's `tau` API, typed by fleet's own declarations of it.
 #
-# An agent that declares fleet's `tau` API (`fleet apis tau` prints it) can
-# run other taus, from a program through the API, or from a command with the
-# image's `tau` command: `tau run <agent-dir> [args...]`. Each run is a
+# A session with fleet's `tau` API, any not started from an agent directory
+# or one whose agent declares it (`fleet apis tau` prints it), can run other
+# taus, from a program through the API, or from a command with the image's
+# `tau` command: `tau run <agent-dir> [args...]`, and is told so. Each run is a
 # one-shot subagent of the calling session, which the web UI shows under it,
 # with a container of its own that mounts nothing, and works as any run of
 # an agent directory does: its agent directory and `in` paths are copied out

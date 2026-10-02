@@ -105,6 +105,13 @@ test('an API\'s package is listed, reads as the agent declared it, and is shared
   assert.equal(await readFile(join(root, manifest.exports['.'].types), 'utf8'), await readFile(notes.types, 'utf8'))
 })
 
+test('an API typed by fleet\'s own declarations, beside its implementation, is linked as one the agent declared', async () => {
+  // Only fleet's declarations have `extra`, so the program type-checks only against them.
+  const own = { ...notes, types: join(dir, 'apis', 'notes', 'index.d.ts') }
+  const reply = await runner({ command: 'execute', root: join(dir, 'root'), apis: [own], cwd: dir, source: 'import { extra } from "@api/notes"\nexport function main() { extra(); return "linked" }' })
+  assert.deepEqual(reply, { ok: true, value: 'linked', stdout: '', stderr: '', durationMs: (reply as { durationMs: number }).durationMs })
+})
+
 test('a type error, and a failing API call, come back as failures', async () => {
   const typeError = await execute('export function main() { const n: number = "x"; return n }')
   assert.ok(!typeError.ok)

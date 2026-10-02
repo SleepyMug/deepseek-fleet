@@ -1,10 +1,13 @@
 /**
  * fleet's implementations of the APIs a tau may declare (tau's SPEC.md,
  * Implementations), the only ones fleet links: a session's agent gets the
- * implementation of the same name for each API it declares. Each is a module
+ * implementation of the same name for each API it declares, and a session
+ * not started from an agent directory gets `tau`'s, typed by its own
+ * declarations (fleet-core's tau/apis.ts). Each is a module
  * of this folder, ./<name>/index.ts, compiled with its declarations beside
  * it, which the host checks the agent's API against as installed here, and
- * which the session image carries at {@link IMAGE_APIS}/<name>/index.js.
+ * which the session image carries at {@link IMAGE_APIS}/<name>/index.js,
+ * with its declarations beside it.
  * Some run in the program alone; others call backends of the fleet host
  * (./client.ts), and fleet runs an agent only when those are provided.
  * @module fleet-image/apis/registry
@@ -36,6 +39,8 @@ export interface Implementation {
   file: string
   /** Its module in a session's container. */
   image: string
+  /** Its declarations in a session's container, beside its module. */
+  imageTypes: string
 }
 
 /** Every implementation, by name. */
@@ -48,7 +53,8 @@ export function implementation(name: string): Implementation | undefined {
   const backends = Object.hasOwn(BACKENDS, name) ? BACKENDS[name] : undefined
   if (backends === undefined) return undefined
   const file = fileURLToPath(new URL(`./${name}/index.js`, import.meta.url))
-  return { name, description: packageDescription(declarationsFile(file)), backends: [...backends], file, image: `${IMAGE_APIS}/${name}/index.js` }
+  const image = `${IMAGE_APIS}/${name}/index.js`
+  return { name, description: packageDescription(declarationsFile(file)), backends: [...backends], file, image, imageTypes: declarationsFile(image) }
 }
 
 /** An implementation's declarations: an API file for it, to copy into a tau's api/<name>.d.ts. */

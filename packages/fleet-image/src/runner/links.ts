@@ -1,19 +1,20 @@
 /**
- * The packages that link the agent's APIs to fleet's implementations, as
+ * The packages that link the session's APIs to fleet's implementations, as
  * pi-run links a tau's: each API becomes a package that programs import as
- * `@api/<name>`, whose types are the agent's `api/<name>.d.ts`, through a
- * symlink to its api/ folder so that their imports resolve there, and whose
- * code re-exports the implementation, whose own imports resolve from where
- * it is. A container's runs share the packages: each is written once, under
- * a name its content decides, and moved into place whole, so runs at the
- * same time never see one half-written.
+ * `@api/<name>`, whose types are its declarations, the agent's
+ * `api/<name>.d.ts` or fleet's own, through a symlink to their folder so
+ * that their imports resolve there, and whose code re-exports the
+ * implementation, whose own imports resolve from where it is. A container's
+ * runs share the packages: each is written once, under a name its content
+ * decides, and moved into place whole, so runs at the same time never see
+ * one half-written.
  * @module fleet-image/runner/links
  */
 
 import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { LinkedApi } from './protocol.ts'
 
@@ -30,7 +31,7 @@ export async function linkApi(root: string, api: LinkedApi): Promise<string> {
     ...api.description === undefined ? {} : { description: api.description },
     private: true,
     type: 'module',
-    exports: { '.': { types: `./api/${api.name}.d.ts`, default: './index.js' } },
+    exports: { '.': { types: `./api/${basename(api.types)}`, default: './index.js' } },
   }
   const url = JSON.stringify(pathToFileURL(api.implementation).href)
   // `export *` leaves out the default export, which the API may declare.

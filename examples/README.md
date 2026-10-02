@@ -18,7 +18,9 @@ prints the declarations an agent's `api/<name>.d.ts` can copy, as these examples
 `notes` and `archives` call backends on the fleet host, which fleet-core's patch lists disabled:
 enable `fleet-tau-notes` and `fleet-tau-archives` to run them. The `tau` API's backend is always on:
 an agent that declares it runs other taus, from a program or with the `tau` command in its container,
-each as a subagent of its own.
+each as a subagent of its own. A session not started from an agent directory, one the web UI starts
+or `fleet run -p`, has the `tau` API without declaring it, so it can run these examples itself, from
+its project in its container, as `tau run examples/hello World ""`.
 
 tau is a compiled format, whose symlinks stay inside the agent directory, and its source format is
 still to come. So until then, an example that needs what another has, or one of fleet's own, holds

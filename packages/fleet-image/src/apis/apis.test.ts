@@ -110,6 +110,7 @@ test('the registry lists each implementation, its backends, and its declarations
   assert.ok(found !== undefined)
   assert.ok(existsSync(found.file))
   assert.equal(found.image, '/opt/fleet/apis/notes/index.js')
+  assert.equal(found.imageTypes, '/opt/fleet/apis/notes/index.d.ts')
   assert.match(found.description ?? '', /^A notebook of short notes/u)
   // What a tau copies into its api/: the package documentation, and nothing of the client.
   const text = declarations(found)

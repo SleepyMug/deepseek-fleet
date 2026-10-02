@@ -6,9 +6,9 @@
  * session image carries it: `fleet setup image` installs this package there
  * with the packages it depends on, as they are installed on the host.
  * It runs programs with ts-executor, so each one is type-checked and runs in
- * a fresh Node process of its own, and it imports each API the agent
- * declares as `@api/<name>`, typed by the agent's declarations and running
- * fleet's implementation, which the image carries (./links.ts). An
+ * a fresh Node process of its own, and it imports each API of the session
+ * as `@api/<name>`, typed by its declarations and running fleet's
+ * implementation, which the image carries (./links.ts). An
  * implementation runs in the program's process, and calls the host through
  * fleet-box's service socket, if at all, itself.
  *
@@ -66,7 +66,7 @@ async function execute(executor: TSFuncExecutor, request: Extract<RunnerRequest,
   }
 }
 
-/** An executor over the TypeScript root with each of the agent's APIs linked and registered, for one operation. */
+/** An executor over the TypeScript root with each of the session's APIs linked and registered, for one operation. */
 async function withExecutor(request: RunnerRequest, operation: (executor: TSFuncExecutor) => Promise<RunnerReply>): Promise<RunnerReply> {
   await mkdir(request.root, { recursive: true })
   await linkNodeTypes(request.root)

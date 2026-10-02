@@ -27,8 +27,8 @@ export const RUNNER_PROTOCOL_LABEL = 'fleet-tau.runner-protocol'
 
 /**
  * The session's TypeScript root in the container: where ts-executor keeps
- * each run's workspace, and the runner the packages that link the agent's
- * APIs (./links.ts). It is the container's own, so it lasts as long as the
+ * each run's workspace, and the runner the packages that link the
+ * session's APIs (./links.ts). It is the container's own, so it lasts as long as the
  * container.
  */
 export const TS_ROOT = `${TAU_ROOT}/ts`
@@ -36,12 +36,12 @@ export const TS_ROOT = `${TAU_ROOT}/ts`
 /** Most bytes of a reply; the runner shrinks what it reports to fit. */
 export const MAX_REPLY_BYTES = 1024 * 1024
 
-/** An API the agent declares, which the runner links for programs to import as `@api/<name>` (./links.ts). */
+/** An API of the session, which the runner links for programs to import as `@api/<name>` (./links.ts). */
 export interface LinkedApi {
   name: string
-  /** The agent's description of it. */
+  /** Its description: the agent's, or fleet's for an API of fleet's own declarations. */
   description?: string
-  /** The agent's `api/<name>.d.ts` in the container, which types it. */
+  /** Its declarations in the container, which type it: the agent's `api/<name>.d.ts`, or fleet's own, beside the implementation. */
   types: string
   /** fleet's implementation in the container, which runs it. */
   implementation: string
