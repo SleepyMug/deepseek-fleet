@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { PROTOCOL_VERSION } from 'fleet-image/helper/protocol'
-import { Helper, HelperError } from './helper.ts'
+import { Helper, HelperError, METHODS } from './helper.ts'
 
 /** The helper as built on this machine, run on this Node. */
 const LOCAL_HELPER = [
@@ -30,6 +30,14 @@ test('a helper answers requests until it is closed', async () => {
 
 test('a helper that speaks another protocol is refused', async () => {
   await assert.rejects(Helper.start(fake({ type: 'result', value: { protocol: 0 } })), /speaks protocol 0/u)
+})
+
+test('a helper from an older image, which lacks methods, is refused', async () => {
+  await assert.rejects(Helper.start(fake({ type: 'result', value: { protocol: PROTOCOL_VERSION } })), /does not list its methods: its box was made from an older image/u)
+  await assert.rejects(
+    Helper.start(fake({ type: 'result', value: { protocol: PROTOCOL_VERSION, methods: METHODS.filter(method => method !== 'which') } })),
+    /serves no which: its box was made from an older image/u,
+  )
 })
 
 test('a helper that answers with the wrong shape loses its connection', async () => {
@@ -59,7 +67,7 @@ test('a helper sends a request\'s events before its result, and a failure\'s cod
 test('a helper that sends an unexpected event loses its connection', async () => {
   const code = `require('node:readline').createInterface({ input: process.stdin }).on('line', (line) => {
     const { id, method } = JSON.parse(line)
-    if (method === 'hello') console.log(JSON.stringify({ type: 'result', id, value: { protocol: ${PROTOCOL_VERSION} } }))
+    if (method === 'hello') console.log(JSON.stringify({ type: 'result', id, value: { protocol: ${PROTOCOL_VERSION}, methods: ${JSON.stringify(METHODS)} } }))
     else console.log(JSON.stringify({ type: 'event', id, value: { stream: 'elsewhere', data: '' } }))
   })`
   const helper = await Helper.start([process.execPath, '--eval', code])

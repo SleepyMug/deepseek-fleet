@@ -3,21 +3,27 @@
  * box, and everything else on the host's, through dsh's own local file
  * system, which this service mounts where only it sees it.
  *
- * A call that names a path, `resolve` and `lstat`, goes to the box of the
- * session it is for (./caller.ts), if that session is a tau's, where the
+ * A call that names a path, `resolve` and `lstat`, goes to a box where the
  * helper serves it with dsh's local file system (fleet-image's
- * helper/cmd/fs.ts). The targets it gives name their box: their key is
- * `fleet-box://<session><path>`, the path in the box of that session, while
- * their display and process paths are the plain path in the box. Every call
- * that takes a target then goes where its key says, whoever makes it. A
- * box's failures are `FsError`s: the helper's own code, or `FS_IO_ERROR`.
+ * helper/cmd/fs.ts): to the box its path or its `cwd` names, written
+ * `fleet-box://<session><path>`, or else to the box of the session it is for
+ * (./caller.ts), if that session is a tau's. A tau's session's own work may
+ * name only its own box, so its model never reaches another's. The targets a
+ * box gives are keyed the same way, while their display and process paths
+ * are the plain path in the box. Every call that takes a target then goes
+ * where its key says, whoever makes it. A box's failures are `FsError`s: the
+ * helper's own code, or `FS_IO_ERROR`.
  *
- * Not served for a box: watching, which the helper has no means for, and
- * the host's own paths, so the file viewer, whose calls are no session's
- * work, shows the host's folder of a tau's session, not its box.
+ * The file viewer's service finds a session's folder through dsh's
+ * `workspaceFileScope` lookup, which this service configures: a tau's
+ * session's is `fleet-box://<session>/tau` in its box, and any other's what
+ * dsh gives, its folder on the host. The viewer passes it on to every file
+ * call, as the path or the `cwd`, so its tree, previews and live refresh
+ * are the box's.
  * @module fleet-core/world/fs
  */
 
+import { randomUUID } from 'node:crypto'
 import { posix } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
@@ -26,6 +32,9 @@ import type {
   FsDirEntry, FsEditOutcome, FsEditRequest, FsErrorCode, FsInfo, FsPathInfo, FsTarget, FsWriteIntent, FsWriteOutcome,
 } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
+import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-typert-protocol'
 import type { Methods, Target } from 'fleet-image/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { RunBox } from '../tau/runs.ts'
@@ -46,7 +55,10 @@ interface InBox {
   path: string
 }
 
-type FsMethod = Extract<keyof Methods, `fs.${string}`>
+/** The folder of a tau's session the file viewer shows: the tau's folders in its box. */
+const VIEWED = '/tau'
+
+type FsMethod = Exclude<Extract<keyof Methods, `fs.${string}`>, 'fs.watch' | 'fs.unwatch'>
 
 export class FleetFileSystem extends FileSystem {
   static inject = ['fleetTauRuns', 'agents']
@@ -66,12 +78,16 @@ export class FleetFileSystem extends FileSystem {
       this.local = isolated.get('fs') as FileSystem
       return this.local
     })()
+    // The file viewer's service is given a tau's session's folder in its box, and passes it on to every file call.
+    ctx.inject(['typert'], (inner) => {
+      inner.typert.lookups.configure('workspaceFileScope', sessionId => this.fileScope(inner, sessionId))
+    })
   }
 
   override async resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<FsTarget> {
-    const session = await this.boxSession()
-    if (session === undefined) return (await this.localReady).resolve(path, opts)
-    return outward(session, await this.ask(session, 'fs.resolve', { path, ...cwdOf(opts?.cwd) }))
+    const place = await this.place(path, opts?.cwd)
+    if (place === undefined) return (await this.localReady).resolve(path, opts)
+    return outward(place.session, await this.ask(place.session, 'fs.resolve', place.params))
   }
 
   override processPath(target: FsTarget): string {
@@ -103,9 +119,9 @@ export class FleetFileSystem extends FileSystem {
   }
 
   override async lstat(path: string, opts?: { cwd?: string }, signal?: AbortSignal): Promise<FsPathInfo | undefined> {
-    const session = await this.boxSession()
-    if (session === undefined) return (await this.localReady).lstat(path, opts, signal)
-    const info = await this.ask(session, 'fs.lstat', { path, ...cwdOf(opts?.cwd) })
+    const place = await this.place(path, opts?.cwd)
+    if (place === undefined) return (await this.localReady).lstat(path, opts, signal)
+    const info = await this.ask(place.session, 'fs.lstat', place.params)
     return info === null ? undefined : { ...info, version: FsVersion(info.version) }
   }
 
@@ -165,20 +181,65 @@ export class FleetFileSystem extends FileSystem {
     return { ...outcome, version: FsVersion(outcome.version) }
   }
 
+  /**
+   * Watch a box's target through its helper until the returned stop, or the
+   * signal, ends it; a box lost meanwhile is reported as the watch's error.
+   */
   override async watch(target: FsTarget, changed: (error?: Error) => void, signal: AbortSignal): Promise<() => Promise<void>> {
-    if (inBox(target) !== undefined) return super.watch(target, changed, signal)
-    return (await this.localReady).watch(target, changed, signal)
+    const box = inBox(target)
+    if (box === undefined) return (await this.localReady).watch(target, changed, signal)
+    const watch = randomUUID()
+    const running = await this.boxOf(box.session)
+    const watching = running.request('fs.watch', { watch, target: inward(box) }, (event) => {
+      changed(event.error === null ? undefined : new FsError(event.error, 'FS_IO_ERROR'))
+    })
+    let stopped = false
+    // A watch that fails, its box lost, is reported; one ended here answers.
+    watching.catch((error: unknown) => { if (!stopped) changed(new FsError(message(error), 'FS_IO_ERROR', { cause: error })) })
+    const stop = async (): Promise<void> => {
+      if (stopped) return
+      stopped = true
+      signal.removeEventListener('abort', abort)
+      await running.request('fs.unwatch', { watch }).catch(() => {})
+    }
+    const abort = (): void => { void stop() }
+    if (signal.aborted) await stop()
+    else signal.addEventListener('abort', abort, { once: true })
+    return stop
   }
 
-  /** The session the call is for, if it is a tau's, whose box serves it. */
-  private async boxSession(): Promise<string | undefined> {
+  /**
+   * The box a call naming a path serves from, and what its helper is asked:
+   * the box the path or the `cwd` names, if one does, or the box of the
+   * session the call is for, if a tau's; or undefined for the host. A tau's
+   * session's own work may name only its own box.
+   */
+  private async place(path: string, cwd: string | undefined): Promise<{ session: string; params: { path: string; cwd?: string } } | undefined> {
     await this.localReady
-    const session = callerSession(this.self, this.ctx)
-    return session !== undefined && this.self.fleetTauRuns.isTau(session) ? session : undefined
+    const named = inBox(keyed(path)) ?? (cwd === undefined ? undefined : inBox(keyed(cwd)))
+    const caller = callerSession(this.self, this.ctx)
+    const own = caller !== undefined && this.self.fleetTauRuns.isTau(caller) ? caller : undefined
+    if (named !== undefined && own !== undefined && named.session !== own) {
+      throw new FsError(`${path} is in another session's box`, 'FS_PERMISSION_DENIED')
+    }
+    const session = named?.session ?? own
+    if (session === undefined) return undefined
+    const plain = (value: string): string => inBox(keyed(value))?.path ?? value
+    return { session, params: { path: plain(path), ...cwd === undefined ? {} : { cwd: plain(cwd) } } }
   }
 
-  /** Ask a session's box, whose failures become `FsError`s. */
-  private async ask<M extends FsMethod>(session: string, method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
+  /** dsh's `workspaceFileScope`: a tau's session's folder in its box, and any other's as dsh gives it. */
+  private async fileScope(ctx: Context, sessionId: string): Promise<WorkspaceFileScope | undefined> {
+    if (this.self.fleetTauRuns.isTau(sessionId)) return { sessionId, workspaceRoot: `${KEY_PREFIX}${sessionId}${VIEWED}` } as WorkspaceFileScope
+    // What the file viewer's service gives without this lookup configured.
+    const id = sessionId as SessionId
+    const header = ctx.get('sessions')?.get(id)?.header ?? (await ctx.get('sessionPersistence')?.stat(id))?.header
+    if (header === undefined) return undefined
+    return { sessionId, workspaceRoot: header.cwd ?? ctx.get('sandboxPolicy')?.workspaceRoot } as WorkspaceFileScope
+  }
+
+  /** A session's started box, whose failures become `FsError`s. */
+  private async boxOf(session: string): Promise<RunBox> {
     let box: RunBox | undefined
     try {
       box = await this.self.fleetTauRuns.boxFor(session)
@@ -186,6 +247,12 @@ export class FleetFileSystem extends FileSystem {
       throw new FsError(`the box of ${session} cannot be started: ${message(error)}`, 'FS_IO_ERROR', { cause: error })
     }
     if (box === undefined) throw new FsError(`${session} is not a tau's session, so it has no box`, 'FS_NOT_FOUND')
+    return box
+  }
+
+  /** Ask a session's box, whose failures become `FsError`s. */
+  private async ask<M extends FsMethod>(session: string, method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
+    const box = await this.boxOf(session)
     try {
       return await box.request(method, params)
     } catch (error) {
@@ -223,10 +290,9 @@ function inBox(target: FsTarget): InBox | undefined {
   return { session: rest.slice(0, slash), path: rest.slice(slash) }
 }
 
-/** A `cwd` for the helper: a box's target key gives its path. */
-function cwdOf(cwd: string | undefined): { cwd?: string } {
-  if (cwd === undefined) return {}
-  return { cwd: cwd.startsWith(KEY_PREFIX) ? inBox({ targetKey: FsTargetKey(cwd), displayPath: cwd })?.path : cwd }
+/** A path as a target, to read the box it names, if any. */
+function keyed(path: string): FsTarget {
+  return { targetKey: FsTargetKey(path), displayPath: path }
 }
 
 function message(error: unknown): string {

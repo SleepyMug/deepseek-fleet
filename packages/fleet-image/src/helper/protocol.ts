@@ -67,8 +67,12 @@ export interface EditOutcome {
 
 /** Each method's params and result, and the events it sends before its result. */
 export interface Methods {
-  /** The handshake. */
-  hello: { params: Record<string, never>; result: { protocol: number } }
+  /**
+   * The handshake: the wire version, and every method the helper serves, so
+   * a host can tell a box made from an older image, whose helper may not
+   * list them at all.
+   */
+  hello: { params: Record<string, never>; result: { protocol: number; methods?: string[] } }
   /** Answers with the text it was given. */
   echo: { params: { text: string }; result: { text: string } }
   /**
@@ -92,6 +96,14 @@ export interface Methods {
   'fs.listDir': { params: { target: Target }; result: DirEntry[] }
   'fs.writeText': { params: { target: Target; content: string; expected?: WriteIntent }; result: WriteOutcome }
   'fs.editText': { params: { target: Target; edit: EditRequest; expected?: { version: string } }; result: EditOutcome }
+  /**
+   * Watches a target, under the host's id `watch`, and sends an event each
+   * time it may have changed, with the error that ended the watching, if
+   * one did; answers once `fs.unwatch` ends it.
+   */
+  'fs.watch': { params: { watch: string; target: Target }; result: null; event: { error: string | null } }
+  /** Ends a watch, whose request then answers; nothing for a watch not there. */
+  'fs.unwatch': { params: { watch: string }; result: null }
 
   /**
    * Runs a program, without a shell, in a process group of its own, under
@@ -108,6 +120,34 @@ export interface Methods {
   kill: { params: { process: string }; result: null }
   /** Where a program is, on the PATH of `env` or the helper's; a program not there fails with {@link EXECUTABLE_NOT_FOUND}. */
   which: { params: { command: string; env: Record<string, string> | null }; result: string }
+
+  /**
+   * Runs a program on a terminal of its own, a pseudo-terminal in the box,
+   * under the host's id `terminal` (./cmd/terminal.ts): it sends `started`
+   * with the program's pid, then what the terminal writes, base64, and
+   * answers how the program ended once it has and the output is sent.
+   */
+  terminal: {
+    params: {
+      terminal: string; argv: string[]; cwd: string; env: Record<string, string | null>
+      cols: number; rows: number; term: string; graceMs: number
+    }
+    result: { code: number | null; signal: string | null }
+    event: { kind: 'started'; pid: number } | { kind: 'data'; data: string }
+  }
+  /** Writes text to a terminal's input. */
+  'terminal.write': { params: { terminal: string; data: string }; result: null }
+  /** Changes a terminal's size, which its foreground program is told. */
+  'terminal.resize': { params: { terminal: string; cols: number; rows: number }; result: null }
+  /** A terminal's foreground process group, or null when none can be found. */
+  'terminal.foreground': { params: { terminal: string }; result: { processGroupId: number } | null }
+  /** Sends a signal to a terminal's foreground process group, and answers its id. */
+  'terminal.signal': { params: { terminal: string; signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGTSTP' | 'SIGHUP' }; result: number }
+  /**
+   * Ends every process of a terminal's session: SIGHUP and SIGTERM, then
+   * SIGKILL after its grace period; answers once none is left.
+   */
+  'terminal.end': { params: { terminal: string }; result: null }
 }
 
 export type Method = keyof Methods

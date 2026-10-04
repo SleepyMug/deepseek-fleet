@@ -13,9 +13,11 @@
  * session's file tools do not look. Terminating it, or aborting its signal,
  * ends its group: SIGTERM, then SIGKILL after its grace period.
  *
- * Not served for a box: raw pipes, the control channel, and terminals, so
- * the sidebar's terminal of a tau's session fails rather than open on the
- * host.
+ * A terminal a tau's session opens, such as the web UI's sidebar terminal,
+ * which dsh's terminal controller reaches through the session's agent, runs
+ * in its box too (./terminal.ts), with the image's bash.
+ *
+ * Not served for a box: raw pipes and the control channel.
  * @module fleet-core/world/subprocess
  */
 
@@ -33,6 +35,7 @@ import { HelperError } from '../box/helper.ts'
 import type { TauRuns } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'
 import { callerSession } from './caller.ts'
+import { BoxTerminal } from './terminal.ts'
 
 export class FleetSubprocessRuntime extends SubprocessRuntime {
   static inject = ['fleetTauRuns', 'agents']
@@ -43,6 +46,8 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
   private readonly localReady: Promise<SubprocessRuntime>
   /** A box's processes still running, which this service ends as it unloads. */
   private readonly live = new Set<BoxProcess>()
+  /** A box's terminals still open, which this service ends as it unloads. */
+  private readonly terminals = new Set<BoxTerminal>()
 
   constructor(ctx: Context) {
     super(ctx)
@@ -57,7 +62,7 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
     ctx.effect(() => async () => {
       const live = [...this.live]
       for (const process of live) process.terminate()
-      await Promise.allSettled(live.map(process => process.done))
+      await Promise.allSettled([...live.map(process => process.done), ...[...this.terminals].map(terminal => terminal.terminate())])
     }, 'fleet box processes')
   }
 
@@ -74,6 +79,7 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
   }
 
   override async terminalEnvironment(signal?: AbortSignal): Promise<SubprocessTerminalEnvironment> {
+    if (this.boxSession() !== undefined) return { platform: 'posix', defaultShell: '/bin/bash' }
     return (await this.localReady).terminalEnvironment(signal)
   }
 
@@ -93,8 +99,11 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
 
   override async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     const session = this.boxSession()
-    if (session !== undefined) throw new Error(`fleet: ${session} is a tau's session, whose box has no terminals yet`)
-    return (await this.localReady).spawnTerminal(spec)
+    if (session === undefined) return (await this.localReady).spawnTerminal(spec)
+    const terminal = await BoxTerminal.start(await boxOf(this.self.fleetTauRuns, session), spec)
+    this.terminals.add(terminal)
+    void terminal.done.finally(() => { this.terminals.delete(terminal) }).catch(() => {})
+    return terminal
   }
 
   /** The session the call is for, if it is a tau's, whose box serves it. */

@@ -7,7 +7,7 @@
  * @module fleet-core/box/cmd/fs
  */
 
-import type { DirEntry, EditOutcome, Info, PathInfo, Target, WriteOutcome } from 'fleet-image/helper/protocol'
+import type { DirEntry, EditOutcome, EventOf, Info, PathInfo, Target, WriteOutcome } from 'fleet-image/helper/protocol'
 
 export function isTarget(value: unknown): value is Target {
   return isRecord(value) && isAbsolutePath(value.targetKey) && typeof value.displayPath === 'string'
@@ -40,6 +40,10 @@ export function isWriteOutcome(value: unknown): value is WriteOutcome {
 
 export function isEditOutcome(value: unknown): value is EditOutcome {
   return isRecord(value) && typeof value.version === 'string' && typeof value.before === 'string' && typeof value.after === 'string'
+}
+
+export function isWatchEvent(value: unknown): value is EventOf<'fs.watch'> {
+  return isRecord(value) && (value.error === null || typeof value.error === 'string')
 }
 
 /** Text, or base64 bytes. */

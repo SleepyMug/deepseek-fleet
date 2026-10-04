@@ -45,6 +45,11 @@ It also exports:
   path. A helper that breaks the protocol loses its connection.
 - **When the helper exits on its own,** every pending and later request
   fails. The container stays, and `start()` starts a new helper.
+- **A box keeps the image it was made from,** so a rebuilt image reaches
+  only boxes made after it. The handshake refuses a helper that lacks a
+  method the host uses, or does not list its methods, and says so, rather
+  than letting each method fail on its own; `start()` then leaves the
+  container stopped.
 - **Commands** of the helper's beyond the handshake have a module each in
   `box/cmd/`, beside their handler in fleet-image's `helper/cmd/`: the check
   of the command's result, which `box/helper.ts` registers, and what the

@@ -11,8 +11,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
 import { isExecResult } from './cmd/exec.ts'
-import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWriteOutcome } from './cmd/fs.ts'
+import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'
+import { isForeground, isGroupId, isTerminalEvent } from './cmd/terminal.ts'
 
 /** A failure the helper reported for one request, with its code, such as an `FsError`'s, if it had one. */
 export class HelperError extends Error {
@@ -25,7 +26,9 @@ export class HelperError extends Error {
 
 /** What each method's result must look like. */
 const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'] } = {
-  hello: (value): value is Methods['hello']['result'] => isRecord(value) && typeof value.protocol === 'number',
+  // A helper older than its `methods` answers without them, which the handshake reports.
+  hello: (value): value is Methods['hello']['result'] => isRecord(value) && typeof value.protocol === 'number'
+    && (value.methods === undefined || (Array.isArray(value.methods) && value.methods.every(method => typeof method === 'string'))),
   echo: (value): value is Methods['echo']['result'] => isRecord(value) && typeof value.text === 'string',
   exec: isExecResult,
   'fs.resolve': isTarget,
@@ -37,14 +40,24 @@ const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'
   'fs.listDir': isDirEntries,
   'fs.writeText': isWriteOutcome,
   'fs.editText': isEditOutcome,
+  'fs.watch': isNull,
+  'fs.unwatch': isNull,
   spawn: isSpawnResult,
   kill: isNull,
   which: isPath,
+  terminal: isSpawnResult,
+  'terminal.write': isNull,
+  'terminal.resize': isNull,
+  'terminal.foreground': isForeground,
+  'terminal.signal': isGroupId,
+  'terminal.end': isNull,
 }
 
 /** What each method's events must look like; a method not here sends none. */
 const events: { [M in Method]?: (value: unknown) => value is EventOf<M> } = {
   spawn: isSpawnEvent,
+  'fs.watch': isWatchEvent,
+  terminal: isTerminalEvent,
 }
 
 /** The methods a helper takes. */
@@ -87,9 +100,15 @@ export class Helper {
     const [file, ...args] = command
     const helper = new Helper(spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe'] }))
     try {
-      const { protocol } = await helper.request('hello', {})
+      const { protocol, methods } = await helper.request('hello', {})
       if (protocol !== PROTOCOL_VERSION) {
         throw new Error(`fleet: the helper speaks protocol ${protocol}, not ${PROTOCOL_VERSION}; rebuild the image with \`pnpm image\``)
+      }
+      // A box keeps the image it was made from, so a rebuilt image reaches only boxes made after it.
+      const missing = methods === undefined ? undefined : METHODS.filter(method => !methods.includes(method))
+      if (missing === undefined || missing.length > 0) {
+        const lacks = missing === undefined ? 'does not list its methods' : `serves no ${missing.join(', ')}`
+        throw new Error(`fleet: the helper ${lacks}: its box was made from an older image than this host's; a new box gets the current one`)
       }
     } catch (error) {
       await helper.close()

@@ -136,6 +136,19 @@
                   headChars: 4096
                   tailChars: 1024
 
+# ── No spill files: host files a tau's session cannot open ──
+
+# Oversized tool results would be saved to a host file the model is told to
+# read, but a tau's session reads its box. Results stay inline instead; bash
+# and read bound their own output.
+- id: spill-policy
+  disabled: true
+
+# Referencing another session saves its full transcript the same way; without
+# a spill store the reference says the full transcript is unavailable.
+- id: spill-local
+  disabled: true
+
 # ═══ The runs of taus, and their boxes ═══
 
 # `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, in the

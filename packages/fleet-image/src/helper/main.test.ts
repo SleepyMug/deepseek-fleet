@@ -29,11 +29,13 @@ test('the helper answers each request, and exits once its stdin ends', async () 
     { type: 'request', id: 4, method: 'toString', params: {} },
   ])
   assert.deepEqual(answers, [
-    { type: 'result', id: 1, value: { protocol: PROTOCOL_VERSION } },
+    { type: 'result', id: 1, value: { protocol: PROTOCOL_VERSION, methods: (answers[0] as { value: { methods: string[] } }).value.methods } },
     { type: 'result', id: 2, value: { text: 'hi' } },
     { type: 'error', id: 3, message: 'echo takes a text' },
     { type: 'error', id: 4, message: 'unknown method toString' },
   ])
+  const { methods } = (answers[0] as { value: { methods: string[] } }).value
+  for (const method of ['hello', 'exec', 'fs.resolve', 'spawn', 'terminal', 'terminal.end']) assert.ok(methods.includes(method), method)
 })
 
 test('the helper runs programs, and answers how they ended', async () => {
@@ -145,4 +147,72 @@ test('the helper finds programs on the PATH, and says when one is not there', as
   assert.match((answers[0] as { value: string }).value, /\/sh$/u)
   assert.equal((answers[1] as { code?: string }).code, EXECUTABLE_NOT_FOUND)
   assert.equal((answers[2] as { code?: string }).code, EXECUTABLE_NOT_FOUND)
+})
+
+/** A helper on this machine that can be talked to while it runs. */
+function live(t: { after(fn: () => Promise<void>): void }): { send(message: HostMessage): void; answers: HelperMessage[]; until(found: () => boolean): Promise<void> } {
+  const child = spawn(process.execPath, [fileURLToPath(new URL('./main.js', import.meta.url))], { stdio: ['pipe', 'pipe', 'inherit'] })
+  t.after(async () => {
+    child.stdin.end()
+    await once(child, 'close')
+  })
+  const answers: HelperMessage[] = []
+  createInterface({ input: child.stdout }).on('line', (line) => { answers.push(JSON.parse(line) as HelperMessage) })
+  return {
+    send: (message) => { child.stdin.write(`${JSON.stringify(message)}\n`) },
+    answers,
+    until: async (found) => { while (!found()) await new Promise(resolve => setTimeout(resolve, 20)) },
+  }
+}
+
+test('the helper watches a folder until it is told to stop', async (t) => {
+  const dir = await folder(t)
+  const helper = live(t)
+  helper.send({ type: 'request', id: 1, method: 'fs.watch', params: { watch: 'w1', target: { targetKey: dir, displayPath: dir } } })
+  // A change is reported once the watch is up, so keep changing until one is.
+  for (let n = 0; !helper.answers.some(answer => answer.type === 'event' && answer.id === 1); n++) {
+    await writeFile(join(dir, `f${n}.txt`), 'x')
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(helper.answers.find(answer => answer.type === 'event'), { type: 'event', id: 1, value: { error: null } })
+  helper.send({ type: 'request', id: 2, method: 'fs.unwatch', params: { watch: 'w1' } })
+  await helper.until(() => helper.answers.some(answer => answer.type === 'result' && answer.id === 1))
+  assert.ok(helper.answers.some(answer => answer.type === 'result' && answer.id === 2))
+})
+
+test('the helper runs a terminal: input, size, foreground group, and an end that takes background jobs too', async (t) => {
+  const dir = await folder(t)
+  const helper = live(t)
+  const output = (): string => helper.answers
+    .filter(answer => answer.type === 'event' && answer.id === 1 && (answer.value as { kind: string }).kind === 'data')
+    .map(answer => Buffer.from(((answer as { value: unknown }).value as { data: string }).data, 'base64').toString()).join('')
+  helper.send({
+    type: 'request', id: 1, method: 'terminal',
+    params: { terminal: 't1', argv: ['sh'], cwd: dir, env: { PS1: '$ ' }, cols: 80, rows: 24, term: 'xterm-256color', graceMs: 500 },
+  })
+  await helper.until(() => helper.answers.some(answer => answer.type === 'event' && answer.id === 1))
+  const started = (helper.answers.find(answer => answer.type === 'event' && answer.id === 1) as { value: { kind: string; pid: number } }).value
+  assert.equal(started.kind, 'started')
+  helper.send({ type: 'request', id: 2, method: 'terminal.resize', params: { terminal: 't1', cols: 100, rows: 30 } })
+  helper.send({ type: 'request', id: 3, method: 'terminal.write', params: { terminal: 't1', data: 'stty size; echo $TERM; pwd\n' } })
+  await helper.until(() => output().includes(dir))
+  assert.match(output(), /30 100/u)
+  assert.match(output(), /xterm-256color/u)
+  helper.send({ type: 'request', id: 4, method: 'terminal.foreground', params: { terminal: 't1' } })
+  await helper.until(() => helper.answers.some(answer => answer.id === 4))
+  assert.deepEqual(helper.answers.find(answer => answer.id === 4), { type: 'result', id: 4, value: { processGroupId: started.pid } })
+  // A job left behind, in a group of its own, is still the terminal's.
+  helper.send({ type: 'request', id: 5, method: 'terminal.write', params: { terminal: 't1', data: 'sleep 300 &\n' } })
+  await new Promise(resolve => setTimeout(resolve, 200))
+  helper.send({ type: 'request', id: 6, method: 'terminal.end', params: { terminal: 't1' } })
+  await helper.until(() => helper.answers.some(answer => answer.id === 6))
+  assert.deepEqual(helper.answers.find(answer => answer.id === 6), { type: 'result', id: 6, value: null })
+  assert.ok(helper.answers.some(answer => answer.type === 'result' && answer.id === 1))
+  const { stdout } = await new Promise<{ stdout: string }>((resolve) => {
+    const ps = spawn('ps', ['-eo', 'sid,args'])
+    let text = ''
+    ps.stdout.on('data', (chunk: Buffer) => { text += chunk.toString() })
+    ps.on('close', () => { resolve({ stdout: text }) })
+  })
+  assert.ok(!stdout.split('\n').some(line => line.trim().startsWith(`${started.pid} `)), 'no process of the terminal\'s session is left')
 })

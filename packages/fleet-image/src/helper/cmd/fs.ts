@@ -11,7 +11,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { FileSystem, FsEditRequest, FsTarget, FsTargetKey, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
-import type { Methods, Target } from '../protocol.ts'
+import type { EventOf, Methods, Target } from '../protocol.ts'
 
 type Handler<M extends keyof Methods> = (params: Methods[M]['params']) => Promise<Methods[M]['result']>
 
@@ -79,4 +79,58 @@ function count(value: unknown, name: string): number {
 
 function base64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64')
+}
+
+interface Watching {
+  stop: Promise<() => Promise<void>>
+  ended: () => void
+}
+
+/** Watches running, by the host's id. */
+const watches = new Map<string, Watching>()
+
+/** Watch a target until `fs.unwatch`, sending an event each time it may have changed. */
+export async function fsWatch(
+  { watch: id, target: t }: Methods['fs.watch']['params'],
+  emit: (event: EventOf<'fs.watch'>) => boolean,
+): Promise<null> {
+  const watch = text(id, 'watch')
+  if (watches.has(watch)) throw new Error(`watch ${watch} already exists`)
+  const controller = new AbortController()
+  const ended = Promise.withResolvers<void>()
+  const stop = (async () => {
+    const dispose = await (await fs()).watch(target(t), (error) => { emit({ error: error === undefined ? null : error.message }) }, controller.signal)
+    return async () => {
+      controller.abort()
+      await dispose()
+    }
+  })()
+  watches.set(watch, { stop, ended: ended.resolve })
+  try {
+    await stop
+  } catch (error) {
+    watches.delete(watch)
+    throw error
+  }
+  await ended.promise
+  return null
+}
+
+/** End a watch, whose request then answers. */
+export async function fsUnwatch({ watch: id }: Methods['fs.unwatch']['params']): Promise<null> {
+  const watch = text(id, 'watch')
+  const watching = watches.get(watch)
+  if (watching === undefined) return null
+  watches.delete(watch)
+  try {
+    await (await watching.stop)()
+  } finally {
+    watching.ended()
+  }
+  return null
+}
+
+/** End every watch, as the helper exits. */
+export async function unwatchAll(): Promise<void> {
+  await Promise.allSettled([...watches.keys()].map(watch => fsUnwatch({ watch })))
 }

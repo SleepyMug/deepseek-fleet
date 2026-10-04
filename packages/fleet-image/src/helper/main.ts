@@ -1,15 +1,18 @@
 /**
  * The helper. The host starts it in a box with `docker exec --interactive`,
  * and it answers the host's requests over its stdin and stdout
- * (./protocol.ts) until its stdin ends; then it ends the processes it started
- * and exits.
+ * (./protocol.ts) until its stdin ends; then it ends the processes, terminals
+ * and watches it started, and exits.
  * @module fleet-image/helper/main
  */
 
 import { createInterface } from 'node:readline'
 import { exec } from './cmd/exec.ts'
-import { fsEditText, fsListDir, fsLstat, fsReadBytes, fsReadRange, fsReadText, fsResolve, fsStat, fsWriteText } from './cmd/fs.ts'
+import {
+  fsEditText, fsListDir, fsLstat, fsReadBytes, fsReadRange, fsReadText, fsResolve, fsStat, fsUnwatch, fsWatch, fsWriteText, unwatchAll,
+} from './cmd/fs.ts'
 import { kill, killAll, spawn, which } from './cmd/spawn.ts'
+import { endAll, terminal, terminalEnd, terminalForeground, terminalResize, terminalSignal, terminalWrite } from './cmd/terminal.ts'
 import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from './protocol.ts'
 
 // Node names its main thread `node-MainThread`, which a `pkill node` in the box would match.
@@ -23,7 +26,7 @@ type Handlers = {
 }
 
 const handlers: Handlers = {
-  hello: () => ({ protocol: PROTOCOL_VERSION }),
+  hello: () => ({ protocol: PROTOCOL_VERSION, methods: Object.keys(handlers) }),
   echo: (params) => {
     if (typeof params?.text !== 'string') throw new Error('echo takes a text')
     return { text: params.text }
@@ -38,9 +41,17 @@ const handlers: Handlers = {
   'fs.listDir': fsListDir,
   'fs.writeText': fsWriteText,
   'fs.editText': fsEditText,
+  'fs.watch': fsWatch,
+  'fs.unwatch': fsUnwatch,
   spawn: (params, emit) => spawn(params, { send: emit, onDrain: (listener) => { process.stdout.on('drain', listener) } }),
   kill,
   which,
+  terminal: (params, emit) => terminal(params, { send: emit, onDrain: (listener) => { process.stdout.once('drain', listener) } }),
+  'terminal.write': terminalWrite,
+  'terminal.resize': terminalResize,
+  'terminal.foreground': terminalForeground,
+  'terminal.signal': terminalSignal,
+  'terminal.end': terminalEnd,
 }
 
 /** Requests not answered yet. */
@@ -52,9 +63,9 @@ lines.on('line', (line) => {
   inFlight.add(handled)
   void handled.finally(() => { inFlight.delete(handled) })
 })
-// The host has gone, or is done with the box: what it asked is answered, its processes ended first.
+// The host has gone, or is done with the box: what it asked is answered, its processes, terminals and watches ended first.
 lines.once('close', () => {
-  void killAll().then(() => Promise.allSettled([...inFlight])).finally(() => { process.exit(0) })
+  void Promise.allSettled([killAll(), endAll(), unwatchAll()]).then(() => Promise.allSettled([...inFlight])).finally(() => { process.exit(0) })
 })
 
 async function handle(line: string): Promise<void> {
