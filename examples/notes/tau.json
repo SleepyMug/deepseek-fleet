@@ -1,7 +1,0 @@
-{
-  "description": "Remember a note with the notes API, and list the notes that share a tag with it, with when each was written.",
-  "args": [
-    { "name": "text", "type": "text", "description": "What to remember." },
-    { "name": "tags", "type": "text", "description": "Its tags, separated by commas." }
-  ]
-}

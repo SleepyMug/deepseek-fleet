@@ -1,6 +1,0 @@
-{
-  "description": "Archive a directory with the archives API, which sends it to the fleet host as a tarball, and report what the host received.",
-  "args": [
-    { "name": "dir", "type": "dir", "role": "in", "description": "The directory to send." }
-  ]
-}

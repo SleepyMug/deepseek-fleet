@@ -1,8 +1,0 @@
-{
-  "description": "Count the words in a file, and say which LANG the caller set.",
-  "args": [
-    { "name": "text", "type": "file", "role": "in", "description": "The file to count." },
-    { "name": "report", "type": "file", "role": "out", "description": "Where to write the count." }
-  ],
-  "env": ["LANG"]
-}

@@ -1,28 +1,17 @@
 /**
- * The folders of a session container that are fleet's own, which the host
- * and the image agree on: every path of fleet's in a container lies in one
- * of them, but for the `tau` command, which must be on the PATH of the
- * model's commands, and the host keeps what it adds to a container, and the
- * paths an agent's arguments name, out of them. The image's Dockerfile,
- * beside this package's src/, fills {@link PACKAGE_ROOT}; `fleet setup image`
- * checks a build where the host will look before it tags it. Shared by the
- * host and the image, so it holds only constants.
+ * Where fleet's runtime lies in the image, which the host and the image
+ * agree on. Shared by both, so it holds only constants.
  * @module fleet-image/layout
  */
 
-/** This package in the session image: its lib/ at the top, beside its package.json and node_modules. */
+/** This package in the image, as it would be packed: its package.json and lib/. */
 export const PACKAGE_ROOT = '/opt/fleet'
 
-/** The `tau` command (./cli/tau.ts), which the Dockerfile writes, to run lib/cli/tau.js under {@link PACKAGE_ROOT}. */
-export const TAU_COMMAND = '/usr/local/bin/tau'
+/** The Node the helper runs on: the base image's. */
+export const HELPER_NODE = '/usr/local/bin/node'
 
-/** What the helper makes as it runs: its service socket (./helper/protocol.ts). */
-export const RUN_ROOT = '/run/fleet'
+/** The helper, ./helper/main.ts. */
+export const HELPER_ENTRY = `${PACKAGE_ROOT}/lib/helper/main.js`
 
-/**
- * fleet-tau's folder in a container, which the image leaves empty. It holds
- * the agent's snapshot and its `in` paths, which the host copies in; the
- * folders its `out` paths are made in (fleet-core's tau/paths.ts); and the
- * runner's TypeScript root (./runner/protocol.ts).
- */
-export const TAU_ROOT = '/tau'
+/** The tag `pnpm image` builds, and the image a box runs unless told otherwise. */
+export const DEFAULT_IMAGE = 'fleet:local'

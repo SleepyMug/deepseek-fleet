@@ -1,4 +1,0 @@
-{
-  "description": "Find the three most frequent words of a text with the text-stats API.",
-  "args": [{ "name": "text", "type": "text", "description": "The text to read." }]
-}

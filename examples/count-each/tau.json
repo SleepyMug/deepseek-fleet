@@ -1,7 +1,0 @@
-{
-  "description": "Count the words of each file in a directory, each with a run of its own of the counting agent this one carries, and write a summary.",
-  "args": [
-    { "name": "dir", "type": "dir", "role": "in", "at": "files", "description": "The files to count." },
-    { "name": "summary", "type": "file", "role": "out", "at": "summary.txt", "description": "Where to write each file's count." }
-  ]
-}

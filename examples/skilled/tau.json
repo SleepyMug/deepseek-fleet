@@ -1,4 +1,0 @@
-{
-  "description": "Count the words of a text with a skill's script.",
-  "args": [{ "name": "text", "type": "text", "description": "The text to count." }]
-}

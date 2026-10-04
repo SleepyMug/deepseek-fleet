@@ -8,8 +8,8 @@
     "build": "pnpm -r build",
     "watch": "tsc -b --watch",
     "clean": "tsc -b --clean",
-    "image": "pnpm build && fleet setup image",
-    "smoke": "pnpm --filter fleet-core run smoke"
+    "test": "pnpm --filter './packages/*' test",
+    "image": "pnpm build && pnpm --filter fleet-image image"
   },
   "devEngines": {
     "packageManager": {
@@ -20,10 +20,8 @@
   },
   "packageManager": "pnpm@12.6.0",
   "devDependencies": {
-    "@deepseek-ai/dsh": "0.1.7-rc.2",
     "@types/node": "26.6.2",
-    "fleet-client": "workspace:*",
-    "playwright": "1.63.0",
+    "fleet-core": "workspace:*",
     "typescript": "6.0.3"
   }
 }

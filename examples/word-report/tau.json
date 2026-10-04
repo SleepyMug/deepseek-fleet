@@ -1,5 +1,0 @@
-{
-  "description": "Report the three most frequent words of a text with a package of its own, built on the text-stats API.",
-  "args": [{ "name": "text", "type": "text", "description": "The text to read." }],
-  "exposes": ["word-report"]
-}

@@ -1,10 +1,7 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/fleet-client" },
     { "path": "packages/fleet-core" },
-    { "path": "packages/fleet-image" },
-    { "path": "packages/fleet-protocol" },
-    { "path": "packages/fleet-signin" }
+    { "path": "packages/fleet-image" }
   ]
 }

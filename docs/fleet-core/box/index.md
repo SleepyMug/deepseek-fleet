@@ -1,0 +1,64 @@
+# fleet-core/box
+
+A box is one Docker container, with fleet's helper running in it while the
+box is started. The container stays until it is removed, and keeps what is
+in it through any number of starts and stops.
+
+## Provides
+
+`Box`, from `fleet-core/box`:
+
+| Verb | What it does | Using |
+|---|---|---|
+| `Box.create({ image?, name? })` | Create the container, stopped. | `docker create --init --pull never --label fleet.box … sleep infinity` |
+| `Box.open(name)` | Take a box that exists already, running or not. | `docker container inspect`, which must show the label |
+| `Box.list()` | List every box, with its state. | `docker container ls --all --filter label=fleet.box` |
+| `box.start()` | Start the container, then a new helper in it, and do the handshake. | `docker start`, `docker exec --interactive` |
+| `box.request(method, params)` | Send one method to the started box's helper. | the helper connection |
+| `box.stop()` | End the helper and stop the container. | `docker stop` |
+| `box.copyIn(from, to)` | Copy a host folder's contents into a folder in the box. | `docker cp <from>/. <container>:<to>` |
+| `box.copyOut(from, to)` | Copy a box folder's contents into a host folder. | `docker cp <container>:<from>/. <to>` |
+| `box.remove()` | End the helper and remove the container, running or not. | `docker rm --force` |
+
+It also exports:
+- `HelperError`, a failure the helper reports for one request;
+- `METHODS`, the methods a helper takes;
+- `BOX_LABEL`, the label that marks a box's container.
+
+## Design
+
+- **Fixed containers.** The image is used as built, and is never pulled
+  (`--pull never`). `--init` puts an init process in front of `sleep`, so
+  `docker stop` ends the container right away instead of waiting out its
+  grace period.
+- **One verb at a time.** A box runs its verbs in order; each waits for the
+  one before it.
+- **The helper connection** (`box/helper.ts`) runs a command, does the
+  handshake, and matches answers to requests by id. It refuses a method
+  outside `METHODS` without sending it. Anything in the container can
+  impersonate the helper, so it checks every message and every result before
+  using it. A helper that breaks the protocol loses its connection.
+- **When the helper exits on its own,** every pending and later request
+  fails. The container stays, and `start()` starts a new helper.
+- **Copies** work whether the box runs or not. The target folder is made if
+  it is missing, but its parent must exist. A copy merges into what is there
+  already, and symlinks are copied as links. Paths in the box are absolute.
+
+## Built on
+
+- The Docker CLI, through `execFile`.
+- `fleet-image/layout`, for where the helper is in the image.
+- `fleet-image/helper/protocol`, for the wire.
+
+## How it runs
+
+```ts
+import { Box } from 'fleet-core/box'
+
+const box = await Box.create()             // image fleet:local, a fresh name
+await box.copyIn('./input', '/data')
+await box.start()
+await box.request('echo', { text: 'hi' })  // { text: 'hi' }
+await box.stop()                           // stopped; /data is still there
+await box.remove()
+```
