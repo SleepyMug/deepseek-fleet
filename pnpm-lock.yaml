@@ -169,6 +169,9 @@ importers:
       '@types/node':
         specifier: 26.6.2
         version: 26.6.2
+      fleet-client:
+        specifier: workspace:*
+        version: link:packages/fleet-client
       fleet-core:
         specifier: workspace:*
         version: link:packages/fleet-core
@@ -197,6 +200,15 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/fleet-client:
+    dependencies:
+      '@sleepymug/tau':
+        specifier: 0.1.0
+        version: link:../../../agent_fleet_project/tau
+      fleet-protocol:
+        specifier: workspace:*
+        version: link:../fleet-protocol
+
   packages/fleet-core:
     dependencies:
       '@sleepymug/tau':
@@ -208,8 +220,13 @@ importers:
       fleet-image:
         specifier: workspace:*
         version: link:../fleet-image
+      fleet-protocol:
+        specifier: workspace:*
+        version: link:../fleet-protocol
 
   packages/fleet-image: {}
+
+  packages/fleet-protocol: {}
 
 packages:
 

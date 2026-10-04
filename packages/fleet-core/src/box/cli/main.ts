@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * `fleet-box`: create, list, delete and start boxes, and copy folders in and
- * out of them, from a shell, to show and debug a box and its helper. `start` starts a box and enters a REPL
+ * `fleet-box`: create, list, delete and start boxes, and copy files and
+ * folders in and folders out of them, from a shell, to show and debug a box and its helper. `start` starts a box and enters a REPL
  * that sends methods to its helper (./repl.ts), and stops the box when the
  * REPL is left.
  * @module fleet-core/box/cli/main
@@ -17,7 +17,8 @@ Commands:
   create [--image <image>] [--name <name>]   create a box, stopped, and print its name
   list                                       list the boxes
   delete <name>...                           remove boxes, running or not
-  copy-in <name> <from> <to>                 copy the contents of host folder <from> into
+  copy-in <name> <from> <to>                 copy host file <from> to path <to> in the box,
+                                             or the contents of host folder <from> into
                                              folder <to> in the box, running or not
   copy-out <name> <from> <to>                copy the contents of folder <from> in the box
                                              into host folder <to>, running or not
@@ -60,7 +61,7 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
   },
 
   async 'copy-in'(args) {
-    const [name, from, to] = exactly(args, 3, 'copy-in takes a box, a host folder and a folder in the box')
+    const [name, from, to] = exactly(args, 3, 'copy-in takes a box, a host file or folder and a path in the box')
     await (await Box.open(name)).copyIn(from, to)
   },
 

@@ -14,6 +14,7 @@ import type { Method, Methods } from 'fleet-image/helper/protocol'
 import { Helper } from './helper.ts'
 
 export { HelperError, METHODS } from './helper.ts'
+export { exec } from './cmd/exec.ts'
 
 /** The label every box's container carries, with an empty value, which `list` and `open` look for. */
 export const BOX_LABEL = 'fleet.box'
@@ -121,17 +122,18 @@ export class Box {
   }
 
   /**
-   * Copy a host folder's contents into a folder in the container, whether it
-   * runs or not, with `docker cp`. The folder is made if missing, but its
-   * parent must exist; what is already in it stays unless a copied file
-   * takes its place. Symlinks are copied as links.
-   * @param from - the host folder.
-   * @param to - the container's folder, an absolute path.
+   * Copy a host file, or a host folder's contents, into the container,
+   * whether it runs or not, with `docker cp`: a file to the path `to`, and a
+   * folder's contents into the folder `to`, which is made if missing. The
+   * parent of `to` must exist; what is already in a folder stays unless a
+   * copied file takes its place. Symlinks are copied as links.
+   * @param from - the host file or folder.
+   * @param to - the container's path, absolute.
    */
   copyIn(from: string, to: string): Promise<void> {
     return this.serial(async () => {
-      if (!(await stat(from)).isDirectory()) throw new Error(`fleet: ${from} is not a folder`)
-      await run(this.docker, ['cp', `${resolve(from)}/.`, `${this.container}:${containerPath(to)}`])
+      const source = (await stat(from)).isDirectory() ? `${resolve(from)}/.` : resolve(from)
+      await run(this.docker, ['cp', source, `${this.container}:${containerPath(to)}`])
     })
   }
 

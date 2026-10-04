@@ -11,20 +11,31 @@
       "types": "./lib/box/box.d.ts",
       "default": "./lib/box/box.js"
     },
+    "./tau/plugin": {
+      "types": "./lib/tau/plugin.d.ts",
+      "default": "./lib/tau/plugin.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
-    "!lib/**/*.test.*"
+    "!lib/**/*.test.*",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
     "@sleepymug/ts-executor": "0.4.0",
-    "fleet-image": "workspace:*"
+    "fleet-image": "workspace:*",
+    "fleet-protocol": "workspace:*"
   }
 }

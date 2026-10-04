@@ -16,6 +16,14 @@ export interface Methods {
   hello: { params: Record<string, never>; result: { protocol: number } }
   /** Answers with the text it was given. */
   echo: { params: { text: string }; result: { text: string } }
+  /**
+   * Runs a program, without a shell, and answers how it ended, with its exit
+   * code or the signal that killed it, and all it wrote (./cmd/exec.ts).
+   */
+  exec: {
+    params: { argv: string[] }
+    result: { code: number | null; signal: string | null; stdout: string; stderr: string }
+  }
 }
 
 export type Method = keyof Methods

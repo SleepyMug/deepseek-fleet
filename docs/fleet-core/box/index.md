@@ -16,11 +16,14 @@ in it through any number of starts and stops.
 | `box.start()` | Start the container, then a new helper in it, and do the handshake. | `docker start`, `docker exec --interactive` |
 | `box.request(method, params)` | Send one method to the started box's helper. | the helper connection |
 | `box.stop()` | End the helper and stop the container. | `docker stop` |
-| `box.copyIn(from, to)` | Copy a host folder's contents into a folder in the box. | `docker cp <from>/. <container>:<to>` |
+| `box.copyIn(from, to)` | Copy a host file to a path in the box, or a host folder's contents into a folder in the box. | `docker cp <from> <container>:<to>`, or `<from>/.` for a folder |
 | `box.copyOut(from, to)` | Copy a box folder's contents into a host folder. | `docker cp <container>:<from>/. <to>` |
 | `box.remove()` | End the helper and remove the container, running or not. | `docker rm --force` |
 
 It also exports:
+- `exec(box, argv)`, which runs a program in a started box with the helper's
+  `exec`, and gives back what it wrote to stdout; an exit other than 0 fails,
+  with what it wrote to stderr;
 - `HelperError`, a failure the helper reports for one request;
 - `METHODS`, the methods a helper takes;
 - `BOX_LABEL`, the label that marks a box's container.
@@ -40,9 +43,15 @@ It also exports:
   using it. A helper that breaks the protocol loses its connection.
 - **When the helper exits on its own,** every pending and later request
   fails. The container stays, and `start()` starts a new helper.
-- **Copies** work whether the box runs or not. The target folder is made if
-  it is missing, but its parent must exist. A copy merges into what is there
-  already, and symlinks are copied as links. Paths in the box are absolute.
+- **Commands** of the helper's beyond the handshake have a module each in
+  `box/cmd/`, beside their handler in fleet-image's `helper/cmd/`: the check
+  of the command's result, which `box/helper.ts` registers, and what the
+  host calls it with, such as `exec`.
+- **Copies** work whether the box runs or not. A file goes to the path it is
+  given, and a folder's contents into the folder it is given, which is made
+  if it is missing. The parent must exist. A folder's copy merges into what
+  is there already, and symlinks are copied as links. Paths in the box are
+  absolute.
 
 ## Built on
 
@@ -53,12 +62,13 @@ It also exports:
 ## How it runs
 
 ```ts
-import { Box } from 'fleet-core/box'
+import { Box, exec } from 'fleet-core/box'
 
 const box = await Box.create()             // image fleet:local, a fresh name
 await box.copyIn('./input', '/data')
 await box.start()
 await box.request('echo', { text: 'hi' })  // { text: 'hi' }
+await exec(box, ['ls', '/data'])           // what ls wrote
 await box.stop()                           // stopped; /data is still there
 await box.remove()
 ```

@@ -6,6 +6,7 @@
  */
 
 import { createInterface } from 'node:readline'
+import { exec } from './cmd/exec.ts'
 import { PROTOCOL_VERSION, type HelperMessage, type HostMessage, type Method, type Methods } from './protocol.ts'
 
 type Handlers = { [M in Method]: (params: Methods[M]['params']) => Promise<Methods[M]['result']> | Methods[M]['result'] }
@@ -16,6 +17,7 @@ const handlers: Handlers = {
     if (typeof params?.text !== 'string') throw new Error('echo takes a text')
     return { text: params.text }
   },
+  exec,
 }
 
 createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', (line) => { void handle(line) })

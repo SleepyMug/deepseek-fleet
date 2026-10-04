@@ -8,7 +8,7 @@
 fleet-box create [--image <image>] [--name <name>]   create a box, stopped, and print its name
 fleet-box list                                       list the boxes
 fleet-box delete <name>...                           remove boxes, running or not
-fleet-box copy-in <name> <from> <to>                 copy a host folder's contents into the box
+fleet-box copy-in <name> <from> <to>                 copy a host file, or a host folder's contents, into the box
 fleet-box copy-out <name> <from> <to>                copy a box folder's contents out to the host
 fleet-box start <name>                               start the box, and send methods from a REPL
 ```
@@ -24,7 +24,8 @@ fleet-box start <name>                               start the box, and send met
 `start` starts the box and reads one line at a time:
 
 - `<method> [<params as a JSON object>]` sends a method, such as
-  `echo {"text":"hi"}`. The result is printed as one line of JSON on stdout.
+  `echo {"text":"hi"}` or `exec {"argv":["ls","/"]}`. The result is printed
+  as one line of JSON on stdout.
   Errors go to stderr as `error: …`.
 - `.help` lists the methods and commands. `.exit` leaves.
 - Ctrl+D on an empty line types `.exit`, which waits behind a request in

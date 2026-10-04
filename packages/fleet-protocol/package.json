@@ -1,0 +1,21 @@
+{
+  "name": "fleet-protocol",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tau": {
+      "types": "./lib/tau.d.ts",
+      "default": "./lib/tau.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b"
+  }
+}

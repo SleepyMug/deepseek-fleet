@@ -26,15 +26,20 @@ its stdin ends.
 |---|---|---|---|
 | `hello` | `{}` | `{ protocol }` | The handshake. The host refuses another protocol version. |
 | `echo` | `{ text }` | `{ text }` | A trivial directive. |
+| `exec` | `{ argv }` | `{ code, signal, stdout, stderr }` | Run a program, as the container's root, without a shell. An exit other than 0, or a signal, is a result; a program that cannot run is an error. |
 
 A new method needs three things:
 - an entry in `Methods`;
-- a handler in `main.ts`;
-- a check of its result on the host (fleet-core's `box/helper.ts`).
+- a handler in `main.ts`, or, for a command beyond the handshake, in a
+  module of its own in `helper/cmd/`, as `exec` has, which `main.ts`
+  registers;
+- a check of its result on the host, in fleet-core's `box/cmd/` beside what
+  the host calls it with, which `box/helper.ts` registers.
 
 ## Built on
 
-Node alone: `readline` over stdin, and JSON lines on stdout.
+Node alone: `readline` over stdin, JSON lines on stdout, and
+`child_process.execFile` for `exec`.
 
 ## How it runs
 

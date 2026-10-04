@@ -32,3 +32,21 @@ test('the helper answers each request, and exits once its stdin ends', async () 
     { type: 'error', id: 4, message: 'unknown method toString' },
   ])
 })
+
+test('the helper runs programs, and answers how they ended', async () => {
+  const program = (code: string): string[] => [process.execPath, '--eval', code]
+  const answers = await exchange([
+    { type: 'request', id: 1, method: 'exec', params: { argv: program('process.stdout.write("out"); process.stderr.write("err")') } },
+    { type: 'request', id: 2, method: 'exec', params: { argv: program('process.exit(3)') } },
+    { type: 'request', id: 3, method: 'exec', params: { argv: program('process.kill(process.pid, "SIGKILL")') } },
+    { type: 'request', id: 4, method: 'exec', params: { argv: ['/no/such/program'] } },
+    { type: 'request', id: 5, method: 'exec', params: { argv: [] } },
+  ])
+  assert.deepEqual(answers.slice(0, 3), [
+    { type: 'result', id: 1, value: { code: 0, signal: null, stdout: 'out', stderr: 'err' } },
+    { type: 'result', id: 2, value: { code: 3, signal: null, stdout: '', stderr: '' } },
+    { type: 'result', id: 3, value: { code: null, signal: 'SIGKILL', stdout: '', stderr: '' } },
+  ])
+  assert.match((answers[3] as { message: string }).message, /^exec cannot run \/no\/such\/program: .*ENOENT/u)
+  assert.deepEqual(answers[4], { type: 'error', id: 5, message: 'exec takes an argv, a list of strings, the program first' })
+})

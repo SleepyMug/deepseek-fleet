@@ -1,0 +1,9 @@
+{
+  "description": "Add notes to the pages of a site, and report what changed.",
+  "params": {
+    "style": { "type": "text", "description": "How to write." },
+    "notes": { "type": "file", "mode": "in", "description": "What to add." },
+    "site": { "type": "dir", "mode": "inout", "description": "The pages to edit." },
+    "report": { "type": "file", "mode": "out", "description": "What changed." }
+  }
+}

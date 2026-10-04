@@ -1,0 +1,12 @@
+# fleet-core's bundle patch: list fleet-core after @deepseek-ai/dsh-base and
+# @deepseek-ai/dsh-web-app in the fleet profile's bundles. It adds fleet-tau,
+# the tau service (docs/fleet-core/tau/index.md), which runs in dsh's process
+# but uses nothing of dsh's, and changes nothing else.
+
+- insert:
+    # The socket `fleet` talks to, $DSH_HOME/fleet/tau.sock, and the
+    # registry of sessions and their boxes, $DSH_HOME/fleet/taus/.
+    - id: fleet-tau
+      name: fleet-core/tau/plugin
+      config:
+        dshHome: !!js dshHomePath()

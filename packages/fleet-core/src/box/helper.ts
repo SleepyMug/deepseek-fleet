@@ -10,6 +10,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { PROTOCOL_VERSION, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
+import { isExecResult } from './cmd/exec.ts'
 
 /** A failure the helper reported for one request. */
 export class HelperError extends Error {
@@ -20,6 +21,7 @@ export class HelperError extends Error {
 const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'] } = {
   hello: (value): value is Methods['hello']['result'] => isRecord(value) && typeof value.protocol === 'number',
   echo: (value): value is Methods['echo']['result'] => isRecord(value) && typeof value.text === 'string',
+  exec: isExecResult,
 }
 
 /** The methods a helper takes. */

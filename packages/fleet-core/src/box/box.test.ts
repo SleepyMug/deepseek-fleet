@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from 'fleet-image/layout'
-import { Box } from './box.ts'
+import { Box, exec as inBox } from './box.ts'
 
 const exec = promisify(execFile)
 
@@ -53,7 +53,7 @@ test('a box keeps its container through stops and starts until removed', { skip:
   await assert.rejects(Box.open(box.container), /No such container/u)
 })
 
-test('a box copies whole folders in and out, running or not', { skip: await absent(DEFAULT_IMAGE, 'build it with `pnpm image`') }, async () => {
+test('a box copies files and whole folders in, and folders out, running or not', { skip: await absent(DEFAULT_IMAGE, 'build it with `pnpm image`') }, async () => {
   const work = await mkdtemp(join(tmpdir(), 'fleet-box-test-'))
   const box = await Box.create()
   try {
@@ -76,12 +76,28 @@ test('a box copies whole folders in and out, running or not', { skip: await abse
     await box.copyIn(source, '/data')
     await exec('docker', ['exec', box.container, 'test', '-e', '/data/made'])
 
+    // A file goes to the path it is given.
+    await box.copyIn(join(source, 'sub', 'file'), '/data/copied')
+    assert.equal((await exec('docker', ['exec', box.container, 'cat', '/data/copied'])).stdout, 'hi\n')
+
     await assert.rejects(box.copyIn(source, 'data'), /not an absolute path/u)
-    await assert.rejects(box.copyIn(join(source, 'sub', 'file'), '/data'), /is not a folder/u)
     await assert.rejects(box.copyIn(source, '/no/such/parent'), /docker cp failed/u)
+    await assert.rejects(box.copyIn(join(source, 'sub', 'file'), '/no/such/parent'), /docker cp failed/u)
   } finally {
     await box.remove()
     await rm(work, { recursive: true, force: true })
+  }
+})
+
+test('a started box runs programs, and fails one that exits otherwise than with 0', { skip: await absent(DEFAULT_IMAGE, 'build it with `pnpm image`') }, async () => {
+  const box = await Box.create()
+  try {
+    await box.start()
+    await inBox(box, ['mkdir', '-p', '/a/b'])
+    assert.equal(await inBox(box, ['ls', '/a']), 'b\n')
+    await assert.rejects(inBox(box, ['ls', '/none']), /^Error: fleet: ls in box fleet-box-\w+ exited with 2: ls: cannot access '\/none'/u)
+  } finally {
+    await box.remove()
   }
 })
 
