@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import { posix, resolve } from 'node:path'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from 'fleet-image/layout'
-import type { Method, Methods } from 'fleet-image/helper/protocol'
+import type { EventOf, Method, Methods } from 'fleet-image/helper/protocol'
 import { Helper } from './helper.ts'
 
 export { HelperError, METHODS } from './helper.ts'
@@ -106,11 +106,12 @@ export class Box {
 
   /**
    * Ask the helper of the started box.
+   * @param onEvent - told each event the request sends before its result.
    * @returns its checked result; a failure the helper reports is a HelperError.
    */
-  request<M extends Method>(method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
+  request<M extends Method>(method: M, params: Methods[M]['params'], onEvent?: (event: EventOf<M>) => void): Promise<Methods[M]['result']> {
     if (this.helper === undefined) return Promise.reject(new Error(`fleet: box ${this.container} is not started`))
-    return this.helper.request(method, params)
+    return this.helper.request(method, params, onEvent)
   }
 
   /** End the helper and stop the container, which keeps what is in it. */

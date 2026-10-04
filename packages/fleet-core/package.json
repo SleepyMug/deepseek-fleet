@@ -15,6 +15,18 @@
       "types": "./lib/tau/plugin.d.ts",
       "default": "./lib/tau/plugin.js"
     },
+    "./tau/runs-plugin": {
+      "types": "./lib/tau/runs-plugin.d.ts",
+      "default": "./lib/tau/runs-plugin.js"
+    },
+    "./world/fs": {
+      "types": "./lib/world/fs.d.ts",
+      "default": "./lib/world/fs.js"
+    },
+    "./world/subprocess": {
+      "types": "./lib/world/subprocess.d.ts",
+      "default": "./lib/world/subprocess.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -40,14 +52,26 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-api-session-controller": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-workspace": "0.1.7-rc.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.2",
     "@deepseek-ai/dsh-api-session-controller": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-workspace": "0.1.7-rc.2"
   }
 }

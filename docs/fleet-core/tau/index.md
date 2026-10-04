@@ -5,13 +5,19 @@ session has, and starts, stops and deletes the session with its box. It runs
 in dsh's process, in the fleet profile. `create` mints the session's id and
 expands its prompt; the first `start` makes the dsh session, in the caller's
 folder as its workspace, so the web UI lists it there, and gives it the
-prompt. The session's tools do not run in the box yet, so it has none.
+prompt. The session's bash and file tools work in its box, through
+fleet-core's world (docs/fleet-core/world/index.md).
 
 ## Provides
 
-`fleet-tau` (`fleet-core/tau/plugin`), a dsh plugin, which fleet-core's
-`cordis.patch.yml` mounts. It serves `fleet-protocol/tau` on
-`$DSH_HOME/fleet/tau.sock`, for `fleet` (fleet-client):
+Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
+
+- `fleet-tau-runs` (`fleet-core/tau/runs-plugin`): the runs of taus and
+  their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It uses nothing of dsh's.
+- `fleet-tau` (`fleet-core/tau/plugin`): the tau service (`service.ts`). It
+  builds on `ctx.fleetTauRuns`, dsh's session controller and its workspace
+  registry, and serves `fleet-protocol/tau` on `$DSH_HOME/fleet/tau.sock`,
+  for `fleet` (fleet-client):
 
 | Op | What it does |
 |---|---|
@@ -21,8 +27,14 @@ prompt. The session's tools do not run in the box yet, so it has none.
 | `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the session. |
 
 The patch also declares `tau`, the agent preset a tau's session has: a
-persona and compaction, and no tools, since tools would run on the host,
-where the paths the prompt names are not.
+persona, bash in the foreground only, read/write/edit, and compaction.
+
+`ctx.fleetTauRuns` gives fleet-core's world
+(docs/fleet-core/world/index.md) what it needs:
+
+- `isTau(sessionId)`, at once, whether a session is a tau's;
+- `boxFor(sessionId)`, the started box of a tau's session, started if it is
+  not.
 
 ## Design
 
@@ -81,9 +93,12 @@ where the paths the prompt names are not.
   delete sessions; then it removes the box and forgets the session. A
   session never started is not dsh's, so there is nothing to archive. An
   archive that fails keeps the box and the entry.
-- **One `Box` per session.** The service opens each session's box once and
-  keeps it, so the box's verbs run in order. When the plugin unloads, as dsh
-  exits, it stops the boxes it started.
+- **One `Box` per session.** The runs open each session's box once and keep
+  it, so the box's verbs run in order. When `fleet-tau-runs` unloads, as
+  dsh exits, it stops the boxes it started, `boxFor`'s included.
+- **Which sessions are a tau's.** The runs read the registry's ids when the
+  plugin loads, and keep them as sessions are created and deleted, so that
+  `isTau` answers at once, as a process's start, which cannot wait, needs.
 - **A box gone.** Deleting a session whose box was removed by other means
   still forgets the session.
 - **The socket** (`server.ts`) has mode 0600, and its folder is made with
@@ -99,11 +114,20 @@ where the paths the prompt names are not.
   own calls go, so the web UI follows the session live. The plugin imports
   only their types; its config gives it the dsh home, as `dshHomePath()` in
   the patch.
+- **Two plugins, in the order they need each other.** dsh's session
+  controller needs `ctx.fs`, the world's, which needs the runs. So the runs
+  are a plugin of their own, which needs nothing, and the tau service,
+  which needs the session controller, comes last:
+
+  ```
+  fleet-tau-runs  ←  fleet-fs, fleet-subprocess  ←  session controller
+         ↑                                                  ↑
+         └──────────────────  fleet-tau  ───────────────────┘
+  ```
 
 ## Not yet
 
-- The session has no tools: they would run on the host, not in its box.
-  Nothing waits for its turn to end.
+- Nothing waits for the session's turn to end.
 - The APIs are only listed in the registry entry; nothing implements them.
 - Nothing comes back out: `$out` and `$inout` handles are neither copied back
   nor checked with `checkOutputs`.
@@ -117,13 +141,25 @@ where the paths the prompt names are not.
 - `fleet-protocol/tau`, for the wire.
 - dsh's session controller and workspace registry
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`),
-  and `@deepseek-ai/dsh-agent-preset` for the `tau` preset.
+  and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash` and `dsh-tool-fs` for
+  the `tau` preset.
 
 ## How it runs
 
-The fleet profile lists fleet-core after dsh's base and web bundles, beside
-fleet-profile (docs/fleet-profile/index.md); the service needs only
-fleet-core.
+The fleet profile lists fleet-core after dsh's base and web bundles, in
+`$DSH_HOME/profiles/fleet/package.json`:
+
+```json
+{
+  "dependencies": { "fleet-core": "link:<checkout>/packages/fleet-core" },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "fleet-core"] } }
+}
+```
+
+`pnpm exec dsh plugin --profile fleet add link:<checkout>/packages/fleet-core`
+makes it so. fleet-core's patch is the profile's layer as well: no sandbox,
+nothing that waits on a person, and one agent preset, `fleet`, for the web
+UI's sessions, whose tools work on the host.
 
 After `pnpm build` and `pnpm image`, `pnpm exec dsh --profile fleet`, with
 the dsh the workspace pins, starts the service with the web host, and

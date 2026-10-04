@@ -1,12 +1,171 @@
-# fleet-core's bundle patch: list fleet-core after @deepseek-ai/dsh-base and
-# @deepseek-ai/dsh-web-app in the fleet profile's bundles. It adds fleet-tau,
-# the tau service (docs/fleet-core/tau/index.md), which makes each tau's
-# session through dsh's session controller, and the agent preset those
-# sessions have, and changes nothing else.
+# fleet-core's bundle patch, the fleet profile's layer: list fleet-core after
+# @deepseek-ai/dsh-base and @deepseek-ai/dsh-web-app in the profile's
+# bundles. It sets the profile up, with no sandbox, nothing that waits on a
+# person and one agent preset for the web UI's sessions; adds fleet-tau, the
+# tau service (docs/fleet-core/tau/index.md), which makes each tau's session
+# through dsh's session controller, and the agent preset those sessions
+# have; and gives `ctx.fs` and `ctx.subprocess` to fleet-core's world
+# (docs/fleet-core/world/index.md), which serves a tau's session from its
+# box and everything else from the host. Which model runs, and how large its
+# context is, is the profile's own setting, in its cordis.patch.yml.
+# A patch's `name` only asserts an existing row's module, so swapping a
+# module means disabling its row and inserting a replacement under a new id.
+
+# ═══ The profile ═══
+
+# ── No sandbox: unconfined bash and file tools, no Permissions selector ──
+
+# The confining `ctx.shell` executor; it requires `ctx.sandbox`.
+- id: bash-sandbox
+  disabled: true
+
+- id: sandbox
+  disabled: true
+
+- id: fs-sandbox
+  disabled: true
+
+# Permission presets mount only over a confining bash executor.
+- id: permission
+  disabled: true
+
+- id: ui-permission
+  disabled: true
+
+# Requires `ctx.sandbox`; no preset below uses PTC.
+- id: ptc-runtime
+  disabled: true
+
+# The resolved mode is part of the model's runtime context every turn.
+- id: sandbox-policy
+  config:
+    mode: danger-full-access
+    workspaceRoot: !!js process.cwd()
+
+# The unconfined `ctx.shell` executor, in place of the sandbox's; it runs
+# bash through `ctx.subprocess`, fleet-core's below. `ctx.fs` is fleet-core's
+# too.
+- insert:
+    - id: bash-local
+      name: '@deepseek-ai/dsh-bash-local'
+      config:
+        timeoutMs: 60000
+
+# ── Nothing waits on a person: runs go unattended until someone steers ──
+
+# Approval only ever widens a sandbox, and nothing here is confined, so every
+# action already runs with full access. `never` answers any request at once
+# with a rejection instead of waiting for a person; dsh pairs it with
+# danger-full-access, but dsh-base keeps `ask` unless DSH_PERMISSION_MODE says so.
+- id: approval
+  config:
+    policy: never
+
+# ask_user's service; the tool cannot load without it.
+- id: user-questions
+  disabled: true
+
+- id: ui-user-questions
+  disabled: true
+
+# ── One agent preset, no preset picker ──
+
+- id: preset-standard
+  disabled: true
+
+- id: preset-ptc
+  disabled: true
+
+- id: preset-minimal
+  disabled: true
+
+- id: preset-cordis
+  disabled: true
+
+- id: ui-agent-preset
+  disabled: true
+
+- id: agent-preset-registry
+  config:
+    default: fleet
 
 - insert:
-    # The socket `fleet` talks to, $DSH_HOME/fleet/tau.sock, and the
-    # registry of sessions and their boxes, $DSH_HOME/fleet/taus/.
+    - id: preset-fleet
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: fleet
+        order: 1
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are a coding agent powered by the {{model}} model.
+              suffix: Your working directory is {{cwd}}.
+
+          # bash, foreground only: nothing it starts outlives its call, so an
+          # idle agent has finished its work. A command past its timeout
+          # (bash-local's default, raised per call up to its cap) is killed
+          # rather than moved to the background, and without background jobs
+          # the job_* tools have nothing to act on.
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            config:
+              enableRunInBackground: false
+              promoteOnTimeout: false
+
+          # read / write / edit
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          # Not model tools: automatic compaction, /compact, and old tool-result pruning.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+# ═══ The runs of taus, and their boxes ═══
+
+# `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, in the
+# registry $DSH_HOME/fleet/taus/. It needs nothing of dsh's, so the world
+# below builds on it, and dsh's session controller on the world.
+- insert:
+    - id: fleet-tau-runs
+      name: fleet-core/tau/runs-plugin
+      config:
+        dshHome: !!js dshHomePath()
+
+# ═══ The world: a tau's session in its box, everything else on the host ═══
+
+# dsh's local subprocess runtime, which fleet-core's mounts where only it sees
+# it, for every process that is not a tau's.
+- id: subprocess
+  disabled: true
+
+- insert:
+    - id: fleet-fs
+      name: fleet-core/world/fs
+
+    - id: fleet-subprocess
+      name: fleet-core/world/subprocess
+
+# ═══ fleet-tau ═══
+
+- insert:
+    # The socket `fleet` talks to, $DSH_HOME/fleet/tau.sock, which makes a
+    # run's session through dsh's session controller.
     - id: fleet-tau
       name: fleet-core/tau/plugin
       config:
@@ -15,9 +174,8 @@
 # ── The agent preset of a tau's session ──
 #
 # fleet-tau makes a tau's session with the `tau` preset (src/tau/plugin.ts).
-# Tools would run on the host, where the paths the tau's prompt names are
-# not, until fleet-core runs them in the session's box, so for now it has
-# none: the model answers in text.
+# Its bash and file tools run in the session's box, through fleet-core's
+# `ctx.subprocess` and `ctx.fs`.
 - insert:
     - id: preset-tau
       name: '@deepseek-ai/dsh-agent-preset'
@@ -29,6 +187,19 @@
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: You are an agent powered by the {{model}} model, running a tau; its prompt is your task.
+
+          # bash, foreground only: nothing it starts outlives its call. A
+          # command past its timeout is killed rather than moved to the
+          # background.
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            config:
+              enableRunInBackground: false
+              promoteOnTimeout: false
+
+          # read / write / edit
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
 
           # Not model tools: automatic compaction, /compact, and old tool-result pruning.
           - id: compaction

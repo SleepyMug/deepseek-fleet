@@ -101,6 +101,27 @@ test('a started box runs programs, and fails one that exits otherwise than with 
   }
 })
 
+test('a started box serves dsh\'s file system and runs processes with their output as events', { skip: await absent(DEFAULT_IMAGE, 'build it with `pnpm image`') }, async () => {
+  const box = await Box.create()
+  try {
+    await box.start()
+    const file = await box.request('fs.resolve', { path: 'notes.txt', cwd: '/tmp' })
+    assert.deepEqual(file, { targetKey: '/tmp/notes.txt', displayPath: '/tmp/notes.txt' })
+    assert.equal((await box.request('fs.writeText', { target: file, content: 'in the box\n', expected: { kind: 'createIfAbsent' } })).operation, 'create')
+    assert.equal(await box.request('fs.readText', { target: file }), 'in the box\n')
+    await assert.rejects(box.request('fs.readText', { target: { targetKey: '/none', displayPath: '/none' } }), { code: 'FS_NOT_FOUND' })
+    const output: string[] = []
+    const ended = await box.request('spawn', {
+      process: 'p1', argv: ['sh', '-c', 'cat /tmp/notes.txt; pwd'], cwd: '/tmp', env: {}, stdin: null, graceMs: 1000,
+    }, (event) => { output.push(Buffer.from(event.data, 'base64').toString()) })
+    assert.deepEqual(ended, { code: 0, signal: null })
+    assert.equal(output.join(''), 'in the box\n/tmp\n')
+    assert.equal(await box.request('which', { command: 'sh', env: null }), '/usr/bin/sh')
+  } finally {
+    await box.remove()
+  }
+})
+
 test('a box whose helper does not start is left stopped', { skip: await absent(PLAIN_IMAGE, `pull it with \`docker pull ${PLAIN_IMAGE}\``) }, async () => {
   const box = await Box.create({ image: PLAIN_IMAGE })
   try {

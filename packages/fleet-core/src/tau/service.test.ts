@@ -7,7 +7,8 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from 'fleet-image/layout'
 import { Registry } from './registry.ts'
-import { TauService, type Boxes, type ServiceBox, type Sessions } from './service.ts'
+import { TauRuns, type Boxes, type RunBox } from './runs.ts'
+import { TauService, type Sessions } from './service.ts'
 
 const run = promisify(execFile)
 
@@ -45,13 +46,13 @@ class FakeBoxes implements Boxes {
   readonly existing = new Set<string>()
   failing: string | undefined
 
-  create(name: string): Promise<ServiceBox> {
+  create(name: string): Promise<RunBox> {
     this.calls.push(`create ${name}`)
     this.existing.add(name)
     return Promise.resolve(this.box(name))
   }
 
-  open(name: string): Promise<ServiceBox> {
+  open(name: string): Promise<RunBox> {
     if (!this.existing.has(name)) return Promise.reject(new Error(`No such container: ${name}`))
     this.calls.push(`open ${name}`)
     return Promise.resolve(this.box(name))
@@ -61,7 +62,7 @@ class FakeBoxes implements Boxes {
     return Promise.resolve(this.existing.has(name))
   }
 
-  private box(name: string): ServiceBox {
+  private box(name: string): RunBox {
     const record = (verb: string, call: string): void => {
       this.calls.push(call)
       if (verb === this.failing) throw new Error(`${verb} failed`)
@@ -78,9 +79,15 @@ class FakeBoxes implements Boxes {
       request: (async (method: string, params: unknown) => {
         record(method, `${method} ${JSON.stringify(params)}`)
         return { code: 0, signal: null, stdout: '', stderr: '' }
-      }) as ServiceBox['request'],
+      }) as RunBox['request'],
     }
   }
+}
+
+/** The tau service on runs in `work`, with the runs at hand. */
+function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes): TauService & { tauRuns: TauRuns } {
+  const runs = new TauRuns(new Registry(join(work, 'taus')), log, boxes)
+  return Object.assign(new TauService(runs, sessions, log), { tauRuns: runs })
 }
 
 /** dsh's sessions, as a record of what is done with them, with the call `failing` names failing once. */
@@ -116,7 +123,7 @@ test('create sets up a stopped box with the handles and the tau, and registers t
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes()
   const logged: string[] = []
-  const service = new TauService(new Registry(join(work, 'taus')), (message) => { logged.push(message) }, new FakeSessions(), boxes)
+  const service = make(work, (message) => { logged.push(message) }, new FakeSessions(), boxes)
 
   const created = await service.create(tauDir, values, work)
   const project = await realpath(work)
@@ -153,7 +160,7 @@ test('create sets up a stopped box with the handles and the tau, and registers t
 test('create refuses values that do not fit the tau before it makes a box', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes()
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), boxes)
+  const service = make(work, () => {}, new FakeSessions(), boxes)
   await assert.rejects(service.create(tauDir, { ...values, style: undefined }, work), /style/u)
   await assert.rejects(service.create(tauDir, { ...values, notes: { $in: 'missing.md' } }, work), /handles do not fit/u)
   assert.deepEqual(boxes.calls, [])
@@ -163,7 +170,7 @@ test('a create that fails removes its box and registers nothing', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes()
   boxes.failing = 'copyIn'
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), boxes)
+  const service = make(work, () => {}, new FakeSessions(), boxes)
   await assert.rejects(service.create(tauDir, values, work), /copyIn failed/u)
   assert.equal(boxes.calls.at(-1), 'remove')
   assert.equal(boxes.existing.size, 0)
@@ -173,7 +180,7 @@ test('a create that fails removes its box and registers nothing', async (t) => {
 test('a session\'s box starts, stops and is deleted, by this service or one started later', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes()
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), boxes)
+  const service = make(work, () => {}, new FakeSessions(), boxes)
   const { sessionId, box } = await service.create(tauDir, values, work)
   boxes.calls.length = 0
 
@@ -182,10 +189,10 @@ test('a session\'s box starts, stops and is deleted, by this service or one star
   assert.deepEqual(boxes.calls, ['start', 'stop'])
 
   // As after a restart: the box is found through the registry.
-  const later = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), boxes)
+  const later = make(work, () => {}, new FakeSessions(), boxes)
   boxes.calls.length = 0
   await later.start(sessionId)
-  await later.close()
+  await later.tauRuns.close()
   assert.deepEqual(boxes.calls, [`open ${box}`, 'start', 'stop'])
 
   boxes.calls.length = 0
@@ -198,7 +205,7 @@ test('a session\'s box starts, stops and is deleted, by this service or one star
 test('the first start makes the dsh session in the caller\'s folder and gives it its prompt, once', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const sessions = new FakeSessions()
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, sessions, new FakeBoxes())
+  const service = make(work, () => {}, sessions, new FakeBoxes())
   const { sessionId } = await service.create(tauDir, values, work)
   const { promptRequestId, project } = await new Registry(join(work, 'taus')).get(sessionId)
   assert.deepEqual(sessions.calls, [])
@@ -215,7 +222,7 @@ test('the first start makes the dsh session in the caller\'s folder and gives it
 
   // As after a restart: the registry says the session has its prompt.
   sessions.calls.length = 0
-  const later = new TauService(new Registry(join(work, 'taus')), () => {}, sessions, new FakeBoxes())
+  const later = make(work, () => {}, sessions, new FakeBoxes())
   await later.delete(sessionId)
   assert.deepEqual(sessions.calls, [`archive ${sessionId}`])
 })
@@ -223,7 +230,7 @@ test('the first start makes the dsh session in the caller\'s folder and gives it
 test('a start that failed on the way makes and prompts the session again, under the same request', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const sessions = new FakeSessions()
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, sessions, new FakeBoxes())
+  const service = make(work, () => {}, sessions, new FakeBoxes())
   const { sessionId } = await service.create(tauDir, values, work)
   const { promptRequestId } = await new Registry(join(work, 'taus')).get(sessionId)
 
@@ -245,7 +252,7 @@ test('deleting archives the session before it removes the box, and a failed arch
   const { work, tauDir, values } = await fixture(t)
   const sessions = new FakeSessions()
   const boxes = new FakeBoxes()
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, sessions, boxes)
+  const service = make(work, () => {}, sessions, boxes)
   const { sessionId, box } = await service.create(tauDir, values, work)
 
   sessions.failing = 'archive'
@@ -258,12 +265,40 @@ test('deleting archives the session before it removes the box, and a failed arch
   assert.deepEqual(sessions.calls, [`archive ${sessionId}`, `archive ${sessionId}`])
 })
 
+test('a tau session\'s box is started for its files and processes once, and again after a stop', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const boxes = new FakeBoxes()
+  const service = make(work, () => {}, new FakeSessions(), boxes)
+  const { sessionId, box } = await service.create(tauDir, values, work)
+  boxes.calls.length = 0
+
+  assert.equal(await service.tauRuns.boxFor('session-00000000-0000-4000-8000-000000000000'), undefined)
+  assert.equal(await service.tauRuns.boxFor('not-a-tau-session'), undefined)
+  const [first, second] = await Promise.all([service.tauRuns.boxFor(sessionId), service.tauRuns.boxFor(sessionId)])
+  assert.equal(first?.container, box)
+  assert.equal(first, second)
+  await service.stop(sessionId)
+  assert.equal((await service.tauRuns.boxFor(sessionId))?.container, box)
+  assert.deepEqual(boxes.calls, ['start', 'stop', 'start'])
+  await service.tauRuns.close()
+  assert.deepEqual(boxes.calls, ['start', 'stop', 'start', 'stop'])
+
+  // As after a restart: the registry says which sessions are a tau's.
+  const later = make(work, () => {}, new FakeSessions(), boxes)
+  assert.equal(later.tauRuns.isTau(sessionId), false)
+  await later.tauRuns.load()
+  assert.equal(later.tauRuns.isTau(sessionId), true)
+  await later.delete(sessionId)
+  assert.equal(later.tauRuns.isTau(sessionId), false)
+  assert.equal(await later.tauRuns.boxFor(sessionId), undefined)
+})
+
 test('deleting a session whose box is gone forgets the session', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes()
-  const { sessionId, box } = await new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), boxes).create(tauDir, values, work)
+  const { sessionId, box } = await make(work, () => {}, new FakeSessions(), boxes).create(tauDir, values, work)
   boxes.existing.delete(box)
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), boxes)
+  const service = make(work, () => {}, new FakeSessions(), boxes)
   await assert.rejects(service.start(sessionId), /No such container/u)
   await service.delete(sessionId)
   await assert.rejects(service.start(sessionId), /no tau session/u)
@@ -271,7 +306,7 @@ test('deleting a session whose box is gone forgets the session', async (t) => {
 
 test('only ids of the form the service mints name sessions', async (t) => {
   const { work } = await fixture(t)
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions(), new FakeBoxes())
+  const service = make(work, () => {}, new FakeSessions(), new FakeBoxes())
   for (const id of ['../../etc/passwd', 'session-1', '']) {
     await assert.rejects(service.start(id), new RegExp(`no tau session ${id.replaceAll('.', '\\.')}`, 'u'))
   }
@@ -284,7 +319,7 @@ async function absent(image: string): Promise<string | false> {
 
 test('a real box gets the tau and the handles at their places', { skip: await absent(DEFAULT_IMAGE) }, async (t) => {
   const { work, tauDir, values } = await fixture(t)
-  const service = new TauService(new Registry(join(work, 'taus')), () => {}, new FakeSessions())
+  const service = make(work, () => {}, new FakeSessions())
   const { sessionId, box, prompt } = await service.create(tauDir, values, work)
   try {
     assert.equal(prompt, EXPANDED)

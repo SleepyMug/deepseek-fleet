@@ -6,7 +6,7 @@
  * @module fleet-core/tau/registry
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BoundHandle } from '@sleepymug/tau'
 
@@ -50,12 +50,29 @@ export class Registry {
 
   /** A session's entry; a session without one fails. */
   async get(sessionId: string): Promise<Entry> {
+    const entry = await this.find(sessionId)
+    if (entry === undefined) throw new Error(`fleet: no tau session ${sessionId}`)
+    return entry
+  }
+
+  /** A session's entry, or undefined for a session without one, such as any dsh session not a tau's. */
+  async find(sessionId: string): Promise<Entry | undefined> {
+    if (!SESSION_ID.test(sessionId)) return undefined
     try {
       return JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Entry
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`fleet: no tau session ${sessionId}`)
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
       throw error
     }
+  }
+
+  /** The ids of the sessions with an entry. */
+  async list(): Promise<string[]> {
+    const names = await readdir(this.dir).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    })
+    return names.filter(name => name.endsWith('.json')).map(name => name.slice(0, -'.json'.length)).filter(id => SESSION_ID.test(id))
   }
 
   /** Forget a session; one without an entry is forgotten already. */

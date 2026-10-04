@@ -1,27 +1,26 @@
 /**
  * fleet-tau, the tau service (./service.ts) on its socket (./server.ts), as
  * a dsh plugin: fleet-core's cordis.patch.yml mounts it in the fleet
- * profile. Its config names the dsh home, where it serves its socket and
- * keeps its registry; its boxes are Docker's; and it prints what it does on
- * dsh's stderr. Of dsh's, it uses the session controller and the workspace
+ * profile. It builds on the runs of taus and their boxes, `ctx.fleetTauRuns`
+ * (./runs-plugin.ts), and on dsh's session controller and workspace
  * registry, as the web client's own calls do, so that the web UI lists a
  * tau's session, under the caller's folder, and follows it. It imports only
- * their types.
+ * their types. Its config names the dsh home, where it serves its socket.
  * @module fleet-core/tau/plugin
  */
 
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { socketPath } from 'fleet-protocol/tau'
-import { Registry } from './registry.ts'
+import { print } from './runs-plugin.ts'
 import { listen } from './server.ts'
 import { TauService, type Sessions } from './service.ts'
 
 export const name = 'fleet-tau'
-export const inject = ['sessionController', 'workspaceRegistry']
+export const inject = ['fleetTauRuns', 'sessionController', 'workspaceRegistry']
 
 /** The agent preset a tau's session has, which fleet-core's cordis.patch.yml declares. */
 export const PRESET = 'tau'
@@ -38,15 +37,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   if (typeof config?.dshHome !== 'string' || !isAbsolute(config.dshHome)) {
     throw new Error('fleet-tau: its config names dshHome, the dsh home, an absolute path')
   }
-  // On dsh's stderr, beside its own `dsh:` lines: its logger shows no info.
-  const print = (message: string): void => { process.stderr.write(`fleet-tau: ${message}\n`) }
-  const service = new TauService(new Registry(join(config.dshHome, 'fleet', 'taus')), print, sessions(ctx, print))
+  const service = new TauService(ctx.fleetTauRuns, sessions(ctx), print)
   const close = await listen(socketPath(config.dshHome), service)
   try {
-    ctx.effect(() => async () => {
-      await close()
-      await service.close()
-    }, 'fleet-tau socket')
+    ctx.effect(() => close, 'fleet-tau socket')
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
     await close()
@@ -55,7 +49,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 }
 
 /** dsh's sessions, as the service uses them. */
-function sessions(ctx: Context, print: (message: string) => void): Sessions {
+function sessions(ctx: Context): Sessions {
   return {
     async create(sessionId, project, title) {
       // The same folder's workspace each time, which the session controller attaches the session to.

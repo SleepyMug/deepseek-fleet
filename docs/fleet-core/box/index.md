@@ -14,7 +14,7 @@ in it through any number of starts and stops.
 | `Box.open(name)` | Take a box that exists already, running or not. | `docker container inspect`, which must show the label |
 | `Box.list()` | List every box, with its state. | `docker container ls --all --filter label=fleet.box` |
 | `box.start()` | Start the container, then a new helper in it, and do the handshake. | `docker start`, `docker exec --interactive` |
-| `box.request(method, params)` | Send one method to the started box's helper. | the helper connection |
+| `box.request(method, params, onEvent?)` | Send one method to the started box's helper; `onEvent` is told each event it sends before its result. | the helper connection |
 | `box.stop()` | End the helper and stop the container. | `docker stop` |
 | `box.copyIn(from, to)` | Copy a host file to a path in the box, or a host folder's contents into a folder in the box. | `docker cp <from> <container>:<to>`, or `<from>/.` for a folder |
 | `box.copyOut(from, to)` | Copy a box folder's contents into a host folder. | `docker cp <container>:<from>/. <to>` |
@@ -24,7 +24,7 @@ It also exports:
 - `exec(box, argv)`, which runs a program in a started box with the helper's
   `exec`, and gives back what it wrote to stdout; an exit other than 0 fails,
   with what it wrote to stderr;
-- `HelperError`, a failure the helper reports for one request;
+- `HelperError`, a failure the helper reports for one request, with its `code`, if it has one;
 - `METHODS`, the methods a helper takes;
 - `BOX_LABEL`, the label that marks a box's container.
 
@@ -37,10 +37,12 @@ It also exports:
 - **One verb at a time.** A box runs its verbs in order; each waits for the
   one before it.
 - **The helper connection** (`box/helper.ts`) runs a command, does the
-  handshake, and matches answers to requests by id. It refuses a method
+  handshake, and matches answers, and the events before them, to requests by
+  id. It refuses a method
   outside `METHODS` without sending it. Anything in the container can
-  impersonate the helper, so it checks every message and every result before
-  using it. A helper that breaks the protocol loses its connection.
+  impersonate the helper, so it checks every message, every result and every
+  event before using it: a file target, for one, must name an absolute
+  path. A helper that breaks the protocol loses its connection.
 - **When the helper exits on its own,** every pending and later request
   fails. The container stays, and `start()` starts a new helper.
 - **Commands** of the helper's beyond the handshake have a module each in

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { PROTOCOL_VERSION } from 'fleet-image/helper/protocol'
 import { Helper, HelperError } from './helper.ts'
 
 /** The helper as built on this machine, run on this Node. */
@@ -38,4 +39,30 @@ test('a helper that answers with the wrong shape loses its connection', async ()
 
 test('a helper that fails to start says why', async () => {
   await assert.rejects(Helper.start([process.execPath, '--eval', 'console.error("no such container"); process.exit(1)']), /exited: no such container/u)
+})
+
+test('a helper sends a request\'s events before its result, and a failure\'s code', async () => {
+  const helper = await Helper.start(LOCAL_HELPER)
+  try {
+    const output: string[] = []
+    const ended = await helper.request('spawn', {
+      process: 'p1', argv: ['sh', '-c', 'printf one; printf two >&2'], cwd: '/', env: {}, stdin: null, graceMs: 1000,
+    }, (event) => { output.push(`${event.stream}:${Buffer.from(event.data, 'base64').toString()}`) })
+    assert.deepEqual(ended, { code: 0, signal: null })
+    assert.deepEqual(output.sort(), ['stderr:two', 'stdout:one'])
+    await assert.rejects(helper.request('which', { command: 'no-such-program', env: null }), { name: 'HelperError', code: 'EXECUTABLE_NOT_FOUND' })
+  } finally {
+    await helper.close()
+  }
+})
+
+test('a helper that sends an unexpected event loses its connection', async () => {
+  const code = `require('node:readline').createInterface({ input: process.stdin }).on('line', (line) => {
+    const { id, method } = JSON.parse(line)
+    if (method === 'hello') console.log(JSON.stringify({ type: 'result', id, value: { protocol: ${PROTOCOL_VERSION} } }))
+    else console.log(JSON.stringify({ type: 'event', id, value: { stream: 'elsewhere', data: '' } }))
+  })`
+  const helper = await Helper.start([process.execPath, '--eval', code])
+  await assert.rejects(helper.request('echo', { text: 'hi' }), /unexpected event/u)
+  await helper.close()
 })

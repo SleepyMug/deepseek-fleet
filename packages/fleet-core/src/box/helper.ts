@@ -1,7 +1,7 @@
 /**
  * The host's end of a helper (fleet-image/helper/protocol): it starts the
- * helper with a command, completes the handshake, and matches answers to
- * requests. Whatever runs in the box can impersonate the helper, so every
+ * helper with a command, completes the handshake, and matches answers, and
+ * the events before them, to requests. Whatever runs in the box can impersonate the helper, so every
  * message is checked before it is used, and a helper that breaks the
  * protocol loses its connection. A connection never reconnects.
  * @module fleet-core/box/helper
@@ -9,12 +9,18 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { PROTOCOL_VERSION, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
+import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
 import { isExecResult } from './cmd/exec.ts'
+import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWriteOutcome } from './cmd/fs.ts'
+import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'
 
-/** A failure the helper reported for one request. */
+/** A failure the helper reported for one request, with its code, such as an `FsError`'s, if it had one. */
 export class HelperError extends Error {
   override name = 'HelperError'
+
+  constructor(message: string, readonly code?: string) {
+    super(message)
+  }
 }
 
 /** What each method's result must look like. */
@@ -22,6 +28,23 @@ const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'
   hello: (value): value is Methods['hello']['result'] => isRecord(value) && typeof value.protocol === 'number',
   echo: (value): value is Methods['echo']['result'] => isRecord(value) && typeof value.text === 'string',
   exec: isExecResult,
+  'fs.resolve': isTarget,
+  'fs.stat': isInfoOrNull,
+  'fs.lstat': isPathInfoOrNull,
+  'fs.readText': isString,
+  'fs.readBytes': isString,
+  'fs.readRange': isString,
+  'fs.listDir': isDirEntries,
+  'fs.writeText': isWriteOutcome,
+  'fs.editText': isEditOutcome,
+  spawn: isSpawnResult,
+  kill: isNull,
+  which: isPath,
+}
+
+/** What each method's events must look like; a method not here sends none. */
+const events: { [M in Method]?: (value: unknown) => value is EventOf<M> } = {
+  spawn: isSpawnEvent,
 }
 
 /** The methods a helper takes. */
@@ -31,6 +54,7 @@ interface Pending {
   method: Method
   resolve(value: unknown): void
   reject(error: Error): void
+  event?: (value: unknown) => void
 }
 
 export class Helper {
@@ -77,14 +101,15 @@ export class Helper {
   /**
    * Send one request. A method that is not one of {@link METHODS}, as a
    * name typed at run time may be, is refused without sending it.
+   * @param onEvent - told each checked event the request sends before its result.
    * @returns its checked result; a failure the helper reports is a {@link HelperError}.
    */
-  request<M extends Method>(method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
+  request<M extends Method>(method: M, params: Methods[M]['params'], onEvent?: (event: EventOf<M>) => void): Promise<Methods[M]['result']> {
     if (!Object.hasOwn(results, method)) return Promise.reject(new Error(`fleet: no method ${method}`))
     if (this.failure !== undefined) return Promise.reject(this.failure)
     const id = this.nextId++
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { method, resolve: resolve as (value: unknown) => void, reject })
+      this.pending.set(id, { method, resolve: resolve as (value: unknown) => void, reject, event: onEvent as ((value: unknown) => void) | undefined })
       this.send({ type: 'request', id, method, params })
     })
   }
@@ -112,15 +137,26 @@ export class Helper {
       this.child.kill()
       return
     }
+    if (message.type === 'event') {
+      const check = events[pending.method]
+      if (check?.(message.value) === true) pending.event?.(message.value)
+      else this.break(new Error(`fleet: the helper sent ${pending.method} an unexpected event`))
+      return
+    }
     this.pending.delete(message.id)
-    if (message.type === 'error') pending.reject(new HelperError(message.message))
+    if (message.type === 'error') pending.reject(new HelperError(message.message, message.code))
     else if (results[pending.method](message.value)) pending.resolve(message.value)
     else {
       const error = new Error(`fleet: the helper answered ${pending.method} with an unexpected value`)
       pending.reject(error)
-      this.fail(error)
-      this.child.kill()
+      this.break(error)
     }
+  }
+
+  /** End a connection whose helper broke the protocol. */
+  private break(error: Error): void {
+    this.fail(error)
+    this.child.kill()
   }
 
   private fail(error: Error): void {
@@ -140,8 +176,10 @@ function parse(line: string): HelperMessage | undefined {
     return undefined
   }
   if (!isRecord(value) || !Number.isSafeInteger(value.id)) return undefined
-  if (value.type === 'result' && Object.hasOwn(value, 'value')) return value as HelperMessage
-  if (value.type === 'error' && typeof value.message === 'string') return value as HelperMessage
+  if ((value.type === 'result' || value.type === 'event') && Object.hasOwn(value, 'value')) return value as HelperMessage
+  if (value.type === 'error' && typeof value.message === 'string' && (value.code === undefined || typeof value.code === 'string')) {
+    return value as HelperMessage
+  }
   return undefined
 }
 
