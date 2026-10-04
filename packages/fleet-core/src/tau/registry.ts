@@ -33,8 +33,8 @@ export interface Entry {
   handles: readonly BoundHandle[]
   /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]
-  /** What the tau exposes to its programs: `@api/<name>`, or a package of its own, by name. */
-  exposed: readonly string[]
+  /** What the tau exposes to its programs: `@api/<name>`, or a package of its own, by name, with what it says it is. */
+  exposed: readonly { specifier: string; description?: string }[]
   createdAt: string
 }
 

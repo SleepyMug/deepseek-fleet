@@ -30,7 +30,8 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the session. |
 
 The patch also declares `tau`, the agent preset a tau's session has: a
-persona, bash in the foreground only, read/write/edit, and compaction.
+persona, bash in the foreground only, read/write/edit, `ts_modules` and
+`ts_execute` (docs/fleet-core/tools/index.md), and compaction.
 
 `ctx.fleetTauRuns` gives fleet-core's world
 (docs/fleet-core/world/index.md) what it needs:
@@ -89,8 +90,8 @@ persona, bash in the foreground only, read/write/edit, and compaction.
   `$DSH_HOME/fleet/taus/<session id>.json`: the box, the tau, the project,
   the expanded prompt and the request id it is sent under, each handle (its
   mode, kind, caller's path and place), the names of the APIs the tau
-  declares, each linked, what it exposes, when it was made, and when it was
-  given its prompt. An entry is
+  declares, each linked, what it exposes, with what each says it is, when
+  it was made, and when it was given its prompt. An entry is
   written last, so an entry means a box that is set up, and before the dsh
   session is made. A service started later finds its sessions there. Only
   ids of the form the service mints name an entry, since they are file
@@ -161,8 +162,6 @@ persona, bash in the foreground only, read/write/edit, and compaction.
 ## Not yet
 
 - Nothing waits for the session's turn to end.
-- The model has no tool for programs over the APIs, nor sees what the tau
-  exposes (docs/fleet-core/ext/index.md).
 - Nothing comes back out: `$out` and `$inout` handles are neither copied back
   nor checked with `checkOutputs`.
 - A box left by a dsh that died during `create` stays. `fleet-box list` shows

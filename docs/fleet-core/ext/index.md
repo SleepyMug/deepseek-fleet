@@ -68,15 +68,13 @@ export function apply(ctx: Context) {
 - **A client carries its own encodings.** Only JSON crosses, so a client
   turns other values, such as dates and bytes, into JSON and back, as its
   API declares them.
+- **The model reaches the APIs** with `ts_modules` and `ts_execute`
+  (docs/fleet-core/tools/index.md). A program run another way, such as with
+  bash's `node`, finds them from a file below `/tau`.
 
 ## Not yet
 
-- **`ts_modules` and `ts_execute`.** The model has no tool that lists what
-  a tau exposes or runs a program. A program importing `@api/<name>` runs
-  with bash's `node`, and only from a file below `/tau`.
 - **The `tau` API** (`values`, `run`) has no extension.
-- **What is exposed is recorded, not presented.** The registry entry keeps
-  `exposed`; the model learns of the APIs only from the tau's prompt.
 
 ## Built on
 

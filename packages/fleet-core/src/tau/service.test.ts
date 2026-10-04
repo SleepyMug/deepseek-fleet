@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from 'fleet-image/layout'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
+import { modulesOf } from '../tools/ts.ts'
 import type { Exts } from './apis.ts'
 import { Registry } from './registry.ts'
 import { TauRuns, type Boxes, type RunBox } from './runs.ts'
@@ -189,7 +190,7 @@ test('create sets up a stopped box with the handles and the tau, and registers t
   assert.match(entry.promptRequestId, /^[0-9a-f-]{36}$/u)
   assert.equal(entry.promptedAt, undefined)
   assert.deepEqual(entry.apis, ['notes'])
-  assert.deepEqual(entry.exposed, ['@api/notes'])
+  assert.deepEqual(entry.exposed, [{ specifier: '@api/notes' }])
   assert.deepEqual(entry.handles.map(handle => [handle.at, handle.mode, handle.kind, handle.host, handle.view]), [
     ['notes', 'in', 'file', join(work, 'notes.md'), '/tau/in/notes.md'],
     ['site', 'inout', 'dir', join(work, 'site'), '/tau/workspace/site'],
@@ -445,6 +446,15 @@ test('a real box gets the tau and the handles at their places', { skip: await ab
     const ran = await started?.request('exec', { argv: ['sh', '-c', `cd /tau/workspace && node --input-type=module --eval '${program}'`] })
     assert.deepEqual(ran, { code: 0, signal: null, stdout: 'added milk', stderr: '' })
     assert.deepEqual(added, [{ args: ['milk'], sessionId }])
+    // A TypeScript program, checked against the tau's declarations, as ts_execute runs one.
+    const entry = await new Registry(join(work, 'taus')).get(sessionId)
+    const params = { root: '/tau', modules: modulesOf(entry), cwd: entry.project }
+    const source = 'import { add } from "@api/notes"\nexport async function main(input: string): Promise<void> { await add(input) }'
+    const outcome = await started?.request('ts.execute', { ...params, execution: 'e1', source, input: 'eggs' })
+    assert.deepEqual({ ...outcome, durationMs: 0 }, { ok: true, value: null, stdout: '', stderr: '', durationMs: 0 })
+    assert.deepEqual(added.at(-1), { args: ['eggs'], sessionId })
+    const mistaken = await started?.request('ts.execute', { ...params, execution: 'e2', source: 'import { add } from "@api/notes"\nexport function main(): void { add(1) }' })
+    assert.equal(mistaken?.ok === false && mistaken.error.name, 'TypeCheckError')
     assert.equal((await run('docker', ['exec', box, 'cat', '/tau/in/notes.md'])).stdout, 'buy milk\n')
     await run('docker', ['exec', box, 'test', '-d', '/tau/out/pages'])
     // Where dsh will run the session's work: the caller's folder, empty.

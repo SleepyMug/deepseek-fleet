@@ -57,7 +57,9 @@ answers what is left, and exits.
 | `terminal.foreground` | `{ terminal }` | `{ processGroupId }` or `null` | The terminal's foreground process group, as the kernel has it (`/proc/<pid>/stat`). |
 | `terminal.signal` | `{ terminal, signal }` | the group's id | Signal the foreground process group: `SIGINT`, `SIGTERM`, `SIGKILL`, `SIGTSTP` or `SIGHUP`. |
 | `terminal.end` | `{ terminal }` | `null` | End every process in the terminal's session, background jobs included: SIGHUP and SIGTERM, then SIGKILL after `graceMs`. It answers once none is left. |
-| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>` whose types are the folder `types`, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; and `fleet-image`, a link to this package, for the clients' runtime. |
+| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>` whose types are the folder `types`, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; `fleet-image`, a link to this package, for the clients' runtime; and `@types/node`, this package's Node types, which programs are checked against. |
+| `ts.execute` | `{ execution, root, modules, source, cwd, input? }` | `{ ok, value, stdout, stderr, durationMs }`, or `{ ok: false, error, stdout, stderr }` | Type-check a TypeScript program and run its `main(input)` in a fresh Node process in `cwd`, under the host's id `execution`, with ts-executor (`cmd/ts.ts`). Packages resolve from `root`, below which ts-executor makes its run's folder; `modules` are what it lists, each `{ specifier, root, description? }`. A failure is an answer: its `error` has the name, the message, TypeScript's `diagnostics` for a `TypeCheckError`, and the program's own `stack`. |
+| `ts.cancel` | `{ execution }` | `null` | End an execution's whole process group; it answers as an `ExecutionAbortedError`. Nothing for one not there. |
 
 - **Process groups.** A spawned program and what it starts share a process
   group, except what starts a session of its own. `kill` and the helper's
@@ -95,6 +97,8 @@ A new method needs three things:
   methods.
 - `node-pty`, for terminals, loaded when the first one starts, so a box
   without it fails only terminals.
+- `@sleepymug/ts-executor`, with TypeScript and tsx, for `ts.execute`,
+  loaded with the first program, and `@types/node`, for programs' types.
 
 The image has these as installed on the host, so the host's Node and the
 image's must be the same version, as they are (26.9.0), for node-pty's

@@ -202,7 +202,8 @@
 #
 # fleet-tau makes a tau's session with the `tau` preset (src/tau/plugin.ts).
 # Its bash and file tools run in the session's box, through fleet-core's
-# `ctx.subprocess` and `ctx.fs`.
+# `ctx.subprocess` and `ctx.fs`, and so do its TypeScript programs, through
+# the box's helper.
 - insert:
     - id: preset-tau
       name: '@deepseek-ai/dsh-agent-preset'
@@ -227,6 +228,11 @@
           # read / write / edit
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
+
+          # ts_modules / ts_execute: TypeScript programs over the tau's APIs,
+          # run in the session's box (docs/fleet-core/tools/index.md).
+          - id: tool-ts
+            name: fleet-core/tools/ts
 
           # Not model tools: automatic compaction, /compact, and old tool-result pruning.
           - id: compaction

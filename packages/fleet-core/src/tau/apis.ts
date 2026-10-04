@@ -19,8 +19,8 @@ export interface Exts {
 export interface Linked {
   /** Each API the tau declares, with the folder of its extension's client on the host. */
   apis: { name: string; client: string }[]
-  /** What the tau exposes, by what programs import: `@api/<name>`, or a package's name. */
-  exposed: string[]
+  /** What the tau exposes, by what programs import: `@api/<name>`, or a package's name; and what it says it is. */
+  exposed: { specifier: string; description?: string }[]
   /** The packages of the tau's own that it exposes, each by name, with its folder in the tau. */
   packages: { name: string; dir: string }[]
 }
@@ -50,7 +50,7 @@ export function linkApis(tau: Tau, exts: Exts): Linked {
   const exposed = loadExposed(tau, apis)
   return {
     apis: linked,
-    exposed: exposed.map(entry => entry.specifier),
+    exposed: exposed.map(({ specifier, description }) => ({ specifier, ...description === undefined ? {} : { description } })),
     packages: exposed.flatMap(entry => entry.kind === 'package' ? [{ name: entry.specifier, dir: entry.dir }] : []),
   }
 }

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -73,4 +75,26 @@ test('a helper that sends an unexpected event loses its connection', async () =>
   const helper = await Helper.start([process.execPath, '--eval', code])
   await assert.rejects(helper.request('echo', { text: 'hi' }), /unexpected event/u)
   await helper.close()
+})
+
+test('a helper runs a TypeScript program, whose outcome the host checks', async () => {
+  const helper = await Helper.start(LOCAL_HELPER)
+  try {
+    const root = await mkdtemp(join(tmpdir(), 'fleet-ts-test-'))
+    try {
+      const params = { root, modules: [], cwd: root }
+      assert.deepEqual(
+        { ...await helper.request('ts.execute', { ...params, execution: 'e1', source: 'export function main(input: number): number { return input * 2 }', input: 21 }), durationMs: 0 },
+        { ok: true, value: 42, stdout: '', stderr: '', durationMs: 0 },
+      )
+      const failed = await helper.request('ts.execute', { ...params, execution: 'e2', source: 'export function main(): void { throw new RangeError("no") }' })
+      assert.ok(!failed.ok)
+      assert.equal(failed.error.name, 'RangeError')
+      assert.equal(failed.error.message, 'no')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  } finally {
+    await helper.close()
+  }
 })
