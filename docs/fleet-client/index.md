@@ -1,7 +1,7 @@
 # fleet-client
 
 `fleet`, the command that sets up boxes for runs of taus, and starts, stops
-and deletes them, through the tau service in the fleet host
+and deletes their sessions, through the tau service in the fleet host
 (docs/fleet-core/tau/index.md). It loads no dsh module.
 
 ## Provides
@@ -10,9 +10,11 @@ and deletes them, through the tau service in the fleet host
 fleet create <tau-dir> [<name>=<value> | <name>:=<json>]...
                        set up a box for a run of the tau with these values,
                        and print the session's id, then the tau's prompt
-fleet start <session-id>     start the session's box
-fleet stop <session-id>      stop the session's box
-fleet delete <session-id>    remove the session's box, and forget the session
+fleet start <session-id>     start the session's box; the first start makes the
+                             session, which the web UI lists under this folder,
+                             and gives it the tau's prompt
+fleet stop <session-id>      cancel the session's turn, and stop its box
+fleet delete <session-id>    archive the session, remove its box, and forget it
 ```
 
 - Exit codes:
@@ -33,7 +35,8 @@ fleet delete <session-id>    remove the session's box, and forget the session
   The service checks the values against the tau, so a name the tau does not
   declare passes as a text, for the service to refuse.
 - **Paths.** `create` sends the tau's directory, absolute, and this folder,
-  which relative paths in the values are relative to.
+  which relative paths in the values are relative to, and which is the
+  session's workspace in dsh.
 - **The socket** (`connection.ts`) is `$DSH_HOME/fleet/tau.sock`, or
   `~/.dsh/fleet/tau.sock` when `DSH_HOME` is unset or blank, as dsh finds its
   home. Each command is one request on a connection of its own.
@@ -46,8 +49,9 @@ fleet delete <session-id>    remove the session's box, and forget the session
 
 ## How it runs
 
-With `dsh --profile fleet` running, after `pnpm build` and `pnpm image`, in a
-folder with `notes.md`, a folder `site`, and a folder `out`:
+With `pnpm exec dsh --profile fleet` running, after `pnpm build` and
+`pnpm image`, in a folder with `notes.md`, a folder `site`, and a folder
+`out`:
 
 ```
 $ alias fleet='node <checkout>/packages/fleet-client/lib/cli.js'
@@ -55,7 +59,7 @@ $ fleet create <checkout>/examples/demo style=terse notes=notes.md site=site rep
 session-4458…
 Read /tau/in/notes.md, and add what it says to the pages in /tau/workspace/site it concerns, in a
 terse style. Then write what you changed to /tau/out/report.md.
-$ fleet start session-4458…
+$ fleet start session-4458…      # the web UI lists the session under this folder
 $ docker exec fleet-tau-4458… find /tau
 /tau
 /tau/out

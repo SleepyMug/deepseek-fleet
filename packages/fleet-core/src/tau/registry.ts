@@ -2,7 +2,7 @@
  * The tau service's registry: which box each session has, and what its run
  * needs, one JSON file per session in a folder of its own. The service writes
  * an entry once the session's box is set up, so an entry means a box ready to
- * start.
+ * start, and before the dsh session is made, which the first start does.
  * @module fleet-core/tau/registry
  */
 
@@ -18,8 +18,17 @@ export interface Entry {
   /** The box's container. */
   box: string
   tauDir: string
+  /**
+   * The caller's folder, through symlinks: the dsh workspace the session is
+   * in, which the web UI lists it under, and its working folder.
+   */
+  project: string
   /** The tau's prompt, expanded with where the box has each handle. */
   prompt: string
+  /** The id the prompt is sent under, so that sending it again is sending it once. */
+  promptRequestId: string
+  /** When the session was given its prompt, which its first start does. */
+  promptedAt?: string
   /** Each handle of the run: its mode, its kind, the caller's path, and where the box has it. */
   handles: readonly BoundHandle[]
   /** The APIs the tau declares, by name; nothing implements them yet. */

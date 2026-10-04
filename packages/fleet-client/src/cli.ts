@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * `fleet`: set up a box for a run of a tau, and start, stop and delete it,
- * through the tau service in the fleet host (`dsh --profile fleet`), on its
+ * `fleet`: set up a box for a run of a tau, and start, stop and delete its
+ * session, through the tau service in the fleet host (`dsh --profile fleet`), on its
  * socket (./connection.ts).
  * @module fleet-client/cli
  */
@@ -19,9 +19,11 @@ Commands:
   create <tau-dir> [<name>=<value> | <name>:=<json>]...
                          set up a box for a run of the tau with these values,
                          and print the session's id, then the tau's prompt
-  start <session-id>     start the session's box
-  stop <session-id>      stop the session's box
-  delete <session-id>    remove the session's box, and forget the session
+  start <session-id>     start the session's box; the first start makes the
+                         session, which the web UI lists under this folder,
+                         and gives it the tau's prompt
+  stop <session-id>      cancel the session's turn, and stop its box
+  delete <session-id>    archive the session, remove its box, and forget it
 
 Values: <name>=<value> gives a text, or, for a parameter whose type is a file,
 a dir or a path, a handle of the mode tau.json declares, to the path <value>.

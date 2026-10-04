@@ -35,7 +35,11 @@ export type Request =
   }
   | {
     protocol: number
-    /** Start, stop, or remove the session's box; `delete` forgets the session too. */
+    /**
+     * Start the session's box, and give the session its prompt the first
+     * time; cancel its turn and stop its box; or archive it, remove its box
+     * and forget it.
+     */
     op: 'start' | 'stop' | 'delete'
     sessionId: string
   }
