@@ -8,7 +8,7 @@
     "build": "pnpm -r build",
     "watch": "tsc -b --watch",
     "clean": "tsc -b --clean",
-    "test": "pnpm --filter './packages/*' test",
+    "test": "pnpm --filter './packages/*' --filter './ext/*' test",
     "image": "pnpm build && pnpm --filter fleet-image image"
   },
   "devEngines": {

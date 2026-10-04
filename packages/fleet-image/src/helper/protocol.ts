@@ -2,9 +2,12 @@
  * The wire between the host and the helper in a box: one JSON message per
  * line over the stdin and stdout of the `docker exec` that runs the helper.
  * The host sends requests; the helper answers each exactly once, in any
- * order, and may send events for a request before it answers it. The helper
- * exits when its stdin ends, and ends the processes it started first. Shared
- * by both ends, so it holds only types and constants.
+ * order, and may send events for a request before it answers it. The other
+ * way, the helper sends the calls that clients in the box make to the
+ * host's extensions, which the host answers each once, unless the helper
+ * cancels it first. The helper exits when its stdin ends, and ends the
+ * processes it started first. Shared by both ends, so it holds only types
+ * and constants.
  * @module fleet-image/helper/protocol
  */
 
@@ -148,6 +151,31 @@ export interface Methods {
    * SIGKILL after its grace period; answers once none is left.
    */
   'terminal.end': { params: { terminal: string }; result: null }
+
+  /**
+   * Makes `modules` the node_modules folder where a tau's code finds its
+   * APIs, each linked to its extension's client, as the package `@api/<name>`
+   * typed by the tau's declarations, and the packages of the tau's own that
+   * it exposes, so that Node, and TypeScript, find them from any file below
+   * the folder above `modules` (./cmd/link.ts).
+   */
+  'apis.link': {
+    params: {
+      modules: string
+      /** Each API: its name, its client's folder, with its index.js, and the folder of the tau's declarations. */
+      apis: { name: string; client: string; types: string }[]
+      /** Each exposed package of the tau's own: its name, and its folder. */
+      packages: { name: string; dir: string }[]
+    }
+    result: null
+  }
+}
+
+/** A call a client in the box makes to an extension on the host: the API it implements, the method, and its arguments. */
+export interface Call {
+  api: string
+  method: string
+  args: unknown[]
 }
 
 export type Method = keyof Methods
@@ -155,16 +183,16 @@ export type Method = keyof Methods
 /** What a method sends before its result, or never for a method without events. */
 export type EventOf<M extends Method> = Methods[M] extends { event: infer E } ? E : never
 
-/** Host to helper. */
-export interface HostMessage {
-  type: 'request'
-  id: number
-  method: string
-  params: unknown
-}
+/** Host to helper: a request, or the answer to a call, whose ids the helper gives. */
+export type HostMessage =
+  | { type: 'request'; id: number; method: string; params: unknown }
+  | { type: 'call-result'; id: number; value: unknown }
+  | { type: 'call-error'; id: number; message: string }
 
-/** Helper to host. */
+/** Helper to host: a request's answer, or its event; or a call, or that its caller has gone. */
 export type HelperMessage =
   | { type: 'result'; id: number; value: unknown }
   | { type: 'event'; id: number; value: unknown }
   | { type: 'error'; id: number; message: string; code?: string }
+  | ({ type: 'call'; id: number } & Call)
+  | { type: 'call-cancel'; id: number }

@@ -13,7 +13,7 @@ in it through any number of starts and stops.
 | `Box.create({ image?, name? })` | Create the container, stopped. | `docker create --init --pull never --label fleet.box … sleep infinity` |
 | `Box.open(name)` | Take a box that exists already, running or not. | `docker container inspect`, which must show the label |
 | `Box.list()` | List every box, with its state. | `docker container ls --all --filter label=fleet.box` |
-| `box.start()` | Start the container, then a new helper in it, and do the handshake. | `docker start`, `docker exec --interactive` |
+| `box.start(onCall?)` | Start the container, then a new helper in it, and do the handshake. `onCall` answers the calls of the clients in the box while that helper runs; without it, each fails. | `docker start`, `docker exec --interactive` |
 | `box.request(method, params, onEvent?)` | Send one method to the started box's helper; `onEvent` is told each event it sends before its result. | the helper connection |
 | `box.stop()` | End the helper and stop the container. | `docker stop` |
 | `box.copyIn(from, to)` | Copy a host file to a path in the box, or a host folder's contents into a folder in the box. | `docker cp <from> <container>:<to>`, or `<from>/.` for a folder |
@@ -25,6 +25,7 @@ It also exports:
   `exec`, and gives back what it wrote to stdout; an exit other than 0 fails,
   with what it wrote to stderr;
 - `HelperError`, a failure the helper reports for one request, with its `code`, if it has one;
+- `CallHandler`, what answers a call: `(call, signal) => Promise<JSON>`;
 - `METHODS`, the methods a helper takes;
 - `BOX_LABEL`, the label that marks a box's container.
 
@@ -43,6 +44,11 @@ It also exports:
   impersonate the helper, so it checks every message, every result and every
   event before using it: a file target, for one, must name an absolute
   path. A helper that breaks the protocol loses its connection.
+- **Calls** from the box come over the same connection: the helper sends a
+  `call`, which the connection hands to the box's `onCall`, with a signal
+  that aborts when the helper cancels it or the connection ends, and sends
+  back its result, or its failure's message. A result that is not JSON is a
+  failure.
 - **When the helper exits on its own,** every pending and later request
   fails. The container stays, and `start()` starts a new helper.
 - **A box keeps the image it was made from,** so a rebuilt image reaches

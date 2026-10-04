@@ -3,7 +3,10 @@
  * /tau/in, each `$inout` handle in /tau/workspace, and each `$out` handle in
  * /tau/out, under the base name of the caller's path, and the tau's own
  * directory at /tau/self. A base name already taken in its folder gets a
- * suffix in its stem: notes.md, notes-1.md, notes-2.md.
+ * suffix in its stem: notes.md, notes-1.md, notes-2.md. The tau's APIs, and
+ * what it exposes, are in /tau/node_modules, so code anywhere below /tau
+ * finds them, and the clients that implement the APIs in a hidden folder
+ * there.
  * @module fleet-core/tau/place
  */
 
@@ -15,6 +18,12 @@ export const FOLDERS: { readonly [M in Mode]: string } = { in: '/tau/in', inout:
 
 /** The tau's own directory, which `${self}` names. */
 export const SELF = '/tau/self'
+
+/** Where the tau's code finds its APIs, and the packages of its own it exposes. */
+export const MODULES = '/tau/node_modules'
+
+/** Where each API's client is, in a folder by the API's name. */
+export const CLIENTS = `${MODULES}/.fleet`
 
 /** A `place` for one run, as tau's `bind` takes it: where the box has each handle. */
 export function placer(): (handle: Placing) => string {

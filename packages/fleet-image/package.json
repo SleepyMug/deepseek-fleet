@@ -12,6 +12,10 @@
       "types": "./lib/helper/protocol.d.ts",
       "default": "./lib/helper/protocol.js"
     },
+    "./ext/client": {
+      "types": "./lib/ext/client.d.ts",
+      "default": "./lib/ext/client.js"
+    },
     "./image/build": {
       "types": "./lib/image/build.d.ts",
       "default": "./lib/image/build.js"

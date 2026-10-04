@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "ext/fleet-ext-notes" },
     { "path": "packages/fleet-client" },
     { "path": "packages/fleet-core" },
     { "path": "packages/fleet-image" },

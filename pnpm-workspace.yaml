@@ -1,5 +1,7 @@
 packages:
   - packages/*
+  # Extensions of the fleet host, built in and examples, each a dsh bundle of its own.
+  - ext/*
   # tau and ts-executor are developed in checkouts of their own beside this
   # one, and join this workspace from there. Install only here: `pnpm install`
   # inside one of them installs it on its own again, from its own lockfile,

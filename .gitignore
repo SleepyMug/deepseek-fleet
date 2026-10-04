@@ -5,6 +5,7 @@ node_modules/
 
 # Build output of each package (tsc -b)
 /packages/*/lib/
+/ext/*/lib/
 *.tsbuildinfo
 
 # pnpm pack output

@@ -149,11 +149,21 @@
 - id: spill-local
   disabled: true
 
-# ═══ The runs of taus, and their boxes ═══
+# ═══ Extensions, and the runs of taus with their boxes ═══
+
+# `ctx.fleetExts`: the extensions provided, each the implementation of an API
+# a tau may declare, as an extension's own plugin provides it, with its client
+# for the box and its server here (docs/fleet-core/ext/index.md). An
+# extension is a bundle of its own, listed after fleet-core in the profile's
+# bundles, such as ext/fleet-ext-notes.
+- insert:
+    - id: fleet-exts
+      name: fleet-core/ext/plugin
 
 # `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, in the
-# registry $DSH_HOME/fleet/taus/. It needs nothing of dsh's, so the world
-# below builds on it, and dsh's session controller on the world.
+# registry $DSH_HOME/fleet/taus/, each run's APIs linked to the extensions
+# above. It needs nothing of dsh's, so the world below builds on it, and
+# dsh's session controller on the world.
 - insert:
     - id: fleet-tau-runs
       name: fleet-core/tau/runs-plugin

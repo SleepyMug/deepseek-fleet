@@ -1,17 +1,26 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessByStdio } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import type { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { SOCKET_VARIABLE } from '../layout.ts'
 import { EXECUTABLE_NOT_FOUND, PROTOCOL_VERSION, type HelperMessage, type HostMessage } from './protocol.ts'
+
+/** A helper on this machine, with a call socket of its own. */
+function helperProcess(): ChildProcessByStdio<Writable, Readable, null> {
+  const env = { ...process.env, [SOCKET_VARIABLE]: join(tmpdir(), `fleet-calls-${randomUUID()}.sock`) }
+  return spawn(process.execPath, [fileURLToPath(new URL('./main.js', import.meta.url))], { stdio: ['pipe', 'pipe', 'inherit'], env })
+}
 
 /** Send requests to a helper on this machine and collect what it sends until it exits, by request unless `sorted` is false. */
 async function exchange(requests: HostMessage[], { sorted = true } = {}): Promise<HelperMessage[]> {
-  const child = spawn(process.execPath, [fileURLToPath(new URL('./main.js', import.meta.url))], { stdio: ['pipe', 'pipe', 'inherit'] })
+  const child = helperProcess()
   const answers: HelperMessage[] = []
   createInterface({ input: child.stdout }).on('line', (line) => { answers.push(JSON.parse(line) as HelperMessage) })
   for (const request of requests) child.stdin.write(`${JSON.stringify(request)}\n`)
@@ -118,7 +127,7 @@ test('the helper runs a process, sends its output as events, and answers how it 
 
 test('the helper kills a process\'s group, and its exit ends the processes it started', async (t) => {
   const dir = await folder(t)
-  const child = spawn(process.execPath, [fileURLToPath(new URL('./main.js', import.meta.url))], { stdio: ['pipe', 'pipe', 'inherit'] })
+  const child = helperProcess()
   const answers: HelperMessage[] = []
   createInterface({ input: child.stdout }).on('line', (line) => { answers.push(JSON.parse(line) as HelperMessage) })
   const send = (message: HostMessage): void => { child.stdin.write(`${JSON.stringify(message)}\n`) }
@@ -151,7 +160,7 @@ test('the helper finds programs on the PATH, and says when one is not there', as
 
 /** A helper on this machine that can be talked to while it runs. */
 function live(t: { after(fn: () => Promise<void>): void }): { send(message: HostMessage): void; answers: HelperMessage[]; until(found: () => boolean): Promise<void> } {
-  const child = spawn(process.execPath, [fileURLToPath(new URL('./main.js', import.meta.url))], { stdio: ['pipe', 'pipe', 'inherit'] })
+  const child = helperProcess()
   t.after(async () => {
     child.stdin.end()
     await once(child, 'close')
@@ -215,4 +224,67 @@ test('the helper runs a terminal: input, size, foreground group, and an end that
     ps.on('close', () => { resolve({ stdout: text }) })
   })
   assert.ok(!stdout.split('\n').some(line => line.trim().startsWith(`${started.pid} `)), 'no process of the terminal\'s session is left')
+})
+
+test('the helper links a tau\'s APIs to their clients, and its exposed packages, for code anywhere below', async (t) => {
+  const dir = await folder(t)
+  await mkdir(join(dir, 'tau/self/api/notes'), { recursive: true })
+  await writeFile(join(dir, 'tau/self/api/notes/index.d.ts'), 'export declare function hello(): string;\n')
+  await mkdir(join(dir, 'tau/self/node_modules/wrap'), { recursive: true })
+  await writeFile(join(dir, 'tau/self/node_modules/wrap/package.json'), JSON.stringify({ name: 'wrap', type: 'module', exports: './index.js' }))
+  await writeFile(join(dir, 'tau/self/node_modules/wrap/index.js'), 'import { hello } from "@api/notes"; export const loud = () => hello().toUpperCase();\n')
+  await mkdir(join(dir, 'client'))
+  await writeFile(join(dir, 'client/index.js'), 'export const hello = () => "hi"; export default "whole";\n')
+  await mkdir(join(dir, 'tau/scratch'))
+  await writeFile(join(dir, 'tau/scratch/main.mjs'), [
+    'import notes, { hello } from "@api/notes";',
+    'import { loud } from "wrap";',
+    'process.stdout.write(JSON.stringify([hello(), notes, loud()]));',
+  ].join('\n'))
+  const answers = await exchange([
+    {
+      type: 'request', id: 1, method: 'apis.link', params: {
+        modules: join(dir, 'tau/node_modules'),
+        apis: [{ name: 'notes', client: join(dir, 'client'), types: join(dir, 'tau/self/api/notes') }],
+        packages: [{ name: 'wrap', dir: join(dir, 'tau/self/node_modules/wrap') }],
+      },
+    },
+    { type: 'request', id: 2, method: 'exec', params: { argv: [process.execPath, join(dir, 'tau/scratch/main.mjs')] } },
+    { type: 'request', id: 3, method: 'apis.link', params: { modules: 'relative', apis: [], packages: [] } },
+  ], { sorted: false })
+  assert.deepEqual(answers.find(answer => answer.id === 1), { type: 'result', id: 1, value: null })
+  assert.deepEqual((answers.find(answer => answer.id === 2) as { value: { stdout: string } }).value.stdout, '["hi","whole","HI"]')
+  assert.deepEqual(answers.find(answer => answer.id === 3), { type: 'error', id: 3, message: 'apis.link takes modules, an absolute path' })
+  const manifest = JSON.parse(await readFile(join(dir, 'tau/node_modules/@api/notes/package.json'), 'utf8')) as { exports: object }
+  assert.deepEqual(manifest.exports, { '.': { types: './api/index.d.ts', default: './index.js' } })
+  assert.equal(await readFile(join(dir, 'tau/node_modules/@api/notes/api/index.d.ts'), 'utf8'), 'export declare function hello(): string;\n')
+})
+
+test('the helper relays a client\'s calls to the host, their answers back, and a caller gone as a cancel', async (t) => {
+  const helper = live(t)
+  const client = JSON.stringify(pathToFileURL(fileURLToPath(new URL('../ext/client.js', import.meta.url))).href)
+  const program = (code: string): string[] => [process.execPath, '--input-type=module', '--eval', `import { call } from ${client};\n${code}`]
+  const calls = (): Extract<HelperMessage, { type: 'call' }>[] => helper.answers.filter(answer => answer.type === 'call')
+  helper.send({
+    type: 'request', id: 1, method: 'exec',
+    params: { argv: program('const got = await call("notes", "add", ["milk", undefined]); const failed = await call("notes", "nope", []).catch(error => error.message); process.stdout.write(JSON.stringify([got, failed]))') },
+  })
+  await helper.until(() => calls().length === 1)
+  assert.deepEqual(calls()[0], { type: 'call', id: calls()[0]?.id, api: 'notes', method: 'add', args: ['milk'] })
+  helper.send({ type: 'call-result', id: calls()[0]?.id ?? 0, value: { id: 1 } })
+  await helper.until(() => calls().length === 2)
+  helper.send({ type: 'call-error', id: calls()[1]?.id ?? 0, message: 'no method nope' })
+  await helper.until(() => helper.answers.some(answer => answer.type === 'result' && answer.id === 1))
+  assert.equal((helper.answers.find(answer => answer.type === 'result' && answer.id === 1) as { value: { stdout: string } }).value.stdout, '[{"id":1},"notes.nope: no method nope"]')
+
+  helper.send({
+    type: 'request', id: 2, method: 'exec',
+    params: { argv: program('await call("notes", "slow", [], AbortSignal.timeout(100)).catch(() => {})') },
+  })
+  await helper.until(() => calls().length === 3)
+  const slow = calls()[2]?.id
+  await helper.until(() => helper.answers.some(answer => answer.type === 'call-cancel' && answer.id === slow))
+  // Its answer, late, goes nowhere.
+  helper.send({ type: 'call-result', id: slow ?? 0, value: null })
+  await helper.until(() => helper.answers.some(answer => answer.type === 'result' && answer.id === 2))
 })

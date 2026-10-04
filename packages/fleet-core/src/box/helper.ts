@@ -1,15 +1,17 @@
 /**
  * The host's end of a helper (fleet-image/helper/protocol): it starts the
  * helper with a command, completes the handshake, and matches answers, and
- * the events before them, to requests. Whatever runs in the box can impersonate the helper, so every
- * message is checked before it is used, and a helper that breaks the
- * protocol loses its connection. A connection never reconnects.
+ * the events before them, to requests. The calls that clients in the box
+ * make it hands to whoever started it, and sends their answers back.
+ * Whatever runs in the box can impersonate the helper, so every message is
+ * checked before it is used, and a helper that breaks the protocol loses its
+ * connection. A connection never reconnects.
  * @module fleet-core/box/helper
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
+import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'
@@ -23,6 +25,13 @@ export class HelperError extends Error {
     super(message)
   }
 }
+
+/**
+ * Answers a call a client in the box makes, with JSON, or fails with what
+ * the client is told. Its signal aborts when the caller has gone, or the
+ * connection ends.
+ */
+export type CallHandler = (call: Call, signal: AbortSignal) => Promise<unknown>
 
 /** What each method's result must look like. */
 const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'] } = {
@@ -51,6 +60,7 @@ const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'
   'terminal.foreground': isForeground,
   'terminal.signal': isGroupId,
   'terminal.end': isNull,
+  'apis.link': isNull,
 }
 
 /** What each method's events must look like; a method not here sends none. */
@@ -72,13 +82,15 @@ interface Pending {
 
 export class Helper {
   private readonly pending = new Map<number, Pending>()
+  /** The calls being answered, by the helper's id. */
+  private readonly calls = new Map<number, AbortController>()
   private readonly exited: Promise<void>
   private nextId = 1
   private stderr = ''
   private failure: Error | undefined
   private closing: Promise<void> | undefined
 
-  private constructor(private readonly child: ChildProcessWithoutNullStreams) {
+  private constructor(private readonly child: ChildProcessWithoutNullStreams, private readonly onCall: CallHandler) {
     this.exited = new Promise((resolve) => { child.once('close', () => { resolve() }) })
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => { this.stderr += chunk })
@@ -95,10 +107,11 @@ export class Helper {
   /**
    * Start a helper and complete its handshake.
    * @param command - what runs it, such as `docker exec --interactive …`.
+   * @param onCall - answers the calls of the clients in the box; without it, each fails.
    */
-  static async start(command: readonly [string, ...string[]]): Promise<Helper> {
+  static async start(command: readonly [string, ...string[]], onCall: CallHandler = refuseCalls): Promise<Helper> {
     const [file, ...args] = command
-    const helper = new Helper(spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe'] }))
+    const helper = new Helper(spawn(file, args, { stdio: ['pipe', 'pipe', 'pipe'] }), onCall)
     try {
       const { protocol, methods } = await helper.request('hello', {})
       if (protocol !== PROTOCOL_VERSION) {
@@ -150,6 +163,14 @@ export class Helper {
   private receive(line: string): void {
     if (this.failure !== undefined) return
     const message = parse(line)
+    if (message?.type === 'call') {
+      this.answer(message)
+      return
+    }
+    if (message?.type === 'call-cancel') {
+      this.calls.get(message.id)?.abort(new Error('fleet: the caller in the box has gone'))
+      return
+    }
     const pending = message === undefined ? undefined : this.pending.get(message.id)
     if (message === undefined || pending === undefined) {
       this.fail(new Error('fleet: the helper broke the protocol'))
@@ -172,6 +193,29 @@ export class Helper {
     }
   }
 
+  /** Answer a call, unless one with its id is being answered, which breaks the protocol. */
+  private answer({ id, api, method, args }: Call & { id: number }): void {
+    if (this.calls.has(id)) {
+      this.break(new Error('fleet: the helper sent a call with an id in use'))
+      return
+    }
+    const controller = new AbortController()
+    this.calls.set(id, controller)
+    void (async () => {
+      let reply: HostMessage
+      try {
+        const value = await this.onCall({ api, method, args }, controller.signal)
+        reply = { type: 'call-result', id, value: value ?? null }
+        // What is not JSON fails here, not in the box.
+        JSON.stringify(reply)
+      } catch (error) {
+        reply = { type: 'call-error', id, message: error instanceof Error ? error.message : String(error) }
+      }
+      this.calls.delete(id)
+      if (!controller.signal.aborted && this.failure === undefined) this.send(reply)
+    })()
+  }
+
   /** End a connection whose helper broke the protocol. */
   private break(error: Error): void {
     this.fail(error)
@@ -183,7 +227,12 @@ export class Helper {
     this.failure = error
     for (const pending of this.pending.values()) pending.reject(error)
     this.pending.clear()
+    for (const call of this.calls.values()) call.abort(error)
   }
+}
+
+function refuseCalls(call: Call): Promise<never> {
+  return Promise.reject(new Error(`fleet: this box serves no calls, so none to ${call.api}.${call.method}`))
 }
 
 /** A helper message, or undefined for anything else. */
@@ -199,6 +248,10 @@ function parse(line: string): HelperMessage | undefined {
   if (value.type === 'error' && typeof value.message === 'string' && (value.code === undefined || typeof value.code === 'string')) {
     return value as HelperMessage
   }
+  if (value.type === 'call' && typeof value.api === 'string' && typeof value.method === 'string' && Array.isArray(value.args)) {
+    return { type: 'call', id: value.id as number, api: value.api, method: value.method, args: value.args as unknown[] }
+  }
+  if (value.type === 'call-cancel') return { type: 'call-cancel', id: value.id as number }
   return undefined
 }
 

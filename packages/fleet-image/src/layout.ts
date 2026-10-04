@@ -13,5 +13,15 @@ export const HELPER_NODE = '/usr/local/bin/node'
 /** The helper, ./helper/main.ts. */
 export const HELPER_ENTRY = `${PACKAGE_ROOT}/lib/helper/main.js`
 
+/**
+ * The socket the helper serves in the box, for the calls an extension's
+ * client makes to its server on the host (./helper/cmd/calls.ts), unless
+ * {@link SOCKET_VARIABLE} names another.
+ */
+export const CALL_SOCKET = '/run/fleet/calls.sock'
+
+/** Names the call socket for every process the helper starts, and so for the clients in them. */
+export const SOCKET_VARIABLE = 'FLEET_SOCKET'
+
 /** The tag `pnpm image` builds, and the image a box runs unless told otherwise. */
 export const DEFAULT_IMAGE = 'fleet:local'

@@ -3,7 +3,9 @@
 The helper is fleet's process inside a box. It does what the host asks,
 from inside the container: it serves the box's files and runs its
 processes, for fleet-core's `ctx.fs` and `ctx.subprocess`
-(docs/fleet-core/world/index.md).
+(docs/fleet-core/world/index.md), and links a tau's APIs. The other way, it
+relays the calls of the extensions' clients in the box to their servers on
+the host (docs/fleet-core/ext/index.md).
 
 ## Provides
 
@@ -12,6 +14,9 @@ processes, for fleet-core's `ctx.fs` and `ctx.subprocess`
   `Methods`, which gives each method's params, result and events.
 - `lib/helper/main.js`: the helper itself. It runs only in the image, at the
   path `fleet-image/layout` gives, and is not exported.
+- `fleet-image/ext/client`: fleet's client runtime, which an extension's
+  client imports in the box: `call(api, method, args, signal?)` calls the
+  server of the extension that implements `api`, through the call socket.
 
 ## Design
 
@@ -23,7 +28,13 @@ One JSON message per line over the helper's stdin and stdout:
   - `{ "type": "error", "id": 1, "message": "…", "code": "…" }`, with the
     code of the failure, such as an `FsError`'s, if it has one;
   - `{ "type": "event", "id": 1, "value": … }`, any number of them before
-    the request's result, for a method that sends events.
+    the request's result, for a method that sends events;
+  - `{ "type": "call", "id": 7, "api": "notes", "method": "addNote", "args": […] }`,
+    a client's call, under an id the helper gives;
+  - `{ "type": "call-cancel", "id": 7 }`, when the call's caller has gone.
+- host to helper, for a call: `{ "type": "call-result", "id": 7, "value": … }`
+  or `{ "type": "call-error", "id": 7, "message": "…" }`, once, unless the
+  call was cancelled.
 
 The helper answers every request exactly once, in any order. When its stdin
 ends, it ends the processes and terminals it started and its watches,
@@ -46,12 +57,22 @@ answers what is left, and exits.
 | `terminal.foreground` | `{ terminal }` | `{ processGroupId }` or `null` | The terminal's foreground process group, as the kernel has it (`/proc/<pid>/stat`). |
 | `terminal.signal` | `{ terminal, signal }` | the group's id | Signal the foreground process group: `SIGINT`, `SIGTERM`, `SIGKILL`, `SIGTSTP` or `SIGHUP`. |
 | `terminal.end` | `{ terminal }` | `null` | End every process in the terminal's session, background jobs included: SIGHUP and SIGTERM, then SIGKILL after `graceMs`. It answers once none is left. |
+| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>` whose types are the folder `types`, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; and `fleet-image`, a link to this package, for the clients' runtime. |
 
 - **Process groups.** A spawned program and what it starts share a process
   group, except what starts a session of its own. `kill` and the helper's
   exit end the group; whatever escapes it ends when the box stops. A
   terminal's program leads a session, whose every process `terminal.end`,
   and the helper's exit, end.
+- **The call socket** (`cmd/calls.ts`). Before it reads a request, the
+  helper listens at `$FLEET_SOCKET`, by default `/run/fleet/calls.sock`, and
+  sets the variable for every process it starts. Each connection carries
+  one call, a JSON line `{ "api", "method", "args" }`; the helper sends it
+  to the host, writes back the answer, `{ "result": … }` or
+  `{ "error": { "message": … } }`, and closes. A connection that closes
+  first cancels the call. The helper checks only the call's shape: which
+  session it is for, and whether it may make it, is the host's. Without the
+  socket, only calls fail.
 - **Back pressure.** While the host has not taken what the helper wrote,
   the helper stops reading every program's output, and goes on once the
   host catches up.

@@ -1,0 +1,6 @@
+# fleet-ext-notes's bundle patch: list it after fleet-core in the fleet
+# profile's bundles, and a tau that declares api/notes/ runs, its programs
+# importing @api/notes (docs/fleet-ext-notes/index.md).
+- insert:
+    - id: fleet-ext-notes
+      name: fleet-ext-notes/plugin

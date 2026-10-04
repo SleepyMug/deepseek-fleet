@@ -6,14 +6,17 @@ in dsh's process, in the fleet profile. `create` mints the session's id and
 expands its prompt; the first `start` makes the dsh session, in the caller's
 folder as its workspace, so the web UI lists it there, and gives it the
 prompt. The session's bash and file tools work in its box, through
-fleet-core's world (docs/fleet-core/world/index.md).
+fleet-core's world (docs/fleet-core/world/index.md). Each API the tau
+declares is linked to the client of the extension that implements it
+(docs/fleet-core/ext/index.md), whose calls the runs answer.
 
 ## Provides
 
 Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 - `fleet-tau-runs` (`fleet-core/tau/runs-plugin`): the runs of taus and
-  their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It uses nothing of dsh's.
+  their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It builds on the
+  extensions provided, `ctx.fleetExts`, and uses nothing of dsh's.
 - `fleet-tau` (`fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller and its workspace
   registry, and serves `fleet-protocol/tau` on `$DSH_HOME/fleet/tau.sock`,
@@ -45,14 +48,19 @@ persona, bash in the foreground only, read/write/edit, and compaction.
      `loadTau(tauDir).bind(values, { cwd: callerCwd }, place, '/tau/self')`
      checks the values against `tau.json`, places each handle, and expands
      `PROMPT.md` with the places. `checkInputs` then checks the caller's
-     paths. Nothing is made before these pass.
+     paths. Then `apis.ts` links the tau's APIs: `loadApis`, the extension
+     that implements each one, from `ctx.fleetExts`, and
+     `checkImplementation` against its client; then `loadExposed`. Nothing
+     is made before these pass, so a tau with an API that no extension
+     implements, or whose client does not fit it, is refused.
   2. It mints `session-<uuid>`, the form dsh's session ids take, which the
      dsh session gets.
   3. It creates the box `fleet-tau-<uuid>`, starts it, makes its folders
-     with the helper's `exec` (`mkdir -p`), copies in the tau and each `$in`
-     and `$inout` handle, and stops it. The folders include the caller's
-     folder, through symlinks, the project, empty: dsh runs a session's work
-     in its workspace's folder.
+     with the helper's `exec` (`mkdir -p`), copies in the tau, each `$in`
+     and `$inout` handle, and each API's client, has the helper link the
+     APIs and what the tau exposes (`apis.link`), and stops it. The folders
+     include the caller's folder, through symlinks, the project, empty: dsh
+     runs a session's work in its workspace's folder.
   4. It writes the registry entry.
 
   A failure in 3 or 4 removes the box.
@@ -64,16 +72,25 @@ persona, bash in the foreground only, read/write/edit, and compaction.
   | an `$inout` handle | `/tau/workspace/<base name>` |
   | an `$out` handle | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
+  | the APIs, `@api/<name>`, and the packages the tau exposes | `/tau/node_modules` |
+  | the client of each API's extension | `/tau/node_modules/.fleet/<name>` |
 
   A base name already taken in its folder gets a suffix in its stem:
   `notes.md`, `notes-1.md`, `notes-2.md`. An `$out` handle is not copied
   in. Its folder is made for a `dir`, and only its parent for a `file` or a
   `path`, since the agent makes what it leaves.
+
+  Node looks for a package in every folder above the file that imports it,
+  so a program anywhere below `/tau`, and the tau's own packages, find
+  `/tau/node_modules`, and TypeScript does too. Each `@api/<name>` there is
+  typed by the tau's own declarations, in `/tau/self/api/<name>`, and
+  re-exports the client, so every import in a process gets one module.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/fleet/taus/<session id>.json`: the box, the tau, the project,
   the expanded prompt and the request id it is sent under, each handle (its
   mode, kind, caller's path and place), the names of the APIs the tau
-  declares, when it was made, and when it was given its prompt. An entry is
+  declares, each linked, what it exposes, when it was made, and when it was
+  given its prompt. An entry is
   written last, so an entry means a box that is set up, and before the dsh
   session is made. A service started later finds its sessions there. Only
   ids of the form the service mints name an entry, since they are file
@@ -105,6 +122,13 @@ persona, bash in the foreground only, read/write/edit, and compaction.
   (`chmod a=r`). A place is copied once per session; a copy that fails is
   printed, and copied again when asked again. The copies stay in the box,
   across a stop, until it is removed.
+- **Calls.** Each start of a session's box gives its helper what answers
+  the calls of the clients in it. A call must name an API the session's tau
+  declares, as its registry entry has it, and a method of the server of
+  the extension that implements it now. That method gets the call's
+  arguments, the session's id, which is the box's whatever the call says,
+  and a signal that aborts when the caller goes away. A box started to set
+  up a run answers no calls.
 - **Which sessions are a tau's.** The runs read the registry's ids when the
   plugin loads, and keep them as sessions are created and deleted, so that
   `isTau` answers at once, as a process's start, which cannot wait, needs.
@@ -125,19 +149,20 @@ persona, bash in the foreground only, read/write/edit, and compaction.
   the patch.
 - **Two plugins, in the order they need each other.** dsh's session
   controller needs `ctx.fs`, the world's, which needs the runs. So the runs
-  are a plugin of their own, which needs nothing, and the tau service,
-  which needs the session controller, comes last:
+  are a plugin of their own, which needs only the extensions, and the tau
+  service, which needs the session controller, comes last:
 
   ```
-  fleet-tau-runs  ←  fleet-fs, fleet-subprocess  ←  session controller
-         ↑                                                  ↑
-         └──────────────────  fleet-tau  ───────────────────┘
+  fleet-exts  ←  fleet-tau-runs  ←  fleet-fs, fleet-subprocess  ←  session controller
+                        ↑                                                  ↑
+                        └──────────────────  fleet-tau  ───────────────────┘
   ```
 
 ## Not yet
 
 - Nothing waits for the session's turn to end.
-- The APIs are only listed in the registry entry; nothing implements them.
+- The model has no tool for programs over the APIs, nor sees what the tau
+  exposes (docs/fleet-core/ext/index.md).
 - Nothing comes back out: `$out` and `$inout` handles are neither copied back
   nor checked with `checkOutputs`.
 - A box left by a dsh that died during `create` stays. `fleet-box list` shows
@@ -145,7 +170,9 @@ persona, bash in the foreground only, read/write/edit, and compaction.
 
 ## Built on
 
-- `@sleepymug/tau`: `loadTau`, `bind`, `checkInputs`.
+- `@sleepymug/tau`: `loadTau`, `bind`, `checkInputs`, `loadApis`,
+  `checkImplementation`, `loadExposed`.
+- `ctx.fleetExts` (fleet-core/ext).
 - `Box` and `exec` (`fleet-core/box`).
 - `fleet-protocol/tau`, for the wire.
 - dsh's session controller and workspace registry
@@ -166,7 +193,9 @@ The fleet profile lists fleet-core after dsh's base and web bundles, in
 ```
 
 `pnpm exec dsh plugin --profile fleet add link:<checkout>/packages/fleet-core`
-makes it so. fleet-core's patch is the profile's layer as well: no sandbox,
+makes it so; each extension is a bundle listed after fleet-core, added the
+same way, such as `link:<checkout>/ext/fleet-ext-notes`. fleet-core's patch
+is the profile's layer as well: no sandbox,
 nothing that waits on a person, and one agent preset, `fleet`, for the web
 UI's sessions, whose tools work on the host.
 

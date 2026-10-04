@@ -1,0 +1,38 @@
+{
+  "name": "fleet-ext-notes",
+  "version": "0.0.1",
+  "private": true,
+  "description": "An extension of the fleet host: the notes API, a notebook of short notes for each session, kept by its server in dsh",
+  "type": "module",
+  "exports": {
+    "./plugin": {
+      "types": "./lib/plugin.d.ts",
+      "default": "./lib/plugin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@sleepymug/tau": "workspace:*",
+    "fleet-core": "workspace:*",
+    "fleet-image": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.4"
+  }
+}

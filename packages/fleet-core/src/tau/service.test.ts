@@ -6,6 +6,9 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from 'fleet-image/layout'
+import type { CallHandler } from '../box/helper.ts'
+import { FleetExts } from '../ext/exts.ts'
+import type { Exts } from './apis.ts'
 import { Registry } from './registry.ts'
 import { TauRuns, type Boxes, type RunBox } from './runs.ts'
 import { TauService, type Sessions } from './service.ts'
@@ -32,6 +35,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
       pages: { type: 'dir', mode: 'out', description: 'New pages.' },
     },
   }))
+  // The client of the extension that implements notes, which make()'s extensions provide.
+  await mkdir(join(work, 'client'))
+  await writeFile(join(work, 'client', 'index.js'), 'import { call } from "fleet-image/ext/client";\nexport function add(text) { return call("notes", "add", [text]); }\n')
+  await writeFile(join(work, 'client', 'index.d.ts'), 'export declare function add(text: string): Promise<unknown>;\n')
   await writeFile(join(work, 'notes.md'), 'buy milk\n')
   await mkdir(join(work, 'site'))
   await writeFile(join(work, 'site', 'index.md'), '# Home\n')
@@ -62,6 +69,9 @@ class FakeBoxes implements Boxes {
     return Promise.resolve(this.existing.has(name))
   }
 
+  /** What answers the calls of the box's clients, as its last start was given it. */
+  onCall: Parameters<RunBox['start']>[0]
+
   private box(name: string): RunBox {
     const record = (verb: string, call: string): void => {
       this.calls.push(call)
@@ -69,7 +79,10 @@ class FakeBoxes implements Boxes {
     }
     return {
       container: name,
-      start: async () => { record('start', 'start') },
+      start: async (onCall) => {
+        record('start', 'start')
+        this.onCall = onCall
+      },
       stop: async () => { record('stop', 'stop') },
       remove: async () => {
         record('remove', 'remove')
@@ -84,9 +97,31 @@ class FakeBoxes implements Boxes {
   }
 }
 
-/** The tau service on runs in `work`, with the runs at hand. */
-function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes): TauService & { tauRuns: TauRuns } {
-  const runs = new TauRuns(new Registry(join(work, 'taus')), log, boxes)
+/** What the extension of notes, as make() provides it, was called with. */
+const added: { args: unknown[]; sessionId: string }[] = []
+
+/**
+ * The tau service on runs in `work`, with the runs at hand, and, unless
+ * `exts` says otherwise, an extension of notes whose client is the
+ * fixture's, and whose `add` records its call.
+ */
+function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes, exts?: Exts): TauService & { tauRuns: TauRuns } {
+  let provided = exts
+  if (provided === undefined) {
+    const own = new FleetExts()
+    own.provide({
+      api: 'notes',
+      client: join(work, 'client'),
+      methods: {
+        add: (args, { sessionId }) => {
+          added.push({ args, sessionId })
+          return `added ${String(args[0])}`
+        },
+      },
+    })
+    provided = own
+  }
+  const runs = new TauRuns(new Registry(join(work, 'taus')), provided, log, boxes)
   return Object.assign(new TauService(runs, sessions, log), { tauRuns: runs })
 }
 
@@ -133,10 +168,16 @@ test('create sets up a stopped box with the handles and the tau, and registers t
   assert.deepEqual(boxes.calls, [
     `create ${created.box}`,
     'start',
-    `exec ${JSON.stringify({ argv: ['mkdir', '-p', '/tau/self', '/tau/in', '/tau/workspace', '/tau/out', '/tau/out/pages', project] })}`,
+    `exec ${JSON.stringify({ argv: ['mkdir', '-p', '/tau/self', '/tau/in', '/tau/workspace', '/tau/out', '/tau/out/pages', project, '/tau/node_modules/.fleet'] })}`,
     `copyIn ${tauDir} /tau/self`,
     `copyIn ${join(work, 'notes.md')} /tau/in/notes.md`,
     `copyIn ${join(work, 'site')} /tau/workspace/site`,
+    `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/notes`,
+    `apis.link ${JSON.stringify({
+      modules: '/tau/node_modules',
+      apis: [{ name: 'notes', client: '/tau/node_modules/.fleet/notes', types: '/tau/self/api/notes' }],
+      packages: [],
+    })}`,
     'stop',
   ])
 
@@ -148,6 +189,7 @@ test('create sets up a stopped box with the handles and the tau, and registers t
   assert.match(entry.promptRequestId, /^[0-9a-f-]{36}$/u)
   assert.equal(entry.promptedAt, undefined)
   assert.deepEqual(entry.apis, ['notes'])
+  assert.deepEqual(entry.exposed, ['@api/notes'])
   assert.deepEqual(entry.handles.map(handle => [handle.at, handle.mode, handle.kind, handle.host, handle.view]), [
     ['notes', 'in', 'file', join(work, 'notes.md'), '/tau/in/notes.md'],
     ['site', 'inout', 'dir', join(work, 'site'), '/tau/workspace/site'],
@@ -164,6 +206,38 @@ test('create refuses values that do not fit the tau before it makes a box', asyn
   await assert.rejects(service.create(tauDir, { ...values, style: undefined }, work), /style/u)
   await assert.rejects(service.create(tauDir, { ...values, notes: { $in: 'missing.md' } }, work), /handles do not fit/u)
   assert.deepEqual(boxes.calls, [])
+})
+
+test('create refuses a tau with an API no extension implements, or whose client does not fit, before it makes a box', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const boxes = new FakeBoxes()
+  const none = make(work, () => {}, new FakeSessions(), boxes, new FleetExts())
+  await assert.rejects(none.create(tauDir, values, work), /cannot run here:\n {2}@api\/notes: no extension implements it/u)
+  await mkdir(join(work, 'other'))
+  await writeFile(join(work, 'other', 'index.js'), 'export function add() {}\n')
+  await writeFile(join(work, 'other', 'index.d.ts'), 'export declare function add(text: number): void;\n')
+  const misfit = new FleetExts()
+  misfit.provide({ api: 'notes', client: join(work, 'other'), methods: {} })
+  await assert.rejects(make(work, () => {}, new FakeSessions(), boxes, misfit).create(tauDir, values, work), /does not implement @api\/notes/u)
+  assert.deepEqual(boxes.calls, [])
+})
+
+test('the calls of a session\'s clients go to the extension\'s server, as that session\'s, for the APIs its tau declares', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const boxes = new FakeBoxes()
+  const service = make(work, () => {}, new FakeSessions(), boxes)
+  const { sessionId } = await service.create(tauDir, values, work)
+  assert.equal(boxes.onCall, undefined)
+  await service.start(sessionId)
+  const signal = new AbortController().signal
+  // Set by the start, which TypeScript does not see.
+  const onCall = boxes.onCall as CallHandler | undefined
+  assert.ok(onCall !== undefined)
+  added.length = 0
+  assert.equal(await onCall({ api: 'notes', method: 'add', args: ['milk'] }, signal), 'added milk')
+  assert.deepEqual(added, [{ args: ['milk'], sessionId }])
+  await assert.rejects(onCall({ api: 'notes', method: 'toString', args: [] }, signal), /the extension of notes has no method toString/u)
+  await assert.rejects(onCall({ api: 'archives', method: 'add', args: [] }, signal), /declares no API archives/u)
 })
 
 test('a create that fails removes its box and registers nothing', async (t) => {
@@ -360,10 +434,17 @@ test('a real box gets the tau and the handles at their places', { skip: await ab
   try {
     assert.equal(prompt, EXPANDED)
     await service.start(sessionId)
-    const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-not', '-type', 'd'])
+    const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
       '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
+    // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.
+    added.length = 0
+    const started = await service.tauRuns.boxFor(sessionId)
+    const program = 'import { add } from "@api/notes"; process.stdout.write(await add("milk"));'
+    const ran = await started?.request('exec', { argv: ['sh', '-c', `cd /tau/workspace && node --input-type=module --eval '${program}'`] })
+    assert.deepEqual(ran, { code: 0, signal: null, stdout: 'added milk', stderr: '' })
+    assert.deepEqual(added, [{ args: ['milk'], sessionId }])
     assert.equal((await run('docker', ['exec', box, 'cat', '/tau/in/notes.md'])).stdout, 'buy milk\n')
     await run('docker', ['exec', box, 'test', '-d', '/tau/out/pages'])
     // Where dsh will run the session's work: the caller's folder, empty.

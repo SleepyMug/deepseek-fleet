@@ -31,8 +31,10 @@ export interface Entry {
   promptedAt?: string
   /** Each handle of the run: its mode, its kind, the caller's path, and where the box has it. */
   handles: readonly BoundHandle[]
-  /** The APIs the tau declares, by name; nothing implements them yet. */
+  /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]
+  /** What the tau exposes to its programs: `@api/<name>`, or a package of its own, by name. */
+  exposed: readonly string[]
   createdAt: string
 }
 

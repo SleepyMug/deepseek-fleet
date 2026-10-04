@@ -11,6 +11,10 @@
       "types": "./lib/box/box.d.ts",
       "default": "./lib/box/box.js"
     },
+    "./ext/plugin": {
+      "types": "./lib/ext/plugin.d.ts",
+      "default": "./lib/ext/plugin.js"
+    },
     "./tau/plugin": {
       "types": "./lib/tau/plugin.d.ts",
       "default": "./lib/tau/plugin.js"

@@ -1,21 +1,25 @@
 /**
  * The runs of taus, and their boxes (docs/fleet-core/tau/index.md): it sets
  * up a box for a run, with the run's handles and the tau's own directory in
- * it (./place.ts), keeps which box each session has (./registry.ts), and
- * starts, stops and removes the box, and copies host files into it as they
- * are asked for. It uses nothing of dsh's, so both
+ * it (./place.ts), and its APIs linked to the clients of the extensions that
+ * implement them (./apis.ts); keeps which box each session has
+ * (./registry.ts); starts, stops and removes the box, and copies host files
+ * into it as they are asked for; and answers the calls the clients in the
+ * box make, with the extensions' servers. It uses nothing of dsh's, so both
  * fleet-core's world (../world/), which serves a tau's session from its box,
  * and the tau service (./service.ts), which makes the session, build on it.
  * @module fleet-core/tau/runs
  */
 
 import { randomUUID } from 'node:crypto'
-import { readdir, realpath } from 'node:fs/promises'
-import { join, posix } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { posix, relative, sep } from 'node:path'
 import { checkInputs, loadTau } from '@sleepymug/tau'
+import type { Call } from 'fleet-image/helper/protocol'
 import type { Created, Values } from 'fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
-import { FOLDERS, SELF, placer } from './place.ts'
+import { linkApis, type Exts } from './apis.ts'
+import { CLIENTS, FOLDERS, MODULES, SELF, placer } from './place.ts'
 import type { Entry, Registry } from './registry.ts'
 
 /** What a run's box is used for. */
@@ -49,6 +53,7 @@ export class TauRuns {
 
   constructor(
     private readonly registry: Registry,
+    private readonly exts: Exts,
     private readonly log: (message: string) => void,
     private readonly docker: Boxes = dockerBoxes,
   ) {}
@@ -61,10 +66,11 @@ export class TauRuns {
   /**
    * Set up a box for a run of a tau, and leave it stopped: bind the values,
    * which checks them against the tau and expands its prompt; check the
-   * handles' paths; then create the box, make its folders, the caller's
-   * folder, where dsh will run the session's work, among them, copy in the
-   * tau and each `$in` and `$inout` handle, and register the session. A
-   * failure removes the box.
+   * handles' paths; link the tau's APIs to the extensions provided; then
+   * create the box, make its folders, the caller's folder, where dsh will
+   * run the session's work, among them, copy in the tau, each `$in` and
+   * `$inout` handle, and each API's client, link the APIs and what the tau
+   * exposes, and register the session. A failure removes the box.
    * @param tauDir - the tau's directory, absolute.
    * @param values - the run's values, by parameter.
    * @param callerCwd - what relative paths in `values` are relative to, absolute.
@@ -73,7 +79,8 @@ export class TauRuns {
     const tau = loadTau(tauDir)
     const run = tau.bind(values, { cwd: callerCwd }, placer(), SELF)
     checkInputs(run)
-    const apis = await apiNames(tau.dir)
+    const linked = linkApis(tau, this.exts)
+    const tauRoot = await realpath(tau.dir)
     const project = await realpath(callerCwd)
     const id = randomUUID()
     const sessionId = `session-${id}`
@@ -81,11 +88,17 @@ export class TauRuns {
     try {
       await box.start()
       const outFolders = run.handles.filter(handle => handle.mode === 'out' && handle.kind === 'dir').map(handle => handle.view)
-      await exec(box, ['mkdir', '-p', SELF, ...Object.values(FOLDERS), ...outFolders, project])
+      await exec(box, ['mkdir', '-p', SELF, ...Object.values(FOLDERS), ...outFolders, project, CLIENTS])
       await box.copyIn(tau.dir, SELF)
       for (const handle of run.handles) {
         if (handle.mode !== 'out') await box.copyIn(handle.host, handle.view)
       }
+      for (const api of linked.apis) await box.copyIn(api.client, `${CLIENTS}/${api.name}`)
+      await box.request('apis.link', {
+        modules: MODULES,
+        apis: linked.apis.map(({ name }) => ({ name, client: `${CLIENTS}/${name}`, types: `${SELF}/api/${name}` })),
+        packages: linked.packages.map(({ name, dir }) => ({ name, dir: posix.join(SELF, ...relative(tauRoot, dir).split(sep)) })),
+      })
       await box.stop()
       this.taus.add(sessionId)
       await this.registry.put({
@@ -96,7 +109,8 @@ export class TauRuns {
         prompt: run.prompt,
         promptRequestId: randomUUID(),
         handles: run.handles,
-        apis,
+        apis: linked.apis.map(api => api.name),
+        exposed: linked.exposed,
         createdAt: new Date().toISOString(),
       })
     } catch (error) {
@@ -166,7 +180,7 @@ export class TauRuns {
   /** Start a session's box, and a new helper in it; a session that is not a tau's fails. */
   async start(sessionId: string): Promise<void> {
     await this.serial(sessionId, async () => {
-      await (await this.box(sessionId)).start()
+      await (await this.box(sessionId)).start(this.calls(sessionId))
       this.started.add(sessionId)
     })
   }
@@ -209,6 +223,22 @@ export class TauRuns {
     }))
   }
 
+  /**
+   * What answers the calls of the clients in a session's box: the server of
+   * the extension that implements the API, for an API the session's tau
+   * declares, with the session the box is, whatever the call says.
+   */
+  private calls(sessionId: string): (call: Call, signal: AbortSignal) => Promise<unknown> {
+    return async ({ api, method, args }, signal) => {
+      const entry = await this.registry.get(sessionId)
+      if (!entry.apis.includes(api)) throw new Error(`fleet: this run's tau declares no API ${api}`)
+      const ext = this.exts.get(api)
+      if (ext === undefined) throw new Error(`fleet: no extension implements ${api} now`)
+      if (!Object.hasOwn(ext.methods, method)) throw new Error(`fleet: the extension of ${api} has no method ${method}`)
+      return await ext.methods[method]?.(args, { sessionId, signal })
+    }
+  }
+
   /** Run a session's operations on its box one after another. */
   private serial<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
     const next = (this.queues.get(sessionId) ?? Promise.resolve()).then(operation)
@@ -222,7 +252,7 @@ export class TauRuns {
   private async running(sessionId: string): Promise<RunBox> {
     const box = await this.box(sessionId)
     if (!this.started.has(sessionId)) {
-      await box.start()
+      await box.start(this.calls(sessionId))
       this.started.add(sessionId)
     }
     return box
@@ -237,16 +267,5 @@ export class TauRuns {
     // One that would not open is opened again the next time.
     opening.catch(() => { if (this.boxes.get(sessionId) === opening) this.boxes.delete(sessionId) })
     return opening
-  }
-}
-
-/** The APIs a tau declares: the folders in its api/. */
-async function apiNames(tauDir: string): Promise<string[]> {
-  try {
-    const entries = await readdir(join(tauDir, 'api'), { withFileTypes: true })
-    return entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
-    throw error
   }
 }

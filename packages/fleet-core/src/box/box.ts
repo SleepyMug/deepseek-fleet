@@ -11,9 +11,9 @@ import { stat } from 'node:fs/promises'
 import { posix, resolve } from 'node:path'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from 'fleet-image/layout'
 import type { EventOf, Method, Methods } from 'fleet-image/helper/protocol'
-import { Helper } from './helper.ts'
+import { Helper, type CallHandler } from './helper.ts'
 
-export { HelperError, METHODS } from './helper.ts'
+export { HelperError, METHODS, type CallHandler } from './helper.ts'
 export { exec } from './cmd/exec.ts'
 
 /** The label every box's container carries, with an empty value, which `list` and `open` look for. */
@@ -90,13 +90,14 @@ export class Box {
   /**
    * Start the container, if it is not running, and a new helper in it. A
    * start that fails leaves the container stopped.
+   * @param onCall - answers the calls of the clients in the box, while this helper runs; without it, each fails.
    */
-  start(): Promise<void> {
+  start(onCall?: CallHandler): Promise<void> {
     return this.serial(async () => {
       await this.closeHelper()
       await run(this.docker, ['start', this.container])
       try {
-        this.helper = await Helper.start([this.docker, 'exec', '--interactive', this.container, HELPER_NODE, HELPER_ENTRY])
+        this.helper = await Helper.start([this.docker, 'exec', '--interactive', this.container, HELPER_NODE, HELPER_ENTRY], onCall)
       } catch (error) {
         await run(this.docker, ['stop', this.container]).catch(() => {})
         throw error
