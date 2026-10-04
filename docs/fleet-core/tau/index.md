@@ -97,8 +97,9 @@ The fleet profile lists fleet-core after dsh's base and web bundles, in
 }
 ```
 
-After `pnpm build` and `pnpm image`, `dsh --profile fleet` starts the
-service with the web host, and `fleet` talks to it
+After `pnpm build` and `pnpm image`, `pnpm exec dsh --profile fleet`, with
+the dsh the workspace pins, starts the service with the web host, and
+`fleet` talks to it
 (docs/fleet-client/index.md). On dsh's stderr:
 
 ```

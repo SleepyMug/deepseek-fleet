@@ -10,5 +10,14 @@ packages:
 # links the member, so the members' manifests stay as they are.
 linkWorkspacePackages: true
 allowBuilds:
+  # dsh's (the root's dev dependency, for `pnpm exec dsh`).
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  koffi: true
+  node-pty: true
+  protobufjs: true
   # tsx's, which finds its platform binary in @esbuild/<platform> at runtime.
   esbuild: false
+# dsh is a release candidate, newer than the release age pnpm waits for.
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/*'
