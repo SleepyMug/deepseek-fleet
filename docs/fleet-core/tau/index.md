@@ -87,15 +87,9 @@ be given.
 
 ## How it runs
 
-The fleet profile lists fleet-core after dsh's base and web bundles, in
-`$DSH_HOME/profiles/fleet/package.json`:
-
-```json
-{
-  "dependencies": { "fleet-core": "link:<checkout>/packages/fleet-core" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "fleet-core"] } }
-}
-```
+The fleet profile lists fleet-core after dsh's base and web bundles, beside
+fleet-profile (docs/fleet-profile/index.md); the service needs only
+fleet-core.
 
 After `pnpm build` and `pnpm image`, `pnpm exec dsh --profile fleet`, with
 the dsh the workspace pins, starts the service with the web host, and
