@@ -34,7 +34,9 @@ persona, bash in the foreground only, read/write/edit, and compaction.
 
 - `isTau(sessionId)`, at once, whether a session is a tau's;
 - `boxFor(sessionId)`, the started box of a tau's session, started if it is
-  not.
+  not;
+- `copyInOnce(sessionId, from, to)`, at once, a host file copied into the
+  box of a tau's session before its next use, for dsh's attachments.
 
 ## Design
 
@@ -96,6 +98,13 @@ persona, bash in the foreground only, read/write/edit, and compaction.
 - **One `Box` per session.** The runs open each session's box once and keep
   it, so the box's verbs run in order. When `fleet-tau-runs` unloads, as
   dsh exits, it stops the boxes it started, `boxFor`'s included.
+- **Copies on demand.** `copyInOnce` queues the copy as one of the
+  session's operations, so a `boxFor` asked after it waits for it. It
+  starts the box, makes the place's folder with the helper's `exec`
+  (`mkdir -p`), copies the file with `docker cp` and makes it read-only
+  (`chmod a=r`). A place is copied once per session; a copy that fails is
+  printed, and copied again when asked again. The copies stay in the box,
+  across a stop, until it is removed.
 - **Which sessions are a tau's.** The runs read the registry's ids when the
   plugin loads, and keep them as sessions are created and deleted, so that
   `isTau` answers at once, as a process's start, which cannot wait, needs.

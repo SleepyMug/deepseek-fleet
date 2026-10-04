@@ -293,6 +293,42 @@ test('a tau session\'s box is started for its files and processes once, and agai
   assert.equal(await later.tauRuns.boxFor(sessionId), undefined)
 })
 
+test('a host file is copied into a tau session\'s box once, before the box\'s next use, and again after a failure', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const boxes = new FakeBoxes()
+  const logged: string[] = []
+  const service = make(work, message => logged.push(message), new FakeSessions(), boxes)
+  const { sessionId } = await service.create(tauDir, values, work)
+  boxes.calls.length = 0
+  const from = '/home/me/.dsh/attachments/v1/objects/09/0912'
+  const to = '/fleet/attachments/v1/objects/09/0912'
+  const copy = [
+    'exec {"argv":["mkdir","-p","/fleet/attachments/v1/objects/09"]}',
+    `copyIn ${from} ${to}`,
+    `exec {"argv":["chmod","a=r","${to}"]}`,
+  ]
+
+  service.tauRuns.copyInOnce('not-a-tau-session', from, to)
+  service.tauRuns.copyInOnce(sessionId, from, to)
+  service.tauRuns.copyInOnce(sessionId, from, to)
+  await service.tauRuns.boxFor(sessionId)
+  assert.deepEqual(boxes.calls, ['start', ...copy])
+  service.tauRuns.copyInOnce(sessionId, from, to)
+  await service.tauRuns.boxFor(sessionId)
+  assert.deepEqual(boxes.calls, ['start', ...copy])
+
+  boxes.calls.length = 0
+  boxes.failing = 'copyIn'
+  const other = '/fleet/attachments/v1/objects/ab/ab34'
+  service.tauRuns.copyInOnce(sessionId, from, other)
+  await service.tauRuns.boxFor(sessionId)
+  assert.match(logged.at(-1) ?? '', /^could not copy .* into the box of session-.*: copyIn failed$/)
+  boxes.failing = undefined
+  service.tauRuns.copyInOnce(sessionId, from, other)
+  await service.tauRuns.boxFor(sessionId)
+  assert.deepEqual(boxes.calls.filter(call => call.startsWith('copyIn')), [`copyIn ${from} ${other}`, `copyIn ${from} ${other}`])
+})
+
 test('deleting a session whose box is gone forgets the session', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes()

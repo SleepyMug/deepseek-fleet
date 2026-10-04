@@ -2,7 +2,8 @@
  * The runs of taus, and their boxes (docs/fleet-core/tau/index.md): it sets
  * up a box for a run, with the run's handles and the tau's own directory in
  * it (./place.ts), keeps which box each session has (./registry.ts), and
- * starts, stops and removes the box. It uses nothing of dsh's, so both
+ * starts, stops and removes the box, and copies host files into it as they
+ * are asked for. It uses nothing of dsh's, so both
  * fleet-core's world (../world/), which serves a tau's session from its box,
  * and the tau service (./service.ts), which makes the session, build on it.
  * @module fleet-core/tau/runs
@@ -10,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { readdir, realpath } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import { checkInputs, loadTau } from '@sleepymug/tau'
 import type { Created, Values } from 'fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
@@ -43,6 +44,8 @@ export class TauRuns {
   private readonly queues = new Map<string, Promise<void>>()
   /** The sessions with a registry entry, as {@link load} found them and as they were made and removed since. */
   private readonly taus = new Set<string>()
+  /** Each session's host files copied into its box, or on their way, by their place there. */
+  private readonly copies = new Map<string, Map<string, Promise<void>>>()
 
   constructor(
     private readonly registry: Registry,
@@ -128,14 +131,35 @@ export class TauRuns {
    */
   async boxFor(sessionId: string): Promise<RunBox | undefined> {
     if (!this.taus.has(sessionId)) return undefined
-    return this.serial(sessionId, async () => {
-      if (!this.taus.has(sessionId)) return undefined
-      const box = await this.box(sessionId)
-      if (!this.started.has(sessionId)) {
-        await box.start()
-        this.started.add(sessionId)
-      }
-      return box
+    return this.serial(sessionId, async () => this.taus.has(sessionId) ? this.running(sessionId) : undefined)
+  }
+
+  /**
+   * Copy a host file into the box of a tau's session, at `to`, readable by
+   * all and writable by none, once: asked again for the same place, it does
+   * nothing, unless the copy failed, which it prints. It answers at once, and
+   * copies in turn with the session's other operations on its box, so a
+   * {@link boxFor} asked after it waits for the copy. A session that is not a
+   * tau's is ignored.
+   * @param from - the host file, absolute.
+   * @param to - its place in the box, absolute.
+   */
+  copyInOnce(sessionId: string, from: string, to: string): void {
+    if (!this.taus.has(sessionId)) return
+    let copies = this.copies.get(sessionId)
+    if (copies === undefined) this.copies.set(sessionId, copies = new Map())
+    if (copies.has(to)) return
+    const copying = this.serial(sessionId, async () => {
+      if (!this.taus.has(sessionId)) return
+      const box = await this.running(sessionId)
+      await exec(box, ['mkdir', '-p', posix.dirname(to)])
+      await box.copyIn(from, to)
+      await exec(box, ['chmod', 'a=r', to])
+    })
+    copies.set(to, copying)
+    copying.catch((error: unknown) => {
+      if (this.copies.get(sessionId)?.get(to) === copying) this.copies.get(sessionId)?.delete(to)
+      this.log(`could not copy ${from} into the box of ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
 
@@ -166,6 +190,7 @@ export class TauRuns {
       }
       this.boxes.delete(sessionId)
       this.started.delete(sessionId)
+      this.copies.delete(sessionId)
       await this.registry.delete(sessionId)
       this.taus.delete(sessionId)
     })
@@ -191,6 +216,16 @@ export class TauRuns {
     this.queues.set(sessionId, settled)
     void settled.then(() => { if (this.queues.get(sessionId) === settled) this.queues.delete(sessionId) })
     return next
+  }
+
+  /** A session's box, started if it was not started here, in one of its operations. */
+  private async running(sessionId: string): Promise<RunBox> {
+    const box = await this.box(sessionId)
+    if (!this.started.has(sessionId)) {
+      await box.start()
+      this.started.add(sessionId)
+    }
+    return box
   }
 
   /** A session's box, opened the first time it is asked for. */

@@ -167,9 +167,13 @@
 - id: subprocess
   disabled: true
 
+# fleet-fs puts the files of dsh's attachment store, $DSH_HOME/attachments/,
+# that a tau's session's model is told of into its box.
 - insert:
     - id: fleet-fs
       name: fleet-core/world/fs
+      config:
+        dshHome: !!js dshHomePath()
 
     - id: fleet-subprocess
       name: fleet-core/world/subprocess

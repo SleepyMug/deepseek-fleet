@@ -20,11 +20,18 @@
  * dsh gives, its folder on the host. The viewer passes it on to every file
  * call, as the path or the `cwd`, so its tree, previews and live refresh
  * are the box's.
+ *
+ * dsh asks where a host file is in the world of the session it works for,
+ * to tell its model where a stored attachment is: an image it was shown, or
+ * a file uploaded to it. For a tau's session, a file of dsh's attachment
+ * store is at its place under /fleet/attachments in its box, which the runs
+ * copy it to as it is asked for; there the store's files never change. Any
+ * other host file is not in its world.
  * @module fleet-core/world/fs
  */
 
 import { randomUUID } from 'node:crypto'
-import { posix } from 'node:path'
+import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
@@ -58,6 +65,14 @@ interface InBox {
 /** The folder of a tau's session the file viewer shows: the tau's folders in its box. */
 const VIEWED = '/tau'
 
+/** Where a box has the files of dsh's attachment store, as they are in the store. */
+const ATTACHMENTS = '/fleet/attachments'
+
+export interface Config {
+  /** The dsh home, absolute, whose attachments/ is dsh's attachment store. */
+  dshHome: string
+}
+
 type FsMethod = Exclude<Extract<keyof Methods, `fs.${string}`>, 'fs.watch' | 'fs.unwatch'>
 
 export class FleetFileSystem extends FileSystem {
@@ -67,10 +82,16 @@ export class FleetFileSystem extends FileSystem {
   /** dsh's local file system, for every call that is not a box's. */
   private local: FileSystem | undefined
   private readonly localReady: Promise<FileSystem>
+  /** dsh's attachment store on the host. */
+  private readonly store: string
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: Config) {
     super(ctx)
+    if (typeof config?.dshHome !== 'string' || !isAbsolute(config.dshHome)) {
+      throw new Error('fleet-fs: its config names dshHome, the dsh home, an absolute path')
+    }
     this.self = ctx
+    this.store = join(resolve(config.dshHome), 'attachments')
     // Mounted where only this service sees it, so that it does not stand in for this one.
     const isolated = ctx.isolate('fs')
     this.localReady = (async () => {
@@ -94,8 +115,20 @@ export class FleetFileSystem extends FileSystem {
     return inBox(target)?.path ?? this.localNow().processPath(target)
   }
 
+  /**
+   * For a tau's session, a file of dsh's attachment store is at its place in
+   * the box, which the runs copy it to before the box's next use; any other
+   * host file is not there.
+   */
   override processPathFromHostPath(hostPath: string): string | undefined {
-    return this.localNow().processPathFromHostPath(hostPath)
+    const caller = callerSession(this.self, this.ctx)
+    if (caller === undefined || !this.self.fleetTauRuns.isTau(caller)) return this.localNow().processPathFromHostPath(hostPath)
+    if (!isAbsolute(hostPath)) return undefined
+    const stored = relative(this.store, resolve(hostPath))
+    if (stored === '' || stored === '..' || stored.startsWith(`..${sep}`) || isAbsolute(stored)) return undefined
+    const place = posix.join(ATTACHMENTS, ...stored.split(sep))
+    this.self.fleetTauRuns.copyInOnce(caller, resolve(hostPath), place)
+    return place
   }
 
   override fileUrl(target: FsTarget): string {

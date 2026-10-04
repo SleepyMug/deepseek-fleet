@@ -52,6 +52,24 @@ a tau's session does not look; they stay inline instead.
   session's folder, or the sandbox policy's root. The viewer passes the
   folder on to every call, as the path or the `cwd`, so its tree, previews
   and the chat's file links read the box.
+- **Attachments.** dsh asks the file system where a host file is in the
+  world of the session it works for (`processPathFromHostPath`), to tell
+  its model where an attachment of dsh's store is: the normalized copy of
+  an image it was shown, which its model can work on or look at again with
+  `read_image` once the image is left out of a request, or a file uploaded
+  to it, which it reads only there. For a tau's session, a file of the
+  store, `$DSH_HOME/attachments/`, is at the same place under
+  `/fleet/attachments` in its box, such as
+  `/fleet/attachments/v1/files/49/<sha256>/notes.csv`; the store's files
+  never change, so a copy stays the same file. The answer comes at once,
+  and the runs copy the file in then, once per session, readable by all
+  and writable by none (`copyInOnce`, docs/fleet-core/tau/index.md). The
+  copy is one of the session's operations on its box, so the box's next
+  use, which every file call, process and terminal waits for, comes after
+  it; and the model acts on the answer only after the request it is in.
+  Any other host file is not in a tau's session's world. Every other
+  session gets dsh's own answer, the host path. The service's config names
+  the dsh home, as `dshHomePath()` in the patch.
 - **Watching** a box's target asks its helper (`fs.watch`), which watches
   with dsh's local file system and sends an event for each change, until
   the watch's stop or signal ends it (`fs.unwatch`). A box lost meanwhile
@@ -94,6 +112,8 @@ a tau's session does not look; they stay inline instead.
 - `@deepseek-ai/dsh-api-workspace-files` and `@deepseek-ai/dsh-typert-protocol`,
   for the `workspaceFileScope` lookup.
 - `ctx.fleetTauRuns` (fleet-core/tau), and `Box` (fleet-core/box) through it.
+- dsh's attachment store's layout, `$DSH_HOME/attachments/`, whose files
+  `@deepseek-ai/dsh-attachment-local` names.
 
 These are runtime imports, so they must be the copies the running dsh
 loaded: run the workspace's dsh, `pnpm exec dsh`.
@@ -108,4 +128,12 @@ box:
 ```
 $ docker exec fleet-tau-4458… cat /tau/out/report.md   # written by the model's `write`
 Added a line to index.md.
+```
+
+A file uploaded to the session in the web UI, and an image its model was
+shown, are in its box where dsh tells the model they are:
+
+```
+$ docker exec fleet-tau-4458… ls -l /fleet/attachments/v1/files/49/492d…/
+-r--r--r-- 1 node node 8 Oct  4 18:47 notes.csv
 ```
