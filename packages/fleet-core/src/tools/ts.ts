@@ -27,25 +27,37 @@ const ROOT = posix.dirname(MODULES)
 
 const INSTRUCTIONS = `# TypeScript programs
 
-Besides running commands, you can write TypeScript programs and run them in your box with \`ts_execute\`. A program is one self-contained ES module that exports \`main(input)\`; it is type-checked strictly, then run in a fresh Node process. It imports, by package name, what your tau exposes: its APIs, as \`@api/<name>\`, typed by their declarations, which may reach outside the box; and packages built on them. It imports Node's built-ins as \`node:\` specifiers.
+Besides running commands, you can write TypeScript programs and run them in your box with \`ts_execute\`. A program is one self-contained ES module that exports \`main(input)\`. It imports, by name, the packages \`ts_modules\` lists, typed by their declarations, some of which may reach outside the box; and Node's built-ins, as \`node:\` specifiers.
 
 1. Call \`ts_modules({ query? })\` to list what programs can import. It gives each package's specifier, description and \`packageRoot\`, a folder in your box.
-2. Read a package's \`package.json\` and the declaration files its \`types\` names, under \`packageRoot\`, before writing calls; descriptions are summaries, not contracts.
-3. Write strict ES2022 TypeScript with ESM imports.
+2. Read a package's \`package.json\` and the declaration files its \`types\` names, under \`packageRoot\`, before writing calls.
+3. Use ESM imports.
 4. Call \`ts_execute({ source, cwd?, input? })\`. It type-checks before running; fix the reported errors and retry. \`cwd\`, your working directory by default, is where relative paths resolve; packages are imported by name wherever it is.
 5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. What an API did is not undone when a program fails.
 
 \`input\` and the value \`main\` returns are strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs.
 
-For example, \`ts_execute\` with this \`source\` and the \`input\` \`{ "path": "notes.md" }\` returns how many lines the file has:
+For example, \`ts_modules({})\` may list an API and a package built on it:
+
+\`\`\`json
+[
+  { "specifier": "@api/notes", "packageRoot": "/tau/node_modules/@api/notes", "description": "A notebook of short notes, each with tags to find it by later." },
+  { "specifier": "notes-digest", "packageRoot": "/tau/node_modules/notes-digest", "description": "Notes as a Markdown digest." }
+]
+\`\`\`
+
+Once you have read their declarations, \`ts_execute\` with this \`source\` and the \`input\` \`{ "tag": "shop", "out": "shop.md" }\` writes a digest of the notes with that tag, and returns how many there are:
 
 \`\`\`ts
-import { readFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
+import { byTag } from '@api/notes'
+import { digest } from 'notes-digest'
 
-export async function main(input: { path: string }): Promise<number> {
-  const text = await readFile(input.path, 'utf8')
-  console.log(\`read \${text.length} characters\`)
-  return text.split('\\n').length
+export async function main(input: { tag: string; out: string }): Promise<number> {
+  const notes = await byTag(input.tag)
+  await writeFile(input.out, digest(notes))
+  console.log(\`wrote \${input.out}\`)
+  return notes.length
 }
 \`\`\``
 
@@ -66,7 +78,7 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'ts_modules',
-    description: 'List the packages a `ts_execute` program may import: what your tau exposes, its APIs (`@api/<name>`) and packages built on them. '
+    description: 'List the packages a `ts_execute` program may import. '
       + 'Returns each package\'s specifier, description and packageRoot, a folder in your box; read its package.json and declaration files to learn its API.',
     parameters: {
       query: { type: 'string', description: 'Case-insensitive filter on specifier and description.' },
