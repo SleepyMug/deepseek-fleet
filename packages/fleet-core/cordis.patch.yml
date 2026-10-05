@@ -253,6 +253,23 @@
           - id: tool-ts
             name: fleet-core/tools/ts
 
+          # The tau's skills, each /tau/self/skills/<name>/SKILL.md, read
+          # from the session's box through fleet-core's `ctx.fs`, and only
+          # those: no project, user or bundled roots, and no host watcher,
+          # since none of the paths are the host's.
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+            config:
+              providerName: tau
+              includeDefaultRoots: false
+              customSkillDirs:
+                - /tau/self/skills
+              watch: false
+
+          # skill: the catalog of the skills above, and the tool that loads one.
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
           # Not model tools: automatic compaction, /compact, and old tool-result pruning.
           - id: compaction
             name: cordis:group

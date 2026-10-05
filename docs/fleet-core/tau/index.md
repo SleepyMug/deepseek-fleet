@@ -53,7 +53,7 @@ to the sessions' two ways in:
 The patch also declares `tau`, the agent preset a tau's session has: a
 persona, the tau's prompt plugin (`fleet-core/tau/prompt`), the box's
 reset notice (`fleet-core/tau/reset`), bash in the foreground only, read/write/edit, `ts_modules` and `ts_execute`
-(docs/fleet-core/tools/index.md), and compaction. What its rows register
+(docs/fleet-core/tools/index.md), the tau's skills, and compaction. What its rows register
 reaches only the sessions of that preset: dsh mounts them once, in the
 preset's scope, which each of its sessions' agents has as its parent.
 
@@ -259,6 +259,14 @@ preset's scope, which each of its sessions' agents has as its parent.
   cannot shadow. It also leaves out the runtime context on the sandbox
   policy (`sandbox:policy`), the host's file policy, full access, which is
   not the box's. The web UI's own sessions keep dsh's whole prompt.
+- **The tau's skills** are dsh's: the preset mounts dsh's file-system skill
+  provider with one root, `/tau/self/skills`, each skill a folder in it
+  with a `SKILL.md`, and none of dsh's project, user or bundled roots, and
+  dsh's `skill` tool, which lists them to the model and loads one, with
+  its folder in the box as the base of the paths it names. The provider
+  reads through the world, so from the session's box, and watches nothing,
+  since its root is no host path. Its catalog is kept per agent, so each
+  session sees its own tau's.
 - **The working directory** of a tau's session is `/tau/workspace` in its
   box, where its `$inout` handles are, as the runtime reported it. dsh runs
   a session's work in its workspace's folder, the project, a host path the
@@ -351,8 +359,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - `fleet-protocol/tau`, for the wire.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,
-  `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash` and `dsh-tool-fs` for
-  the `tau` preset.
+  `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash`, `dsh-tool-fs`,
+  `dsh-skill-filesystem` and `dsh-tool-skill` for the `tau` preset.
 
 ## How it runs
 
