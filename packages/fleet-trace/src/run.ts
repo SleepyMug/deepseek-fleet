@@ -18,7 +18,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { ask as askService, type Body } from 'fleet-client/connection'
-import { socketPath, type Answers, type Values } from 'fleet-protocol/tau'
+import { finishRun, startRun } from 'fleet-client/runs'
+import { socketPath, type Answers } from 'fleet-protocol/tau'
 import { ScriptedModel, type Step } from './model.ts'
 import { render } from './render.ts'
 
@@ -29,7 +30,7 @@ export interface Scenario {
   /** The caller's folder: each file by its relative path, with its text. */
   files?: Record<string, string>
   /** The run's values, as `fleet start` sends them; relative paths are the caller's folder's. */
-  values: Values
+  values: Record<string, unknown>
   /** The model's tool calls, in order, one per turn. */
   steps: Step[]
   /** The model's last answer, after the last step. */
@@ -77,10 +78,10 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
       writeFileSync(join(work, path), text)
     }
     for (const path of outPaths(scenario.values)) mkdirSync(dirname(resolve(work, path)), { recursive: true })
-    const started = await ask(socket, { op: 'start', tauDir: resolve(dirname(scenarioFile), scenario.tau), callerCwd: work, values: scenario.values })
+    const started = await failing('start', startRun(socket, resolve(dirname(scenarioFile), scenario.tau), scenario.values, work))
     sessionId = started.sessionId
     model.prompt = started.prompt.trim()
-    const result = await Promise.race([ask(socket, { op: 'finish', sessionId }), exited, interrupted])
+    const result = await Promise.race([failing('finish', finishRun(socket, sessionId)), exited, interrupted])
     if (!result.ok) process.stderr.write(`fleet-trace: the run failed: ${String(result.failure)}\n`)
     await ask(socket, { op: 'delete', sessionId })
     sessionId = undefined
@@ -149,9 +150,14 @@ async function stop(dsh: ChildProcess): Promise<void> {
 }
 
 /** One request to the tau service, whose failure throws. */
-async function ask<O extends Body['op']>(socket: string, body: Body & { op: O }): Promise<Answers[O]> {
-  return await askService<O>(socket, body).catch((error: unknown) => {
-    throw new Error(`fleet-trace: ${body.op} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+function ask<O extends Body['op']>(socket: string, body: Body & { op: O }): Promise<Answers[O]> {
+  return failing(body.op, askService<O>(socket, body))
+}
+
+/** What an op gives, its failure named. */
+async function failing<T>(op: string, answer: Promise<T>): Promise<T> {
+  return await answer.catch((error: unknown) => {
+    throw new Error(`fleet-trace: ${op} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   })
 }
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { basename } from 'node:path'
 import { test } from 'node:test'
 import type { Kind, Mode } from '@sleepymug/tau'
 import { placer } from './place.ts'
@@ -6,7 +7,7 @@ import { placer } from './place.ts'
 /** Place handles of one run, each `[mode, host path]`. */
 function places(handles: [Mode, string][], kind: Kind = 'path'): string[] {
   const place = placer()
-  return handles.map(([mode, host], index) => place({ at: `h${String(index)}`, mode, kind, host }))
+  return handles.map(([mode, host], index) => place({ at: `h${String(index)}`, pointer: `/h${String(index)}`, mode, kind, name: basename(host), host }))
 }
 
 test('each handle goes in the folder of its mode, under its base name', () => {

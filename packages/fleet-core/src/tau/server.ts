@@ -1,17 +1,21 @@
 /**
  * The tau service's socket (fleet-protocol/tau): it reads one request from
- * each connection, has the service carry it out, answers, and ends the
- * connection. A client that goes away first gives up its wait, such as a
- * `finish`'s, and nothing else. Its clients are the host's, which reach
- * every run. Only the owner can open the socket, which is its
- * authentication, as the dsh home's own files are. One service serves a
- * socket: another finds it answering and does not start.
+ * each connection, and for a `start` the call that follows it, up to the end
+ * of what the client sends; has the service carry it out; answers, and
+ * after a `finish`'s answer sends the result; and ends the connection. A
+ * client that goes away first gives up its wait, such as a `finish`'s, and
+ * nothing else. Its clients are the host's, which reach every run. Only the
+ * owner can open the socket, which is its authentication, as the dsh home's
+ * own files are. One service serves a socket: another finds it answering
+ * and does not start.
  * @module fleet-core/tau/server
  */
 
 import { chmod, mkdir, unlink } from 'node:fs/promises'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { dirname, isAbsolute } from 'node:path'
+import { PassThrough, type Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { PROTOCOL_VERSION, type Request, type Response } from 'fleet-protocol/tau'
 import { HOST } from './runs.ts'
 import type { TauService } from './service.ts'
@@ -28,7 +32,8 @@ export async function listen(path: string, service: Operations): Promise<() => P
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   await claim(path)
   const sockets = new Set<Socket>()
-  const server = createServer((socket) => {
+  // A client ends what it sends with a `start`'s call, and reads the answer after.
+  const server = createServer({ allowHalfOpen: true }, (socket) => {
     sockets.add(socket)
     socket.once('close', () => { sockets.delete(socket) })
     serve(socket, service)
@@ -69,50 +74,76 @@ async function claim(path: string): Promise<void> {
   await unlink(path).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
 }
 
-/** Read one connection's request, up to its first newline, and answer it. */
+/**
+ * Read one connection's request, up to its first newline, and answer it;
+ * what follows the newline is the request's body, a `start`'s call.
+ */
 function serve(socket: Socket, service: Operations): void {
-  let received = ''
-  let answered = false
+  let received = Buffer.alloc(0)
+  let op: unknown
   const gone = new AbortController()
-  socket.once('close', () => { gone.abort(new Error('fleet: the client went away')) })
-  socket.setEncoding('utf8')
+  const leave = (): void => { gone.abort(new Error('fleet: the client went away')) }
+  socket.once('close', leave)
+  // A client that ends what it sends ends a start's call, and with any other request goes away.
+  socket.once('end', () => { if (op !== 'start') leave() })
   // A client that went away before its answer.
   socket.on('error', () => {})
-  socket.on('data', (chunk: string) => {
-    if (answered) return
-    received += chunk
-    const end = received.indexOf('\n')
+  const read = (chunk: Buffer): void => {
+    received = Buffer.concat([received, chunk])
+    const end = received.indexOf(0x0a)
     if (end === -1) return
-    answered = true
-    void answer(service, received.slice(0, end), gone.signal).then((response) => {
-      socket.end(`${JSON.stringify(response)}\n`)
-    })
-  })
+    // Paused before it loses its reader, so that no data is dropped until a pipe reads it.
+    socket.pause()
+    socket.off('data', read)
+    const line = received.subarray(0, end).toString('utf8')
+    try {
+      op = (JSON.parse(line) as { op?: unknown }).op
+    } catch {}
+    const body = new PassThrough()
+    body.write(received.subarray(end + 1))
+    socket.pipe(body)
+    void respond(socket, service, line, body, gone.signal)
+  }
+  socket.on('data', read)
 }
 
-async function answer(service: Operations, line: string, signal: AbortSignal): Promise<Response> {
+async function respond(socket: Socket, service: Operations, line: string, body: Readable, signal: AbortSignal): Promise<void> {
+  const { response, archive } = await answer(service, line, body, signal)
+  // What the client sends that the service did not read, read to its end, so that the client reads the answer.
+  body.resume()
+  socket.write(`${JSON.stringify(response)}\n`)
+  if (archive === undefined) {
+    socket.end()
+    return
+  }
+  await pipeline(archive, socket).catch(() => { socket.destroy() })
+}
+
+async function answer(service: Operations, line: string, body: Readable, signal: AbortSignal): Promise<{ response: Response; archive?: AsyncIterable<Uint8Array> }> {
   try {
     const request = parse(line)
     switch (request.op) {
       case 'start':
-        return { ok: true, value: await service.start(HOST, request.tauDir, request.values, request.callerCwd) }
+        return { response: { ok: true, value: await service.start(HOST, { tauDir: request.tauDir, project: request.project, targets: request.targets }, body) } }
       case 'list':
-        return { ok: true, value: await service.list(HOST) }
+        return { response: { ok: true, value: await service.list(HOST) } }
       case 'status':
-        return { ok: true, value: await service.status(HOST, request.sessionId) }
-      case 'finish':
-        return { ok: true, value: await service.finish(HOST, request.sessionId, signal) }
+        return { response: { ok: true, value: await service.status(HOST, request.sessionId) } }
+      case 'finish': {
+        const { result, targets, archive } = await service.finish(HOST, request.sessionId, signal)
+        return { response: { ok: true, value: { result, targets } }, archive }
+      }
       case 'cancel':
       case 'delete':
         await service[request.op](HOST, request.sessionId)
-        return { ok: true, value: null }
+        return { response: { ok: true, value: null } }
     }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    return { response: { ok: false, error: error instanceof Error ? error.message : String(error) } }
   }
 }
 
-/** A request, with the fields its op needs; tau's library checks the values. */
+/** A request, with the fields its op needs; tau's library checks a start's call. */
 function parse(line: string): Request {
   let request: unknown
   try {
@@ -126,9 +157,12 @@ function parse(line: string): Request {
   }
   switch (request.op) {
     case 'start':
-      for (const field of ['tauDir', 'callerCwd'] as const) {
+      for (const field of ['tauDir', 'project'] as const) {
         const path = request[field]
         if (typeof path !== 'string' || !isAbsolute(path)) throw new Error(`fleet: start takes ${field}, an absolute path`)
+      }
+      if (!isRecord(request.targets) || !Object.values(request.targets).every(path => typeof path === 'string' && isAbsolute(path))) {
+        throw new Error('fleet: start takes targets, each an absolute path')
       }
       return request as Request
     case 'list':

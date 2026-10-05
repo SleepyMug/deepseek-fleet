@@ -13,7 +13,8 @@ fleet start <tau-dir> [<name>=<value> | <name>:=<json>]...
                        the session under this folder
 fleet list             list the runs: session, state, how each ended, tau
 fleet status <session-id>    show a run as list does, and why it failed, if it did
-fleet finish <session-id>    wait until the run ends, then print the agent's
+fleet finish <session-id>    wait until the run ends, put what it gave back at
+                             the paths it was given, then print the agent's
                              final text; why it failed goes to stderr
 fleet cancel <session-id>    cancel the run's turn, which ends the run
 fleet delete <session-id>    archive the run's session, remove its box, and forget it
@@ -25,10 +26,10 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
 - A run is `running` until its agent is done, then `ended`, and `finished`
   once `finish` has given back how it ended, which it does again each time.
 - `finish` and `run` report a run as tau's docs/spec/results.md has it: the
-  final text on stdout, and why the run failed on stderr. By then, a run
-  that succeeded has put what it left at its `$out` and `$inout` handles at
-  their paths, a folder merging into one there; a run that failed has put
-  nothing there.
+  final text on stdout, and why the run failed on stderr. By then, for a
+  run that succeeded, they have put what it left at its `$out` and `$inout`
+  handles at their paths, a folder merging into one there; a run that
+  failed puts nothing there. A `finish` asked again puts the same again.
 - Exit codes:
   - `0` on success;
   - `1` when the run failed, when the service refuses or fails, or there is
@@ -45,14 +46,25 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
   - `<name>:=<json>` gives any value as JSON, as tau's docs/spec/values.md
     has them: a list, a record, or a handle written out.
 
-  The service checks the values against the tau, so a name the tau does not
-  declare passes as a text, for the service to refuse.
-- **Paths.** `start` sends the tau's directory, absolute, and this folder,
-  which relative paths in the values are relative to, and which is the
-  session's workspace in dsh.
+  A name the tau does not declare passes as a text, for tau's library to
+  refuse.
+- **Calls and results** (`runs.ts`, exported as `fleet-client/runs`, which
+  fleet-trace uses too). `start` packs the run's call here, with tau's
+  `packCall`: it reads the tau, checks the values and the paths they name
+  against it, as a runtime would, and sends the call, which carries the
+  tau and the content of each `$in` and `$inout` path, with the tau's
+  directory, which names the run, this folder, which is the session's
+  workspace in dsh, and the targets, this side's path of each `$out` and
+  `$inout` handle. Relative paths are this folder's. `finish` gets the
+  targets back with the run's result, and puts what the result holds at
+  them, with tau's `applyResult`, trusting the service as to what goes
+  where; so any `finish`, in any folder, can finish a run another process
+  started. The service reads and writes none of these files.
 - **The socket** (`connection.ts`) is `$DSH_HOME/fleet/tau.sock`, or
   `~/.dsh/fleet/tau.sock` when `DSH_HOME` is unset or blank, as dsh finds its
-  home. Each command is one request on a connection of its own.
+  home. Each command is one request on a connection of its own; `start`
+  sends the call after its line, and ends what it sends, and `finish` reads
+  the result after its answer.
 - **Waiting.** `finish` holds its connection until the run ends. If the
   service goes away first, as when dsh restarts, the run is still there, so
   it says so once, waits for the service to come back, checking every
@@ -64,7 +76,8 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
 
 ## Built on
 
-- `@sleepymug/tau`'s `loadTau`, for the tau's parameters.
+- `@sleepymug/tau`'s `loadTau`, for the tau's parameters, and
+  `@sleepymug/tau/call`'s `packCall` and `applyResult`.
 - `fleet-protocol/tau`, for the wire.
 - `node:util`'s `parseArgs`, for the command line.
 

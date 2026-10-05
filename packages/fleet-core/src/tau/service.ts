@@ -1,22 +1,25 @@
 /**
  * The tau service (docs/fleet-core/tau/index.md), what `fleet` asks of the
- * fleet host: it starts a run of a tau, with its box (./runs.ts) and its dsh
- * session, in the caller's folder as its workspace, which it gives the
- * prompt; watches the run until its agent is done, copies out what it gave
- * back and checks it, and records how it ended (./outcome.ts); gives that
- * back, putting what the run gave back at the caller's paths; and cancels
- * the run, and deletes it with its box. Its caller is `fleet`, on the host,
- * which reaches every run, or a tau's session, from its box, which reaches
- * only the runs it started (./callers.ts); a run's end deletes those it
- * started and did not finish, and its deletion all it started. The service reaches dsh's sessions only through {@link Sessions}.
+ * fleet host: it starts a run of a call, tau's archive of a run, with its
+ * box (./runs.ts) and its dsh session, in the caller's folder as its
+ * workspace, which it gives the prompt; watches the run until its agent is
+ * done, has its box pack what it gave back, and records how it ended
+ * (./outcome.ts); gives back its result, and where the caller has its
+ * handles, for the caller to put what the run gave back there; and cancels
+ * the run, and deletes it with its box. It never reads or writes a caller's
+ * files, so it serves `fleet`, on the host, which reaches every run, and a
+ * tau's session, from its box, which reaches only the runs it started, alike;
+ * a run's end deletes those it started and did not finish, and its deletion
+ * all it started. The service reaches dsh's sessions only through
+ * {@link Sessions}.
  * @module fleet-core/tau/service
  */
 
 import { basename } from 'node:path'
-import type { Result, RunStatus, Started, Values } from 'fleet-protocol/tau'
+import type { Finished, Result, RunStatus, Started } from 'fleet-protocol/tau'
 import { resultOf, type Outcome } from './outcome.ts'
 import type { Caller, Entry } from './registry.ts'
-import { HOST, type TauRuns } from './runs.ts'
+import { HOST, type About, type TauRuns } from './runs.ts'
 
 /** What the service does with dsh's sessions (./plugin.ts). */
 export interface Sessions {
@@ -61,16 +64,14 @@ export class TauService {
   }
 
   /**
-   * Start a run of a tau: set up its box (./runs.ts), start it, make the
+   * Start a run of a call: set up its box (./runs.ts), start it, make the
    * dsh session, and give it the prompt. A failure on the way undoes it all.
    * Then the run is watched until it ends.
-   * @param caller - who starts it, whose paths the values name: `fleet`, on the host, or a tau's session, in its box.
-   * @param tauDir - the tau's directory, absolute.
-   * @param values - the run's values, by parameter.
-   * @param callerCwd - what relative paths in `values` are relative to, absolute.
+   * @param caller - who starts it: `fleet`, on the host, or a tau's session, from its box.
+   * @param call - tau's archive of the call, which carries the tau.
    */
-  async start(caller: Caller, tauDir: string, values: Values, callerCwd: string): Promise<Started> {
-    const started = await this.runs.create(tauDir, values, callerCwd, caller)
+  async start(caller: Caller, about: About, call: AsyncIterable<Uint8Array>): Promise<Started> {
+    const started = await this.runs.create(call, about, caller)
     const { sessionId } = started
     let project: string | undefined
     try {
@@ -105,22 +106,19 @@ export class TauService {
   }
 
   /**
-   * Wait until a run ends, and give back how it did, the same each time.
-   * The first time, a run that succeeded puts what it gave back at the
-   * caller's paths, which a finish that fails on the way does again.
+   * Wait until a run ends, and give back how it did, where the caller has
+   * its handles, and its result's archive, which holds what it gave back for
+   * them, the same each time.
    * @param signal - gives up the wait; the run goes on.
    */
-  async finish(caller: Caller, sessionId: string, signal: AbortSignal): Promise<Result> {
+  async finish(caller: Caller, sessionId: string, signal: AbortSignal): Promise<Finished & { archive: AsyncIterable<Uint8Array> }> {
     if ((await this.reach(caller, sessionId)).ended === undefined) await abortable(this.watch(sessionId), signal)
     return await this.serial(sessionId, async () => {
-      const { ended, finishedAt } = await this.runs.entry(sessionId)
+      const { ended, finishedAt, targets } = await this.runs.entry(sessionId)
       if (ended === undefined) throw new Error(`fleet: the fleet host stopped before ${sessionId} ended`)
-      if (finishedAt === undefined) {
-        // What a run that failed left is not given back.
-        if (ended.result.ok) await this.runs.publish(sessionId)
-        await this.runs.finished(sessionId)
-      }
-      return ended.result
+      const archive = await this.runs.result(sessionId)
+      if (finishedAt === undefined) await this.runs.finished(sessionId)
+      return { result: ended.result, targets, archive }
     })
   }
 
@@ -208,10 +206,7 @@ export class TauService {
     await this.serial(sessionId, async () => {
       // Deleted meanwhile, or ended already, as by a watch before a restart.
       if (!this.runs.isTau(sessionId) || (await this.runs.entry(sessionId)).ended !== undefined) return
-      if (result.ok) {
-        const unfit = await this.runs.collect(sessionId).catch((error: unknown) => `could not copy out what the run gave back: ${message(error)}`)
-        if (unfit !== undefined) result = { ok: false, text: result.text, failure: unfit }
-      }
+      result = await this.runs.pack(sessionId, result)
       await this.runs.ended(sessionId, result)
       this.log(`${sessionId} ended${result.ok ? '' : `, failing: ${String(result.failure)}`}`)
       await this.runs.stop(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${message(error)}`) })

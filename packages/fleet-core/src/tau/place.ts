@@ -1,7 +1,7 @@
 /**
  * Where a run of a tau has its things in its box: each `$in` handle in
  * /tau/in, each `$inout` handle in /tau/workspace, and each `$out` handle in
- * /tau/out, under the base name of the caller's path, and the tau's own
+ * /tau/out, under its name, the base name of the caller's path, and the tau's own
  * directory at /tau/self. A base name already taken in its folder gets a
  * suffix in its stem: notes.md, notes-1.md, notes-2.md. The tau's APIs, and
  * what it exposes, are in /tau/node_modules, so code anywhere below /tau
@@ -10,7 +10,7 @@
  * @module fleet-core/tau/place
  */
 
-import { basename, extname, posix } from 'node:path'
+import { extname, posix } from 'node:path'
 import type { Mode, Placing } from '@sleepymug/tau'
 
 /** The folder for the handles of each mode. */
@@ -28,8 +28,7 @@ export const CLIENTS = `${MODULES}/.fleet`
 /** A `place` for one run, as tau's `bind` takes it: where the box has each handle. */
 export function placer(): (handle: Placing) => string {
   const taken = new Set<string>()
-  return ({ mode, host }) => {
-    const name = basename(host)
+  return ({ mode, name }) => {
     const extension = extname(name)
     const stem = name.slice(0, name.length - extension.length)
     for (let suffix = 0; ; suffix++) {

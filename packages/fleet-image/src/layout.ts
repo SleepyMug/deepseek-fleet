@@ -13,6 +13,9 @@ export const HELPER_NODE = '/usr/local/bin/node'
 /** The helper, ./helper/main.ts. */
 export const HELPER_ENTRY = `${PACKAGE_ROOT}/lib/helper/main.js`
 
+/** The runtime's side of a tau's run, ./tau/main.ts, run on {@link HELPER_NODE}. */
+export const TAU_ENTRY = `${PACKAGE_ROOT}/lib/tau/main.js`
+
 /**
  * The socket the helper serves in the box, for the calls an extension's
  * client makes to its server on the host (./helper/cmd/calls.ts), unless

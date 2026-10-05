@@ -18,8 +18,7 @@ in it through any number of starts and stops.
 | `box.stop()` | End the helper and stop the container. | `docker stop` |
 | `box.copyIn(from, to)` | Copy a host file to a path in the box, or a host folder's contents into a folder in the box. | `docker cp <from> <container>:<to>`, or `<from>/.` for a folder |
 | `box.copyOut(from, to)` | Copy a box folder's contents into a host folder. | `docker cp <container>:<from>/. <to>` |
-| `box.copyInWhole(from, to)` | Copy a host file or folder, whole, to a path in the box not there yet. | `docker cp <from> <container>:<to>` |
-| `box.copyOutWhole(from, to)` | Copy a box file or folder, whole, to a host path not there yet; nothing at `from` fails with `MissingInBox`. | `docker cp <container>:<from> <to>` |
+| `box.pipe(argv, { input?, output? })` | Run a program in the started box, without a shell and outside the helper, `input` its stdin and its stdout written to `output`, for bytes the helper's lines of JSON would carry only as text; an exit other than 0 fails, with what it wrote to stderr. | `docker exec --interactive` |
 | `box.remove()` | End the helper and remove the container, running or not. | `docker rm --force` |
 
 It also exports:
@@ -27,7 +26,6 @@ It also exports:
   `exec`, and gives back what it wrote to stdout; an exit other than 0 fails,
   with what it wrote to stderr;
 - `HelperError`, a failure the helper reports for one request, with its `code`, if it has one;
-- `MissingInBox`, the failure of a copy out of a path the box does not have;
 - `CallHandler`, what answers a call: `(call, signal) => Promise<JSON>`;
 - `METHODS`, the methods a helper takes;
 - `BOX_LABEL`, the label that marks a box's container.

@@ -9,7 +9,7 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BoundHandle } from '@sleepymug/tau'
-import type { Result } from 'fleet-protocol/tau'
+import type { Result, Targets } from 'fleet-protocol/tau'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
@@ -20,12 +20,13 @@ export type Caller = { kind: 'host' } | { kind: 'session'; sessionId: string }
 export interface Entry {
   sessionId: string
   /**
-   * Who started the run, whose paths its handles name, and who alone, but
-   * the host, reaches it; the host for an entry written before callers were.
+   * Who started the run, who alone, but the host, reaches it; the host for
+   * an entry written before callers were.
    */
   caller?: Caller
   /** The box's container. */
   box: string
+  /** The tau's directory, as the caller has it, which only names the run. */
   tauDir: string
   /**
    * The dsh workspace the session is in, which the web UI lists it under,
@@ -43,8 +44,10 @@ export interface Entry {
   ended?: { at: string; result: Result }
   /** When a `finish` first gave back how the run ended. */
   finishedAt?: string
-  /** Each handle of the run: its mode, its kind, the caller's path, in the caller's box for a session, and where the box has it. */
+  /** Each handle of the run, as the call names it: its mode, its kind, its name, its blob, and where the box has it. */
   handles: readonly BoundHandle[]
+  /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
+  targets: Targets
   /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]
   /** What the tau exposes to its programs: `@api/<name>`, or a package of its own, by name, with what it says it is. */
@@ -96,7 +99,7 @@ export class Registry {
     await rm(this.file(sessionId), { force: true })
   }
 
-  /** A folder of a session's own, beside its entry, such as for what its run gives back. */
+  /** A folder of a session's own, beside its entry: its call, while its box is set up, and its result. */
   folder(sessionId: string): string {
     if (!SESSION_ID.test(sessionId)) throw new Error(`fleet: no tau session ${sessionId}`)
     return join(this.dir, sessionId)

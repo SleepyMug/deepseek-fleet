@@ -48,8 +48,9 @@ A scenario is JSON, its paths relative to its file, such as
   workspace's dsh, on a free port, and the image `fleet:local`, so build
   first: `pnpm build` and `pnpm image`.
 - **The run** is started and finished through the tau service's socket, as
-  `fleet run` does it, with the caller's folder made from `files`, and the
-  folders of the `$out` handles.
+  `fleet run` does it, with fleet-client's `startRun` and `finishRun`, which
+  pack the call and put the result at the caller's paths, with the caller's
+  folder made from `files`, and the folders of the `$out` handles.
 - **The scripted model** (`model.ts`) is an OpenAI-compatible endpoint on
   localhost. A request carrying the tau's prompt is the run's: it answers
   with the step after as many as the request has tool results for, and with

@@ -2,16 +2,17 @@
 /**
  * `fleet`: start runs of taus, see where they are, wait for how they ended,
  * and cancel and delete them, through the tau service in the fleet host
- * (`dsh --profile fleet`), on its socket (./connection.ts).
+ * (`dsh --profile fleet`), on its socket (./connection.ts); a run's call is
+ * packed, and its result put at the caller's paths, here (./runs.ts).
  * @module fleet-client/cli
  */
 
-import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 import { loadTau } from '@sleepymug/tau'
 import type { Result, RunStatus, Started } from 'fleet-protocol/tau'
 import { ConnectionLost, NoService, ask, defaultSocket } from './connection.ts'
+import { finishRun, startRun } from './runs.ts'
 import { UsageError, parseValues } from './values.ts'
 
 const USAGE = `Usage: fleet <command>
@@ -23,8 +24,9 @@ Commands:
                          lists the session under this folder
   list                   list the runs: session, state, how each ended, tau
   status <session-id>    show a run as list does, and why it failed, if it did
-  finish <session-id>    wait until the run ends, then print the agent's final
-                         text; why it failed goes to stderr, with exit code 1
+  finish <session-id>    wait until the run ends, put what it gave back at the
+                         paths it was given, and print the agent's final text;
+                         why it failed goes to stderr, with exit code 1
   cancel <session-id>    cancel the run's turn, which ends the run
   delete <session-id>    archive the run's session, remove its box, and forget it
   run <tau-dir> [<name>=<value> | <name>:=<json>]...
@@ -32,7 +34,8 @@ Commands:
                          and Ctrl-C again leaves it running
 
 A run is running until its agent is done, then ended, and finished once
-finish has given back how it ended, which it does again each time.
+finish has given back how it ended, which it does again each time, putting
+what the run gave back at its $out and $inout paths again.
 
 Values: <name>=<value> gives a text, or, for a parameter whose type is a file,
 a dir or a path, a handle of the mode tau.json declares, to the path <value>.
@@ -95,7 +98,7 @@ async function start(args: string[]): Promise<Started> {
   if (dir === undefined) throw new UsageError('give a tau directory, then the values')
   const tau = loadTau(dir)
   const values = parseValues(valueArgs, tau.params)
-  return await ask(socket, { op: 'start', tauDir: resolve(dir), callerCwd: process.cwd(), values })
+  return await startRun(socket, dir, values, process.cwd())
 }
 
 /** The one session's id a command takes. */
@@ -106,15 +109,16 @@ function sessionOf(command: string, args: string[]): string {
 }
 
 /**
- * Wait until a run ends, and give back how. A finish can be asked again, so
- * when the service goes away, as when dsh restarts, it waits for it to come
+ * Wait until a run ends, put what it gave back at the caller's paths, and
+ * give back how it ended. A finish can be asked again, so when the service
+ * goes away before it answers, as when dsh restarts, it waits for it to come
  * back, and asks again.
  */
 async function finish(sessionId: string): Promise<Result> {
   let waiting = false
   for (;;) {
     try {
-      return await ask(socket, { op: 'finish', sessionId })
+      return await finishRun(socket, sessionId)
     } catch (error) {
       if (!(error instanceof ConnectionLost || (waiting && error instanceof NoService))) throw error
       if (!waiting) process.stderr.write('fleet: lost the tau service; waiting for it to come back\n')

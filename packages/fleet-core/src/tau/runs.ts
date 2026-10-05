@@ -1,32 +1,54 @@
 /**
  * The runs of taus, and their boxes (docs/fleet-core/tau/index.md): it sets
- * up a box for a run, with the run's handles and the tau's own directory in
- * it (./place.ts), and its APIs linked to the clients of the extensions that
- * implement them (./apis.ts); keeps which box each session has
- * (./registry.ts); starts, stops and removes the box, and copies host files
- * into it as they are asked for; copies out what the run gives back, and
- * puts it at the caller's paths (./outputs.ts); and answers the calls the clients in the
- * box make, with the extensions' servers. It uses nothing of dsh's, so both
- * fleet-core's world (../world/), which serves a tau's session from its box,
- * and the tau service (./service.ts), which makes the session, build on it.
+ * up a box for a run of a call, tau's archive of the run's values with the
+ * content of its handles, and the tau (tau's docs/spec/serialization.md),
+ * with the handles and the tau's own directory in it (./place.ts), and its
+ * APIs linked to the clients of the extensions that implement them
+ * (./apis.ts); keeps which box each session has (./registry.ts); starts,
+ * stops and removes the box, and copies host files into it as they are asked
+ * for; keeps the run's result, the archive of what it gave back, which its
+ * box packs; and answers the calls the clients in the box make, with the
+ * extensions' servers. It never reads or writes a caller's files: the caller
+ * packs the call, and puts the result at its paths. It uses nothing of
+ * dsh's, so both fleet-core's world (../world/), which serves a tau's
+ * session from its box, and the tau service (./service.ts), which makes the
+ * session, build on it.
  * @module fleet-core/tau/runs
  */
 
 import { randomUUID } from 'node:crypto'
-import { realpath, rm } from 'node:fs/promises'
-import { posix, relative, sep } from 'node:path'
+import { createReadStream, createWriteStream } from 'node:fs'
+import { mkdir, open, realpath, rm } from 'node:fs/promises'
+import { join, posix, relative, sep } from 'node:path'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { loadTau } from '@sleepymug/tau'
+import { checkResult, placeCall, readCall, readResult, writeResult } from '@sleepymug/tau/call'
 import type { Call } from 'fleet-image/helper/protocol'
-import type { Result, Started, Values } from 'fleet-protocol/tau'
+import { HELPER_NODE, TAU_ENTRY } from 'fleet-image/layout'
+import type { Result, Started, Targets } from 'fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
 import { linkApis, type Exts } from './apis.ts'
-import { boxFiles, hostFiles, type CallerFiles } from './callers.ts'
-import { check, collect, publish } from './outputs.ts'
 import { CLIENTS, FOLDERS, MODULES, SELF, placer } from './place.ts'
 import type { Caller, Entry, Registry } from './registry.ts'
 
 /** What a run's box is used for. */
-export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copyIn' | 'copyInWhole' | 'copyOutWhole' | 'request'>
+export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copyIn' | 'pipe' | 'request'>
+
+/** What a call says of itself, besides the archive. */
+export interface About {
+  /** The tau's directory, as the caller has it, which names the run. */
+  tauDir: string
+  /** The caller's folder, absolute, for `fleet`; a tau's session's runs are in its own project. */
+  project?: string
+  /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
+  targets: Targets
+}
+
+/** In a session's folder: the call, while its box is set up; the tau it carries, read from it; and the run's result. */
+const CALL = 'call.tar'
+const TAU = 'self'
+const RESULT = 'result.tar'
 
 /** `fleet`, on the host. */
 export const HOST: Caller = { kind: 'host' }
@@ -73,48 +95,57 @@ export class TauRuns {
   }
 
   /**
-   * Set up a box for a run of a tau, and leave it stopped: read the tau
-   * where the caller has it (./callers.ts); bind the values, which checks
-   * them against the tau and expands its prompt; check the handles' paths;
-   * link the tau's APIs to the extensions provided; then create the box, make
-   * its folders, copy in the tau, each `$in` and `$inout` handle, and each
-   * API's client, link the APIs and what the tau exposes, and register the
-   * session. A failure removes the box.
-   * @param tauDir - the tau's directory, absolute, the caller's.
-   * @param values - the run's values, by parameter.
-   * @param callerCwd - what relative paths in `values` are relative to, absolute, the caller's.
-   * @param caller - `fleet`, whose paths are the host's, or a tau's session, whose paths are in its box.
+   * Set up a box for a run of a call, and leave it stopped: keep the call in
+   * the session's folder, read it, checking it whole, and the tau it carries;
+   * bind its values, which checks them against the tau and expands its
+   * prompt; link the tau's APIs to the extensions provided; then create the
+   * box, make its folders, copy in the tau and each API's client, have the
+   * box place the content of the handles (fleet-image/tau/endpoint), link
+   * the APIs and what the tau exposes, and register the session. A failure
+   * removes the box; the session's folder, with the call and the tau, is
+   * removed either way.
+   * @param call - tau's archive of the call, which carries the tau.
+   * @param caller - `fleet`, on the host, or a tau's session, from its box, whose runs are in its project.
    */
-  async create(tauDir: string, values: Values, callerCwd: string, caller: Caller = HOST): Promise<Started> {
-    const id = randomUUID()
-    const sessionId = `session-${id}`
-    const staging = this.registry.folder(sessionId)
+  async create(call: AsyncIterable<Uint8Array>, about: About, caller: Caller = HOST): Promise<Started> {
+    const sessionId = `session-${randomUUID()}`
+    const project = await this.projectFor(caller, about)
+    const folder = this.registry.folder(sessionId)
+    await mkdir(folder, { recursive: true, mode: 0o700 })
     try {
-      return await this.setUp(sessionId, tauDir, values, callerCwd, caller, staging)
+      return await this.setUp(sessionId, call, about, project, caller)
     } finally {
-      // What a session's box gave was copied in, or is no longer needed.
-      if (caller.kind === 'session') await rm(staging, { recursive: true, force: true })
+      await rm(folder, { recursive: true, force: true })
     }
   }
 
-  private async setUp(sessionId: string, tauDir: string, values: Values, callerCwd: string, caller: Caller, staging: string): Promise<Started> {
-    const files = this.filesOf(caller, staging)
-    const tau = loadTau(await files.tau(tauDir))
-    const run = tau.bind(values, { cwd: callerCwd }, placer(), SELF)
-    const inputs = await files.inputs(run)
-    const linked = linkApis(tau, this.exts)
+  private async setUp(sessionId: string, call: AsyncIterable<Uint8Array>, about: About, project: string, caller: Caller): Promise<Started> {
+    const folder = this.registry.folder(sessionId)
+    const callFile = join(folder, CALL)
+    const tauDir = join(folder, TAU)
+    await pipeline(Readable.from(call), createWriteStream(callFile, { mode: 0o600 }))
+    const read = await readCall(createReadStream(callFile))
+    let tau, run, linked
+    try {
+      if (read.json.tau === undefined) throw new Error('fleet: the call does not carry its tau')
+      // Every blob read, and so the whole call checked, before anything is made of it.
+      await placeCall(read, { tau: tauDir })
+      tau = loadTau(tauDir)
+      run = tau.bind(read.json.values, { cwd: '/' }, placer(), SELF)
+      linked = linkApis(tau, this.exts)
+    } catch (error) {
+      // The tau as the caller has it.
+      throw new Error((error as Error).message.replaceAll(tauDir, about.tauDir), { cause: error })
+    }
     const tauRoot = await realpath(tau.dir)
-    const project = caller.kind === 'host' ? await realpath(callerCwd) : this.projectOf(caller.sessionId)
     const box = await this.docker.create(`fleet-tau-${sessionId.slice('session-'.length)}`)
     try {
       await box.start()
       const outFolders = run.handles.filter(handle => handle.mode === 'out' && handle.kind === 'dir').map(handle => handle.view)
-      await exec(box, ['mkdir', '-p', SELF, ...Object.values(FOLDERS), ...outFolders, CLIENTS])
+      await exec(box, ['mkdir', '-p', SELF, ...Object.values(FOLDERS), CLIENTS])
       await box.copyIn(tau.dir, SELF)
-      for (const [index, handle] of run.handles.entries()) {
-        const input = inputs.get(index)
-        if (input !== undefined) await box.copyIn(input, handle.view)
-      }
+      await box.pipe([HELPER_NODE, TAU_ENTRY, 'place', JSON.stringify({ handles: run.handles })], { input: createReadStream(callFile) })
+      if (outFolders.length > 0) await exec(box, ['mkdir', '-p', ...outFolders])
       for (const api of linked.apis) await box.copyIn(api.client, `${CLIENTS}/${api.name}`)
       await box.request('apis.link', {
         modules: MODULES,
@@ -127,11 +158,12 @@ export class TauRuns {
         sessionId,
         caller,
         box: box.container,
-        tauDir,
+        tauDir: about.tauDir,
         project,
         prompt: run.prompt,
         promptRequestId: randomUUID(),
         handles: run.handles,
+        targets: about.targets,
         apis: linked.apis.map(api => api.name),
         exposed: linked.exposed,
         createdAt: new Date().toISOString(),
@@ -144,6 +176,17 @@ export class TauRuns {
     this.boxes.set(sessionId, Promise.resolve(box))
     this.log(`created ${sessionId} in box ${box.container}, with the prompt:\n${run.prompt.trimEnd()}`)
     return { sessionId, box: box.container, prompt: run.prompt }
+  }
+
+  /** The project a caller's run is in: `fleet`'s folder, through symlinks, or a tau's session's own project. */
+  private async projectFor(caller: Caller, about: About): Promise<string> {
+    if (caller.kind === 'session') {
+      const project = this.taus.get(caller.sessionId)
+      if (project === undefined) throw new Error(`fleet: ${caller.sessionId} is not a tau's session, so it starts no runs from a box`)
+      return project
+    }
+    if (about.project === undefined || !posix.isAbsolute(about.project)) throw new Error('fleet: a run from the host names its project, an absolute path')
+    return await realpath(about.project)
   }
 
   /** A session's registry entry; a session that is not a tau's fails. */
@@ -168,53 +211,52 @@ export class TauRuns {
   }
 
   /**
-   * Copy what a session's run left at its `$out` and `$inout` handles'
-   * places out of its box, into the session's folder of the registry, and
-   * check it against the tau (./outputs.ts).
-   * @returns why it does not fit, or undefined if it does.
+   * Keep the result of a session's run, which ended as `outcome` says, in
+   * the session's folder: for a run that succeeded, as its box packs it from
+   * what the agent left at the places of its `$out` and `$inout` handles
+   * (fleet-image/tau/endpoint), failing the run when that does not fit the
+   * tau. The result is read again here, and checked against the run, since
+   * the box is the agent's: one that does not fit fails the run too. A run
+   * that failed gives back nothing.
+   * @returns how the run ended, as its result has it.
    */
-  async collect(sessionId: string): Promise<string | undefined> {
+  async pack(sessionId: string, outcome: Result): Promise<Result> {
     return await this.serial(sessionId, async () => {
       const { handles } = await this.registry.get(sessionId)
-      const staging = this.registry.folder(sessionId)
-      await collect(await this.box(sessionId), handles, staging)
-      return check(handles, staging)
+      const folder = this.registry.folder(sessionId)
+      await mkdir(folder, { recursive: true, mode: 0o700 })
+      const file = join(folder, RESULT)
+      let ended = outcome
+      if (ended.ok) {
+        try {
+          const box = await this.running(sessionId)
+          await box.pipe([HELPER_NODE, TAU_ENTRY, 'pack', JSON.stringify({ outcome, handles })], { output: createWriteStream(file, { mode: 0o600 }) })
+          const { json, blobs } = await readResult(createReadStream(file))
+          if (json.text !== outcome.text) throw new Error('its text is not the agent\'s')
+          checkResult(json, handles)
+          for await (const blob of blobs) for await (const _ of blob.entries);
+          return json.failure === undefined ? { ok: json.ok, text: json.text } : { ok: json.ok, text: json.text, failure: json.failure }
+        } catch (error) {
+          ended = { ok: false, text: outcome.text, failure: `could not get back what the run gave: ${error instanceof Error ? error.message : String(error)}` }
+        }
+      }
+      await pipeline(Readable.from(writeResult({ ...ended, outputs: {} }, [])), createWriteStream(file, { mode: 0o600 }))
+      return ended
     })
   }
 
   /**
-   * Put what a session's run gave back, as {@link collect} copied it, at the
-   * caller's paths: the host's, or in its calling session's box.
+   * The result of a session's run that ended, as {@link pack} kept it: tau's
+   * archive of how it ended and what it gave back.
    */
-  async publish(sessionId: string): Promise<void> {
-    const { handles, caller = HOST } = await this.registry.get(sessionId)
-    const staging = this.registry.folder(sessionId)
-    await publish(handles, staging, this.filesOf(caller, staging).target)
+  async result(sessionId: string): Promise<AsyncIterable<Uint8Array>> {
+    const file = await open(join(this.registry.folder(sessionId), RESULT))
+    return file.createReadStream()
   }
 
-  /** Where a caller has its files: the host's, or a tau's session's box, used in turn with its other operations. */
-  private filesOf(caller: Caller, staging: string): CallerFiles {
-    if (caller.kind === 'host') return hostFiles
-    const { sessionId } = caller
-    this.projectOf(sessionId)
-    return boxFiles({
-      copyOutWhole: (from, to) => this.serial(sessionId, async () => { await (await this.box(sessionId)).copyOutWhole(from, to) }),
-      copyInWhole: (from, to) => this.serial(sessionId, async () => { await (await this.box(sessionId)).copyInWhole(from, to) }),
-      exec: argv => this.serial(sessionId, async () => await (await this.running(sessionId)).request('exec', { argv })),
-    }, staging)
-  }
-
-  /** A tau's session's project, which the runs it starts are in; a session that is not a tau's fails. */
-  private projectOf(sessionId: string): string {
-    const project = this.taus.get(sessionId)
-    if (project === undefined) throw new Error(`fleet: ${sessionId} is not a tau's session, so it starts no runs from a box`)
-    return project
-  }
-
-  /** Record that a `finish` gave back how a session's run ended, and drop what it gave back. */
+  /** Record that a `finish` first gave back how a session's run ended; its result stays, for the next. */
   async finished(sessionId: string): Promise<void> {
     await this.registry.put({ ...await this.registry.get(sessionId), finishedAt: new Date().toISOString() })
-    await rm(this.registry.folder(sessionId), { recursive: true, force: true })
   }
 
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */

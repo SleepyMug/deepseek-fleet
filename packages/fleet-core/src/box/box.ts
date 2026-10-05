@@ -5,10 +5,12 @@
  * @module fleet-core/box
  */
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import { posix, resolve } from 'node:path'
+import { Readable, type Writable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from 'fleet-image/layout'
 import type { EventOf, Method, Methods } from 'fleet-image/helper/protocol'
 import { Helper, type CallHandler } from './helper.ts'
@@ -41,9 +43,6 @@ export interface BoxInfo {
   /** Docker's own summary, such as `Up 2 minutes`. */
   status: string
 }
-
-/** Nothing is at a path in a box that a copy reads. */
-export class MissingInBox extends Error {}
 
 export class Box {
   /** The helper while the box is started. */
@@ -155,34 +154,29 @@ export class Box {
   }
 
   /**
-   * Copy a host file or folder, whole, to a path in the container that is
-   * not there yet, whether the box runs or not, with `docker cp`. Symlinks
-   * are copied as links, the path's own included, and modes are kept.
-   * @param from - the host path.
-   * @param to - the container's path, absolute, whose parent exists.
+   * Run a program in the started container, without a shell and outside the
+   * helper, with `docker exec`, for bytes the helper's lines of JSON would
+   * carry only as text: `input`, if given, its stdin, and its stdout written
+   * to `output`, if given, which ends with it.
+   * @throws when it exits with other than 0, with what it wrote to stderr.
    */
-  copyInWhole(from: string, to: string): Promise<void> {
+  pipe(argv: string[], io: { input?: AsyncIterable<Uint8Array>; output?: Writable } = {}): Promise<void> {
     return this.serial(async () => {
-      await run(this.docker, ['cp', resolve(from), `${this.container}:${containerPath(to)}`])
-    })
-  }
-
-  /**
-   * Copy a container file or folder, whole, to a host path that is not
-   * there yet, whether the box runs or not, with `docker cp`. Symlinks are
-   * copied as links, the path's own included, and modes are kept.
-   * @param from - the container's path, absolute.
-   * @param to - the host path, whose parent exists.
-   * @throws {@link MissingInBox} when nothing is at `from`.
-   */
-  copyOutWhole(from: string, to: string): Promise<void> {
-    return this.serial(async () => {
-      try {
-        await run(this.docker, ['cp', `${this.container}:${containerPath(from)}`, resolve(to)])
-      } catch (error) {
-        if (/Could not find the file/u.test((error as Error).message)) throw new MissingInBox(`fleet: nothing is at ${from} in ${this.container}`, { cause: error })
-        throw error
-      }
+      const child = spawn(this.docker, ['exec', '--interactive', this.container, ...argv], { stdio: ['pipe', 'pipe', 'pipe'] })
+      let stderr = ''
+      child.stderr.setEncoding('utf8')
+      child.stderr.on('data', (chunk: string) => { stderr += chunk })
+      const exited = new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject)
+        child.once('close', resolve)
+      })
+      const streams = await Promise.allSettled([
+        pipeline(Readable.from(io.input ?? []), child.stdin),
+        io.output === undefined ? new Promise<void>((resolve) => { child.stdout.resume().once('end', resolve) }) : pipeline(child.stdout, io.output),
+      ])
+      const code = await exited
+      if (code !== 0) throw new Error(`fleet: ${String(argv[0])} in box ${this.container} exited with ${String(code)}${stderr.trim() === '' ? '' : `: ${stderr.trim()}`}`)
+      for (const stream of streams) if (stream.status === 'rejected') throw stream.reason
     })
   }
 

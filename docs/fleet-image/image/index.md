@@ -9,7 +9,16 @@ Builds the box image: a Node base image with fleet's runtime on top.
   workspace root builds the workspace first, then runs it.
 - `fleet-image/layout`, where things lie in the image, which the host and the
   image agree on: the package at `/opt/fleet`, the helper's Node and entry,
-  and the default tag. It holds constants only.
+  the tau endpoint's entry, and the default tag. It holds constants only.
+- The tau endpoint, the runtime's side of a tau's run in its box, on tau's
+  library, which the image holds as a dependency of this package: the host
+  runs `node /opt/fleet/lib/tau/main.js place '{"handles"}'` with the run's
+  call on stdin, which gives each handle its content at its place, and
+  `… pack '{"outcome", "handles"}'`, which writes the run's result on
+  stdout, packed from what the agent left at its `$out` and `$inout`
+  handles, or a failure, when that does not fit the tau
+  (docs/fleet-core/tau/index.md). `fleet-image/tau/endpoint` exports both,
+  each with the root the places are under, for tests.
 
 ## Design
 
@@ -27,8 +36,8 @@ Builds the box image: a Node base image with fleet's runtime on top.
     host, so the image must be linux on the host's architecture. Optional
     dependencies for other platforms are left out.
 - The image has no command of its own (`ENTRYPOINT []`). The host decides
-  what runs in a box: `sleep infinity` to keep it up, and the helper through
-  `docker exec`.
+  what runs in a box: `sleep infinity` to keep it up, and the helper and the
+  tau endpoint through `docker exec`.
 
 ## Built on
 

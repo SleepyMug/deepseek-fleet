@@ -8,16 +8,29 @@ import { PROTOCOL_VERSION } from 'fleet-protocol/tau'
 import type { Caller } from './registry.ts'
 import { listen, type Operations } from './server.ts'
 
-/** Send one line, and read the answer until the service ends the connection. */
-function exchange(path: string, line: string): Promise<unknown> {
+/**
+ * Send one line, and `body` after it, ending what is sent, and read the
+ * answer, and what follows it, until the service ends the connection.
+ */
+function exchange(path: string, line: string, body?: string): Promise<{ answer: unknown; rest: string }> {
   return new Promise((resolve, reject) => {
-    const socket = createConnection(path, () => { socket.write(`${line}\n`) })
+    const socket = createConnection(path, () => {
+      socket.write(`${line}\n`)
+      if (body !== undefined) socket.end(body)
+    })
     let received = ''
     socket.setEncoding('utf8')
     socket.on('data', (chunk: string) => { received += chunk })
     socket.once('error', reject)
-    socket.once('end', () => { resolve(JSON.parse(received)) })
+    socket.once('end', () => {
+      const end = received.indexOf('\n')
+      resolve({ answer: JSON.parse(received.slice(0, end)), rest: received.slice(end + 1) })
+    })
   })
+}
+
+async function* once(text: string): AsyncGenerator<Uint8Array> {
+  yield Buffer.from(text)
 }
 
 const STATUS = { sessionId: 'session-a', tauDir: '/t', project: '/c', state: 'running', createdAt: 'now' } as const
@@ -34,10 +47,12 @@ function fake(calls: string[], aborted: string[] = []): Operations {
     return sessionId === 'session-fails' ? Promise.reject(new Error(`fleet: no tau session ${sessionId}`)) : Promise.resolve()
   }
   return {
-    start: (caller, tauDir, values, callerCwd) => {
+    start: async (caller, { tauDir, project, targets }, call) => {
       assert.equal(caller.kind, 'host')
-      calls.push(`start ${tauDir} ${JSON.stringify(values)} ${callerCwd}`)
-      return Promise.resolve({ sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' })
+      const chunks: Uint8Array[] = []
+      for await (const chunk of call) chunks.push(chunk)
+      calls.push(`start ${tauDir} ${String(project)} ${JSON.stringify(targets)} ${Buffer.concat(chunks).toString()}`)
+      return { sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' }
     },
     list: (caller) => {
       assert.equal(caller.kind, 'host')
@@ -54,7 +69,7 @@ function fake(calls: string[], aborted: string[] = []): Operations {
         await new Promise((resolve) => { signal.addEventListener('abort', resolve, { once: true }) })
         aborted.push(sessionId)
       }
-      return { ok: true, text: 'Done.' }
+      return { result: { ok: true, text: 'Done.' }, targets: { '/r': '/c/r' }, archive: once('the result') }
     },
     cancel: op('cancel'),
     delete: op('delete'),
@@ -69,25 +84,33 @@ test('the socket answers each request with what the service did', async (t) => {
   const close = await listen(path, fake(calls))
   try {
     assert.equal((await stat(path)).mode & 0o777, 0o600)
-    const request = (body: object): Promise<unknown> => exchange(path, JSON.stringify({ protocol: PROTOCOL_VERSION, ...body }))
+    const request = async (body: object, call?: string): Promise<unknown> => (await exchange(path, JSON.stringify({ protocol: PROTOCOL_VERSION, ...body }), call)).answer
+    const start = { op: 'start', tauDir: '/t', project: '/c', targets: { '/r': '/c/r' } }
 
-    assert.deepEqual(await request({ op: 'start', tauDir: '/t', callerCwd: '/c', values: { a: 'b' } }), {
-      ok: true, value: { sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' },
-    })
+    // A start's call is all the client sends after its line.
+    const call = 'a call, '.repeat(20000)
+    assert.deepEqual(await request(start, call), { ok: true, value: { sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' } })
     assert.deepEqual(await request({ op: 'list' }), { ok: true, value: [STATUS] })
     assert.deepEqual(await request({ op: 'status', sessionId: 'session-b' }), { ok: true, value: { ...STATUS, sessionId: 'session-b' } })
-    assert.deepEqual(await request({ op: 'finish', sessionId: 'session-a' }), { ok: true, value: { ok: true, text: 'Done.' } })
+    // A finish's result is all the service sends after its answer.
+    assert.deepEqual(await exchange(path, JSON.stringify({ protocol: PROTOCOL_VERSION, op: 'finish', sessionId: 'session-a' })), {
+      answer: { ok: true, value: { result: { ok: true, text: 'Done.' }, targets: { '/r': '/c/r' } } },
+      rest: 'the result',
+    })
     assert.deepEqual(await request({ op: 'cancel', sessionId: 'session-a' }), { ok: true, value: null })
     assert.deepEqual(await request({ op: 'delete', sessionId: 'session-fails' }), { ok: false, error: 'fleet: no tau session session-fails' })
-    assert.deepEqual(calls, ['start /t {"a":"b"} /c', 'list', 'status session-b', 'finish session-a', 'cancel session-a', 'delete session-fails'])
+    assert.deepEqual(calls, [`start /t /c {"/r":"/c/r"} ${call}`, 'list', 'status session-b', 'finish session-a', 'cancel session-a', 'delete session-fails'])
 
-    assert.deepEqual(await request({ op: 'start', tauDir: 't', callerCwd: '/c', values: {} }), { ok: false, error: 'fleet: start takes tauDir, an absolute path' })
+    // A start refused is answered once the client has sent its call.
+    assert.deepEqual(await request({ ...start, tauDir: 't' }, call), { ok: false, error: 'fleet: start takes tauDir, an absolute path' })
+    assert.deepEqual(await request({ ...start, project: undefined }, call), { ok: false, error: 'fleet: start takes project, an absolute path' })
+    assert.deepEqual(await request({ ...start, targets: { '/r': 'r' } }, call), { ok: false, error: 'fleet: start takes targets, each an absolute path' })
     assert.deepEqual(await request({ op: 'finish' }), { ok: false, error: 'fleet: finish takes a sessionId' })
     assert.deepEqual(await request({ op: 'run' }), { ok: false, error: 'fleet: no op run' })
-    assert.deepEqual(await exchange(path, JSON.stringify({ protocol: 0, op: 'list' })), {
+    assert.deepEqual((await exchange(path, JSON.stringify({ protocol: 0, op: 'list' }))).answer, {
       ok: false, error: `fleet: the client speaks protocol 0, and the tau service ${String(PROTOCOL_VERSION)}`,
     })
-    assert.deepEqual(await exchange(path, '{'), { ok: false, error: 'fleet: the request is not JSON' })
+    assert.deepEqual((await exchange(path, '{')).answer, { ok: false, error: 'fleet: the request is not JSON' })
     assert.equal(calls.length, 6)
   } finally {
     await close()

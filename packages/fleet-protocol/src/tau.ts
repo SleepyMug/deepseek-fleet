@@ -2,8 +2,10 @@
  * The wire between `fleet` (fleet-client) and the tau service in the fleet
  * host (fleet-core/tau): a Unix socket in the dsh home, on which a client
  * sends one request as one line of JSON, and the service answers it with one
- * line of JSON and ends the connection. Shared by both ends, so it holds only
- * types, constants, and where the socket is.
+ * line of JSON and ends the connection. A `start` sends a run's call after
+ * its line, and a `finish` that succeeds answers with the run's result after
+ * its line, each an archive of tau's docs/spec/serialization.md. Shared by
+ * both ends, so it holds only types, constants, and where the socket is.
  * @module fleet-protocol/tau
  */
 
@@ -18,20 +20,27 @@ export function socketPath(dshHome: string): string {
 }
 
 /**
- * A run's values, by parameter, as tau's docs/spec/values.md has them. The
- * service checks them against the tau.
+ * Where the caller has each `$out` and `$inout` handle of a run: its path,
+ * absolute, by the handle's JSON Pointer into the values, as tau's
+ * `packCall` gives them. The service keeps them, without reading them, and
+ * gives them back with the run's result, which the caller puts there.
  */
-export type Values = { readonly [name: string]: unknown }
+export type Targets = { readonly [pointer: string]: string }
 
 /** Client to service. Paths are absolute. */
 export type Request =
   | {
     protocol: number
-    /** Start a run of the tau at `tauDir` with `values`, whose relative paths are `callerCwd`'s. */
+    /**
+     * Start a run of the call that follows the line, up to the end of what
+     * the client sends: tau's call archive, which carries the tau.
+     */
     op: 'start'
+    /** The tau's directory, as the caller has it, which `list` shows. */
     tauDir: string
-    callerCwd: string
-    values: Values
+    /** The caller's folder: the dsh workspace the run's session is in. */
+    project: string
+    targets: Targets
   }
   | {
     protocol: number
@@ -79,7 +88,7 @@ export interface RunStatus {
   sessionId: string
   /** The run that started this one from its box, if one did. */
   parent?: string
-  /** The tau's directory. */
+  /** The tau's directory, as its caller has it. */
   tauDir: string
   /** The caller's folder, the dsh workspace the session is in. */
   project: string
@@ -91,12 +100,21 @@ export interface RunStatus {
   result?: Result
 }
 
+/**
+ * What `finish` answers with, before the result's archive, which holds what
+ * the run gave back for each target.
+ */
+export interface Finished {
+  result: Result
+  targets: Targets
+}
+
 /** What each op answers with. */
 export interface Answers {
   start: Started
   list: RunStatus[]
   status: RunStatus
-  finish: Result
+  finish: Finished
   cancel: null
   delete: null
 }
