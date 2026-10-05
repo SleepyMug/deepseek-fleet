@@ -30,8 +30,11 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the session. |
 
 The patch also declares `tau`, the agent preset a tau's session has: a
-persona, bash in the foreground only, read/write/edit, `ts_modules` and
-`ts_execute` (docs/fleet-core/tools/index.md), and compaction.
+persona, the tau's prompt plugin (`fleet-core/tau/prompt`), bash in the
+foreground only, read/write/edit, `ts_modules` and `ts_execute`
+(docs/fleet-core/tools/index.md), and compaction. What its rows register
+reaches only the sessions of that preset: dsh mounts them once, in the
+preset's scope, which each of its sessions' agents has as its parent.
 
 `ctx.fleetTauRuns` gives fleet-core's world
 (docs/fleet-core/world/index.md) what it needs:
@@ -130,6 +133,17 @@ persona, bash in the foreground only, read/write/edit, `ts_modules` and
   arguments, the session's id, which is the box's whatever the call says,
   and a signal that aborts when the caller goes away. A box started to set
   up a run answers no calls.
+- **The system prompt** of a tau's session is dsh's, shaped by
+  `prompt.ts` in the preset: after the persona, a section says where the
+  model works, its box, the run's folders in `/tau` and its working
+  directory; and the assembly leaves out dsh's sections about the host,
+  which are false in a box: the harness's checkout (`harness:source`), the
+  web GUI at its URL (`app:web-surface`), the web UI's file cards and links
+  (`ui:deliverable-file-references`), and `@` mentions as host paths
+  (`context:file-reference`). It removes them by name from the assembled
+  prompt (the `system-prompt/assemble` waterfall), since the last is
+  registered in each agent's own scope, which a section of the preset's
+  cannot shadow. The web UI's own sessions keep dsh's whole prompt.
 - **Which sessions are a tau's.** The runs read the registry's ids when the
   plugin loads, and keep them as sessions are created and deleted, so that
   `isTau` answers at once, as a process's start, which cannot wait, needs.

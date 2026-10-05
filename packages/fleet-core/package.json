@@ -19,6 +19,10 @@
       "types": "./lib/tau/plugin.d.ts",
       "default": "./lib/tau/plugin.js"
     },
+    "./tau/prompt": {
+      "types": "./lib/tau/prompt.d.ts",
+      "default": "./lib/tau/prompt.js"
+    },
     "./tau/runs-plugin": {
       "types": "./lib/tau/runs-plugin.d.ts",
       "default": "./lib/tau/runs-plugin.js"

@@ -216,6 +216,11 @@
             config:
               prefix: You are an agent powered by the {{model}} model, running a tau; its prompt is your task.
 
+          # Where the model works, its box and the run's folders, in place of
+          # dsh's sections about the host, which are false in a box.
+          - id: tau-prompt
+            name: fleet-core/tau/prompt
+
           # bash, foreground only: nothing it starts outlives its call. A
           # command past its timeout is killed rather than moved to the
           # background.
