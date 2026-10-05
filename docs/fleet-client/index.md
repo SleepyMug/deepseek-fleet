@@ -13,14 +13,16 @@ fleet start <tau-dir> [<name>=<value> | <name>:=<json>]...
                        the session under this folder
 fleet list             list the runs: session, state, how each ended, tau
 fleet status <session-id>    show a run as list does, and why it failed, if it did
-fleet finish <session-id>    wait until the run ends, put what it gave back at
-                             the paths it was given, then print the agent's
-                             final text; why it failed goes to stderr
+fleet finish [--history <file>] <session-id>
+                       wait until the run ends, put what it gave back at the
+                       paths it was given, then print the agent's final text;
+                       why it failed goes to stderr; --history writes the
+                       run's session's history to <file>
 fleet cancel <session-id>    cancel the run's turn, which ends the run
 fleet delete <session-id>    archive the run's session, remove its box, and forget it
-fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
-                       start a run and finish it; Ctrl-C cancels the run, and
-                       Ctrl-C again leaves it running
+fleet run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
+                       start a run and finish it, as finish does; Ctrl-C
+                       cancels the run, and Ctrl-C again leaves it running
 ```
 
 - A run is `running` until its agent is done, then `ended`, and `finished`
@@ -30,6 +32,13 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
   run that succeeded, they have put what it left at its `$out` and `$inout`
   handles at their paths, a folder merging into one there; a run that
   failed puts nothing there. A `finish` asked again puts the same again.
+- `--history <file>`, with `finish` and `run`, writes the run's session's
+  history to `<file>`, its folder made if missing, failed run or not, so
+  the caller can inspect what the agent did: dsh's session events, one JSON
+  object per line, oldest first: the prompt, each request's system prompt
+  and tools, each model message, tool call and result, and each turn's
+  end. Its form is dsh's, not tau's spec's. It is written before the
+  result is put at its paths.
 - Exit codes:
   - `0` on success;
   - `1` when the run failed, when the service refuses or fails, or there is
@@ -59,7 +68,8 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
   targets back with the run's result, and puts what the result holds at
   them, with tau's `applyResult`, trusting the service as to what goes
   where; so any `finish`, in any folder, can finish a run another process
-  started. The service reads and writes none of these files.
+  started. The history comes in `finish`'s answer, and is written here
+  too. The service reads and writes none of these files.
 - **The socket** (`connection.ts`) is `$DSH_HOME/fleet/tau.sock`, or
   `~/.dsh/fleet/tau.sock` when `DSH_HOME` is unset or blank, as dsh finds its
   home. Each command is one request on a connection of its own; `start`

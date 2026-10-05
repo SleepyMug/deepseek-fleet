@@ -24,14 +24,17 @@ Commands:
                          lists the session under this folder
   list                   list the runs: session, state, how each ended, tau
   status <session-id>    show a run as list does, and why it failed, if it did
-  finish <session-id>    wait until the run ends, put what it gave back at the
+  finish [--history <file>] <session-id>
+                         wait until the run ends, put what it gave back at the
                          paths it was given, and print the agent's final text;
-                         why it failed goes to stderr, with exit code 1
+                         why it failed goes to stderr, with exit code 1;
+                         --history writes the run's session's history to
+                         <file>, an event of dsh's per line, failed or not
   cancel <session-id>    cancel the run's turn, which ends the run
   delete <session-id>    archive the run's session, remove its box, and forget it
-  run <tau-dir> [<name>=<value> | <name>:=<json>]...
-                         start a run and finish it; Ctrl-C cancels the run,
-                         and Ctrl-C again leaves it running
+  run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
+                         start a run and finish it, as finish does; Ctrl-C
+                         cancels the run, and Ctrl-C again leaves it running
 
 A run is running until its agent is done, then ended, and finished once
 finish has given back how it ended, which it does again each time, putting
@@ -48,9 +51,12 @@ when DSH_HOME is not set.
 
 const socket = defaultSocket()
 
+/** The option of the commands that finish a run. */
+const HISTORY = { history: { type: 'string' } } as const
+
 const commands: Record<string, (args: string[]) => Promise<void>> = {
   async start(args) {
-    const started = await start(args)
+    const started = await start(parseArgs({ args, allowPositionals: true }).positionals)
     process.stdout.write(`${started.sessionId}\n${started.prompt}${started.prompt.endsWith('\n') ? '' : '\n'}`)
   },
   async list(args) {
@@ -64,7 +70,9 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     if (status.result?.failure !== undefined) process.stdout.write(`  ${status.result.failure}\n`)
   },
   async finish(args) {
-    report(await finish(sessionOf('finish', args)))
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: HISTORY })
+    if (positionals.length !== 1) throw new UsageError('finish takes the id of one session')
+    report(await finish(positionals[0], values.history))
   },
   async cancel(args) {
     await ask(socket, { op: 'cancel', sessionId: sessionOf('cancel', args) })
@@ -73,7 +81,8 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     await ask(socket, { op: 'delete', sessionId: sessionOf('delete', args) })
   },
   async run(args) {
-    const { sessionId } = await start(args)
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: HISTORY })
+    const { sessionId } = await start(positionals)
     process.stderr.write(`fleet: started ${sessionId}\n`)
     let cancelling = false
     const interrupt = (): void => {
@@ -84,7 +93,7 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     }
     process.on('SIGINT', interrupt)
     try {
-      report(await finish(sessionId))
+      report(await finish(sessionId, values.history))
     } finally {
       process.off('SIGINT', interrupt)
     }
@@ -92,8 +101,7 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
 }
 
 /** Start a run of the tau a command line names, with the values it gives. */
-async function start(args: string[]): Promise<Started> {
-  const { positionals } = parseArgs({ args, allowPositionals: true })
+async function start(positionals: string[]): Promise<Started> {
   const [dir, ...valueArgs] = positionals
   if (dir === undefined) throw new UsageError('give a tau directory, then the values')
   const tau = loadTau(dir)
@@ -110,15 +118,16 @@ function sessionOf(command: string, args: string[]): string {
 
 /**
  * Wait until a run ends, put what it gave back at the caller's paths, and
- * give back how it ended. A finish can be asked again, so when the service
+ * its session's history at `history`, if given, and give back how it
+ * ended. A finish can be asked again, so when the service
  * goes away before it answers, as when dsh restarts, it waits for it to come
  * back, and asks again.
  */
-async function finish(sessionId: string): Promise<Result> {
+async function finish(sessionId: string, history?: string): Promise<Result> {
   let waiting = false
   for (;;) {
     try {
-      return await finishRun(socket, sessionId)
+      return await finishRun(socket, sessionId, history)
     } catch (error) {
       if (!(error instanceof ConnectionLost || (waiting && error instanceof NoService))) throw error
       if (!waiting) process.stderr.write('fleet: lost the tau service; waiting for it to come back\n')

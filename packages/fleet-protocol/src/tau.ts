@@ -4,7 +4,8 @@
  * sends one request as one line of JSON, and the service answers it with one
  * line of JSON and ends the connection. A `start` sends a run's call after
  * its line, and a `finish` that succeeds answers with the run's result after
- * its line, each an archive of tau's docs/spec/serialization.md. Shared by
+ * its line, each an archive of tau's docs/spec/serialization.md; a `finish`
+ * that asks for it has the run's session's history in its line. Shared by
  * both ends, so it holds only types, constants, and where the socket is.
  * @module fleet-protocol/tau
  */
@@ -49,11 +50,19 @@ export type Request =
   }
   | {
     protocol: number
+    /** Wait for a run's end, and give back how it ended. */
+    op: 'finish'
+    sessionId: string
+    /** Give back the run's session's history too, as {@link Finished} has it. */
+    history?: boolean
+  }
+  | {
+    protocol: number
     /**
-     * Where a run is; wait for its end, and give back how it ended; cancel
-     * its turn; or archive its session, remove its box and forget it.
+     * Where a run is; cancel its turn; or archive its session, remove its
+     * box and forget it.
      */
-    op: 'status' | 'finish' | 'cancel' | 'delete'
+    op: 'status' | 'cancel' | 'delete'
     sessionId: string
   }
 
@@ -107,6 +116,12 @@ export interface RunStatus {
 export interface Finished {
   result: Result
   targets: Targets
+  /**
+   * The run's session's history, when the `finish` asked for it: its
+   * events, oldest first, as dsh logs them. It is dsh's, not tau's, so a
+   * caller reads it to inspect the run, not to rely on its form.
+   */
+  history?: unknown[]
 }
 
 /** What each op answers with. */

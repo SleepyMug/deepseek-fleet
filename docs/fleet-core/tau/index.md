@@ -33,7 +33,7 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt; `targets`, where the caller has each `$out` and `$inout` handle, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
-| `finish { sessionId }` | Wait until the run ends, and answer how it did and the targets, `{ result, targets }`, then send its result, the same each time; the caller puts what it gave back at the targets. |
+| `finish { sessionId, history? }` | Wait until the run ends, and answer how it did and the targets, `{ result, targets }`, then send its result, the same each time; the caller puts what it gave back at the targets. With `history: true`, the answer holds the session's history too, `history`. |
 | `cancel { sessionId }` | Cancel the run's turn, which ends the run; a run that ended is let be. |
 | `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run, and every run it started. |
 
@@ -207,6 +207,13 @@ preset's scope, which each of its sessions' agents has as its parent.
   service as to what goes where. The service answers the same again, so a
   client that lost its connection, as when dsh restarts, asks again, and a
   client other than the one that started the run can finish it.
+- **A run's history**, for a caller to inspect it, is its session's events,
+  oldest first, as dsh's session controller inspects them: the prompt, each
+  request's system prompt and tools, each model message, tool call and
+  result, and each turn's end. A `finish` that asks gives it back in its
+  answer, read when it answers, failed run or not. It is dsh's, not
+  tau's spec's, so its form is dsh's session log's, and the caller
+  writes it where it wants it, as with the result.
 - **Cancelling** cancels the session's turn; the run then ends as
   cancelled, which its watch records.
 - **The runs a run started** go with it. Once a run ends, its box is

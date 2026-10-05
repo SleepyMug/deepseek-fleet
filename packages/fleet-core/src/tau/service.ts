@@ -39,6 +39,8 @@ export interface Sessions {
    * @param signal - gives up the wait.
    */
   settled(sessionId: string, signal: AbortSignal): Promise<Outcome>
+  /** A session's events, oldest first, as dsh logs them. */
+  history(sessionId: string, signal: AbortSignal): Promise<unknown[]>
 }
 
 export class TauService {
@@ -109,17 +111,18 @@ export class TauService {
   /**
    * Wait until a run ends, and give back how it did, where the caller has
    * its handles, and its result's archive, which holds what it gave back for
-   * them, the same each time.
+   * them, the same each time; and, if asked, its session's history.
    * @param signal - gives up the wait; the run goes on.
    */
-  async finish(caller: Caller, sessionId: string, signal: AbortSignal): Promise<Finished & { archive: AsyncIterable<Uint8Array> }> {
+  async finish(caller: Caller, sessionId: string, signal: AbortSignal, options: { history?: boolean } = {}): Promise<Finished & { archive: AsyncIterable<Uint8Array> }> {
     if ((await this.reach(caller, sessionId)).ended === undefined) await abortable(this.watch(sessionId), signal)
+    const history = options.history === true ? await this.sessions.history(sessionId, signal) : undefined
     return await this.serial(sessionId, async () => {
       const { ended, finishedAt, targets } = await this.runs.entry(sessionId)
       if (ended === undefined) throw new Error(`fleet: the fleet host stopped before ${sessionId} ended`)
       const archive = await this.runs.result(sessionId)
       if (finishedAt === undefined) await this.runs.finished(sessionId)
-      return { result: ended.result, targets, archive }
+      return { result: ended.result, targets, ...history === undefined ? {} : { history }, archive }
     })
   }
 

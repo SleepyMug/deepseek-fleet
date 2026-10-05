@@ -156,6 +156,9 @@ function sessions(ctx: Context): Sessions {
       const { events } = await ctx.sessionController.inspect(sessionId as SessionId, signal)
       return summarize(events)
     },
+    async history(sessionId, signal) {
+      return [...(await ctx.sessionController.inspect(sessionId as SessionId, signal)).events]
+    },
     async archive(sessionId) {
       try {
         await ctx.workspaceRegistry.archiveSession(sessionId as SessionId, { stopActivity: true })

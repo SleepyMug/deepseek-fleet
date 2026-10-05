@@ -246,6 +246,10 @@ class FakeSessions implements Sessions {
     return abortable(this.ending(sessionId).promise, signal)
   }
 
+  history(sessionId: string): Promise<unknown[]> {
+    return Promise.resolve([{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
+  }
+
   /** End a session's agent's work, as it ended. */
   end(sessionId: string, outcome: Outcome): void {
     this.ending(sessionId).resolve(outcome)
@@ -450,6 +454,22 @@ test('a run that succeeded gives back what its agent left, packed by its box, wi
   assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\n\nbuy milk\n')
   assert.deepEqual(await finish(service, HOST, sessionId), result)
   assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['call.tar', 'result.tar'])
+})
+
+test('a finish gives back the run\'s session\'s history when asked for it, failed or not', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const sessions = new FakeSessions()
+  const service = make(work, () => {}, sessions, new FakeBoxes(work))
+  const { sessionId } = await startIn(service, HOST, tauDir, values, work)
+  const finishing = service.finish(HOST, sessionId, new AbortController().signal, { history: true })
+  sessions.end(sessionId, { end: { kind: 'aborted' }, text: '' })
+  const { result, targets, history, archive } = await finishing
+  assert.deepEqual(await applyResult(archive, targets), result)
+  assert.deepEqual(result, { ok: false, text: '', failure: 'the run was cancelled' })
+  assert.deepEqual(history, [{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
+  const again = await service.finish(HOST, sessionId, new AbortController().signal)
+  assert.deepEqual(await applyResult(again.archive, again.targets), result)
+  assert.equal('history' in again, false)
 })
 
 test('a run whose agent did not leave what its tau declares fails, and gives back nothing', async (t) => {

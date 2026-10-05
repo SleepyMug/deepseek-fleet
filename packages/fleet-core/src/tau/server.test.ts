@@ -63,13 +63,14 @@ function fake(calls: string[], aborted: string[] = []): Operations {
       await op('status')(caller, sessionId)
       return { ...STATUS, sessionId }
     },
-    finish: async (caller, sessionId, signal) => {
+    finish: async (caller, sessionId, signal, options) => {
       await op('finish')(caller, sessionId)
       if (sessionId === 'session-waits') {
         await new Promise((resolve) => { signal.addEventListener('abort', resolve, { once: true }) })
         aborted.push(sessionId)
       }
-      return { result: { ok: true, text: 'Done.' }, targets: { '/r': '/c/r' }, archive: once('the result') }
+      const history = options?.history === true ? { history: [{ type: 'turn/end' }] } : {}
+      return { result: { ok: true, text: 'Done.' }, targets: { '/r': '/c/r' }, ...history, archive: once('the result') }
     },
     cancel: op('cancel'),
     delete: op('delete'),
@@ -97,21 +98,27 @@ test('the socket answers each request with what the service did', async (t) => {
       answer: { ok: true, value: { result: { ok: true, text: 'Done.' }, targets: { '/r': '/c/r' } } },
       rest: 'the result',
     })
+    // And its session's history in its line, if asked for.
+    assert.deepEqual(await exchange(path, JSON.stringify({ protocol: PROTOCOL_VERSION, op: 'finish', sessionId: 'session-a', history: true })), {
+      answer: { ok: true, value: { result: { ok: true, text: 'Done.' }, targets: { '/r': '/c/r' }, history: [{ type: 'turn/end' }] } },
+      rest: 'the result',
+    })
     assert.deepEqual(await request({ op: 'cancel', sessionId: 'session-a' }), { ok: true, value: null })
     assert.deepEqual(await request({ op: 'delete', sessionId: 'session-fails' }), { ok: false, error: 'fleet: no tau session session-fails' })
-    assert.deepEqual(calls, [`start t /c {"/r":"/c/r"} ${call}`, 'list', 'status session-b', 'finish session-a', 'cancel session-a', 'delete session-fails'])
+    assert.deepEqual(calls, [`start t /c {"/r":"/c/r"} ${call}`, 'list', 'status session-b', 'finish session-a', 'finish session-a', 'cancel session-a', 'delete session-fails'])
 
     // A start refused is answered once the client has sent its call.
     assert.deepEqual(await request({ ...start, title: ' ' }, call), { ok: false, error: 'fleet: start takes a title' })
     assert.deepEqual(await request({ ...start, project: undefined }, call), { ok: false, error: 'fleet: start takes project, an absolute path' })
     assert.deepEqual(await request({ ...start, targets: { '/r': 'r' } }, call), { ok: false, error: 'fleet: start takes targets, each an absolute path' })
     assert.deepEqual(await request({ op: 'finish' }), { ok: false, error: 'fleet: finish takes a sessionId' })
+    assert.deepEqual(await request({ op: 'finish', sessionId: 'session-a', history: 'yes' }), { ok: false, error: 'fleet: finish takes history, true or false' })
     assert.deepEqual(await request({ op: 'run' }), { ok: false, error: 'fleet: no op run' })
     assert.deepEqual((await exchange(path, JSON.stringify({ protocol: 0, op: 'list' }))).answer, {
       ok: false, error: `fleet: the client speaks protocol 0, and the tau service ${String(PROTOCOL_VERSION)}`,
     })
     assert.deepEqual((await exchange(path, '{')).answer, { ok: false, error: 'fleet: the request is not JSON' })
-    assert.equal(calls.length, 6)
+    assert.equal(calls.length, 7)
   } finally {
     await close()
   }

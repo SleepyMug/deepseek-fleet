@@ -130,8 +130,8 @@ async function answer(service: Operations, line: string, body: Readable, signal:
       case 'status':
         return { response: { ok: true, value: await service.status(HOST, request.sessionId) } }
       case 'finish': {
-        const { result, targets, archive } = await service.finish(HOST, request.sessionId, signal)
-        return { response: { ok: true, value: { result, targets } }, archive }
+        const { archive, ...finished } = await service.finish(HOST, request.sessionId, signal, { history: request.history })
+        return { response: { ok: true, value: finished }, archive }
       }
       case 'cancel':
       case 'delete':
@@ -170,6 +170,9 @@ function parse(line: string): Request {
     case 'cancel':
     case 'delete':
       if (typeof request.sessionId !== 'string') throw new Error(`fleet: ${request.op} takes a sessionId`)
+      if (request.op === 'finish' && request.history !== undefined && typeof request.history !== 'boolean') {
+        throw new Error('fleet: finish takes history, true or false')
+      }
       return request as Request
     default:
       throw new Error(`fleet: no op ${String(request.op)}`)

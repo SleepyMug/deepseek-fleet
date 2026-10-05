@@ -25,7 +25,8 @@ call.
   - `{ "protocol": 1, "op": "start", "title": "…", "project": "/…", "targets": { "/report": "/…" } }`,
     then the call, which carries the tau
   - `{ "protocol": 1, "op": "list" }`
-  - `{ "protocol": 1, "op": "status" | "finish" | "cancel" | "delete", "sessionId": "session-…" }`
+  - `{ "protocol": 1, "op": "finish", "sessionId": "session-…", "history"?: true }`
+  - `{ "protocol": 1, "op": "status" | "cancel" | "delete", "sessionId": "session-…" }`
 - service to client, `{ "ok": true, "value": … }` with what the op answers
   (`Answers`), or `{ "ok": false, "error": "…" }`:
 
@@ -34,11 +35,13 @@ call.
   | `start` | `{ "sessionId": "session-…", "box": "fleet-tau-…", "prompt": "…" }` |
   | `list` | a run's status, as `status` answers, for each run |
   | `status` | `{ "sessionId", "parent"?, "title", "project", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did |
-  | `finish` | `{ "result": { "ok": true \| false, "text": "…", "failure"?: "…" }, "targets": { … } }`, then the result |
+  | `finish` | `{ "result": { "ok": true \| false, "text": "…", "failure"?: "…" }, "targets": { … }, "history"?: [ … ] }`, then the result; `history`, when the request asked for it, the run's session's events, as dsh logs them |
   | `cancel`, `delete` | `null` |
 
 A `finish` answers once the run ends, however long that takes; a client
-that closes its connection first gives up the wait, not the run.
+that closes its connection first gives up the wait, not the run. Its
+`history` is in its line, not after it, so the result stays all that
+follows; it is no part of tau's spec, and has the form dsh gives it.
 
 Paths are absolute. The call holds the run, tau and all; the line holds
 only what a call does not: `title` names the run, in `list` and dsh's web
