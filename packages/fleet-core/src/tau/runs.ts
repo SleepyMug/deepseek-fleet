@@ -16,7 +16,7 @@ import { realpath } from 'node:fs/promises'
 import { posix, relative, sep } from 'node:path'
 import { checkInputs, loadTau } from '@sleepymug/tau'
 import type { Call } from 'fleet-image/helper/protocol'
-import type { Created, Values } from 'fleet-protocol/tau'
+import type { Result, Started, Values } from 'fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
 import { linkApis, type Exts } from './apis.ts'
 import { CLIENTS, FOLDERS, MODULES, SELF, placer } from './place.ts'
@@ -77,7 +77,7 @@ export class TauRuns {
    * @param values - the run's values, by parameter.
    * @param callerCwd - what relative paths in `values` are relative to, absolute.
    */
-  async create(tauDir: string, values: Values, callerCwd: string): Promise<Created> {
+  async create(tauDir: string, values: Values, callerCwd: string): Promise<Started> {
     const tau = loadTau(tauDir)
     const run = tau.bind(values, { cwd: callerCwd }, placer(), SELF)
     checkInputs(run)
@@ -130,9 +130,25 @@ export class TauRuns {
     return this.registry.get(sessionId)
   }
 
+  /** The registry entry of every session, oldest first. */
+  async list(): Promise<Entry[]> {
+    const entries = await Promise.all((await this.registry.list()).map(sessionId => this.registry.find(sessionId)))
+    return entries.filter(entry => entry !== undefined).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  }
+
   /** Record that a session was given its prompt. */
   async prompted(sessionId: string): Promise<void> {
     await this.registry.put({ ...await this.registry.get(sessionId), promptedAt: new Date().toISOString() })
+  }
+
+  /** Record that a session's run ended, and how. */
+  async ended(sessionId: string, result: Result): Promise<void> {
+    await this.registry.put({ ...await this.registry.get(sessionId), ended: { at: new Date().toISOString(), result } })
+  }
+
+  /** Record that a `finish` gave back how a session's run ended. */
+  async finished(sessionId: string): Promise<void> {
+    await this.registry.put({ ...await this.registry.get(sessionId), finishedAt: new Date().toISOString() })
   }
 
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */

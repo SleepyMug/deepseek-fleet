@@ -4,7 +4,9 @@
  * conversation, a request carrying the tau's prompt, with the scenario's
  * next step, one per tool result it has had back, and its final text after
  * the last; any other request, such as dsh's for a session title, with a
- * word. It writes each request it gets, whole, to its folder.
+ * word. Until it is told the prompt, which the run's start answers with,
+ * it holds every request. It writes each request it gets, whole, to its
+ * folder.
  * @module fleet-trace/model
  */
 
@@ -25,11 +27,10 @@ interface Message {
 }
 
 export class ScriptedModel {
-  /** The tau's prompt, which marks the run's conversation, once the run is created. */
-  prompt: string | undefined
   /** The requests written, in order: their files, and whether each was the run's. */
   readonly requests: { file: string; run: boolean }[] = []
-  private readonly finished = Promise.withResolvers<void>()
+  /** The tau's prompt, which marks the run's conversation, once the run is started. */
+  private readonly known = Promise.withResolvers<string>()
 
   private constructor(
     private readonly server: Server,
@@ -44,7 +45,7 @@ export class ScriptedModel {
     const server = createServer((request, response) => {
       let raw = ''
       request.on('data', (chunk: Buffer) => { raw += chunk.toString() })
-      request.on('end', () => { model?.answer(raw, response) })
+      request.on('end', () => { void model?.answer(raw, response) })
     })
     model = new ScriptedModel(server, steps, final, dir)
     await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve) })
@@ -55,9 +56,9 @@ export class ScriptedModel {
     return (this.server.address() as AddressInfo).port
   }
 
-  /** Settles once the run's conversation has had the final text. */
-  get done(): Promise<void> {
-    return this.finished.promise
+  /** Tell the model the tau's prompt, which marks the run's conversation. */
+  set prompt(text: string) {
+    this.known.resolve(text)
   }
 
   close(): Promise<void> {
@@ -65,10 +66,11 @@ export class ScriptedModel {
     return new Promise((resolve) => { this.server.close(() => { resolve() }) })
   }
 
-  private answer(raw: string, response: import('node:http').ServerResponse): void {
+  private async answer(raw: string, response: import('node:http').ServerResponse): Promise<void> {
     const body = JSON.parse(raw === '' ? '{}' : raw) as { messages?: Message[] }
     const messages = body.messages ?? []
-    const run = this.prompt !== undefined && messages.some(message => message.role === 'user' && text(message).includes(this.prompt as string))
+    const prompt = await this.known.promise
+    const run = messages.some(message => message.role === 'user' && text(message).includes(prompt))
     const file = join(this.dir, `${String(this.requests.length + 1).padStart(3, '0')}${run ? '-run' : ''}.json`)
     writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`)
     this.requests.push({ file, run })
@@ -88,7 +90,6 @@ export class ScriptedModel {
       response.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: 0, model: 'mock-model', choices: [], usage })}\n\n`)
     }
     response.end('data: [DONE]\n\n')
-    if (run && step === undefined) this.finished.resolve()
   }
 }
 

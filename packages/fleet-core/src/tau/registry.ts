@@ -1,14 +1,15 @@
 /**
- * The tau service's registry: which box each session has, and what its run
- * needs, one JSON file per session in a folder of its own. The service writes
- * an entry once the session's box is set up, so an entry means a box ready to
- * start, and before the dsh session is made, which the first start does.
+ * The tau service's registry: which box each session has, what its run
+ * needs, and how far it went, one JSON file per session in a folder of its
+ * own. The service writes an entry once the session's box is set up, so an
+ * entry means a box ready to start, and before the dsh session is made.
  * @module fleet-core/tau/registry
  */
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BoundHandle } from '@sleepymug/tau'
+import type { Result } from 'fleet-protocol/tau'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
@@ -27,8 +28,12 @@ export interface Entry {
   prompt: string
   /** The id the prompt is sent under, so that sending it again is sending it once. */
   promptRequestId: string
-  /** When the session was given its prompt, which its first start does. */
+  /** When the session was given its prompt, which starts the run. */
   promptedAt?: string
+  /** When the run ended, its agent done, and how. */
+  ended?: { at: string; result: Result }
+  /** When a `finish` first gave back how the run ended. */
+  finishedAt?: string
   /** Each handle of the run: its mode, its kind, the caller's path, and where the box has it. */
   handles: readonly BoundHandle[]
   /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */

@@ -1,7 +1,8 @@
 /**
  * The tau service's socket (fleet-protocol/tau): it reads one request from
  * each connection, has the service carry it out, answers, and ends the
- * connection. Only the owner can open the socket, which is its
+ * connection. A client that goes away first gives up its wait, such as a
+ * `finish`'s, and nothing else. Only the owner can open the socket, which is its
  * authentication, as the dsh home's own files are. One service serves a
  * socket: another finds it answering and does not start.
  * @module fleet-core/tau/server
@@ -14,7 +15,7 @@ import { PROTOCOL_VERSION, type Request, type Response } from 'fleet-protocol/ta
 import type { TauService } from './service.ts'
 
 /** What the server asks of the service. */
-export type Operations = Pick<TauService, 'create' | 'start' | 'stop' | 'delete'>
+export type Operations = Pick<TauService, 'start' | 'list' | 'status' | 'finish' | 'cancel' | 'delete'>
 
 /**
  * Serve the service on a socket.
@@ -70,6 +71,8 @@ async function claim(path: string): Promise<void> {
 function serve(socket: Socket, service: Operations): void {
   let received = ''
   let answered = false
+  const gone = new AbortController()
+  socket.once('close', () => { gone.abort(new Error('fleet: the client went away')) })
   socket.setEncoding('utf8')
   // A client that went away before its answer.
   socket.on('error', () => {})
@@ -79,20 +82,25 @@ function serve(socket: Socket, service: Operations): void {
     const end = received.indexOf('\n')
     if (end === -1) return
     answered = true
-    void answer(service, received.slice(0, end)).then((response) => {
+    void answer(service, received.slice(0, end), gone.signal).then((response) => {
       socket.end(`${JSON.stringify(response)}\n`)
     })
   })
 }
 
-async function answer(service: Operations, line: string): Promise<Response> {
+async function answer(service: Operations, line: string, signal: AbortSignal): Promise<Response> {
   try {
     const request = parse(line)
     switch (request.op) {
-      case 'create':
-        return { ok: true, value: await service.create(request.tauDir, request.values, request.callerCwd) }
       case 'start':
-      case 'stop':
+        return { ok: true, value: await service.start(request.tauDir, request.values, request.callerCwd) }
+      case 'list':
+        return { ok: true, value: await service.list() }
+      case 'status':
+        return { ok: true, value: await service.status(request.sessionId) }
+      case 'finish':
+        return { ok: true, value: await service.finish(request.sessionId, signal) }
+      case 'cancel':
       case 'delete':
         await service[request.op](request.sessionId)
         return { ok: true, value: null }
@@ -115,14 +123,17 @@ function parse(line: string): Request {
     throw new Error(`fleet: the client speaks protocol ${String(request.protocol)}, and the tau service ${String(PROTOCOL_VERSION)}`)
   }
   switch (request.op) {
-    case 'create':
+    case 'start':
       for (const field of ['tauDir', 'callerCwd'] as const) {
         const path = request[field]
-        if (typeof path !== 'string' || !isAbsolute(path)) throw new Error(`fleet: create takes ${field}, an absolute path`)
+        if (typeof path !== 'string' || !isAbsolute(path)) throw new Error(`fleet: start takes ${field}, an absolute path`)
       }
       return request as Request
-    case 'start':
-    case 'stop':
+    case 'list':
+      return request as Request
+    case 'status':
+    case 'finish':
+    case 'cancel':
     case 'delete':
       if (typeof request.sessionId !== 'string') throw new Error(`fleet: ${request.op} takes a sessionId`)
       return request as Request

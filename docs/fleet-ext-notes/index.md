@@ -28,8 +28,7 @@ lists it in the fleet profile's bundles, after fleet-core. Then a run of
 `examples/notebook` saves a list as notes, and reports those with a tag:
 
 ```
-$ fleet create <checkout>/examples/notebook list=list.txt tag=shop report=out/report.txt
-$ fleet start <session>
+$ fleet run <checkout>/examples/notebook list=list.txt tag=shop report=out/report.txt
 ```
 
 A program below `/tau` in the session's box imports the API:

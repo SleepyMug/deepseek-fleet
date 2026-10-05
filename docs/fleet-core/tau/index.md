@@ -1,11 +1,12 @@
 # fleet-core/tau
 
-The tau service. It sets up a box for a run of a tau, keeps which box each
-session has, and starts, stops and deletes the session with its box. It runs
-in dsh's process, in the fleet profile. `create` mints the session's id and
-expands its prompt; the first `start` makes the dsh session, in the caller's
-folder as its workspace, so the web UI lists it there, and gives it the
-prompt. The session's bash and file tools work in its box, through
+The tau service. It starts runs of taus, each a box and a dsh session, and
+watches each until its agent is done, then gives back how it ended, and
+cancels and deletes runs. It runs in dsh's process, in the fleet profile.
+`start` sets up the run's box, mints the session's id and expands its prompt,
+then makes the dsh session, in the caller's folder as its workspace, so the
+web UI lists it there, and gives it the prompt. The session's bash and file
+tools work in its box, through
 fleet-core's world (docs/fleet-core/world/index.md). Each API the tau
 declares is linked to the client of the extension that implements it
 (docs/fleet-core/ext/index.md), whose calls the runs answer.
@@ -18,16 +19,18 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
   their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It builds on the
   extensions provided, `ctx.fleetExts`, and uses nothing of dsh's.
 - `fleet-tau` (`fleet-core/tau/plugin`): the tau service (`service.ts`). It
-  builds on `ctx.fleetTauRuns`, dsh's session controller and its workspace
-  registry, and serves `fleet-protocol/tau` on `$DSH_HOME/fleet/tau.sock`,
-  for `fleet` (fleet-client):
+  builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
+  registry and its agents, and serves `fleet-protocol/tau` on
+  `$DSH_HOME/fleet/tau.sock`, for `fleet` (fleet-client):
 
 | Op | What it does |
 |---|---|
-| `create { tauDir, callerCwd, values }` | Set up a box for a run of the tau with the values, leave it stopped, and register the session. Answers `{ sessionId, box, prompt }`. |
-| `start { sessionId }` | Start the session's box, and its helper. The first start makes the dsh session and gives it its prompt. |
-| `stop { sessionId }` | Cancel the session's turn, and stop its box, which keeps what is in it. |
-| `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the session. |
+| `start { tauDir, callerCwd, values }` | Start a run of the tau with the values: set up its box, start it, make the dsh session and give it its prompt. Answers `{ sessionId, box, prompt }`. |
+| `list {}` | Every run, oldest first, as `status` gives each. |
+| `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`. |
+| `finish { sessionId }` | Wait until the run ends, and answer how it did, the same each time. |
+| `cancel { sessionId }` | Cancel the run's turn, which ends the run; a run that ended is let be. |
+| `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run. |
 
 The patch also declares `tau`, the agent preset a tau's session has: a
 persona, the tau's prompt plugin (`fleet-core/tau/prompt`), bash in the
@@ -49,7 +52,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 
 ## Design
 
-- **`create`** goes in this order:
+- **Setting up the box** (`runs.ts`), the first part of `start`, goes in
+  this order:
   1. It reads the tau and binds the values with tau's library:
      `loadTau(tauDir).bind(values, { cwd: callerCwd }, place, '/tau/self')`
      checks the values against `tau.json`, places each handle, and expands
@@ -94,24 +98,46 @@ preset's scope, which each of its sessions' agents has as its parent.
   the expanded prompt and the request id it is sent under, each handle (its
   mode, kind, caller's path and place), the names of the APIs the tau
   declares, each linked, what it exposes, with what each says it is, when
-  it was made, and when it was given its prompt. An entry is
+  it was made, when it was given its prompt, when and how its run ended,
+  and when a `finish` first gave that back. An entry is
   written last, so an entry means a box that is set up, and before the dsh
   session is made. A service started later finds its sessions there. Only
   ids of the form the service mints name an entry, since they are file
   names.
-- **The first `start`** starts the box, then, through dsh's workspace
-  registry and session controller:
+- **Starting the run**, once its box is set up: `start` starts the box,
+  then, through dsh's workspace registry and session controller:
   1. makes the project a dsh workspace, or finds the one it is;
   2. makes the session with the entry's id, in that workspace, with the
-     `tau` preset, which keeps a session already made as it is, and titles
-     it with the name of the tau's directory;
-  3. queues the prompt under the entry's request id, which dsh takes once;
+     `tau` preset, and titles it with the name of the tau's directory;
+  3. queues the prompt under the entry's request id;
   4. records in the entry when the session got its prompt.
 
-  A start that fails on the way does it all again, without making or
-  prompting twice, and a later start only starts the box. A session's
-  operations run one after another, so two starts at once prompt once.
-- **Stopping** cancels the session's turn, then stops the box.
+  A failure on the way archives the session and removes the box and the
+  entry, so a run either started or left nothing. A session's operations
+  run one after another, so its start, its end, a finish and a deletion
+  keep their order.
+- **A run ends** at the first time its agent is done with its prompt: the
+  service waits for the agent's `whenIdle()`, then reads the session's log
+  with the session controller's `inspect` (`outcome.ts`). The run succeeded
+  if its last turn completed; its text is the last its agent wrote. Any
+  other end is a failure, which says why: cancelled; the host stopped
+  during the run, as dsh disposes of the agent then (`aborted` by
+  `disposed`), or closes the cut turn later (`interrupted`); the model's
+  error; and so on. The service records that in the entry, and stops the
+  box, which keeps what is in it. What a person does in the session later,
+  in the web UI, is the session's, not the run's.
+- **Watching.** A run is watched from its start; when the service loads, it
+  watches every run whose entry has not ended, so a run cut short by a
+  restart ends there, with dsh's `interrupted`, and one whose start was cut
+  short before its prompt ends as a failure that says so. The service takes
+  its socket before it loads, so one that does not get it, as when another
+  serves the same dsh home, records nothing.
+- **Finishing** waits for the run's end, which a client that goes away
+  gives up, leaving the run as it is, then records the first finish in the
+  entry, and answers how the run ended. It answers the same again, so a
+  client that lost its connection, as when dsh restarts, asks again.
+- **Cancelling** cancels the session's turn; the run then ends as
+  cancelled, which its watch records.
 - **Deleting** archives the session, stopping its work, since dsh does not
   delete sessions; then it removes the box and forgets the session. A
   session never started is not dsh's, so there is nothing to archive. An
@@ -184,10 +210,9 @@ preset's scope, which each of its sessions' agents has as its parent.
 
 ## Not yet
 
-- Nothing waits for the session's turn to end.
 - Nothing comes back out: `$out` and `$inout` handles are neither copied back
   nor checked with `checkOutputs`.
-- A box left by a dsh that died during `create` stays. `fleet-box list` shows
+- A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 
 ## Built on
@@ -197,9 +222,9 @@ preset's scope, which each of its sessions' agents has as its parent.
 - `ctx.fleetExts` (fleet-core/ext).
 - `Box` and `exec` (`fleet-core/box`).
 - `fleet-protocol/tau`, for the wire.
-- dsh's session controller and workspace registry
-  (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`),
-  and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash` and `dsh-tool-fs` for
+- dsh's session controller, workspace registry and agents
+  (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,
+  `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash` and `dsh-tool-fs` for
   the `tau` preset.
 
 ## How it runs
@@ -231,5 +256,6 @@ fleet-tau: created session-4a65… in box fleet-tau-4a65…, with the prompt:
 Read /tau/in/notes.md, and add what it says to the pages in /tau/workspace/site it concerns, in a
 terse style. Then write what you changed to /tau/out/report.md.
 fleet-tau: started session-4a65… in /home/me/notes, and gave it its prompt
+fleet-tau: session-4a65… ended
 fleet-tau: deleted session-4a65… and its box fleet-tau-4a65…
 ```

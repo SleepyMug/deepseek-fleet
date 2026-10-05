@@ -2,10 +2,9 @@
  * One run of a scenario on a scratch fleet host: a dsh home of its own in a
  * temporary folder, whose fleet profile links this checkout's fleet-core and
  * extensions, and routes the model to the scripted one (./model.ts); dsh
- * itself, the workspace's, started on a free port; the tau created and
- * started there, through its socket, as `fleet` does it; and, once the
- * scripted conversation has had its final text, the session deleted, dsh
- * stopped and the temporary folder removed. What the model was sent is left
+ * itself, the workspace's, started on a free port; a run of the tau started
+ * there, through its socket, as `fleet run` does it; and, once the run has
+ * ended, the session deleted, dsh stopped and the temporary folder removed. What the model was sent is left
  * in the output folder: every request, and the last of the run's rendered
  * (./render.ts).
  * @module fleet-trace/run
@@ -18,8 +17,8 @@ import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { request, type Body } from 'fleet-client/connection'
-import { socketPath, type Created, type Values } from 'fleet-protocol/tau'
+import { ask as askService, type Body } from 'fleet-client/connection'
+import { socketPath, type Answers, type Values } from 'fleet-protocol/tau'
 import { ScriptedModel, type Step } from './model.ts'
 import { render } from './render.ts'
 
@@ -29,7 +28,7 @@ export interface Scenario {
   tau: string
   /** The caller's folder: each file by its relative path, with its text. */
   files?: Record<string, string>
-  /** The run's values, as `fleet create` sends them; relative paths are the caller's folder's. */
+  /** The run's values, as `fleet start` sends them; relative paths are the caller's folder's. */
   values: Values
   /** The model's tool calls, in order, one per turn. */
   steps: Step[]
@@ -78,11 +77,11 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
       writeFileSync(join(work, path), text)
     }
     for (const path of outPaths(scenario.values)) mkdirSync(dirname(resolve(work, path)), { recursive: true })
-    const created = await ask(socket, { op: 'create', tauDir: resolve(dirname(scenarioFile), scenario.tau), callerCwd: work, values: scenario.values }) as Created
-    sessionId = created.sessionId
-    model.prompt = created.prompt.trim()
-    await ask(socket, { op: 'start', sessionId })
-    await Promise.race([model.done, exited, interrupted])
+    const started = await ask(socket, { op: 'start', tauDir: resolve(dirname(scenarioFile), scenario.tau), callerCwd: work, values: scenario.values })
+    sessionId = started.sessionId
+    model.prompt = started.prompt.trim()
+    const result = await Promise.race([ask(socket, { op: 'finish', sessionId }), exited, interrupted])
+    if (!result.ok) process.stderr.write(`fleet-trace: the run failed: ${String(result.failure)}\n`)
     await ask(socket, { op: 'delete', sessionId })
     sessionId = undefined
   } finally {
@@ -150,10 +149,10 @@ async function stop(dsh: ChildProcess): Promise<void> {
 }
 
 /** One request to the tau service, whose failure throws. */
-async function ask(socket: string, body: Body): Promise<Created | null> {
-  const response = await request(socket, body)
-  if (!response.ok) throw new Error(`fleet-trace: ${body.op} failed: ${response.error}`)
-  return response.value
+async function ask<O extends Body['op']>(socket: string, body: Body & { op: O }): Promise<Answers[O]> {
+  return await askService<O>(socket, body).catch((error: unknown) => {
+    throw new Error(`fleet-trace: ${body.op} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+  })
 }
 
 /** Each `$out` handle's path in a run's values, at any depth. */

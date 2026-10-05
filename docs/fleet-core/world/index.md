@@ -32,7 +32,7 @@ a tau's session does not look; they stay inline instead.
   isolates its service's name, so that only it sees them, and they do not
   stand in for it.
 - **The box** of a session comes from `ctx.fleetTauRuns.boxFor`, which
-  starts it if it is not running, as after a restart or `fleet stop`. Its
+  starts it if it is not running, as after a restart or the run's end. Its
   helper serves every call (docs/fleet-image/helper/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
@@ -123,7 +123,7 @@ loaded: run the workspace's dsh, `pnpm exec dsh`.
 ## How it runs
 
 With fleet-core in the fleet profile's bundles, `pnpm exec dsh --profile
-fleet` mounts both services. After `fleet create` and `fleet start`
+fleet` mounts both services. After `fleet start`
 (docs/fleet-client/index.md), the session's bash and file tools work in its
 box:
 

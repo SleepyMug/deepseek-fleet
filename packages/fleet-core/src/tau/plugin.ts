@@ -4,23 +4,26 @@
  * profile. It builds on the runs of taus and their boxes, `ctx.fleetTauRuns`
  * (./runs-plugin.ts), and on dsh's session controller and workspace
  * registry, as the web client's own calls do, so that the web UI lists a
- * tau's session, under the caller's folder, and follows it. It imports only
- * their types. Its config names the dsh home, where it serves its socket.
+ * tau's session, under the caller's folder, and follows it; and on dsh's
+ * agents, to learn when a run's agent is done. It imports only their types.
+ * Its config names the dsh home, where it serves its socket.
  * @module fleet-core/tau/plugin
  */
 
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { socketPath } from 'fleet-protocol/tau'
+import { summarize } from './outcome.ts'
 import { print } from './runs-plugin.ts'
 import { listen } from './server.ts'
-import { TauService, type Sessions } from './service.ts'
+import { TauService, abortable, type Sessions } from './service.ts'
 
 export const name = 'fleet-tau'
-export const inject = ['fleetTauRuns', 'sessionController', 'workspaceRegistry']
+export const inject = ['fleetTauRuns', 'sessionController', 'workspaceRegistry', 'agents']
 
 /** The agent preset a tau's session has, which fleet-core's cordis.patch.yml declares. */
 export const PRESET = 'tau'
@@ -38,8 +41,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     throw new Error('fleet-tau: its config names dshHome, the dsh home, an absolute path')
   }
   const service = new TauService(ctx.fleetTauRuns, sessions(ctx), print)
-  const close = await listen(socketPath(config.dshHome), service)
+  // The socket first: a service that does not get it, as when another serves this dsh home, watches no runs.
+  const closeSocket = await listen(socketPath(config.dshHome), service)
+  const close = async (): Promise<void> => {
+    await closeSocket()
+    await service.close()
+  }
   try {
+    await service.load()
     ctx.effect(() => close, 'fleet-tau socket')
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
@@ -70,6 +79,13 @@ function sessions(ctx: Context): Sessions {
     },
     cancel(sessionId) {
       ctx.sessionController.cancel({ sessionId: sessionId as SessionId })
+    },
+    async settled(sessionId, signal) {
+      // An accepted prompt has woken the agent already, so idle means it is done with it.
+      const agent = ctx.agents.get(sessionId as SessionId)
+      if (agent !== undefined) await abortable(agent.whenIdle(), signal)
+      const { events } = await ctx.sessionController.inspect(sessionId as SessionId, signal)
+      return summarize(events)
     },
     async archive(sessionId) {
       try {

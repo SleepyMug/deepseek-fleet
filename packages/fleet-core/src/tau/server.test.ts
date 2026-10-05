@@ -19,19 +19,40 @@ function exchange(path: string, line: string): Promise<unknown> {
   })
 }
 
-/** A service that records its calls, and fails a session named `session-fails`. */
-function fake(calls: string[]): Operations {
+const STATUS = { sessionId: 'session-a', tauDir: '/t', project: '/c', state: 'running', createdAt: 'now' } as const
+
+/**
+ * A service that records its calls, and fails a session named
+ * `session-fails`. A finish of `session-waits` waits until its signal aborts,
+ * which `aborted` then records.
+ */
+function fake(calls: string[], aborted: string[] = []): Operations {
   const op = (name: string) => (sessionId: string): Promise<void> => {
     calls.push(`${name} ${sessionId}`)
     return sessionId === 'session-fails' ? Promise.reject(new Error(`fleet: no tau session ${sessionId}`)) : Promise.resolve()
   }
   return {
-    create: (tauDir, values, callerCwd) => {
-      calls.push(`create ${tauDir} ${JSON.stringify(values)} ${callerCwd}`)
+    start: (tauDir, values, callerCwd) => {
+      calls.push(`start ${tauDir} ${JSON.stringify(values)} ${callerCwd}`)
       return Promise.resolve({ sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' })
     },
-    start: op('start'),
-    stop: op('stop'),
+    list: () => {
+      calls.push('list')
+      return Promise.resolve([STATUS])
+    },
+    status: async (sessionId) => {
+      await op('status')(sessionId)
+      return { ...STATUS, sessionId }
+    },
+    finish: async (sessionId, signal) => {
+      await op('finish')(sessionId)
+      if (sessionId === 'session-waits') {
+        await new Promise((resolve) => { signal.addEventListener('abort', resolve, { once: true }) })
+        aborted.push(sessionId)
+      }
+      return { ok: true, text: 'Done.' }
+    },
+    cancel: op('cancel'),
     delete: op('delete'),
   }
 }
@@ -46,22 +67,43 @@ test('the socket answers each request with what the service did', async (t) => {
     assert.equal((await stat(path)).mode & 0o777, 0o600)
     const request = (body: object): Promise<unknown> => exchange(path, JSON.stringify({ protocol: PROTOCOL_VERSION, ...body }))
 
-    assert.deepEqual(await request({ op: 'create', tauDir: '/t', callerCwd: '/c', values: { a: 'b' } }), {
+    assert.deepEqual(await request({ op: 'start', tauDir: '/t', callerCwd: '/c', values: { a: 'b' } }), {
       ok: true, value: { sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' },
     })
-    assert.deepEqual(await request({ op: 'start', sessionId: 'session-a' }), { ok: true, value: null })
-    assert.deepEqual(await request({ op: 'stop', sessionId: 'session-a' }), { ok: true, value: null })
+    assert.deepEqual(await request({ op: 'list' }), { ok: true, value: [STATUS] })
+    assert.deepEqual(await request({ op: 'status', sessionId: 'session-b' }), { ok: true, value: { ...STATUS, sessionId: 'session-b' } })
+    assert.deepEqual(await request({ op: 'finish', sessionId: 'session-a' }), { ok: true, value: { ok: true, text: 'Done.' } })
+    assert.deepEqual(await request({ op: 'cancel', sessionId: 'session-a' }), { ok: true, value: null })
     assert.deepEqual(await request({ op: 'delete', sessionId: 'session-fails' }), { ok: false, error: 'fleet: no tau session session-fails' })
-    assert.deepEqual(calls, ['create /t {"a":"b"} /c', 'start session-a', 'stop session-a', 'delete session-fails'])
+    assert.deepEqual(calls, ['start /t {"a":"b"} /c', 'list', 'status session-b', 'finish session-a', 'cancel session-a', 'delete session-fails'])
 
-    assert.deepEqual(await request({ op: 'create', tauDir: 't', callerCwd: '/c', values: {} }), { ok: false, error: 'fleet: create takes tauDir, an absolute path' })
-    assert.deepEqual(await request({ op: 'start' }), { ok: false, error: 'fleet: start takes a sessionId' })
+    assert.deepEqual(await request({ op: 'start', tauDir: 't', callerCwd: '/c', values: {} }), { ok: false, error: 'fleet: start takes tauDir, an absolute path' })
+    assert.deepEqual(await request({ op: 'finish' }), { ok: false, error: 'fleet: finish takes a sessionId' })
     assert.deepEqual(await request({ op: 'run' }), { ok: false, error: 'fleet: no op run' })
-    assert.deepEqual(await exchange(path, JSON.stringify({ protocol: 0, op: 'start', sessionId: 'session-a' })), {
+    assert.deepEqual(await exchange(path, JSON.stringify({ protocol: 0, op: 'list' })), {
       ok: false, error: `fleet: the client speaks protocol 0, and the tau service ${String(PROTOCOL_VERSION)}`,
     })
     assert.deepEqual(await exchange(path, '{'), { ok: false, error: 'fleet: the request is not JSON' })
-    assert.equal(calls.length, 4)
+    assert.equal(calls.length, 6)
+  } finally {
+    await close()
+  }
+})
+
+test('a client that goes away gives up its wait', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-tau-server-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const path = join(dir, 'tau.sock')
+  const calls: string[] = []
+  const aborted: string[] = []
+  const close = await listen(path, fake(calls, aborted))
+  try {
+    const socket = createConnection(path, () => { socket.write(`${JSON.stringify({ protocol: PROTOCOL_VERSION, op: 'finish', sessionId: 'session-waits' })}\n`) })
+    while (calls.length === 0) await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(aborted, [])
+    socket.destroy()
+    while (aborted.length === 0) await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(aborted, ['session-waits'])
   } finally {
     await close()
   }

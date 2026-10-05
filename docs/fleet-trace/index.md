@@ -35,7 +35,7 @@ A scenario is JSON, its paths relative to its file, such as
 
 - `tau`: the tau's directory.
 - `files`: the caller's folder, each file by its path, with its text.
-- `values`: the run's values, as `fleet create` sends them.
+- `values`: the run's values, as `fleet start` sends them.
 - `steps`: the model's tool calls, one per turn, in order.
 - `final`: the model's answer after the last step.
 
@@ -47,15 +47,18 @@ A scenario is JSON, its paths relative to its file, such as
   scripted one; dsh's own `plugin install` installs it. It runs the
   workspace's dsh, on a free port, and the image `fleet:local`, so build
   first: `pnpm build` and `pnpm image`.
-- **The run** is created and started through the tau service's socket, as
-  `fleet` does it, with the caller's folder made from `files`, and the
+- **The run** is started and finished through the tau service's socket, as
+  `fleet run` does it, with the caller's folder made from `files`, and the
   folders of the `$out` handles.
 - **The scripted model** (`model.ts`) is an OpenAI-compatible endpoint on
   localhost. A request carrying the tau's prompt is the run's: it answers
   with the step after as many as the request has tool results for, and with
-  `final` after the last. It answers any other request with a word.
-- **The end.** Once the run has had `final`, the session is deleted, with
-  its box, dsh is stopped, its whole process group, and the temporary folder
+  `final` after the last. It answers any other request with a word. It
+  holds every request until it knows the prompt, which `start` answers
+  with, since dsh may ask before the answer comes.
+- **The end.** Once the run has ended, as `finish` says, the session is
+  deleted, with its box; a run that failed says why on stderr. dsh is
+  stopped, its whole process group, and the temporary folder
   removed. A run that stops when dsh exits says so, with its log. An
   interrupted one, by Ctrl-C or SIGTERM, cleans up the same way before it
   exits.

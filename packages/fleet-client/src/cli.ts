@@ -1,29 +1,38 @@
 #!/usr/bin/env node
 /**
- * `fleet`: set up a box for a run of a tau, and start, stop and delete its
- * session, through the tau service in the fleet host (`dsh --profile fleet`), on its
- * socket (./connection.ts).
+ * `fleet`: start runs of taus, see where they are, wait for how they ended,
+ * and cancel and delete them, through the tau service in the fleet host
+ * (`dsh --profile fleet`), on its socket (./connection.ts).
  * @module fleet-client/cli
  */
 
 import { resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 import { loadTau } from '@sleepymug/tau'
-import type { Created } from 'fleet-protocol/tau'
-import { defaultSocket, request, type Body } from './connection.ts'
+import type { Result, RunStatus, Started } from 'fleet-protocol/tau'
+import { ConnectionLost, NoService, ask, defaultSocket } from './connection.ts'
 import { UsageError, parseValues } from './values.ts'
 
 const USAGE = `Usage: fleet <command>
 
 Commands:
-  create <tau-dir> [<name>=<value> | <name>:=<json>]...
-                         set up a box for a run of the tau with these values,
-                         and print the session's id, then the tau's prompt
-  start <session-id>     start the session's box; the first start makes the
-                         session, which the web UI lists under this folder,
-                         and gives it the tau's prompt
-  stop <session-id>      cancel the session's turn, and stop its box
-  delete <session-id>    archive the session, remove its box, and forget it
+  start <tau-dir> [<name>=<value> | <name>:=<json>]...
+                         start a run of the tau with these values, and print
+                         its session's id, then the tau's prompt; the web UI
+                         lists the session under this folder
+  list                   list the runs: session, state, how each ended, tau
+  status <session-id>    show a run as list does, and why it failed, if it did
+  finish <session-id>    wait until the run ends, then print the agent's final
+                         text; why it failed goes to stderr, with exit code 1
+  cancel <session-id>    cancel the run's turn, which ends the run
+  delete <session-id>    archive the run's session, remove its box, and forget it
+  run <tau-dir> [<name>=<value> | <name>:=<json>]...
+                         start a run and finish it; Ctrl-C cancels the run,
+                         and Ctrl-C again leaves it running
+
+A run is running until its agent is done, then ended, and finished once
+finish has given back how it ended, which it does again each time.
 
 Values: <name>=<value> gives a text, or, for a parameter whose type is a file,
 a dir or a path, a handle of the mode tau.json declares, to the path <value>.
@@ -34,39 +43,99 @@ The tau service listens on $DSH_HOME/fleet/tau.sock, ~/.dsh/fleet/tau.sock
 when DSH_HOME is not set.
 `
 
+const socket = defaultSocket()
+
 const commands: Record<string, (args: string[]) => Promise<void>> = {
-  async create(args) {
-    const { positionals } = parseArgs({ args, allowPositionals: true })
-    const [dir, ...valueArgs] = positionals
-    if (dir === undefined) throw new UsageError('create takes a tau directory, then the values')
-    const tau = loadTau(dir)
-    const values = parseValues(valueArgs, tau.params)
-    const created = await send({ op: 'create', tauDir: resolve(dir), callerCwd: process.cwd(), values })
-    if (created === null) throw new Error('fleet: the tau service answered create without a session')
-    process.stdout.write(`${created.sessionId}\n${created.prompt}${created.prompt.endsWith('\n') ? '' : '\n'}`)
+  async start(args) {
+    const started = await start(args)
+    process.stdout.write(`${started.sessionId}\n${started.prompt}${started.prompt.endsWith('\n') ? '' : '\n'}`)
   },
-  start: session('start'),
-  stop: session('stop'),
-  delete: session('delete'),
+  async list(args) {
+    const { positionals } = parseArgs({ args, allowPositionals: true })
+    if (positionals.length > 0) throw new UsageError('list takes no arguments')
+    for (const status of await ask(socket, { op: 'list' })) process.stdout.write(`${row(status)}\n`)
+  },
+  async status(args) {
+    const status = await ask(socket, { op: 'status', sessionId: sessionOf('status', args) })
+    process.stdout.write(`${row(status)}\n`)
+    if (status.result?.failure !== undefined) process.stdout.write(`  ${status.result.failure}\n`)
+  },
+  async finish(args) {
+    report(await finish(sessionOf('finish', args)))
+  },
+  async cancel(args) {
+    await ask(socket, { op: 'cancel', sessionId: sessionOf('cancel', args) })
+  },
+  async delete(args) {
+    await ask(socket, { op: 'delete', sessionId: sessionOf('delete', args) })
+  },
+  async run(args) {
+    const { sessionId } = await start(args)
+    process.stderr.write(`fleet: started ${sessionId}\n`)
+    let cancelling = false
+    const interrupt = (): void => {
+      if (cancelling) process.exit(130)
+      cancelling = true
+      process.stderr.write(`fleet: cancelling ${sessionId}; Ctrl-C again leaves it running\n`)
+      ask(socket, { op: 'cancel', sessionId }).catch((error: unknown) => { process.stderr.write(`fleet: ${message(error)}\n`) })
+    }
+    process.on('SIGINT', interrupt)
+    try {
+      report(await finish(sessionId))
+    } finally {
+      process.off('SIGINT', interrupt)
+    }
+  },
 }
 
-/** A command that takes one session's id. */
-function session(op: 'start' | 'stop' | 'delete'): (args: string[]) => Promise<void> {
-  return async (args) => {
-    const { positionals } = parseArgs({ args, allowPositionals: true })
-    if (positionals.length !== 1) throw new UsageError(`${op} takes the id of one session`)
-    await send({ op, sessionId: positionals[0] })
-  }
+/** Start a run of the tau a command line names, with the values it gives. */
+async function start(args: string[]): Promise<Started> {
+  const { positionals } = parseArgs({ args, allowPositionals: true })
+  const [dir, ...valueArgs] = positionals
+  if (dir === undefined) throw new UsageError('give a tau directory, then the values')
+  const tau = loadTau(dir)
+  const values = parseValues(valueArgs, tau.params)
+  return await ask(socket, { op: 'start', tauDir: resolve(dir), callerCwd: process.cwd(), values })
+}
+
+/** The one session's id a command takes. */
+function sessionOf(command: string, args: string[]): string {
+  const { positionals } = parseArgs({ args, allowPositionals: true })
+  if (positionals.length !== 1) throw new UsageError(`${command} takes the id of one session`)
+  return positionals[0]
 }
 
 /**
- * Send a request to the tau service.
- * @returns what it answers with; its error fails.
+ * Wait until a run ends, and give back how. A finish can be asked again, so
+ * when the service goes away, as when dsh restarts, it waits for it to come
+ * back, and asks again.
  */
-async function send(body: Body): Promise<Created | null> {
-  const response = await request(defaultSocket(), body)
-  if (!response.ok) throw new Error(response.error)
-  return response.value
+async function finish(sessionId: string): Promise<Result> {
+  let waiting = false
+  for (;;) {
+    try {
+      return await ask(socket, { op: 'finish', sessionId })
+    } catch (error) {
+      if (!(error instanceof ConnectionLost || (waiting && error instanceof NoService))) throw error
+      if (!waiting) process.stderr.write('fleet: lost the tau service; waiting for it to come back\n')
+      waiting = true
+      await delay(1000)
+    }
+  }
+}
+
+/** A run's result as a command reports it: the final text on stdout, and why it failed on stderr, with exit code 1. */
+function report(result: Result): void {
+  if (result.text !== '') process.stdout.write(`${result.text}${result.text.endsWith('\n') ? '' : '\n'}`)
+  if (result.ok) return
+  process.stderr.write(`fleet: ${String(result.failure)}\n`)
+  process.exitCode = 1
+}
+
+/** A run as list shows it. */
+function row(status: RunStatus): string {
+  const outcome = status.result === undefined ? '-' : status.result.ok ? 'ok' : 'failed'
+  return `${status.sessionId}  ${status.state.padEnd(8)}  ${outcome.padEnd(6)}  ${status.tauDir}`
 }
 
 async function main(argv: string[]): Promise<void> {

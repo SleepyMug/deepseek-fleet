@@ -27,26 +27,30 @@ export type Values = { readonly [name: string]: unknown }
 export type Request =
   | {
     protocol: number
-    /** Set up a box for a run of the tau at `tauDir` with `values`, whose relative paths are `callerCwd`'s. */
-    op: 'create'
+    /** Start a run of the tau at `tauDir` with `values`, whose relative paths are `callerCwd`'s. */
+    op: 'start'
     tauDir: string
     callerCwd: string
     values: Values
   }
   | {
     protocol: number
+    /** Every run, oldest first. */
+    op: 'list'
+  }
+  | {
+    protocol: number
     /**
-     * Start the session's box, and give the session its prompt the first
-     * time; cancel its turn and stop its box; or archive it, remove its box
-     * and forget it.
+     * Where a run is; wait for its end, and give back how it ended; cancel
+     * its turn; or archive its session, remove its box and forget it.
      */
-    op: 'start' | 'stop' | 'delete'
+    op: 'status' | 'finish' | 'cancel' | 'delete'
     sessionId: string
   }
 
-/** What `create` answers with. */
-export interface Created {
-  /** The session the run will be, minted by the service. */
+/** What `start` answers with. */
+export interface Started {
+  /** The session the run is, minted by the service. */
   sessionId: string
   /** The box's container. */
   box: string
@@ -54,7 +58,48 @@ export interface Created {
   prompt: string
 }
 
-/** Service to client: `value` is `create`'s {@link Created}, and null for the other ops. */
+/** How a run ended, as tau's docs/spec/tau-api.md has it. */
+export interface Result {
+  /** Whether it succeeded. */
+  ok: boolean
+  /** The agent's final text; empty when it gave none. */
+  text: string
+  /** Why it failed, when it did. */
+  failure?: string
+}
+
+/**
+ * Where a run is: `running` until its agent is done, `ended` once it is,
+ * with its result, and `finished` once a `finish` has given that back.
+ */
+export type RunState = 'running' | 'ended' | 'finished'
+
+/** What `status` answers with, and `list` with for each run. */
+export interface RunStatus {
+  sessionId: string
+  /** The tau's directory. */
+  tauDir: string
+  /** The caller's folder, the dsh workspace the session is in. */
+  project: string
+  state: RunState
+  createdAt: string
+  /** When the run ended, once it did. */
+  endedAt?: string
+  /** How it ended, once it did. */
+  result?: Result
+}
+
+/** What each op answers with. */
+export interface Answers {
+  start: Started
+  list: RunStatus[]
+  status: RunStatus
+  finish: Result
+  cancel: null
+  delete: null
+}
+
+/** Service to client: `value` is what the op answers with ({@link Answers}). */
 export type Response =
-  | { ok: true; value: Created | null }
+  | { ok: true; value: Answers[keyof Answers] }
   | { ok: false; error: string }
