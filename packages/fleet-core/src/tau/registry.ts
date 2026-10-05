@@ -9,6 +9,7 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BoundHandle } from '@sleepymug/tau'
+import { FOLDERS, MODULES } from 'fleet-image/tau/layout'
 import type { Result, Targets } from 'fleet-protocol/tau'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
@@ -48,6 +49,10 @@ export interface Entry {
   handles: readonly BoundHandle[]
   /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
   targets: Targets
+  /** The agent's working directory in the box, as the box's runtime reported it. */
+  cwd: string
+  /** Where the tau's code finds its APIs in the box, as the box's runtime reported it. */
+  modules: string
   /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]
   /** What the tau exposes to its programs: `@api/<name>`, or a package of its own, by name, with what it says it is. */
@@ -78,7 +83,9 @@ export class Registry {
   async find(sessionId: string): Promise<Entry | undefined> {
     if (!SESSION_ID.test(sessionId)) return undefined
     try {
-      return JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Entry
+      const entry = JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Omit<Entry, 'cwd' | 'modules'> & Partial<Entry>
+      // Where an entry written before the box's runtime reported them has things.
+      return { ...entry, cwd: entry.cwd ?? FOLDERS.inout, modules: entry.modules ?? MODULES }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
       throw error
@@ -99,7 +106,7 @@ export class Registry {
     await rm(this.file(sessionId), { force: true })
   }
 
-  /** A folder of a session's own, beside its entry: its call, while its box is set up, and its result. */
+  /** A folder of a session's own, beside its entry: its call, and its result. */
   folder(sessionId: string): string {
     if (!SESSION_ID.test(sessionId)) throw new Error(`fleet: no tau session ${sessionId}`)
     return join(this.dir, sessionId)

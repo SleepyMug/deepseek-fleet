@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { basename } from 'node:path'
 import { test } from 'node:test'
 import type { Kind, Mode } from '@sleepymug/tau'
-import { placer } from './place.ts'
+import { placer } from './layout.ts'
 
 /** Place handles of one run, each `[mode, host path]`. */
 function places(handles: [Mode, string][], kind: Kind = 'path'): string[] {

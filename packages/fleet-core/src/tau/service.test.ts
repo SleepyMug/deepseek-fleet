@@ -10,7 +10,7 @@ import { promisify } from 'node:util'
 import type { BoundHandle } from '@sleepymug/tau'
 import { applyResult, packCall, writeCall, writeResult, type Result } from '@sleepymug/tau/call'
 import { DEFAULT_IMAGE } from 'fleet-image/layout'
-import { pack, place } from 'fleet-image/tau/endpoint'
+import { pack, setup } from 'fleet-image/tau/endpoint'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
 import { modulesOf } from '../tools/ts.ts'
@@ -129,18 +129,20 @@ class FakeBoxes implements Boxes {
       pipe: async (argv, io) => {
         const [, , command, json] = argv
         record('pipe', `pipe ${String(command)}`)
-        const { handles, outcome } = JSON.parse(json ?? '') as { handles: BoundHandle[]; outcome: Result }
         const root = this.root(name)
-        if (command === 'place') {
-          await place(io?.input ?? Readable.from([]), handles, root)
+        if (command === 'setup') {
+          const report = await setup(io?.input ?? Readable.from([]), root)
+          await pipeline(Readable.from([JSON.stringify(report)]), io?.output ?? process.stdout)
           return
         }
+        const { outcome } = JSON.parse(json ?? '') as { outcome: Result }
+        const { handles } = JSON.parse(await readFile(join(root, '/tau/.run.json'), 'utf8')) as { handles: BoundHandle[] }
         for (const [path, text] of Object.entries(this.left).sort(([a], [b]) => a.localeCompare(b))) {
           const at = join(root, path)
           if (text === null) await mkdir(at, { recursive: true })
           else await mkdir(dirname(at), { recursive: true }).then(() => writeFile(at, text))
         }
-        await pipeline(Readable.from(this.tamper?.(outcome, handles) ?? pack(outcome, handles, root)), io?.output ?? process.stdout)
+        await pipeline(Readable.from(this.tamper?.(outcome, handles) ?? await pack(outcome, root)), io?.output ?? process.stdout)
       },
       request: (async (method: string, params: unknown) => {
         record(method, `${method} ${JSON.stringify(params)}`)
@@ -274,10 +276,7 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
   assert.deepEqual(boxes.calls, [
     `create ${created.box}`,
     'start',
-    `exec ${JSON.stringify({ argv: ['mkdir', '-p', '/tau/self', '/tau/in', '/tau/workspace', '/tau/out', '/tau/node_modules/.fleet'] })}`,
-    `copyIn ${join(work, 'taus', created.sessionId, 'self')} /tau/self`,
-    'pipe place',
-    `exec ${JSON.stringify({ argv: ['mkdir', '-p', '/tau/out/pages'] })}`,
+    'pipe setup',
     `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/notes`,
     `apis.link ${JSON.stringify({
       modules: '/tau/node_modules',
@@ -286,11 +285,14 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
     })}`,
     'stop',
   ])
+  // The box's runtime placed everything where it has things.
   const root = boxes.root(created.box)
   assert.equal(await readFile(join(root, 'tau/in/notes.md'), 'utf8'), 'buy milk\n')
   assert.equal(await readFile(join(root, 'tau/workspace/site/index.md'), 'utf8'), '# Home\n')
-  // The call, and the tau read from it, are gone once the box has them.
-  assert.deepEqual(await readdir(join(work, 'taus')), [`${created.sessionId}.json`])
+  assert.equal(await readFile(join(root, 'tau/self/PROMPT.md'), 'utf8'), PROMPT)
+  assert.deepEqual(await readdir(join(root, 'tau/out')), ['pages'])
+  // The call is kept; the tau read from it here is gone.
+  assert.deepEqual(await readdir(join(work, 'taus', created.sessionId)), ['call.tar'])
 
   const entry = await new Registry(join(work, 'taus')).get(created.sessionId)
   assert.equal(entry.box, created.box)
@@ -308,6 +310,8 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
     ['pages', 'out', 'dir', 'pages', undefined, undefined, '/tau/out/pages'],
   ])
   assert.deepEqual(entry.targets, { '/site': join(work, 'site'), '/report': join(work, 'out', 'report.md'), '/pages': join(work, 'out', 'pages') })
+  assert.equal(entry.cwd, '/tau/workspace')
+  assert.equal(entry.modules, '/tau/node_modules')
   assert.match(logged.join('\n'), new RegExp(`created ${created.sessionId} in box ${created.box}`, 'u'))
 })
 
@@ -428,8 +432,8 @@ test('a run that succeeded gives back what its agent left, packed by its box, wi
   // Ended, packed and checked, and kept for each finish.
   while ((await service.status(HOST, sessionId)).state === 'running') await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual((await service.status(HOST, sessionId)).result, { ok: true, text: 'Done.' })
-  assert.deepEqual(boxes.calls.filter(call => call.startsWith('pipe')), ['pipe place', 'pipe pack'])
-  assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['result.tar'])
+  assert.deepEqual(boxes.calls.filter(call => call.startsWith('pipe')), ['pipe setup', 'pipe pack'])
+  assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['call.tar', 'result.tar'])
 
   // The service puts nothing at the caller's paths; the caller does, where the targets say.
   const { result, targets, archive } = await service.finish(HOST, sessionId, new AbortController().signal)
@@ -442,7 +446,7 @@ test('a run that succeeded gives back what its agent left, packed by its box, wi
   assert.deepEqual((await readdir(join(work, 'site'))).sort(), ['index.md', 'kept.md', 'milk.md'])
   assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\n\nbuy milk\n')
   assert.deepEqual(await finish(service, HOST, sessionId), result)
-  assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['result.tar'])
+  assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['call.tar', 'result.tar'])
 })
 
 test('a run whose agent did not leave what its tau declares fails, and gives back nothing', async (t) => {
@@ -776,7 +780,7 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
     await service.tauRuns.start(sessionId)
     const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
-      '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
+      '/tau/.run.json', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
     // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.
     added.length = 0

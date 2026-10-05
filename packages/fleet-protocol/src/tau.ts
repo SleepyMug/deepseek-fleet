@@ -38,7 +38,7 @@ export type Request =
     op: 'start'
     /** The tau's directory, as the caller has it, which `list` shows. */
     tauDir: string
-    /** The caller's folder: the dsh workspace the run's session is in. */
+    /** The project identifier: in dsh it is the project's workspace directory. */
     project: string
     targets: Targets
   }

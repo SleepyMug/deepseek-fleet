@@ -15,15 +15,11 @@ import { posix } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
-import { MODULES } from '../tau/place.ts'
 import type { Entry } from '../tau/registry.ts'
 import type {} from '../tau/runs-plugin.ts'
 
 export const name = 'fleet-ts-tools'
 export const inject = ['tools', 'systemPrompt', 'fleetTauRuns']
-
-/** Where a program's packages resolve from, and ts-executor makes its runs' folders: above /tau/node_modules. */
-const ROOT = posix.dirname(MODULES)
 
 const INSTRUCTIONS = `# TypeScript programs
 
@@ -147,7 +143,8 @@ export function apply(ctx: Context): void {
       try {
         const outcome = await box.request('ts.execute', {
           execution,
-          root: ROOT,
+          // Where a program's packages resolve from, and ts-executor makes its runs' folders: above /tau/node_modules.
+          root: posix.dirname(entry.modules),
           modules: modulesOf(entry),
           source: args.source,
           cwd,
@@ -166,10 +163,10 @@ export function apply(ctx: Context): void {
 }
 
 /** What a tau's programs are told they import, each with its package's folder in the box. */
-export function modulesOf(entry: Pick<Entry, 'exposed'>): { specifier: string; root: string; description?: string }[] {
+export function modulesOf(entry: Pick<Entry, 'exposed' | 'modules'>): { specifier: string; root: string; description?: string }[] {
   return entry.exposed.map(({ specifier, description }) => ({
     specifier,
-    root: `${MODULES}/${specifier}`,
+    root: posix.join(entry.modules, specifier),
     ...description === undefined ? {} : { description },
   }))
 }

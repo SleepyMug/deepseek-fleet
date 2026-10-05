@@ -20,6 +20,10 @@
       "types": "./lib/tau/endpoint.d.ts",
       "default": "./lib/tau/endpoint.js"
     },
+    "./tau/layout": {
+      "types": "./lib/tau/layout.d.ts",
+      "default": "./lib/tau/layout.js"
+    },
     "./image/build": {
       "types": "./lib/image/build.d.ts",
       "default": "./lib/image/build.js"

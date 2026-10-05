@@ -2,7 +2,8 @@
  * fleet-tau-prompt, the system prompt of a tau's session, as a dsh plugin
  * that fleet-core's `tau` agent preset mounts, so it shapes only the prompts
  * of the sessions that preset makes: it tells the model where it works, its
- * box, and its working directory there, /tau/workspace (./place.ts), and
+ * box, and its working directory there, /tau/workspace
+ * (fleet-image/tau/layout), and
  * leaves out the sections dsh writes for a person at the host, which are
  * false in a box, and the runtime context on the host's sandbox policy.
  * @module fleet-core/tau/prompt
@@ -10,7 +11,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { FOLDERS } from './place.ts'
+import { FOLDERS } from 'fleet-image/tau/layout'
 
 export const name = 'fleet-tau-prompt'
 export const inject = ['systemPrompt']
