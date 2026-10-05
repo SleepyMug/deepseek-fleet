@@ -13,8 +13,8 @@ provides the extension of `tau` to `ctx.fleetExts`, on the tau service,
 
 | Half | Module | |
 |---|---|---|
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as `@api/tau`, in the box: `values()`, which reads the values the box's runtime kept when it set the box up, and `run(agent, values, signal?)`, which runs a tau with tau's `runTau` on the fleet host: it packs the call from the box's files, starts it, waits for it, and puts what it gave back at the box's paths. |
-| server | `src/tau.ts` | The methods `start`, with the call after its arguments `{ title, targets }`; `finish`, which answers `{ result, targets }` with the result after it; and `cancel`; each on the tau service as the calling session, which reaches only the runs it started. Each checks what the box sent. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as `@api/tau`, in the box: `values()`, which reads the values the box's runtime kept when it set the box up, and `run(agent, values, signal?, options?)`, which runs a tau with tau's `runTau` on the fleet host: it packs the call from the box's files, starts it, waits for it, and puts what it gave back at the box's paths; `options.history`, fleet's own, is where it writes the run's session's history. |
+| server | `src/tau.ts` | The methods `start`, with the call after its arguments `{ title, targets }`; `finish(id, { history? })`, which answers `{ result, targets, history? }` with the result after it; and `cancel`; each on the tau service as the calling session, which reaches only the runs it started. Each checks what the box sent. |
 
 A tau uses it by declaring `api/tau/index.d.ts`, the spec's declaration,
 or less of it, as `examples/relay` does.
@@ -31,6 +31,15 @@ or less of it, as `examples/relay` does.
 - **The client imports** `fleet-box-runtime/ext/client`,
   `fleet-box-runtime/ext/tau`, tau's caller's side, and
   `fleet-box-runtime/tau/layout`, for where the values are kept.
+- **A run's history**, beyond tau's spec, is fleet's: `run`'s fourth
+  argument, `{ history }`, a path in the box, `process.cwd()`'s if
+  relative, has `finish` ask for the run's session's history
+  (docs/fleet-core/tau/index.md), and writes it there, dsh's events, one
+  JSON object per line, its folder made if missing, before the result is
+  put at its paths, whether the run succeeded or not. A tau that uses it
+  declares it in its `api/tau/index.d.ts`, as an optional fourth parameter
+  of `run`, `options?: { readonly history?: string }`; one that declares
+  the spec's `run` links to the same client, which only adds a parameter.
 - **A run's runs go with it.** A run that ends deletes the runs it started
   and did not finish; `run` finishes each run it starts.
 

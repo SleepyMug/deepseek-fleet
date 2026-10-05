@@ -3,7 +3,8 @@
  * on the tau service, as that session's, so it reaches only the runs it
  * started. A run comes as a call, tau's archive, after `start`'s arguments,
  * and goes back as a result, after `finish`'s, with where the caller has its
- * handles in its box, which its client puts the result at. Its methods take
+ * handles in its box, which its client puts the result at, and its
+ * session's history, if asked for. Its methods take
  * what the box sends, so they check it.
  * @module fleet-ext-tau/tau
  */
@@ -27,10 +28,13 @@ export function methods(service: Service): Record<string, ExtMethod> {
       if (body === undefined) throw new TypeError('start takes the run\'s call, after its arguments')
       return await service.start({ kind: 'session', sessionId }, checkAbout(about), body)
     },
-    /** `finish(id)`: wait for the run, and answer `{ result, targets }`, then its result. */
-    finish: async ([id], { sessionId, signal }) => {
-      const { result, targets, archive } = await service.finish({ kind: 'session', sessionId }, checkId(id), signal)
-      return { [STREAMED]: true, value: { result, targets }, body: archive }
+    /**
+     * `finish(id, { history? })`: wait for the run, and answer `{ result, targets }`,
+     * with its session's history, `history`, if asked for, then its result.
+     */
+    finish: async ([id, options], { sessionId, signal }) => {
+      const { archive, ...finished } = await service.finish({ kind: 'session', sessionId }, checkId(id), signal, checkFinishing(options))
+      return { [STREAMED]: true, value: finished, body: archive }
     },
     /** `cancel(id)`: cancel the run's turn, which ends the run. */
     cancel: async ([id], { sessionId }) => {
@@ -49,6 +53,15 @@ function checkAbout(about: unknown): { title: string; targets: Record<string, st
     throw new TypeError('start takes targets, each an absolute path in the box')
   }
   return { title, targets: targets as Record<string, string> }
+}
+
+function checkFinishing(options: unknown): { history?: boolean } {
+  if (options === undefined) return {}
+  const history = (options as { history?: unknown } | null)?.history
+  if (typeof options !== 'object' || options === null || (history !== undefined && typeof history !== 'boolean')) {
+    throw new TypeError('finish takes { history? }, true or false')
+  }
+  return history === undefined ? {} : { history }
 }
 
 function checkId(id: unknown): string {

@@ -15,9 +15,10 @@ function fake(calls: string[]): Service {
       calls.push(`start ${JSON.stringify(caller)} ${JSON.stringify(about)} ${text}`)
       return { sessionId: 'session-child', box: 'fleet-tau-child', prompt: 'Go.' }
     },
-    finish: async (caller, sessionId) => {
-      calls.push(`finish ${JSON.stringify(caller)} ${sessionId}`)
-      return { result: { ok: true, text: 'Done.' }, targets: { '/out': '/tau/workspace/out.txt' }, archive: once('the result') }
+    finish: async (caller, sessionId, _signal, options) => {
+      calls.push(`finish ${JSON.stringify(caller)} ${sessionId}${options?.history === true ? ' with history' : ''}`)
+      const history = options?.history === true ? { history: [{ type: 'turn/end' }] } : {}
+      return { result: { ok: true, text: 'Done.' }, targets: { '/out': '/tau/workspace/out.txt' }, ...history, archive: once('the result') }
     },
     cancel: async (caller, sessionId) => {
       calls.push(`cancel ${JSON.stringify(caller)} ${sessionId}`)
@@ -37,9 +38,14 @@ test('the server starts, finishes and cancels runs as the calling session\'s, wi
   let body = ''
   for await (const chunk of finished.body) body += Buffer.from(chunk).toString()
   assert.equal(body, 'the result')
+  const withHistory = await server.finish?.(['session-child', { history: true }], call) as { value: unknown; body: AsyncIterable<Uint8Array> }
+  assert.deepEqual(withHistory.value, { result: { ok: true, text: 'Done.' }, targets: { '/out': '/tau/workspace/out.txt' }, history: [{ type: 'turn/end' }] })
+  for await (const chunk of withHistory.body) assert.ok(chunk)
   assert.equal(await server.cancel?.(['session-child'], call), null)
   const parent = JSON.stringify({ kind: 'session', sessionId: 'session-parent' })
-  assert.deepEqual(calls, [`start ${parent} ${JSON.stringify(about)} the call`, `finish ${parent} session-child`, `cancel ${parent} session-child`])
+  assert.deepEqual(calls, [
+    `start ${parent} ${JSON.stringify(about)} the call`, `finish ${parent} session-child`, `finish ${parent} session-child with history`, `cancel ${parent} session-child`,
+  ])
 })
 
 test('the server checks what the box sends', async () => {
@@ -51,4 +57,6 @@ test('the server checks what the box sends', async () => {
   await assert.rejects(async () => server.start?.([{ title: ' ', targets: {} }], { ...call, body }), /takes a title/u)
   await assert.rejects(async () => server.start?.([{ title: 'x', targets: { '/out': 'out.txt' } }], { ...call, body }), /each an absolute path in the box/u)
   await assert.rejects(async () => server.finish?.([7], call), /a run's id is a string/u)
+  await assert.rejects(async () => server.finish?.(['x', { history: 'yes' }], call), /takes \{ history\? \}/u)
+  await assert.rejects(async () => server.finish?.(['x', null], call), /takes \{ history\? \}/u)
 })

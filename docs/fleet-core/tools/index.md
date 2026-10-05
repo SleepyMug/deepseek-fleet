@@ -27,7 +27,7 @@ where the session has the tool, since the tool's description says what
 
 | Tool | Takes | Gives |
 |---|---|---|
-| `tau_run` | `{ tau, values? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did. Values that do not fit the tau, or a run that cannot start, are a tool error. |
+| `tau_run` | `{ tau, values?, history? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did; with `history`, a path, the run's session's history written there. Values that do not fit the tau, or a run that cannot start, are a tool error. |
 
 ## Design
 
@@ -70,6 +70,11 @@ where the session has the tool, since the tool's description says what
   at the paths given, as tau's `packCall` and `applyResult` do. The values
   are tau's docs/spec/values.md: a text, a handle, `{ "$in" | "$out" |
   "$inout": path }`, or lists and records of these.
+- **Its history,** if `history` names a path, the session's working
+  directory's if relative, is the run's session's history, as a `finish`
+  gives it (docs/fleet-core/tau/index.md): dsh's events, one JSON object per
+  line, written there, its folder made if missing, before the result is
+  put at its paths, whether the run succeeded or not.
 - **It waits for the run,** so nothing outlives the call, as bash in the
   `fleet` preset runs only in the foreground. Cancelling the call cancels
   the run, which then gives back nothing. Several calls in one turn run at

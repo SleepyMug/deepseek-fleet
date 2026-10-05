@@ -4,14 +4,15 @@
  * on the host runs a tau as `fleet run` does, on the tau service,
  * `ctx.fleetTau`, as the run's caller. Its call is packed here, from the
  * session's files, relative paths its working directory's, and the run's
- * result put at its paths, once the run ends; the tool waits for it, so
- * nothing outlives the call. A system-prompt section, where the session has
+ * result put at its paths, once the run ends, and its session's history,
+ * if asked for; the tool waits for it, so nothing outlives the call. A system-prompt section, where the session has
  * the tool, is tau's TAU.md: what a tau is, and what a run of one promises.
  * @module fleet-core/tools/tau
  */
 
 import { readFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -48,6 +49,12 @@ export function apply(ctx: Context): void {
           + '{ "$in": path }, { "$out": path } or { "$inout": path }, in the mode tau.json declares; lists and records of these. '
           + 'Relative paths are your working directory\'s. None for a tau that takes none.',
       },
+      history: {
+        type: 'string',
+        description: 'Where to write the run\'s session history, to see what its agent did: one JSON event per line, '
+          + 'the prompts, tools, messages, tool calls and results, written whether the run succeeded or not. '
+          + 'A relative path is your working directory\'s. None writes no history.',
+      },
     },
     output: {
       schema: {
@@ -75,7 +82,12 @@ export function apply(ctx: Context): void {
       exec.signal.addEventListener('abort', cancel, { once: true })
       try {
         if (exec.signal.aborted) cancel()
-        const { targets, archive } = await ctx.fleetTau.finish(caller, sessionId, exec.signal)
+        const { targets, archive, history } = await ctx.fleetTau.finish(caller, sessionId, exec.signal, { history: args.history !== undefined })
+        if (args.history !== undefined) {
+          const at = resolve(cwd, args.history)
+          await mkdir(dirname(at), { recursive: true })
+          await writeFile(at, (history ?? []).map(event => `${JSON.stringify(event)}\n`).join(''))
+        }
         const { ok, text, failure } = await applyResult(archive, targets)
         return { sessionId, ok, text, ...failure === undefined ? {} : { failure } }
       } finally {
