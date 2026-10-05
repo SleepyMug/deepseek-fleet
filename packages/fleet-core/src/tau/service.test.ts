@@ -924,7 +924,7 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
     await service.tauRuns.start(sessionId)
     const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
-      '/tau/.run.json', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
+      '/tau/.run.json', '/tau/TAU.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
     // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.
     added.length = 0

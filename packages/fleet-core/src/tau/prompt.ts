@@ -2,8 +2,8 @@
  * fleet-tau-prompt, the system prompt of a tau's session, as a dsh plugin
  * that fleet-core's `tau` agent preset mounts, so it shapes only the prompts
  * of the sessions that preset makes: it tells the model where it works, its
- * box, and its working directory there, /tau/workspace
- * (fleet-box-runtime/tau/layout), and
+ * box, its working directory there, /tau/workspace, and where tau's
+ * TAU.md is, /tau/TAU.md (fleet-box-runtime/tau/layout), and
  * leaves out the sections dsh writes for a person at the host, which are
  * false in a box, and the runtime context on the host's sandbox policy.
  * @module fleet-core/tau/prompt
@@ -11,7 +11,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { FOLDERS } from 'fleet-box-runtime/tau/layout'
+import { FOLDERS, PRIMER } from 'fleet-box-runtime/tau/layout'
 
 export const name = 'fleet-tau-prompt'
 export const inject = ['systemPrompt']
@@ -36,8 +36,8 @@ export const HOST_CONTEXTS: ReadonlySet<string> = new Set([
   'sandbox:policy',
 ])
 
-/** Where the model works, which follows the persona. */
-export const WHERE = `You work in a box of your own, a container, which your tools act on: bash, the file tools, and your TypeScript programs. Your working directory is ${FOLDERS.inout}.`
+/** Where the model works, and what a tau is, which follow the persona. */
+export const WHERE = `You work in a box of your own, a container, which your tools act on: bash, the file tools, and your TypeScript programs. Your working directory is ${FOLDERS.inout}. What a tau is, and what a run of one promises, is in ${PRIMER}.`
 
 export function apply(ctx: Context): void {
   ctx.systemPrompt.section({

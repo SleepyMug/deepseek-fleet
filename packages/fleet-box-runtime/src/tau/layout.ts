@@ -8,7 +8,8 @@
  * notes-1.md, notes-2.md. The tau's APIs, and what it exposes, are in
  * /tau/node_modules, so code anywhere below /tau finds them, and the clients
  * that implement the APIs in a hidden folder there. What the runtime keeps
- * of the run is in /tau/.run.json.
+ * of the run is in /tau/.run.json, and tau's TAU.md, what a tau is, for the
+ * agent to read, in /tau/TAU.md.
  * @module fleet-box-runtime/tau/layout
  */
 
@@ -29,6 +30,9 @@ export const CLIENTS = `${MODULES}/.fleet`
 
 /** What the runtime keeps of a run: its handles, and its values as the agent sees them. */
 export const RUN = '/tau/.run.json'
+
+/** tau's TAU.md, what a tau is, and what a run of one promises, for the agent to read. */
+export const PRIMER = '/tau/TAU.md'
 
 /** A `place` for one run, as tau's `bind` takes it: where the box has each handle. */
 export function placer(): (handle: Placing) => string {

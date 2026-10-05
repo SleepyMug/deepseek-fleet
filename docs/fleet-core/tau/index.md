@@ -111,7 +111,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   - `setup` reads the call on its stdin, checked again, places the tau and
     the content of the `$in` and `$inout` handles, binds the values, which
     expands the prompt, makes each `$out` folder, keeps the handles and the
-    values the agent sees in `/tau/.run.json`, and reports
+    values the agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its
+    tau library has it, at `/tau/TAU.md`, and reports
     `{ prompt, cwd, modules, self, clients, handles }`: the prompt, the
     agent's working directory, where the APIs and the clients go, where the
     tau is, and each handle with its place. It runs before the agent, on a
@@ -132,6 +133,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   | the tau's own directory, `${self}` | `/tau/self` |
   | the APIs, `@api/<name>`, and the packages the tau exposes | `/tau/node_modules` |
   | the client of each API's extension | `/tau/node_modules/.fleet/<name>` |
+  | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
 
   A base name already taken in its folder gets a suffix in its stem:
   `notes.md`, `notes-1.md`, `notes-2.md`. An `$out` handle has no content
@@ -248,8 +250,9 @@ preset's scope, which each of its sessions' agents has as its parent.
   up a run answers no calls.
 - **The system prompt** of a tau's session is dsh's, shaped by
   `prompt.ts` in the preset: after the persona, a section says where the
-  model works, its box, and that its working directory is
-  `/tau/workspace`; and the assembly leaves out dsh's sections about the host,
+  model works, its box, that its working directory is `/tau/workspace`,
+  and that `/tau/TAU.md` says what a tau is, and what a run of one
+  promises; and the assembly leaves out dsh's sections about the host,
   which are false in a box: the harness's checkout (`harness:source`), the
   web GUI at its URL (`app:web-surface`), the web UI's file cards and links
   (`ui:deliverable-file-references`), and `@` mentions as host paths

@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import type { Context } from '@deepseek-ai/cordis'
+import { fileURLToPath } from 'node:url'
+import { Context } from '@deepseek-ai/cordis'
+import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { extractBlob, readCall, writeResult, type CallJson, type Targets } from '@sleepymug/tau/call'
 import type { About } from '../tau/runs.ts'
@@ -75,7 +77,8 @@ class FakeTau {
 /** `tau_run`, registered on a context whose tau service is `tau`. */
 function toolOn(tau: FakeTau): ToolDefinition {
   let tool: ToolDefinition | undefined
-  apply({ tools: { register: (registered: ToolDefinition) => { tool = registered } }, fleetTau: tau } as unknown as Context)
+  const systemPrompt = { section: () => {}, getSectionOrder: () => 0 }
+  apply({ tools: { register: (registered: ToolDefinition) => { tool = registered } }, systemPrompt, fleetTau: tau } as unknown as Context)
   assert.ok(tool !== undefined)
   return tool
 }
@@ -121,4 +124,18 @@ test('cancelling tau_run cancels the run, and puts nothing at the session\'s pat
   await assert.rejects(running)
   assert.deepEqual(tau.calls, [`finish ${SESSION} ${RUN}`, `cancel ${SESSION} ${RUN}`])
   await assert.rejects(readFile(join(work, 'out', 'report.md')), /ENOENT/u)
+})
+
+test('a session with tau_run has tau\'s TAU.md in its prompt, and one without it does not', async () => {
+  const ctx = new Context()
+  await ctx.plugin(SystemPrompt, {})
+  const registered = new Map<string, ToolDefinition>()
+  let enabled = true
+  const tools = { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) }, get: (name: string) => enabled ? registered.get(name) : undefined }
+  apply({ tools, systemPrompt: ctx.systemPrompt, fleetTau: {} } as unknown as Context)
+  const primer = await readFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), 'utf8')
+  assert.match(primer, /^# TAU \(Transportable Agent Unit\)/u)
+  assert.equal((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:tau')?.text, primer)
+  enabled = false
+  assert.equal((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:tau')?.text ?? '', '')
 })

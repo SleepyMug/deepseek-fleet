@@ -5,21 +5,33 @@
  * `ctx.fleetTau`, as the run's caller. Its call is packed here, from the
  * session's files, relative paths its working directory's, and the run's
  * result put at its paths, once the run ends; the tool waits for it, so
- * nothing outlives the call.
+ * nothing outlives the call. A system-prompt section, where the session has
+ * the tool, is tau's TAU.md: what a tau is, and what a run of one promises.
  * @module fleet-core/tools/tau
  */
 
+import { readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { applyResult, packCall } from '@sleepymug/tau/call'
 import type { Caller } from '../tau/registry.ts'
 import type {} from '../tau/plugin.ts'
 
 export const name = 'fleet-tau-tools'
-export const inject = ['tools', 'fleetTau']
+export const inject = ['tools', 'systemPrompt', 'fleetTau']
 
 export function apply(ctx: Context): void {
+  const primer = readFileSync(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), 'utf8')
+  ctx.systemPrompt.section({
+    name: 'tool:tau',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_SUBAGENT') + 50,
+    interpolate: false,
+    text: ({ scope }) => ctx.tools.get('tau_run', scope) === undefined ? '' : primer,
+  })
+
   ctx.tools.register(defineTool({
     name: 'tau_run',
     description: 'Run a tau: a folder with a PROMPT.md, the task, and a tau.json, which declares the values it takes, by parameter, '

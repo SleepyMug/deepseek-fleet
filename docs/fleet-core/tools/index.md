@@ -20,7 +20,10 @@ section on how to use them:
 | `ts_execute` | `{ source, cwd?, input? }` | `{ value, stdout, stderr, durationMs }`: what the program's `main(input)` returned, and all it wrote. A type error, or the program's failure, is a tool error carrying its name, message, TypeScript's diagnostics or the program's stack, and the output. |
 
 `fleet-tau-tools` (`fleet-core/tools/tau`), a dsh plugin that fleet-core's
-`fleet` agent preset mounts. It registers one tool:
+`fleet` agent preset mounts. It registers one tool, and a system-prompt
+section, `tool:tau`, which is tau's `TAU.md` as its tau library has it,
+where the session has the tool, since the tool's description says what
+`tau_run` does, not what a tau is:
 
 | Tool | Takes | Gives |
 |---|---|---|

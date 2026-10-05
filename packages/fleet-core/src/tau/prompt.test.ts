@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import * as TauPrompt from './prompt.ts'
 
-test('a tau\'s prompt says where the model works, and leaves out dsh\'s sections and runtime context about the host', async () => {
+test('a tau\'s prompt says where the model works, and where TAU.md is, and leaves out dsh\'s sections and runtime context about the host', async () => {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(TauPrompt)
@@ -19,6 +19,7 @@ test('a tau\'s prompt says where the model works, and leaves out dsh\'s sections
   ])
   assert.equal(
     sections.find(section => section.name === 'fleet:tau-where')?.text,
-    'You work in a box of your own, a container, which your tools act on: bash, the file tools, and your TypeScript programs. Your working directory is /tau/workspace.',
+    'You work in a box of your own, a container, which your tools act on: bash, the file tools, and your TypeScript programs. Your working directory is /tau/workspace. '
+      + 'What a tau is, and what a run of one promises, is in /tau/TAU.md.',
   )
 })
