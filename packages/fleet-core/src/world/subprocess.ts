@@ -91,7 +91,9 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
     if (!spec.cwd.startsWith('/')) throw new Error(`fleet: spawn needs an absolute working folder, got ${spec.cwd}`)
     if (spec.stdio.control !== undefined) throw new Error('fleet: a box has no control channel')
     if (spec.stdio.stdin === 'pipe') throw new Error('fleet: a box takes stdin only as data; \'pipe\' is not served')
-    const process = new BoxProcess(this.self.fleetTauRuns, session, spec, collected(spec.stdio.stdout, 'stdout'), collected(spec.stdio.stderr, 'stderr'))
+    // dsh runs the session's work in its project, which is /tau/workspace in the box.
+    const inBox = { ...spec, cwd: this.self.fleetTauRuns.boxPath(session, spec.cwd) }
+    const process = new BoxProcess(this.self.fleetTauRuns, session, inBox, collected(spec.stdio.stdout, 'stdout'), collected(spec.stdio.stderr, 'stderr'))
     this.live.add(process)
     void process.done.finally(() => { this.live.delete(process) }).catch(() => {})
     return process
@@ -100,7 +102,7 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
   override async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     const session = this.boxSession()
     if (session === undefined) return (await this.localReady).spawnTerminal(spec)
-    const terminal = await BoxTerminal.start(await boxOf(this.self.fleetTauRuns, session), spec)
+    const terminal = await BoxTerminal.start(await boxOf(this.self.fleetTauRuns, session), { ...spec, cwd: this.self.fleetTauRuns.boxPath(session, spec.cwd) })
     this.terminals.add(terminal)
     void terminal.done.finally(() => { this.terminals.delete(terminal) }).catch(() => {})
     return terminal

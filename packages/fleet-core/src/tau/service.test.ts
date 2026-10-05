@@ -169,7 +169,7 @@ test('create sets up a stopped box with the handles and the tau, and registers t
   assert.deepEqual(boxes.calls, [
     `create ${created.box}`,
     'start',
-    `exec ${JSON.stringify({ argv: ['mkdir', '-p', '/tau/self', '/tau/in', '/tau/workspace', '/tau/out', '/tau/out/pages', project, '/tau/node_modules/.fleet'] })}`,
+    `exec ${JSON.stringify({ argv: ['mkdir', '-p', '/tau/self', '/tau/in', '/tau/workspace', '/tau/out', '/tau/out/pages', '/tau/node_modules/.fleet'] })}`,
     `copyIn ${tauDir} /tau/self`,
     `copyIn ${join(work, 'notes.md')} /tau/in/notes.md`,
     `copyIn ${join(work, 'site')} /tau/workspace/site`,
@@ -415,6 +415,23 @@ test('deleting a session whose box is gone forgets the session', async (t) => {
   await assert.rejects(service.start(sessionId), /no tau session/u)
 })
 
+test('a tau session\'s project, where dsh runs its work, is /tau/workspace in its box', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const service = make(work, () => {}, new FakeSessions(), new FakeBoxes())
+  const { sessionId } = await service.create(tauDir, values, work)
+  const project = await realpath(work)
+  const { boxPath } = service.tauRuns
+  assert.equal(boxPath.call(service.tauRuns, sessionId, project), '/tau/workspace')
+  assert.equal(boxPath.call(service.tauRuns, sessionId, `${project}/site/index.md`), '/tau/workspace/site/index.md')
+  assert.equal(boxPath.call(service.tauRuns, sessionId, `${project}-other/a`), `${project}-other/a`)
+  assert.equal(boxPath.call(service.tauRuns, sessionId, '/tau/out/report.md'), '/tau/out/report.md')
+  assert.equal(boxPath.call(service.tauRuns, 'not-a-tau-session', project), project)
+  // As after a restart: the registry gives each session's project.
+  const later = make(work, () => {}, new FakeSessions(), new FakeBoxes())
+  await later.tauRuns.load()
+  assert.equal(later.tauRuns.boxPath(sessionId, project), '/tau/workspace')
+})
+
 test('only ids of the form the service mints name sessions', async (t) => {
   const { work } = await fixture(t)
   const service = make(work, () => {}, new FakeSessions(), new FakeBoxes())
@@ -448,7 +465,7 @@ test('a real box gets the tau and the handles at their places', { skip: await ab
     assert.deepEqual(added, [{ args: ['milk'], sessionId }])
     // A TypeScript program, checked against the tau's declarations, as ts_execute runs one.
     const entry = await new Registry(join(work, 'taus')).get(sessionId)
-    const params = { root: '/tau', modules: modulesOf(entry), cwd: entry.project }
+    const params = { root: '/tau', modules: modulesOf(entry), cwd: service.tauRuns.boxPath(sessionId, entry.project) }
     const source = 'import { add } from "@api/notes"\nexport async function main(input: string): Promise<void> { await add(input) }'
     const outcome = await started?.request('ts.execute', { ...params, execution: 'e1', source, input: 'eggs' })
     assert.deepEqual({ ...outcome, durationMs: 0 }, { ok: true, value: null, stdout: '', stderr: '', durationMs: 0 })
@@ -457,8 +474,8 @@ test('a real box gets the tau and the handles at their places', { skip: await ab
     assert.equal(mistaken?.ok === false && mistaken.error.name, 'TypeCheckError')
     assert.equal((await run('docker', ['exec', box, 'cat', '/tau/in/notes.md'])).stdout, 'buy milk\n')
     await run('docker', ['exec', box, 'test', '-d', '/tau/out/pages'])
-    // Where dsh will run the session's work: the caller's folder, empty.
-    assert.equal((await run('docker', ['exec', box, 'ls', '-A', await realpath(work)])).stdout, '')
+    // The caller's folder, where dsh runs the session's work, is /tau/workspace in the box, and not there at its own path.
+    await assert.rejects(run('docker', ['exec', box, 'test', '-e', await realpath(work)]))
     await service.stop(sessionId)
   } finally {
     await service.delete(sessionId)

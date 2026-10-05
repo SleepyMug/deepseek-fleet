@@ -32,7 +32,8 @@ section on how to use them:
   and TypeScript does too. It type-checks the program, strictly, with each
   API typed by the tau's own declarations and Node's types as the image has
   them, then runs `main(input)` in a fresh Node process, in `cwd`: the
-  session's working folder unless the model names another.
+  session's working directory, `/tau/workspace`, unless the model names
+  another.
 - **Cancelling** the tool call sends `ts.cancel`, which ends the program's
   whole process group.
 - **No limits** on how long a program runs, or how much it writes and

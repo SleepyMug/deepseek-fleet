@@ -46,8 +46,11 @@ export class TauRuns {
   private readonly started = new Set<string>()
   /** Each session's last operation on its box, which its next one waits for. */
   private readonly queues = new Map<string, Promise<void>>()
-  /** The sessions with a registry entry, as {@link load} found them and as they were made and removed since. */
-  private readonly taus = new Set<string>()
+  /**
+   * The sessions with a registry entry, each with its project, as {@link load}
+   * found them and as they were made and removed since.
+   */
+  private readonly taus = new Map<string, string>()
   /** Each session's host files copied into its box, or on their way, by their place there. */
   private readonly copies = new Map<string, Map<string, Promise<void>>>()
 
@@ -60,15 +63,14 @@ export class TauRuns {
 
   /** Find the sessions the registry has, before anyone asks which sessions are a tau's. */
   async load(): Promise<void> {
-    for (const sessionId of await this.registry.list()) this.taus.add(sessionId)
+    for (const sessionId of await this.registry.list()) this.taus.set(sessionId, (await this.registry.get(sessionId)).project)
   }
 
   /**
    * Set up a box for a run of a tau, and leave it stopped: bind the values,
    * which checks them against the tau and expands its prompt; check the
    * handles' paths; link the tau's APIs to the extensions provided; then
-   * create the box, make its folders, the caller's folder, where dsh will
-   * run the session's work, among them, copy in the tau, each `$in` and
+   * create the box, make its folders, copy in the tau, each `$in` and
    * `$inout` handle, and each API's client, link the APIs and what the tau
    * exposes, and register the session. A failure removes the box.
    * @param tauDir - the tau's directory, absolute.
@@ -88,7 +90,7 @@ export class TauRuns {
     try {
       await box.start()
       const outFolders = run.handles.filter(handle => handle.mode === 'out' && handle.kind === 'dir').map(handle => handle.view)
-      await exec(box, ['mkdir', '-p', SELF, ...Object.values(FOLDERS), ...outFolders, project, CLIENTS])
+      await exec(box, ['mkdir', '-p', SELF, ...Object.values(FOLDERS), ...outFolders, CLIENTS])
       await box.copyIn(tau.dir, SELF)
       for (const handle of run.handles) {
         if (handle.mode !== 'out') await box.copyIn(handle.host, handle.view)
@@ -100,7 +102,7 @@ export class TauRuns {
         packages: linked.packages.map(({ name, dir }) => ({ name, dir: posix.join(SELF, ...relative(tauRoot, dir).split(sep)) })),
       })
       await box.stop()
-      this.taus.add(sessionId)
+      this.taus.set(sessionId, project)
       await this.registry.put({
         sessionId,
         box: box.container,
@@ -136,6 +138,20 @@ export class TauRuns {
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */
   isTau(sessionId: string): boolean {
     return this.taus.has(sessionId)
+  }
+
+  /**
+   * Where a path of a tau's session's work is in its box. dsh runs the
+   * session's work in its project, the caller's folder, which is
+   * {@link FOLDERS}.inout, /tau/workspace, in the box; a path in the project
+   * is there too, and any other path is as it is. A session that is not a
+   * tau's keeps its paths.
+   */
+  boxPath(sessionId: string, path: string): string {
+    const project = this.taus.get(sessionId)
+    if (project === undefined) return path
+    if (path === project) return FOLDERS.inout
+    return path.startsWith(`${project}/`) ? `${FOLDERS.inout}${path.slice(project.length)}` : path
   }
 
   /**

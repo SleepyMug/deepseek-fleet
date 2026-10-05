@@ -257,7 +257,8 @@ export class FleetFileSystem extends FileSystem {
     }
     const session = named?.session ?? own
     if (session === undefined) return undefined
-    const plain = (value: string): string => inBox(keyed(value))?.path ?? value
+    // A path in the session's project, where dsh runs its work, is in /tau/workspace in the box.
+    const plain = (value: string): string => inBox(keyed(value))?.path ?? this.self.fleetTauRuns.boxPath(session, value)
     return { session, params: { path: plain(path), ...cwd === undefined ? {} : { cwd: plain(cwd) } } }
   }
 

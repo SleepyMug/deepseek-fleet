@@ -75,8 +75,10 @@ a tau's session does not look; they stay inline instead.
   the watch's stop or signal ends it (`fs.unwatch`). A box lost meanwhile
   is the watch's error. So the sidebar refreshes live.
 - **Processes.** A tau's session's process runs in its box, in a process
-  group of its own, in the folder dsh names: the caller's folder, which the
-  box has, empty, at the same path. It serves what dsh's bash asks: stdin
+  group of its own, in the folder dsh names, the session's project, a host
+  folder, put in `/tau/workspace` in the box (`ctx.fleetTauRuns.boxPath`,
+  docs/fleet-core/tau/index.md), as is a terminal's, and a file call's path
+  or `cwd` in the project. It serves what dsh's bash asks: stdin
   ignored or given as data, and stdout and stderr collected into dsh's own
   in-memory tails (`OutputCollector`) as the helper sends them. Terminating
   it, or aborting its signal, ends its group, and so does this service's

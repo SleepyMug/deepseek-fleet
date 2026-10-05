@@ -40,6 +40,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 (docs/fleet-core/world/index.md) what it needs:
 
 - `isTau(sessionId)`, at once, whether a session is a tau's;
+- `boxPath(sessionId, path)`, at once, where a path of a tau's session's
+  work is in its box: its project, and what is in it, in `/tau/workspace`;
 - `boxFor(sessionId)`, the started box of a tau's session, started if it is
   not;
 - `copyInOnce(sessionId, from, to)`, at once, a host file copied into the
@@ -62,9 +64,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   3. It creates the box `fleet-tau-<uuid>`, starts it, makes its folders
      with the helper's `exec` (`mkdir -p`), copies in the tau, each `$in`
      and `$inout` handle, and each API's client, has the helper link the
-     APIs and what the tau exposes (`apis.link`), and stops it. The folders
-     include the caller's folder, through symlinks, the project, empty: dsh
-     runs a session's work in its workspace's folder.
+     APIs and what the tau exposes (`apis.link`), and stops it.
   4. It writes the registry entry.
 
   A failure in 3 or 4 removes the box.
@@ -135,8 +135,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   up a run answers no calls.
 - **The system prompt** of a tau's session is dsh's, shaped by
   `prompt.ts` in the preset: after the persona, a section says where the
-  model works, its box, the run's folders in `/tau` and its working
-  directory; and the assembly leaves out dsh's sections about the host,
+  model works, its box, and that its working directory is
+  `/tau/workspace`; and the assembly leaves out dsh's sections about the host,
   which are false in a box: the harness's checkout (`harness:source`), the
   web GUI at its URL (`app:web-surface`), the web UI's file cards and links
   (`ui:deliverable-file-references`), and `@` mentions as host paths
@@ -144,8 +144,15 @@ preset's scope, which each of its sessions' agents has as its parent.
   prompt (the `system-prompt/assemble` waterfall), since the last is
   registered in each agent's own scope, which a section of the preset's
   cannot shadow. The web UI's own sessions keep dsh's whole prompt.
-- **Which sessions are a tau's.** The runs read the registry's ids when the
-  plugin loads, and keep them as sessions are created and deleted, so that
+- **The working directory** of a tau's session is `/tau/workspace` in its
+  box, where its `$inout` handles are. dsh runs a session's work in its
+  workspace's folder, the project, a host path the box does not have; the
+  runs' `boxPath` puts that folder, and any path in it, in
+  `/tau/workspace` instead, for every process, terminal and file call the
+  world serves from the box, and for `ts_execute`.
+- **Which sessions are a tau's.** The runs read the registry's entries when
+  the plugin loads, each session's project with its id, and keep them as
+  sessions are created and deleted, so that
   `isTau` answers at once, as a process's start, which cannot wait, needs.
 - **A box gone.** Deleting a session whose box was removed by other means
   still forgets the session.

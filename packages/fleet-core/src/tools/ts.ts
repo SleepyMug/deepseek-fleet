@@ -35,7 +35,19 @@ Besides running commands, you can write TypeScript programs and run them in your
 4. Call \`ts_execute({ source, cwd?, input? })\`. It type-checks before running; fix the reported errors and retry. \`cwd\`, your working directory by default, is where relative paths resolve; packages are imported by name wherever it is.
 5. Each run is a fresh process with fresh module state, and the processes it starts are killed when it ends; await all its work before \`main\` returns. What an API did is not undone when a program fails.
 
-\`input\` and the value \`main\` returns are strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs.`
+\`input\` and the value \`main\` returns are strict JSON: null, booleans, finite numbers, strings, arrays and plain objects of these. A \`main\` that returns nothing gives null. Put the answer in the return value; stdout and stderr are logs.
+
+For example, \`ts_execute\` with this \`source\` and the \`input\` \`{ "path": "notes.md" }\` returns how many lines the file has:
+
+\`\`\`ts
+import { readFile } from 'node:fs/promises'
+
+export async function main(input: { path: string }): Promise<number> {
+  const text = await readFile(input.path, 'utf8')
+  console.log(\`read \${text.length} characters\`)
+  return text.split('\\n').length
+}
+\`\`\``
 
 export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
@@ -112,7 +124,8 @@ export function apply(ctx: Context): void {
     },
     async execute(args, exec) {
       const entry = await entryOf(exec)
-      const cwd = args.cwd ?? exec.agent?.session.header.cwd ?? entry.project
+      // The session's working directory, its project, is /tau/workspace in the box.
+      const cwd = ctx.fleetTauRuns.boxPath(entry.sessionId, args.cwd ?? exec.agent?.session.header.cwd ?? entry.project)
       if (!posix.isAbsolute(cwd)) throw new Error('cwd must be an absolute folder')
       const box = await ctx.fleetTauRuns.boxFor(entry.sessionId)
       if (box === undefined) throw new Error(`${entry.sessionId} has no box`)
