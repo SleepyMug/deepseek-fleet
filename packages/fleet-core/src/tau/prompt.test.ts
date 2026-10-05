@@ -4,13 +4,16 @@ import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import * as TauPrompt from './prompt.ts'
 
-test('a tau\'s prompt says where the model works, and leaves out dsh\'s sections about the host', async () => {
+test('a tau\'s prompt says where the model works, and leaves out dsh\'s sections and runtime context about the host', async () => {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(TauPrompt)
   ctx.systemPrompt.section({ name: 'harness:source', order: ctx.systemPrompt.getSectionOrder('HARNESS_SOURCE'), text: 'The checkout is at /host/dsh.' })
   ctx.systemPrompt.section({ name: 'tool:bash', order: ctx.systemPrompt.getSectionOrder('TOOL_BASH'), text: 'Check the exit code.' })
-  const { sections } = await ctx.systemPrompt.assemble()
+  ctx.systemPrompt.context({ name: 'sandbox:policy', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'), text: 'Current DSH file policy: danger-full-access.' })
+  ctx.systemPrompt.context({ name: 'approval:policy', order: ctx.systemPrompt.getContextOrder('APPROVAL_POLICY'), text: 'Approval prompts are disabled.' })
+  const { sections, contexts } = await ctx.systemPrompt.assemble()
+  assert.deepEqual(contexts.map(context => context.name), ['approval:policy'])
   assert.deepEqual(sections.map(section => section.name).filter(name => name !== 'deployment:persona-prefix' && name !== 'deployment:persona-suffix'), [
     'harness:identity', 'fleet:tau-where', 'tool:bash',
   ])

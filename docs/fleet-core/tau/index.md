@@ -143,7 +143,9 @@ preset's scope, which each of its sessions' agents has as its parent.
   (`context:file-reference`). It removes them by name from the assembled
   prompt (the `system-prompt/assemble` waterfall), since the last is
   registered in each agent's own scope, which a section of the preset's
-  cannot shadow. The web UI's own sessions keep dsh's whole prompt.
+  cannot shadow. It also leaves out the runtime context on the sandbox
+  policy (`sandbox:policy`), the host's file policy, full access, which is
+  not the box's. The web UI's own sessions keep dsh's whole prompt.
 - **The working directory** of a tau's session is `/tau/workspace` in its
   box, where its `$inout` handles are. dsh runs a session's work in its
   workspace's folder, the project, a host path the box does not have; the

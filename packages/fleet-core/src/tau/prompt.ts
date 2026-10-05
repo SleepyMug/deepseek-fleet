@@ -4,7 +4,7 @@
  * of the sessions that preset makes: it tells the model where it works, its
  * box, and its working directory there, /tau/workspace (./place.ts), and
  * leaves out the sections dsh writes for a person at the host, which are
- * false in a box.
+ * false in a box, and the runtime context on the host's sandbox policy.
  * @module fleet-core/tau/prompt
  */
 
@@ -27,6 +27,14 @@ export const HOST_SECTIONS: ReadonlySet<string> = new Set([
   'context:file-reference',
 ])
 
+/**
+ * dsh's runtime contexts about the host, by name: the sandbox policy, full
+ * access, which is the host's file policy, not the box's.
+ */
+export const HOST_CONTEXTS: ReadonlySet<string> = new Set([
+  'sandbox:policy',
+])
+
 /** Where the model works, which follows the persona. */
 export const WHERE = `You work in a box of your own, a container, which your tools act on: bash, the file tools, and your TypeScript programs. Your working directory is ${FOLDERS.inout}.`
 
@@ -39,6 +47,10 @@ export function apply(ctx: Context): void {
   // Prepended, so it sees the assembly once every other listener has had it.
   ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const assembly = await next()
-    return { ...assembly, sections: assembly.sections.filter(section => !HOST_SECTIONS.has(section.name)) }
+    return {
+      ...assembly,
+      sections: assembly.sections.filter(section => !HOST_SECTIONS.has(section.name)),
+      contexts: assembly.contexts.filter(context => !HOST_CONTEXTS.has(context.name)),
+    }
   }, { prepend: true })
 }
