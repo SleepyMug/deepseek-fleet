@@ -7,6 +7,10 @@
     "fleet": "./lib/cli.js"
   },
   "exports": {
+    "./connection": {
+      "types": "./lib/connection.d.ts",
+      "default": "./lib/connection.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

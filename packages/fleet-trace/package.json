@@ -1,0 +1,27 @@
+{
+  "name": "fleet-trace",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Run a tau against a scripted model on a scratch fleet host, and dump what the model was sent",
+  "type": "module",
+  "bin": {
+    "fleet-trace": "./lib/cli.js"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*",
+    "scenarios"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dependencies": {
+    "fleet-client": "workspace:*",
+    "fleet-protocol": "workspace:*"
+  }
+}

@@ -178,6 +178,9 @@ importers:
       fleet-core:
         specifier: workspace:*
         version: link:packages/fleet-core
+      fleet-trace:
+        specifier: workspace:*
+        version: link:packages/fleet-trace
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -325,6 +328,15 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.4
         version: 3.18.4
+
+  packages/fleet-trace:
+    dependencies:
+      fleet-client:
+        specifier: workspace:*
+        version: link:../fleet-client
+      fleet-protocol:
+        specifier: workspace:*
+        version: link:../fleet-protocol
 
 packages:
 

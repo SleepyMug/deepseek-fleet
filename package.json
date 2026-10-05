@@ -24,6 +24,7 @@
     "@types/node": "26.6.2",
     "fleet-client": "workspace:*",
     "fleet-core": "workspace:*",
+    "fleet-trace": "workspace:*",
     "typescript": "6.0.3"
   }
 }
