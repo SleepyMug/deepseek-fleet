@@ -5,8 +5,11 @@
  * which it leads. The kernel tells which process group is in the terminal's
  * foreground (/proc/<pid>/stat), and which processes are in its session,
  * so the helper signals the one and ends the other, background jobs
- * included. node-pty is loaded when the first terminal starts, so a box
- * without it fails only terminals.
+ * included, and tells whether the terminal is idle: a shell alone in its
+ * session, in the foreground and asleep, waits at its prompt, as far as
+ * the kernel can tell, though a loop of the shell's builtins that sleeps
+ * looks the same. node-pty is loaded when the first terminal starts, so a
+ * box without it fails only terminals.
  * @module fleet-box-runtime/helper/cmd/terminal
  */
 
@@ -100,6 +103,17 @@ export function terminalResize({ terminal: id, cols, rows }: Params<'terminal.re
 export async function terminalForeground({ terminal: id }: Params<'terminal.foreground'>): Promise<Methods['terminal.foreground']['result']> {
   const group = await foregroundGroup(find(id).pty.pid)
   return group === undefined ? null : { processGroupId: group }
+}
+
+export async function terminalActivity({ terminal: id }: Params<'terminal.activity'>): Promise<Methods['terminal.activity']['result']> {
+  const record = running.get(text(id, 'terminal'))
+  if (record === undefined) return { idle: true }
+  const session = record.pty.pid
+  const found = await members(session)
+  if (found.length === 0) return { idle: true }
+  // After the program's name: its state, its parent, its group, its session, its terminal and that terminal's foreground group.
+  const [state, , group, , , foreground] = await stat(session) ?? []
+  return { idle: found.length === 1 && found[0] === session && state === 'S' && foreground === group }
 }
 
 export async function terminalSignal({ terminal: id, signal }: Params<'terminal.signal'>): Promise<number> {

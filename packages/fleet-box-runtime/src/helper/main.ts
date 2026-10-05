@@ -16,7 +16,7 @@ import {
 import { apisLink } from './cmd/link.ts'
 import { kill, killAll, spawn, which } from './cmd/spawn.ts'
 import { cancelAll, tsCancel, tsExecute } from './cmd/ts.ts'
-import { endAll, terminal, terminalEnd, terminalForeground, terminalResize, terminalSignal, terminalWrite } from './cmd/terminal.ts'
+import { endAll, terminal, terminalActivity, terminalEnd, terminalForeground, terminalResize, terminalSignal, terminalWrite } from './cmd/terminal.ts'
 import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from './protocol.ts'
 
 // Node names its main thread `node-MainThread`, which a `pkill node` in the box would match.
@@ -54,6 +54,7 @@ const handlers: Handlers = {
   'terminal.write': terminalWrite,
   'terminal.resize': terminalResize,
   'terminal.foreground': terminalForeground,
+  'terminal.activity': terminalActivity,
   'terminal.signal': terminalSignal,
   'terminal.end': terminalEnd,
   'apis.link': apisLink,

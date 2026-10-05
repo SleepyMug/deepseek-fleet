@@ -16,7 +16,7 @@ import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type Hos
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'
-import { isForeground, isGroupId, isTerminalEvent } from './cmd/terminal.ts'
+import { isActivity, isForeground, isGroupId, isTerminalEvent } from './cmd/terminal.ts'
 import { isTsOutcome } from './cmd/ts.ts'
 
 /** A failure the helper reported for one request, with its code, such as an `FsError`'s, if it had one. */
@@ -84,6 +84,7 @@ const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'
   'terminal.write': isNull,
   'terminal.resize': isNull,
   'terminal.foreground': isForeground,
+  'terminal.activity': isActivity,
   'terminal.signal': isGroupId,
   'terminal.end': isNull,
   'apis.link': isNull,

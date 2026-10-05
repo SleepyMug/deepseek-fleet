@@ -101,14 +101,24 @@ a tau's session does not look; they stay inline instead.
   bash, on a pseudo-terminal there, and relays input, output and size. It
   reads the terminal's foreground process group from the kernel, which it
   signals, and ends the terminal's whole session, background jobs included,
-  SIGHUP and SIGTERM, then SIGKILL after the grace period. It does not watch
-  the shell for prompts, so activity is unknown and never `idle`.
+  SIGHUP and SIGTERM, then SIGKILL after the grace period. Its activity is
+  the helper's `terminal.activity`: `idle` when no process of its session
+  is left, or the shell is the only one, in the foreground and asleep, as
+  at its prompt; `busy` otherwise, a background job included; `unknown`
+  while it ends, or when the helper cannot tell. So dsh's terminal
+  controller reclaims a terminal no window has held for
+  `unattendedTimeoutMs`, two hours by default, while it was idle, which
+  ends its hold on the box, and the box stops once nothing else uses it;
+  one still running a command keeps the box running.
 
 ## Not yet
 
 - **No spill files** for anyone: bash says a box process's full output is
   unavailable, and big tool results stay inline.
 - **Not served for a box:** raw pipes and the control channel.
+- **Idle is a guess:** a loop of the shell's builtins that sleeps looks
+  like a shell at its prompt; only prompt markers from the shell would
+  tell for sure.
 - **A terminal is no session activity:** archiving a tau's session does not
   wait for its open terminals; removing its box, once its run ended, ends
   them.

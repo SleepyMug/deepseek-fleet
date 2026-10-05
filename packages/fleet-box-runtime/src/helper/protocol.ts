@@ -146,6 +146,12 @@ export interface Methods {
   'terminal.resize': { params: { terminal: string; cols: number; rows: number }; result: null }
   /** A terminal's foreground process group, or null when none can be found. */
   'terminal.foreground': { params: { terminal: string }; result: { processGroupId: number } | null }
+  /**
+   * Whether a terminal is idle: no process of its session is left, or its
+   * program, the shell, is the only one, holds the foreground and sleeps,
+   * as at its prompt; a terminal not there has ended, so it is idle.
+   */
+  'terminal.activity': { params: { terminal: string }; result: { idle: boolean } }
   /** Sends a signal to a terminal's foreground process group, and answers its id. */
   'terminal.signal': { params: { terminal: string; signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGTSTP' | 'SIGHUP' }; result: number }
   /**

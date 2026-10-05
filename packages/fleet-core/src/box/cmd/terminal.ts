@@ -20,6 +20,10 @@ export function isForeground(value: unknown): value is Methods['terminal.foregro
   return Number.isSafeInteger(processGroupId) && (processGroupId as number) > 0
 }
 
+export function isActivity(value: unknown): value is Methods['terminal.activity']['result'] {
+  return typeof value === 'object' && value !== null && typeof (value as Record<string, unknown>).idle === 'boolean'
+}
+
 export function isGroupId(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) > 0
 }

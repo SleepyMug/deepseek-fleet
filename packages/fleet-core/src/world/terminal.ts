@@ -4,8 +4,10 @@
  * (fleet-box-runtime's helper/cmd/terminal.ts), and this handle relays its
  * input, output and size, and asks the helper for its foreground process
  * group, which it signals, and to end its whole session, background jobs
- * included. The helper does not watch the shell for prompts, so activity is
- * unknown.
+ * included. It reports the terminal idle when the helper finds no process
+ * of it left, or its shell alone at its prompt, so dsh's terminal
+ * controller reclaims one nobody has open after a while, which ends its
+ * hold on the box (./subprocess.ts).
  * @module fleet-core/world/terminal
  */
 
@@ -18,8 +20,11 @@ import type {
 import type { RunBox } from '../tau/runs.ts'
 
 export class BoxTerminal implements SubprocessTerminalHandle {
+  /** Changes with input, and with the activity reported, so an idle time is counted from either. */
   private revision = 0
+  private activity: SubprocessTerminalActivity['state'] | undefined
   private ending: Promise<void> | undefined
+  private gone = false
 
   private constructor(
     private readonly box: RunBox,
@@ -28,7 +33,9 @@ export class BoxTerminal implements SubprocessTerminalHandle {
     readonly pid: number,
     readonly output: PassThrough,
     readonly done: Promise<SubprocessOutcome>,
-  ) {}
+  ) {
+    void done.finally(() => { this.gone = true }).catch(() => {})
+  }
 
   /**
    * Start a terminal in a started box.
@@ -68,8 +75,27 @@ export class BoxTerminal implements SubprocessTerminalHandle {
     return foreground === null ? undefined : { processGroupId: foreground.processGroupId, inputWaiting: false }
   }
 
-  inspectActivity(): Promise<SubprocessTerminalActivity> {
-    return Promise.resolve({ state: 'unknown', revision: this.revision })
+  /**
+   * Idle once the terminal has ended, or when the box's helper finds no
+   * process of it left, or its shell alone at its prompt; busy otherwise;
+   * unknown while it ends, or when the helper cannot tell.
+   */
+  async inspectActivity(): Promise<SubprocessTerminalActivity> {
+    let state: SubprocessTerminalActivity['state']
+    if (this.gone) state = 'idle'
+    else if (this.ending !== undefined) state = 'unknown'
+    else {
+      try {
+        state = (await this.box.request('terminal.activity', { terminal: this.id })).idle ? 'idle' : 'busy'
+      } catch {
+        state = 'unknown'
+      }
+    }
+    if (state !== this.activity) {
+      this.activity = state
+      this.revision++
+    }
+    return { state, revision: this.revision }
   }
 
   signalForeground(signal: SubprocessTerminalSignal): Promise<number> {

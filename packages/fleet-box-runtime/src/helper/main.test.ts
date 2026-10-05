@@ -189,7 +189,7 @@ test('the helper watches a folder until it is told to stop', async (t) => {
   assert.ok(helper.answers.some(answer => answer.type === 'result' && answer.id === 2))
 })
 
-test('the helper runs a terminal: input, size, foreground group, and an end that takes background jobs too', async (t) => {
+test('the helper runs a terminal: input, size, foreground group, activity, and an end that takes background jobs too', async (t) => {
   const dir = await folder(t)
   const helper = live(t)
   const output = (): string => helper.answers
@@ -210,13 +210,28 @@ test('the helper runs a terminal: input, size, foreground group, and an end that
   helper.send({ type: 'request', id: 4, method: 'terminal.foreground', params: { terminal: 't1' } })
   await helper.until(() => helper.answers.some(answer => answer.id === 4))
   assert.deepEqual(helper.answers.find(answer => answer.id === 4), { type: 'result', id: 4, value: { processGroupId: started.pid } })
-  // A job left behind, in a group of its own, is still the terminal's.
+  // The shell alone, waiting at its prompt, is idle.
+  const activity = async (id: number): Promise<unknown> => {
+    helper.send({ type: 'request', id, method: 'terminal.activity', params: { terminal: 't1' } })
+    await helper.until(() => helper.answers.some(answer => answer.id === id))
+    return (helper.answers.find(answer => answer.id === id) as { value: unknown }).value
+  }
+  assert.deepEqual(await activity(10), { idle: true })
+  // What runs in the foreground is not.
+  helper.send({ type: 'request', id: 11, method: 'terminal.write', params: { terminal: 't1', data: 'sleep 1\n' } })
+  await new Promise(resolve => setTimeout(resolve, 200))
+  assert.deepEqual(await activity(12), { idle: false })
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  assert.deepEqual(await activity(13), { idle: true })
+  // A job left behind, in a group of its own, is still the terminal's, and keeps it busy.
   helper.send({ type: 'request', id: 5, method: 'terminal.write', params: { terminal: 't1', data: 'sleep 300 &\n' } })
   await new Promise(resolve => setTimeout(resolve, 200))
+  assert.deepEqual(await activity(14), { idle: false })
   helper.send({ type: 'request', id: 6, method: 'terminal.end', params: { terminal: 't1' } })
   await helper.until(() => helper.answers.some(answer => answer.id === 6))
   assert.deepEqual(helper.answers.find(answer => answer.id === 6), { type: 'result', id: 6, value: null })
   assert.ok(helper.answers.some(answer => answer.type === 'result' && answer.id === 1))
+  assert.deepEqual(await activity(15), { idle: true })
   const { stdout } = await new Promise<{ stdout: string }>((resolve) => {
     const ps = spawn('ps', ['-eo', 'sid,args'])
     let text = ''
