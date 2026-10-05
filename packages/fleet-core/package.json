@@ -27,6 +27,10 @@
       "types": "./lib/tau/runs-plugin.d.ts",
       "default": "./lib/tau/runs-plugin.js"
     },
+    "./tools/tau": {
+      "types": "./lib/tools/tau.d.ts",
+      "default": "./lib/tools/tau.js"
+    },
     "./tools/ts": {
       "types": "./lib/tools/ts.d.ts",
       "default": "./lib/tools/ts.js"

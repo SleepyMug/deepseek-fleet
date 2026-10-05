@@ -39,12 +39,16 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 Each of the service's operations takes who calls it, a run's caller:
 `fleet`, on the host, through the socket, which reaches every run; or a
-tau's session, from its box, which reaches only the runs it started: any
-other is as if it were not there. Who calls makes no difference to a run's
-files, which only the caller reads and writes; a tau's session's runs are
-in its own project. A tau's session calls it through the `tau` API's
-extension (docs/fleet-ext-tau/index.md), which the plugin provides it to
-as `ctx.fleetTau`.
+session, which reaches only the runs it started: any other is as if it were
+not there. Who calls makes no difference to a run's files, which only the
+caller reads and writes. The plugin provides the service as `ctx.fleetTau`
+to the sessions' two ways in:
+
+- a tau's session calls it from its box, through the `tau` API's extension
+  (docs/fleet-ext-tau/index.md), and its runs are in its own project;
+- another session, such as the web UI's, calls it with `tau_run`
+  (docs/fleet-core/tools/index.md), and its runs are in its working
+  directory, which it names as `fleet` names its folder.
 
 The patch also declares `tau`, the agent preset a tau's session has: a
 persona, the tau's prompt plugin (`fleet-core/tau/prompt`), bash in the
@@ -277,6 +281,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - A call and a result are kept whole, however large, in the session's
   folder; and an `$inout` handle merges into the caller's folder, so what
   the agent removed there stays.
+- The runs a session that is no tau's started with `tau_run` stay when the
+  session is archived; `fleet delete` removes them.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 

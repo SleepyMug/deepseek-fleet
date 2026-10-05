@@ -15,7 +15,10 @@ import type { Result, Targets } from 'fleet-protocol/tau'
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 
-/** Who started a run: `fleet`, on the host, or a tau's session, from its box. */
+/**
+ * Who started a run: `fleet`, on the host; or a session: a tau's, from its
+ * box, or another, with `tau_run` (../tools/tau.ts).
+ */
 export type Caller = { kind: 'host' } | { kind: 'session'; sessionId: string }
 
 export interface Entry {

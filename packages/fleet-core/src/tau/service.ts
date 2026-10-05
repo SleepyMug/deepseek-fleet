@@ -8,9 +8,9 @@
  * handles, for the caller to put what the run gave back there; and cancels
  * the run, and deletes it with its box. It never reads or writes a caller's
  * files, so it serves `fleet`, on the host, which reaches every run, and a
- * tau's session, from its box, which reaches only the runs it started, alike;
- * a run's end deletes those it started and did not finish, and its deletion
- * all it started. The service reaches dsh's sessions only through
+ * session, a tau's from its box or another with `tau_run`, which reaches
+ * only the runs it started, alike; a run's end deletes those it started and
+ * did not finish, and its deletion all it started. The service reaches dsh's sessions only through
  * {@link Sessions}.
  * @module fleet-core/tau/service
  */
@@ -66,7 +66,7 @@ export class TauService {
    * Start a run of a call: set up its box (./runs.ts), start it, make the
    * dsh session, and give it the prompt. A failure on the way undoes it all.
    * Then the run is watched until it ends.
-   * @param caller - who starts it: `fleet`, on the host, or a tau's session, from its box.
+   * @param caller - who starts it: `fleet`, on the host, or a session: a tau's, from its box, or another, with `tau_run`.
    * @param call - tau's archive of the call, which carries the tau.
    */
   async start(caller: Caller, about: About, call: AsyncIterable<Uint8Array>): Promise<Started> {
@@ -238,7 +238,7 @@ function statusOf(entry: Entry): RunStatus {
   }
 }
 
-/** Whether a caller reaches a run: the host every run, a tau's session those it started. */
+/** Whether a caller reaches a run: the host every run, a session those it started. */
 function reaches(caller: Caller, entry: Entry): boolean {
   return caller.kind === 'host' || (entry.caller?.kind === 'session' && entry.caller.sessionId === caller.sessionId)
 }

@@ -1,10 +1,12 @@
 # fleet-core/tools
 
-The TypeScript tools of a tau's session: `ts_modules` and `ts_execute`. The
-model writes a program over what its tau exposes, the tau's APIs and the
-packages of its own built on them, and runs it in the session's box. Each
-API there runs the client of the extension that implements it
-(docs/fleet-core/ext/index.md).
+fleet's model tools. A tau's session has the TypeScript tools, `ts_modules`
+and `ts_execute`: the model writes a program over what its tau exposes, the
+tau's APIs and the packages of its own built on them, and runs it in the
+session's box. Each API there runs the client of the extension that
+implements it (docs/fleet-core/ext/index.md). Any other session, such as the
+web UI's, works on the host and has `tau_run`, which runs a tau as `fleet
+run` does.
 
 ## Provides
 
@@ -17,7 +19,16 @@ section on how to use them:
 | `ts_modules` | `{ query? }` | What a program may import: each `{ specifier, packageRoot, description }`, `packageRoot` the package's folder in the box, whose `package.json` and declarations the model reads. |
 | `ts_execute` | `{ source, cwd?, input? }` | `{ value, stdout, stderr, durationMs }`: what the program's `main(input)` returned, and all it wrote. A type error, or the program's failure, is a tool error carrying its name, message, TypeScript's diagnostics or the program's stack, and the output. |
 
+`fleet-tau-tools` (`fleet-core/tools/tau`), a dsh plugin that fleet-core's
+`fleet` agent preset mounts. It registers one tool:
+
+| Tool | Takes | Gives |
+|---|---|---|
+| `tau_run` | `{ tau, values? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did. Values that do not fit the tau, or a run that cannot start, are a tool error. |
+
 ## Design
+
+### The TypeScript tools
 
 - **What a program imports** is what the tau exposes, as the session's
   registry entry records it (docs/fleet-core/tau/index.md): `@api/<name>`,
@@ -42,6 +53,29 @@ section on how to use them:
 - **Only a tau's session** has the tools: the `tau` preset mounts them, and
   a call from another session fails.
 
+### tau_run
+
+- **A run is the session's,** as one from `fleet` is the host's: the tool
+  calls the tau service, `ctx.fleetTau` (docs/fleet-core/tau/index.md),
+  with the session as the run's caller, so `status` gives the session as the
+  run's `parent`, and the session reaches only the runs it started. The run's
+  own session is in the session's working directory, its project, and the
+  web UI lists it there.
+- **Its files are the session's,** on the host: the tool packs the run's
+  call from the session's working directory, where `tau` and relative paths
+  in `values` resolve, as `fleet` does from its folder, and puts the result
+  at the paths given, as tau's `packCall` and `applyResult` do. The values
+  are tau's docs/spec/values.md: a text, a handle, `{ "$in" | "$out" |
+  "$inout": path }`, or lists and records of these.
+- **It waits for the run,** so nothing outlives the call, as bash in the
+  `fleet` preset runs only in the foreground. Cancelling the call cancels
+  the run, which then gives back nothing. Several calls in one turn run at
+  once (`isConcurrencySafe`): each run has a box of its own, and what each
+  gives back goes where the model said.
+- **A tau's session does not have it:** it runs taus with its tau API, if
+  its tau declares it (docs/fleet-ext-tau/index.md), whose files are its
+  box's.
+
 ## Not yet
 
 - The tools show the whole output and value, however large.
@@ -50,6 +84,8 @@ section on how to use them:
 
 ## Built on
 
+- `@sleepymug/tau/call`, for `tau_run`: `packCall` and `applyResult`.
+- `ctx.fleetTau` (fleet-core/tau), for `tau_run`'s runs.
 - `@deepseek-ai/dsh-tools` (`defineTool`) and
   `@deepseek-ai/dsh-system-prompt`, which must be the copies the running
   dsh loaded: run the workspace's dsh, `pnpm exec dsh`.

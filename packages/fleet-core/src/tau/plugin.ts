@@ -8,7 +8,8 @@
  * agents, to learn when a run's agent is done. It imports only their types.
  * Its config names the dsh home, where it serves its socket. It provides the
  * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
- * through which a tau's session starts runs from its box.
+ * through which a tau's session starts runs from its box, and for
+ * `tau_run` (../tools/tau.ts), with which another session starts them.
  * @module fleet-core/tau/plugin
  */
 

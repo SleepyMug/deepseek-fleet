@@ -40,7 +40,7 @@ export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copy
 export interface About {
   /** What names the run, in `list` and dsh's web UI. */
   title: string
-  /** The caller's folder, absolute, for `fleet`; a tau's session's runs are in its own project. */
+  /** The caller's folder, absolute, unless it is a tau's session, whose runs are in its own project. */
   project?: string
   /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
   targets: Targets
@@ -119,7 +119,7 @@ export class TauRuns {
    * exposes linked; and the session is registered. A failure removes the box
    * and the session's folder.
    * @param call - tau's archive of the call, which carries the tau.
-   * @param caller - `fleet`, on the host, or a tau's session, from its box, whose runs are in its project.
+   * @param caller - `fleet`, on the host, or a session: a tau's, from its box, whose runs are in its project, or another, with `tau_run`.
    */
   async create(call: AsyncIterable<Uint8Array>, about: About, caller: Caller = HOST): Promise<Started> {
     const sessionId = `session-${randomUUID()}`
@@ -197,14 +197,15 @@ export class TauRuns {
     return { sessionId, box: box.container, prompt: setup.prompt }
   }
 
-  /** The project a caller's run is in: `fleet`'s folder, through symlinks, or a tau's session's own project. */
+  /**
+   * The project a caller's run is in: a tau's session's own project, or
+   * else the folder the caller names, through symlinks: `fleet`'s, or the
+   * working directory of a session that is no tau's.
+   */
   private async projectFor(caller: Caller, about: About): Promise<string> {
-    if (caller.kind === 'session') {
-      const project = this.taus.get(caller.sessionId)?.project
-      if (project === undefined) throw new Error(`fleet: ${caller.sessionId} is not a tau's session, so it starts no runs from a box`)
-      return project
-    }
-    if (about.project === undefined || !posix.isAbsolute(about.project)) throw new Error('fleet: a run from the host names its project, an absolute path')
+    const own = caller.kind === 'session' ? this.taus.get(caller.sessionId)?.project : undefined
+    if (own !== undefined) return own
+    if (about.project === undefined || !posix.isAbsolute(about.project)) throw new Error('fleet: a run from outside a box names its project, an absolute path')
     return await realpath(about.project)
   }
 

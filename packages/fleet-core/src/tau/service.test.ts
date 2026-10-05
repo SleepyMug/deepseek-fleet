@@ -605,7 +605,7 @@ function from(sessionId: string): Caller {
   return { kind: 'session', sessionId }
 }
 
-test('a tau\'s session starts a run from its box as the host does, in its own project, and only if it is a tau\'s', async (t) => {
+test('a tau\'s session starts a run from its box as the host does, in its own project, and another session in the project it names', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const service = make(work, () => {}, new FakeSessions(), new FakeBoxes(work))
   const { sessionId: parent } = await startIn(service, HOST, tauDir, values, work)
@@ -619,7 +619,12 @@ test('a tau\'s session starts a run from its box as the host does, in its own pr
   assert.deepEqual(entry.caller, from(parent))
   assert.equal(entry.project, await realpath(work))
   assert.equal((await service.status(HOST, child)).parent, parent)
-  await assert.rejects(startIn(service, from('session-00000000-0000-4000-8000-000000000000'), tauDir, values, work), /is not a tau's session/u)
+  // A session that is no tau's, as with tau_run, names its project, as the host does.
+  const other = 'session-00000000-0000-4000-8000-000000000000'
+  const { sessionId: own } = await startIn(service, from(other), tauDir, values, work)
+  assert.equal((await new Registry(join(work, 'taus')).get(own)).project, await realpath(work))
+  assert.equal((await service.status(HOST, own)).parent, other)
+  await assert.rejects(service.start(from(other), { title: 'tau', targets: {} }, callOf(tauDir, values, work).archive), /names its project, an absolute path/u)
 })
 
 test('a tau\'s session reaches only the runs it started, and the host every run', async (t) => {

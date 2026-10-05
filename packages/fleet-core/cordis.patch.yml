@@ -117,6 +117,12 @@
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
 
+          # tau_run: run a tau, as `fleet run` does, as this session's child
+          # (docs/fleet-core/tools/index.md). A tau's session runs taus with
+          # its tau API instead.
+          - id: tool-tau
+            name: fleet-core/tools/tau
+
           # Not model tools: automatic compaction, /compact, and old tool-result pruning.
           - id: compaction
             name: cordis:group
