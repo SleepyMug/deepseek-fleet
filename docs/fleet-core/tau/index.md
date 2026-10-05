@@ -1,8 +1,9 @@
 # fleet-core/tau
 
 The tau service. It starts runs of taus, each a box and a dsh session, and
-watches each until its agent is done, then gives back how it ended, and
-cancels and deletes runs. It runs in dsh's process, in the fleet profile.
+watches each until its agent is done, then gives back how it ended, with
+what it left at its `$out` and `$inout` handles put at the caller's paths,
+and cancels and deletes runs. It runs in dsh's process, in the fleet profile.
 `start` sets up the run's box, mints the session's id and expands its prompt,
 then makes the dsh session, in the caller's folder as its workspace, so the
 web UI lists it there, and gives it the prompt. The session's bash and file
@@ -28,7 +29,7 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | `start { tauDir, callerCwd, values }` | Start a run of the tau with the values: set up its box, start it, make the dsh session and give it its prompt. Answers `{ sessionId, box, prompt }`. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`. |
-| `finish { sessionId }` | Wait until the run ends, and answer how it did, the same each time. |
+| `finish { sessionId }` | Wait until the run ends, and answer how it did, the same each time. The first time, a run that succeeded puts what it gave back at the caller's paths. |
 | `cancel { sessionId }` | Cancel the run's turn, which ends the run; a run that ended is let be. |
 | `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run. |
 
@@ -99,7 +100,9 @@ preset's scope, which each of its sessions' agents has as its parent.
   mode, kind, caller's path and place), the names of the APIs the tau
   declares, each linked, what it exposes, with what each says it is, when
   it was made, when it was given its prompt, when and how its run ended,
-  and when a `finish` first gave that back. An entry is
+  and when a `finish` first gave that back. Beside it, a folder of the
+  session's own, `$DSH_HOME/fleet/taus/<session id>/`, holds what the run
+  gave back until a finish puts it at the caller's paths. An entry is
   written last, so an entry means a box that is set up, and before the dsh
   session is made. A service started later finds its sessions there. Only
   ids of the form the service mints name an entry, since they are file
@@ -119,8 +122,9 @@ preset's scope, which each of its sessions' agents has as its parent.
 - **A run ends** at the first time its agent is done with its prompt: the
   service waits for the agent's `whenIdle()`, then reads the session's log
   with the session controller's `inspect` (`outcome.ts`). The run succeeded
-  if its last turn completed; its text is the last its agent wrote. Any
-  other end is a failure, which says why: cancelled; the host stopped
+  if its last turn completed, and left what its tau declares (below); its
+  text is the last its agent wrote. Any other end is a failure, which says
+  why: what it did not leave, naming each place in the box; cancelled; the host stopped
   during the run, as dsh disposes of the agent then (`aborted` by
   `disposed`), or closes the cut turn later (`interrupted`); the model's
   error; and so on. The service records that in the entry, and stops the
@@ -132,14 +136,30 @@ preset's scope, which each of its sessions' agents has as its parent.
   short before its prompt ends as a failure that says so. The service takes
   its socket before it loads, so one that does not get it, as when another
   serves the same dsh home, records nothing.
+- **What a run gives back** (`outputs.ts`), once its last turn completed:
+  what its agent left at the place of each `$out` and `$inout` handle is
+  copied out of the box whole, with `docker cp`, which keeps modes and
+  symlinks, into the session's folder, one entry per handle, and checked
+  there with tau's `checkOutputs`, as tau's docs/spec/paths.md asks: a file
+  or a folder as declared, not a symlink itself, and each symlink in a
+  folder relative and leading inside it. A run that does not pass fails. A
+  run that failed has nothing copied out, and gives nothing back.
 - **Finishing** waits for the run's end, which a client that goes away
-  gives up, leaving the run as it is, then records the first finish in the
-  entry, and answers how the run ended. It answers the same again, so a
+  gives up, leaving the run as it is. The first time, for a run that
+  succeeded, it puts what the run gave back at the caller's paths, as tau's
+  docs/spec/results.md has it: a folder merges into a folder already
+  there, each of its entries put the same way, and anything else replaces
+  what is there. The caller's own path leads where its symlinks do; a
+  symlink inside a folder there is replaced, not followed. Paths that lie in
+  one another are put outer first, so the inner one wins. Then it records
+  the finish in the entry, drops the session's folder, and answers how the
+  run ended. It answers the same again, so a
   client that lost its connection, as when dsh restarts, asks again.
 - **Cancelling** cancels the session's turn; the run then ends as
   cancelled, which its watch records.
 - **Deleting** archives the session, stopping its work, since dsh does not
-  delete sessions; then it removes the box and forgets the session. A
+  delete sessions; then it removes the box and the session's folder, and
+  forgets the session. A
   session never started is not dsh's, so there is nothing to archive. An
   archive that fails keeps the box and the entry.
 - **One `Box` per session.** The runs open each session's box once and keep
@@ -210,17 +230,19 @@ preset's scope, which each of its sessions' agents has as its parent.
 
 ## Not yet
 
-- Nothing comes back out: `$out` and `$inout` handles are neither copied back
-  nor checked with `checkOutputs`.
+- What a run gives back is copied whole, however large, once to the
+  session's folder and once to the caller's paths; and an `$inout` handle
+  merges into the caller's folder, so what the agent removed there stays.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 
 ## Built on
 
-- `@sleepymug/tau`: `loadTau`, `bind`, `checkInputs`, `loadApis`,
-  `checkImplementation`, `loadExposed`.
+- `@sleepymug/tau`: `loadTau`, `bind`, `checkInputs`, `checkOutputs`,
+  `loadApis`, `checkImplementation`, `loadExposed`.
 - `ctx.fleetExts` (fleet-core/ext).
-- `Box` and `exec` (`fleet-core/box`).
+- `Box` and `exec` (`fleet-core/box`), and `copyOutWhole` for what a run
+  gives back.
 - `fleet-protocol/tau`, for the wire.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,

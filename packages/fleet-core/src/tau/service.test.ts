@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from 'fleet-image/layout'
+import { MissingInBox } from '../box/box.ts'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
 import { modulesOf } from '../tools/ts.ts'
@@ -49,11 +50,28 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
   return { work, tauDir, values }
 }
 
+/**
+ * What the agent leaves in the box, by path: a file's text, or null for a
+ * folder. By default, what the fixture's tau declares at the places of its
+ * `$out` and `$inout` handles.
+ */
+type Left = Record<string, string | null>
+
+const LEFT: Left = {
+  '/tau/workspace/site': null,
+  '/tau/workspace/site/index.md': '# Home\n\nbuy milk\n',
+  '/tau/workspace/site/milk.md': '# Milk\n',
+  '/tau/out/report.md': 'Added milk.\n',
+  '/tau/out/pages': null,
+  '/tau/out/pages/a.md': 'A\n',
+}
+
 /** Boxes that record what is done with them, and fail the verb `failing` names. */
 class FakeBoxes implements Boxes {
   readonly calls: string[] = []
   readonly existing = new Set<string>()
   failing: string | undefined
+  left: Left = { ...LEFT }
 
   create(name: string): Promise<RunBox> {
     this.calls.push(`create ${name}`)
@@ -91,6 +109,16 @@ class FakeBoxes implements Boxes {
         this.existing.delete(name)
       },
       copyIn: async (from, to) => { record('copyIn', `copyIn ${from} ${to}`) },
+      copyOutWhole: async (from, to) => {
+        record('copyOutWhole', `copyOutWhole ${from}`)
+        const found = Object.entries(this.left).filter(([path]) => path === from || path.startsWith(`${from}/`))
+        if (found.length === 0) throw new MissingInBox(`nothing at ${from}`)
+        for (const [path, text] of found.sort(([a], [b]) => a.localeCompare(b))) {
+          const at = join(to, path.slice(from.length))
+          if (text === null) await mkdir(at, { recursive: true })
+          else await writeFile(at, text)
+        }
+      },
       request: (async (method: string, params: unknown) => {
         record(method, `${method} ${JSON.stringify(params)}`)
         return { code: 0, signal: null, stdout: '', stderr: '' }
@@ -305,6 +333,59 @@ test('a run starts its box, makes the dsh session in the caller\'s folder with t
   await later.tauRuns.load()
   await later.load()
   assert.deepEqual(await later.finish(sessionId, new AbortController().signal), { ok: true, text: 'Done.' })
+})
+
+test('a run that succeeded puts what its agent left at the caller\'s paths once it is finished, a folder merging into one there', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  await writeFile(join(work, 'site', 'kept.md'), 'kept\n')
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes()
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await service.start(tauDir, values, work)
+  sessions.end(sessionId, completed('Done.'))
+  // Ended, copied out and checked, but not given back before a finish.
+  while ((await service.status(sessionId)).state === 'running') await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual((await service.status(sessionId)).result, { ok: true, text: 'Done.' })
+  assert.deepEqual(boxes.calls.filter(call => call.startsWith('copyOutWhole')), [
+    'copyOutWhole /tau/workspace/site', 'copyOutWhole /tau/out/report.md', 'copyOutWhole /tau/out/pages',
+  ])
+  await assert.rejects(readFile(join(work, 'out', 'report.md')), /ENOENT/u)
+  assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['1', '2', '3'])
+
+  assert.deepEqual(await service.finish(sessionId, new AbortController().signal), { ok: true, text: 'Done.' })
+  assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added milk.\n')
+  assert.deepEqual(await readdir(join(work, 'out', 'pages')), ['a.md'])
+  assert.deepEqual((await readdir(join(work, 'site'))).sort(), ['index.md', 'kept.md', 'milk.md'])
+  assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\n\nbuy milk\n')
+  await assert.rejects(readdir(join(work, 'taus', sessionId)), /ENOENT/u)
+})
+
+test('a run whose agent did not leave what its tau declares fails, and gives back nothing', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes()
+  delete boxes.left['/tau/out/report.md']
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await service.start(tauDir, values, work)
+  sessions.end(sessionId, completed('Done.'))
+  const result = await service.finish(sessionId, new AbortController().signal)
+  assert.equal(result.ok, false)
+  assert.equal(result.text, 'Done.')
+  assert.match(result.failure ?? '', /did not leave what the tau declares:\n {2}report: /u)
+  assert.deepEqual(await readdir(join(work, 'out')), [])
+  assert.deepEqual(await readdir(join(work, 'site')), ['index.md'])
+})
+
+test('what a run that failed left is not copied out, nor given back', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes()
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await service.start(tauDir, values, work)
+  sessions.end(sessionId, { end: { kind: 'aborted', reason: { kind: 'user' } }, text: '' })
+  assert.equal((await service.finish(sessionId, new AbortController().signal)).ok, false)
+  assert.deepEqual(boxes.calls.filter(call => call.startsWith('copyOutWhole')), [])
+  assert.deepEqual(await readdir(join(work, 'out')), [])
 })
 
 test('a run ends with why it failed, and is ended, not finished, until a finish gives that back', async (t) => {
@@ -545,6 +626,15 @@ test('a real box gets the tau and the handles at their places', { skip: await ab
     await run('docker', ['exec', box, 'test', '-d', '/tau/out/pages'])
     // The caller's folder, where dsh runs the session's work, is /tau/workspace in the box, and not there at its own path.
     await assert.rejects(run('docker', ['exec', box, 'test', '-e', await realpath(work)]))
+    // What the agent leaves is copied out with docker cp, checked, and put at the caller's paths.
+    const leave = 'echo Added. > /tau/out/report.md && echo A > /tau/out/pages/a.md && ln -s a.md /tau/out/pages/latest && echo more >> /tau/workspace/site/index.md'
+    assert.equal((await started?.request('exec', { argv: ['sh', '-c', leave] }))?.code, 0)
+    assert.equal(await service.tauRuns.collect(sessionId), undefined)
+    await service.tauRuns.publish(sessionId)
+    assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added.\n')
+    assert.equal(await readlink(join(work, 'out', 'pages', 'latest')), 'a.md')
+    assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\nmore\n')
+    assert.equal(await readFile(join(work, 'notes.md'), 'utf8'), 'buy milk\n')
     await service.tauRuns.stop(sessionId)
   } finally {
     await service.delete(sessionId)

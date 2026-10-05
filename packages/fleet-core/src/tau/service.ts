@@ -2,9 +2,10 @@
  * The tau service (docs/fleet-core/tau/index.md), what `fleet` asks of the
  * fleet host: it starts a run of a tau, with its box (./runs.ts) and its dsh
  * session, in the caller's folder as its workspace, which it gives the
- * prompt; watches the run until its agent is done, and records how it ended
- * (./outcome.ts); and gives that back, cancels the run, and deletes it with
- * its box. The service reaches dsh's sessions only through {@link Sessions}.
+ * prompt; watches the run until its agent is done, copies out what it gave
+ * back and checks it, and records how it ended (./outcome.ts); gives that
+ * back, putting what the run gave back at the caller's paths; and cancels
+ * the run, and deletes it with its box. The service reaches dsh's sessions only through {@link Sessions}.
  * @module fleet-core/tau/service
  */
 
@@ -101,6 +102,8 @@ export class TauService {
 
   /**
    * Wait until a run ends, and give back how it did, the same each time.
+   * The first time, a run that succeeded puts what it gave back at the
+   * caller's paths, which a finish that fails on the way does again.
    * @param signal - gives up the wait; the run goes on.
    */
   async finish(sessionId: string, signal: AbortSignal): Promise<Result> {
@@ -108,7 +111,11 @@ export class TauService {
     return await this.serial(sessionId, async () => {
       const { ended, finishedAt } = await this.runs.entry(sessionId)
       if (ended === undefined) throw new Error(`fleet: the fleet host stopped before ${sessionId} ended`)
-      if (finishedAt === undefined) await this.runs.finished(sessionId)
+      if (finishedAt === undefined) {
+        // What a run that failed left is not given back.
+        if (ended.result.ok) await this.runs.publish(sessionId)
+        await this.runs.finished(sessionId)
+      }
       return ended.result
     })
   }
@@ -171,6 +178,10 @@ export class TauService {
     await this.serial(sessionId, async () => {
       // Deleted meanwhile, or ended already, as by a watch before a restart.
       if (!this.runs.isTau(sessionId) || (await this.runs.entry(sessionId)).ended !== undefined) return
+      if (result.ok) {
+        const unfit = await this.runs.collect(sessionId).catch((error: unknown) => `could not copy out what the run gave back: ${message(error)}`)
+        if (unfit !== undefined) result = { ok: false, text: result.text, failure: unfit }
+      }
       await this.runs.ended(sessionId, result)
       this.log(`${sessionId} ended${result.ok ? '' : `, failing: ${String(result.failure)}`}`)
       await this.runs.stop(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${message(error)}`) })

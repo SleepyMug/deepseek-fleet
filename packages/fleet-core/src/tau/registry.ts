@@ -87,6 +87,12 @@ export class Registry {
     await rm(this.file(sessionId), { force: true })
   }
 
+  /** A folder of a session's own, beside its entry, such as for what its run gives back. */
+  folder(sessionId: string): string {
+    if (!SESSION_ID.test(sessionId)) throw new Error(`fleet: no tau session ${sessionId}`)
+    return join(this.dir, sessionId)
+  }
+
   /** An entry's file, for an id of the form the service mints, which is what makes it a file name. */
   private file(sessionId: string): string {
     if (!SESSION_ID.test(sessionId)) throw new Error(`fleet: no tau session ${sessionId}`)

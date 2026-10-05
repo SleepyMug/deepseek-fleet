@@ -25,7 +25,10 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
 - A run is `running` until its agent is done, then `ended`, and `finished`
   once `finish` has given back how it ended, which it does again each time.
 - `finish` and `run` report a run as tau's docs/spec/results.md has it: the
-  final text on stdout, and why the run failed on stderr.
+  final text on stdout, and why the run failed on stderr. By then, a run
+  that succeeded has put what it left at its `$out` and `$inout` handles at
+  their paths, a folder merging into one there; a run that failed has put
+  nothing there.
 - Exit codes:
   - `0` on success;
   - `1` when the run failed, when the service refuses or fails, or there is

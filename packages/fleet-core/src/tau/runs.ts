@@ -4,7 +4,8 @@
  * it (./place.ts), and its APIs linked to the clients of the extensions that
  * implement them (./apis.ts); keeps which box each session has
  * (./registry.ts); starts, stops and removes the box, and copies host files
- * into it as they are asked for; and answers the calls the clients in the
+ * into it as they are asked for; copies out what the run gives back, and
+ * puts it at the caller's paths (./outputs.ts); and answers the calls the clients in the
  * box make, with the extensions' servers. It uses nothing of dsh's, so both
  * fleet-core's world (../world/), which serves a tau's session from its box,
  * and the tau service (./service.ts), which makes the session, build on it.
@@ -12,18 +13,19 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { realpath } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import { posix, relative, sep } from 'node:path'
 import { checkInputs, loadTau } from '@sleepymug/tau'
 import type { Call } from 'fleet-image/helper/protocol'
 import type { Result, Started, Values } from 'fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
 import { linkApis, type Exts } from './apis.ts'
+import { check, collect, publish } from './outputs.ts'
 import { CLIENTS, FOLDERS, MODULES, SELF, placer } from './place.ts'
 import type { Entry, Registry } from './registry.ts'
 
 /** What a run's box is used for. */
-export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copyIn' | 'request'>
+export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copyIn' | 'copyOutWhole' | 'request'>
 
 /** Where the runs get their boxes: Docker's, through `Box`, unless a test stands in. */
 export interface Boxes {
@@ -146,9 +148,30 @@ export class TauRuns {
     await this.registry.put({ ...await this.registry.get(sessionId), ended: { at: new Date().toISOString(), result } })
   }
 
-  /** Record that a `finish` gave back how a session's run ended. */
+  /**
+   * Copy what a session's run left at its `$out` and `$inout` handles'
+   * places out of its box, into the session's folder of the registry, and
+   * check it against the tau (./outputs.ts).
+   * @returns why it does not fit, or undefined if it does.
+   */
+  async collect(sessionId: string): Promise<string | undefined> {
+    return await this.serial(sessionId, async () => {
+      const { handles } = await this.registry.get(sessionId)
+      const staging = this.registry.folder(sessionId)
+      await collect(await this.box(sessionId), handles, staging)
+      return check(handles, staging)
+    })
+  }
+
+  /** Put what a session's run gave back, as {@link collect} copied it, at the caller's paths. */
+  async publish(sessionId: string): Promise<void> {
+    await publish((await this.registry.get(sessionId)).handles, this.registry.folder(sessionId))
+  }
+
+  /** Record that a `finish` gave back how a session's run ended, and drop what it gave back. */
   async finished(sessionId: string): Promise<void> {
     await this.registry.put({ ...await this.registry.get(sessionId), finishedAt: new Date().toISOString() })
+    await rm(this.registry.folder(sessionId), { recursive: true, force: true })
   }
 
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */
@@ -225,7 +248,10 @@ export class TauRuns {
     })
   }
 
-  /** Remove a session's box, running or not, and its registry entry. A box removed by other means leaves only the entry. */
+  /**
+   * Remove a session's box, running or not, its registry entry and its
+   * folder. A box removed by other means leaves only the entry.
+   */
   async remove(sessionId: string): Promise<void> {
     await this.serial(sessionId, async () => {
       const entry = await this.registry.get(sessionId)
@@ -237,6 +263,7 @@ export class TauRuns {
       this.boxes.delete(sessionId)
       this.started.delete(sessionId)
       this.copies.delete(sessionId)
+      await rm(this.registry.folder(sessionId), { recursive: true, force: true })
       await this.registry.delete(sessionId)
       this.taus.delete(sessionId)
     })

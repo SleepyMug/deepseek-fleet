@@ -42,6 +42,9 @@ export interface BoxInfo {
   status: string
 }
 
+/** Nothing is at a path in a box that a copy reads. */
+export class MissingInBox extends Error {}
+
 export class Box {
   /** The helper while the box is started. */
   private helper: Helper | undefined
@@ -148,6 +151,25 @@ export class Box {
   copyOut(from: string, to: string): Promise<void> {
     return this.serial(async () => {
       await run(this.docker, ['cp', `${this.container}:${containerPath(from)}/.`, resolve(to)])
+    })
+  }
+
+  /**
+   * Copy a container file or folder, whole, to a host path that is not
+   * there yet, whether the box runs or not, with `docker cp`. Symlinks are
+   * copied as links, the path's own included, and modes are kept.
+   * @param from - the container's path, absolute.
+   * @param to - the host path, whose parent exists.
+   * @throws {@link MissingInBox} when nothing is at `from`.
+   */
+  copyOutWhole(from: string, to: string): Promise<void> {
+    return this.serial(async () => {
+      try {
+        await run(this.docker, ['cp', `${this.container}:${containerPath(from)}`, resolve(to)])
+      } catch (error) {
+        if (/Could not find the file/u.test((error as Error).message)) throw new MissingInBox(`fleet: nothing is at ${from} in ${this.container}`, { cause: error })
+        throw error
+      }
     })
   }
 
