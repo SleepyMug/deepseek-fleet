@@ -66,6 +66,12 @@ preset's scope, which each of its sessions' agents has as its parent.
 - `boxFor(sessionId)`, the started box of a tau's session, started if it is
   not, and set up again from the run's call if it is gone; it fails while
   the session is archived;
+- `hold(sessionId, occupant)`, the same, occupied by `occupant`, a turn, a
+  terminal, a process, a call or a file call, until its release, so the
+  box is not stopped for being idle while it is in use; `occupy` occupies
+  without asking for the box, as a running agent does;
+- `whenStarted(sessionId, signal)`, the box once something starts it,
+  which starts nothing, for a watch;
 - `copyInOnce(sessionId, from, to)`, at once, a host file copied into the
   box of a tau's session before its next use, for dsh's attachments.
 
@@ -210,6 +216,19 @@ preset's scope, which each of its sessions' agents has as its parent.
   forgets the session. A
   session never started is not dsh's, so there is nothing to archive. An
   archive that fails keeps the box and the entry.
+- **An idle box stops.** A session's box runs while anything occupies it:
+  its agent while it runs (`fleet-tau` follows `agent/status` and
+  `agent/disposed`), and the world's file calls, processes and terminals,
+  each through `hold` from before it asks for the box until nothing of it
+  can reach the box. When the last leaves, the box is stopped after
+  `idleStopMs`, 60 s by default, in `fleet-tau-runs`' config, unless
+  something occupies it again meanwhile; its next use starts it again. A
+  run's end stops its box at once, as its result is packed, unless
+  something occupies it, such as a user's terminal, and then as soon as
+  nothing does. `boxFor` occupies for no longer than it asks, so a box it
+  starts for no one stops once it is idle. A box is not started here
+  again from the moment its stop begins, so a watch it ends knows it
+  stopped, and waits for its next start.
 - **One `Box` per session.** The runs open each session's box once and keep
   it, so the box's verbs run in order. When `fleet-tau-runs` unloads, as
   dsh exits, it stops the boxes it started, `boxFor`'s included.
@@ -313,8 +332,6 @@ preset's scope, which each of its sessions' agents has as its parent.
 - The runs a session that is no tau's started with `tau_run`, and their
   sessions, stay, without their boxes, when the session is archived; `fleet
   delete` forgets them.
-- A box started for a session's use after its run ended, such as a
-  follow-up turn or a terminal, runs until dsh exits.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 

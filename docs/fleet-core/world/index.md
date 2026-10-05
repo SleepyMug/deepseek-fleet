@@ -31,9 +31,13 @@ a tau's session does not look; they stay inline instead.
   `LocalSubprocessRuntime`, which each service mounts in a context that
   isolates its service's name, so that only it sees them, and they do not
   stand in for it.
-- **The box** of a session comes from `ctx.fleetTauRuns.boxFor`, which
-  starts it if it is not running, as after a restart or the run's end. Its
-  helper serves every call (docs/fleet-box-runtime/helper/index.md).
+- **The box** of a session comes from `ctx.fleetTauRuns.hold`, which
+  starts it if it is not running, as after a restart, the run's end or an
+  idle stop, and which each use occupies until it is done, so the box is
+  not stopped for being idle under it (docs/fleet-core/tau/index.md): a
+  file call while it runs, `which` while it runs, a process until it exits,
+  and a terminal until it ends. Its helper serves every call
+  (docs/fleet-box-runtime/helper/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
   or else to the box of the session it is for, if a tau's. The targets a box
@@ -72,8 +76,16 @@ a tau's session does not look; they stay inline instead.
   the dsh home, as `dshHomePath()` in the patch.
 - **Watching** a box's target asks its helper (`fs.watch`), which watches
   with dsh's local file system and sends an event for each change, until
-  the watch's stop or signal ends it (`fs.unwatch`). A box lost meanwhile
-  is the watch's error. So the sidebar refreshes live.
+  the watch's stop or signal ends it (`fs.unwatch`). So the sidebar
+  refreshes live. A watch neither starts the box nor occupies it, since the
+  file viewer holds one for as long as it shows a folder: if it did, an
+  open browser tab would keep the box running; and if a watch failed as its
+  box stopped, the viewer's feed, which reads the folder again before it
+  watches again, would start the box each time it stopped. So while the
+  box is stopped, the watch waits (`ctx.fleetTauRuns.whenStarted`), and
+  once something else starts the box, it watches there again and reports a
+  change, since the files may have changed meanwhile. A failure while the
+  box runs, or the session's deletion, is the watch's error.
 - **Processes.** A tau's session's process runs in its box, in a process
   group of its own, in the folder dsh names, the session's project, a host
   folder, put in `/tau/workspace` in the box (`ctx.fleetTauRuns.boxPath`,
@@ -98,8 +110,8 @@ a tau's session does not look; they stay inline instead.
   unavailable, and big tool results stay inline.
 - **Not served for a box:** raw pipes and the control channel.
 - **A terminal is no session activity:** archiving a tau's session does not
-  wait for its open terminals, and does not end them; deleting it removes
-  the box, which does.
+  wait for its open terminals; removing its box, once its run ended, ends
+  them.
 - **dsh's other host features** stay on the host: `@` file mentions and the
   changed-files card read the host's folder of a tau's session.
 

@@ -44,7 +44,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
 import type { Methods, Target } from 'fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
-import type { RunBox } from '../tau/runs.ts'
+import type { RunBox, TauRuns } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'
 import { callerSession } from './caller.ts'
 
@@ -216,24 +216,48 @@ export class FleetFileSystem extends FileSystem {
 
   /**
    * Watch a box's target through its helper until the returned stop, or the
-   * signal, ends it; a box lost meanwhile is reported as the watch's error.
+   * signal, ends it. A watch neither starts the box nor keeps it running,
+   * since the file viewer holds one for as long as it shows the folder: it
+   * is the box's helper's while the box is started; while the box is
+   * stopped, as when it was idle, the watch waits, and reports a change as
+   * it is the helper's again, since the files may have changed meanwhile.
+   * A failure while the box runs, or the session's end, is the watch's error.
    */
   override async watch(target: FsTarget, changed: (error?: Error) => void, signal: AbortSignal): Promise<() => Promise<void>> {
     const box = inBox(target)
     if (box === undefined) return (await this.localReady).watch(target, changed, signal)
-    const watch = randomUUID()
-    const running = await this.boxOf(box.session)
-    const watching = running.request('fs.watch', { watch, target: inward(box) }, (event) => {
-      changed(event.error === null ? undefined : new FsError(event.error, 'FS_IO_ERROR'))
-    })
-    let stopped = false
-    // A watch that fails, its box lost, is reported; one ended here answers.
-    watching.catch((error: unknown) => { if (!stopped) changed(new FsError(message(error), 'FS_IO_ERROR', { cause: error })) })
+    const runs = this.self.fleetTauRuns
+    const ending = new AbortController()
+    const ended = AbortSignal.any([signal, ending.signal])
+    let attached: { running: RunBox; watch: string } | undefined
+    const follow = async (): Promise<void> => {
+      for (let again = false; ; again = true) {
+        const running = await runs.whenStarted(box.session, ended)
+        if (again) changed()
+        const watch = randomUUID()
+        attached = { running, watch }
+        try {
+          // The helper answers a watch once it is unwatched.
+          await running.request('fs.watch', { watch, target: inward(box) }, (event) => {
+            changed(event.error === null ? undefined : new FsError(event.error, 'FS_IO_ERROR'))
+          })
+          return
+        } catch (error) {
+          // A box that stops ends its helper, and the watch with it, which waits for its next start.
+          if (ended.aborted || !runs.isStarted(box.session)) continue
+          throw error
+        } finally {
+          attached = undefined
+        }
+      }
+    }
+    follow().catch((error: unknown) => { if (!ended.aborted) changed(new FsError(message(error), 'FS_IO_ERROR', { cause: error })) })
     const stop = async (): Promise<void> => {
-      if (stopped) return
-      stopped = true
+      if (ending.signal.aborted) return
+      ending.abort()
       signal.removeEventListener('abort', abort)
-      await running.request('fs.unwatch', { watch }).catch(() => {})
+      const current = attached
+      if (current !== undefined) await current.running.request('fs.unwatch', { watch: current.watch }).catch(() => {})
     }
     const abort = (): void => { void stop() }
     if (signal.aborted) await stop()
@@ -272,28 +296,24 @@ export class FleetFileSystem extends FileSystem {
     return { sessionId, workspaceRoot: header.cwd ?? ctx.get('sandboxPolicy')?.workspaceRoot } as WorkspaceFileScope
   }
 
-  /** A session's started box, whose failures become `FsError`s. */
-  private async boxOf(session: string): Promise<RunBox> {
-    let box: RunBox | undefined
+  /** Ask a session's box, which the call occupies while it runs; the failures become `FsError`s. */
+  private async ask<M extends FsMethod>(session: string, method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
+    let held: Awaited<ReturnType<TauRuns['hold']>>
     try {
-      box = await this.self.fleetTauRuns.boxFor(session)
+      held = await this.self.fleetTauRuns.hold(session, { kind: 'file', id: randomUUID() })
     } catch (error) {
       throw new FsError(`the box of ${session} cannot be started: ${message(error)}`, 'FS_IO_ERROR', { cause: error })
     }
-    if (box === undefined) throw new FsError(`${session} is not a tau's session, so it has no box`, 'FS_NOT_FOUND')
-    return box
-  }
-
-  /** Ask a session's box, whose failures become `FsError`s. */
-  private async ask<M extends FsMethod>(session: string, method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
-    const box = await this.boxOf(session)
+    if (held === undefined) throw new FsError(`${session} is not a tau's session, so it has no box`, 'FS_NOT_FOUND')
     try {
-      return await box.request(method, params)
+      return await held.box.request(method, params)
     } catch (error) {
       if (error instanceof HelperError && error.code !== undefined && FS_ERROR_CODES.has(error.code)) {
         throw new FsError(error.message, error.code as FsErrorCode, { cause: error })
       }
       throw new FsError(message(error), 'FS_IO_ERROR', { cause: error })
+    } finally {
+      held.release()
     }
   }
 

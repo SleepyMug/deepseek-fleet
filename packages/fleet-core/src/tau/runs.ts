@@ -36,6 +36,20 @@ import type { Caller, Entry, Registry } from './registry.ts'
 /** What a run's box is used for. */
 export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copyIn' | 'pipe' | 'request'>
 
+/** Something that needs a session's box running now. */
+export interface Occupant {
+  /**
+   * `turn`: the session's agent is running.
+   * `terminal`: a user's shell, until it ends.
+   * `process`: a process in the box, until it exits.
+   * `call`: a request to the box's helper for a caller, while it runs.
+   * `file`: a file call served from the box, while it runs.
+   */
+  kind: 'turn' | 'terminal' | 'process' | 'call' | 'file'
+  /** The agent's, terminal's, process's or call's own id. */
+  id: string
+}
+
 /** What a call says of itself, besides the archive. */
 export interface About {
   /** What names the run, in `list` and dsh's web UI. */
@@ -92,12 +106,22 @@ export class TauRuns {
   private readonly copies = new Map<string, Map<string, Promise<void>>>()
   /** The sessions whose box is removed while they are archived. */
   private readonly archived = new Set<string>()
+  /** What occupies each session's box, which is not stopped for being idle while anything does. */
+  private readonly occupants = new Map<string, Map<symbol, Occupant>>()
+  /** Each session's pending stop of its idle box, which every vacancy arms again. */
+  private readonly idle = new Map<string, NodeJS.Timeout>()
+  /** The sessions whose box stops as soon as nothing occupies it, as after their run ended. */
+  private readonly soon = new Set<string>()
+  /** What waits for each session's box to be started, to wake as it is. */
+  private readonly waiters = new Map<string, Set<() => void>>()
 
   constructor(
     private readonly registry: Registry,
     private readonly exts: Exts,
     private readonly log: (message: string) => void,
     private readonly docker: Boxes = dockerBoxes,
+    /** How long a box nothing occupies runs before it is stopped. */
+    private readonly idleStopMs = 60_000,
   ) {}
 
   /** Find the sessions the registry has, before anyone asks which sessions are a tau's. */
@@ -333,8 +357,97 @@ export class TauRuns {
    * archived ({@link archive}), it fails.
    */
   async boxFor(sessionId: string): Promise<RunBox | undefined> {
+    // Released at once: a box nothing occupies afterwards is stopped once it has been idle long enough.
+    const held = await this.hold(sessionId, { kind: 'call', id: 'boxFor' })
+    held?.release()
+    return held?.box
+  }
+
+  /**
+   * The box of a tau's session, as {@link boxFor} gives it, occupied by
+   * `occupant` from before it is asked for until the release, so it is not
+   * stopped for being idle under it; or undefined, occupying nothing, for a
+   * session that is not a tau's.
+   */
+  async hold(sessionId: string, occupant: Occupant): Promise<{ box: RunBox; release: () => void } | undefined> {
     if (!this.taus.has(sessionId)) return undefined
-    return this.serial(sessionId, async () => this.taus.has(sessionId) ? this.running(sessionId) : undefined)
+    const release = this.occupy(sessionId, occupant)
+    try {
+      const box = await this.serial(sessionId, async () => this.taus.has(sessionId) ? this.running(sessionId) : undefined)
+      if (box === undefined) release()
+      return box === undefined ? undefined : { box, release }
+    } catch (error) {
+      release()
+      throw error
+    }
+  }
+
+  /**
+   * Occupy a session's box: it is not stopped for being idle until the
+   * returned release, which only the first call does, once nothing of the
+   * occupant can reach the box. Occupy before asking for the box.
+   */
+  occupy(sessionId: string, occupant: Occupant): () => void {
+    let uses = this.occupants.get(sessionId)
+    if (uses === undefined) this.occupants.set(sessionId, uses = new Map())
+    const held = uses
+    const token = Symbol(occupant.id)
+    held.set(token, occupant)
+    this.disarm(sessionId)
+    return () => {
+      if (!held.delete(token)) return
+      if (held.size === 0 && this.occupants.get(sessionId) === held) this.occupants.delete(sessionId)
+      this.vacated(sessionId)
+    }
+  }
+
+  /** Whether a session's box is started here, and not stopping. */
+  isStarted(sessionId: string): boolean {
+    return this.started.has(sessionId)
+  }
+
+  /** What occupies a session's box now. */
+  occupied(sessionId: string): Occupant[] {
+    return [...this.occupants.get(sessionId)?.values() ?? []]
+  }
+
+  /**
+   * Stop a session's box as soon as nothing occupies it: now, if nothing
+   * does, as when its run ended; else once the last occupant leaves.
+   */
+  async stopWhenVacant(sessionId: string): Promise<void> {
+    if (this.occupied(sessionId).length > 0) {
+      this.soon.add(sessionId)
+      return
+    }
+    this.disarm(sessionId)
+    await this.serial(sessionId, () => this.stopVacant(sessionId, true))
+  }
+
+  /**
+   * A session's box once it is started, now or whenever something next
+   * starts it; this starts nothing. It fails once the session is gone, or
+   * the signal aborts.
+   */
+  async whenStarted(sessionId: string, signal: AbortSignal): Promise<RunBox> {
+    for (;;) {
+      signal.throwIfAborted()
+      if (!this.taus.has(sessionId)) throw new Error(`fleet: no tau session ${sessionId}`)
+      if (this.started.has(sessionId)) return await this.box(sessionId)
+      const woken = Promise.withResolvers<void>()
+      const wake = (): void => { woken.resolve() }
+      let waiting = this.waiters.get(sessionId)
+      if (waiting === undefined) this.waiters.set(sessionId, waiting = new Set())
+      waiting.add(wake)
+      signal.addEventListener('abort', wake, { once: true })
+      try {
+        await woken.promise
+      } finally {
+        waiting.delete(wake)
+        if (waiting.size === 0 && this.waiters.get(sessionId) === waiting) this.waiters.delete(sessionId)
+        signal.removeEventListener('abort', wake)
+      }
+    }
   }
 
   /**
@@ -371,14 +484,16 @@ export class TauRuns {
     await this.serial(sessionId, async () => {
       await (await this.box(sessionId)).start(this.calls(sessionId))
       this.started.add(sessionId)
+      this.wake(sessionId)
     })
   }
 
   /** Stop a session's box, which keeps what is in it. */
   async stop(sessionId: string): Promise<void> {
     await this.serial(sessionId, async () => {
-      await (await this.box(sessionId)).stop()
+      // Not started from here on, so what its stop ends knows the box is stopping (../world/fs.ts).
       this.started.delete(sessionId)
+      await (await this.box(sessionId)).stop()
     })
   }
 
@@ -400,6 +515,8 @@ export class TauRuns {
       this.boxes.delete(sessionId)
       this.started.delete(sessionId)
       this.copies.delete(sessionId)
+      this.disarm(sessionId)
+      this.soon.delete(sessionId)
     })
   }
 
@@ -432,11 +549,17 @@ export class TauRuns {
       await this.registry.delete(sessionId)
       this.taus.delete(sessionId)
       this.archived.delete(sessionId)
+      this.occupants.delete(sessionId)
+      this.disarm(sessionId)
+      this.soon.delete(sessionId)
+      this.wake(sessionId)
     })
   }
 
   /** Stop the boxes started here. */
   async close(): Promise<void> {
+    for (const timer of this.idle.values()) clearTimeout(timer)
+    this.idle.clear()
     const started = [...this.started]
     this.started.clear()
     await Promise.all(started.map(async (sessionId) => {
@@ -485,7 +608,46 @@ export class TauRuns {
     const box = await this.box(sessionId)
     await box.start(this.calls(sessionId))
     this.started.add(sessionId)
+    this.wake(sessionId)
     return box
+  }
+
+  /** A session's box may have lost its last occupant: stop it once it has been idle long enough, or at once if asked to. */
+  private vacated(sessionId: string): void {
+    if (this.occupied(sessionId).length > 0) return
+    this.disarm(sessionId)
+    const timer = setTimeout(() => {
+      if (this.idle.get(sessionId) === timer) this.idle.delete(sessionId)
+      this.serial(sessionId, () => this.stopVacant(sessionId, false)).catch((error: unknown) => {
+        this.log(`could not stop the idle box of ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
+      })
+    }, this.soon.has(sessionId) ? 0 : this.idleStopMs)
+    timer.unref()
+    this.idle.set(sessionId, timer)
+  }
+
+  /**
+   * Stop a session's box, in one of its operations, if nothing occupies it:
+   * one started here, or, with `any`, one started by anyone, as by a dsh
+   * that stopped before its run ended.
+   */
+  private async stopVacant(sessionId: string, any: boolean): Promise<void> {
+    if (!this.taus.has(sessionId) || this.archived.has(sessionId) || this.occupied(sessionId).length > 0) return
+    if (!any && !this.started.has(sessionId)) return
+    this.soon.delete(sessionId)
+    this.started.delete(sessionId)
+    await (await this.box(sessionId)).stop()
+  }
+
+  /** Cancel a session's pending idle stop. */
+  private disarm(sessionId: string): void {
+    clearTimeout(this.idle.get(sessionId))
+    this.idle.delete(sessionId)
+  }
+
+  /** Wake what waits for a session's box to be started, or for the session to go. */
+  private wake(sessionId: string): void {
+    for (const resolve of this.waiters.get(sessionId) ?? []) resolve()
   }
 
   /**
@@ -516,6 +678,7 @@ export class TauRuns {
       this.taus.set(sessionId, { project: entry.project, cwd: setup.cwd })
       this.boxes.set(sessionId, Promise.resolve(box))
       this.started.add(sessionId)
+      this.wake(sessionId)
       this.log(`set up the box ${entry.box} of ${sessionId} again, from its call`)
       return box
     } catch (error) {

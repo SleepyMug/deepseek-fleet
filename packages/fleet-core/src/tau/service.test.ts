@@ -6,6 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import type { BoundHandle } from '@sleepymug/tau'
 import { applyResult, packCall, writeCall, writeResult, type Result } from '@sleepymug/tau/call'
@@ -162,7 +163,7 @@ const added: { args: unknown[]; sessionId: string }[] = []
  * `exts` says otherwise, an extension of notes whose client is the
  * fixture's, and whose `add` records its call.
  */
-function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes, exts?: Exts): TauService & { tauRuns: TauRuns } {
+function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes, exts?: Exts, idleStopMs?: number): TauService & { tauRuns: TauRuns } {
   let provided = exts
   if (provided === undefined) {
     const own = new FleetExts()
@@ -178,7 +179,7 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
     })
     provided = own
   }
-  const runs = new TauRuns(new Registry(join(work, 'taus')), provided, log, boxes)
+  const runs = new TauRuns(new Registry(join(work, 'taus')), provided, log, boxes, idleStopMs)
   return Object.assign(new TauService(runs, sessions, log), { tauRuns: runs })
 }
 
@@ -761,6 +762,79 @@ test('archiving a session removes the boxes of the runs it started, and of their
   assert.deepEqual((await service.list(HOST)).map(status => status.sessionId), [child, grandchild, other].map(({ sessionId }) => sessionId))
   await service.followArchive(new Set())
   assert.equal((await service.tauRuns.boxFor(grandchild.sessionId))?.container, grandchild.box)
+})
+
+test('a box nothing occupies is stopped once it was idle long enough, and not while anything occupies it', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const boxes = new FakeBoxes(work)
+  const service = make(work, () => {}, new FakeSessions(), boxes, undefined, 20)
+  const runs = service.tauRuns
+  const { sessionId } = await create(service, tauDir, values, work)
+  boxes.calls.length = 0
+  const terminal = await runs.hold(sessionId, { kind: 'terminal', id: 'shell' })
+  const file = await runs.hold(sessionId, { kind: 'file', id: 'read' })
+  file?.release()
+  file?.release()
+  assert.deepEqual(runs.occupied(sessionId), [{ kind: 'terminal', id: 'shell' }])
+  await delay(60)
+  assert.deepEqual(boxes.calls, ['start'])
+  terminal?.release()
+  await delay(60)
+  assert.deepEqual(boxes.calls, ['start', 'stop'])
+  assert.equal(runs.isStarted(sessionId), false)
+
+  // A use while it waits keeps it running, until that use is done too.
+  const first = await runs.hold(sessionId, { kind: 'process', id: 'one' })
+  first?.release()
+  const second = await runs.hold(sessionId, { kind: 'process', id: 'two' })
+  await delay(60)
+  assert.deepEqual(boxes.calls, ['start', 'stop', 'start'])
+  second?.release()
+  await delay(60)
+  assert.deepEqual(boxes.calls, ['start', 'stop', 'start', 'stop'])
+  // Asked for without occupying it, it is stopped too.
+  await runs.boxFor(sessionId)
+  await delay(60)
+  assert.deepEqual(boxes.calls.slice(-2), ['start', 'stop'])
+})
+
+test('a run\'s end stops its box at once, unless something occupies it, and then as soon as nothing does', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes(work)
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await startIn(service, HOST, tauDir, values, work)
+  const terminal = await service.tauRuns.hold(sessionId, { kind: 'terminal', id: 'shell' })
+  sessions.end(sessionId, completed('Done.'))
+  while ((await service.status(HOST, sessionId)).state === 'running') await new Promise(resolve => setImmediate(resolve))
+  assert.notEqual(boxes.calls.at(-1), 'stop')
+  // Not after the minute a box is idle by default, but at once.
+  terminal?.release()
+  await delay(20)
+  assert.equal(boxes.calls.at(-1), 'stop')
+})
+
+test('waiting for a box to be started starts nothing, and fails once the session is gone', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const boxes = new FakeBoxes(work)
+  const service = make(work, () => {}, new FakeSessions(), boxes)
+  const runs = service.tauRuns
+  const { sessionId, box } = await create(service, tauDir, values, work)
+  boxes.calls.length = 0
+  const waiting = runs.whenStarted(sessionId, new AbortController().signal)
+  const giving = new AbortController()
+  const givenUp = runs.whenStarted(sessionId, giving.signal)
+  await delay(20)
+  assert.deepEqual(boxes.calls, [])
+  giving.abort()
+  await assert.rejects(givenUp)
+  await runs.boxFor(sessionId)
+  assert.equal((await waiting).container, box)
+  assert.equal((await runs.whenStarted(sessionId, new AbortController().signal)).container, box)
+  await runs.stop(sessionId)
+  const gone = runs.whenStarted(sessionId, new AbortController().signal)
+  await service.delete(HOST, sessionId)
+  await assert.rejects(gone, /no tau session/u)
 })
 
 test('a host file is copied into a tau session\'s box once, before the box\'s next use, and again after a failure', async (t) => {

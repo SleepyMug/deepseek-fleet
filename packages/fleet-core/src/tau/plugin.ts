@@ -5,9 +5,10 @@
  * (./runs-plugin.ts), and on dsh's session controller and workspace
  * registry, as the web client's own calls do, so that the web UI lists a
  * tau's session, under the caller's folder, and follows it; on dsh's
- * agents, to learn when a run's agent is done; and on the workspace
- * registry's writes, to follow which sessions are archived, whose runs have
- * no box. It imports only their types.
+ * agents, to learn when a run's agent is done, and while it runs, when it
+ * occupies its box; and on the workspace registry's writes, to follow which
+ * sessions are archived, whose runs have no box. It imports only their
+ * types.
  * Its config names the dsh home, where it serves its socket. It provides the
  * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
  * through which a tau's session starts runs from its box, and for
@@ -64,6 +65,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ctx.effect(() => close, 'fleet-tau socket')
     ctx.provide('fleetTau', service)
     followArchive(ctx, service)
+    followTurns(ctx)
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
     await close()
@@ -94,6 +96,34 @@ function followArchive(ctx: Context, service: TauService): void {
     follow()
   })
   follow()
+}
+
+/**
+ * A tau's session's agent occupies its box while it runs, as a turn, so the
+ * box is not stopped for being idle under it: from when it enters `running`,
+ * which it does as it is woken, before its first step reaches the box, until
+ * it leaves it, or goes.
+ */
+function followTurns(ctx: Context): void {
+  const turns = new Map<string, () => void>()
+  const settle = (agentId: string): void => {
+    turns.get(agentId)?.()
+    turns.delete(agentId)
+  }
+  ctx.on('agent/status', ({ agent, status }) => {
+    if (status !== 'running') {
+      settle(agent.id)
+      return
+    }
+    const sessionId = agent.session.header.id
+    if (turns.has(agent.id) || !ctx.fleetTauRuns.isTau(sessionId)) return
+    turns.set(agent.id, ctx.fleetTauRuns.occupy(sessionId, { kind: 'turn', id: agent.id }))
+  })
+  ctx.on('agent/disposed', ({ agent }) => { settle(agent.id) })
+  ctx.effect(() => () => {
+    for (const release of turns.values()) release()
+    turns.clear()
+  }, 'fleet-tau turns')
 }
 
 /** dsh's sessions, as the service uses them. */

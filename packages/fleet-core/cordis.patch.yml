@@ -175,6 +175,9 @@
       name: fleet-core/tau/runs-plugin
       config:
         dshHome: !!js dshHomePath()
+        # A box nothing uses, no turn, terminal, process or file call, is
+        # stopped after this long, and started again on its next use.
+        idleStopMs: 60000
 
 # ═══ The world: a tau's session in its box, everything else on the host ═══
 

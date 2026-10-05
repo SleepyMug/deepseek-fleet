@@ -32,7 +32,7 @@ import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
 import { EXECUTABLE_NOT_FOUND } from 'fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
-import type { TauRuns } from '../tau/runs.ts'
+import type { Occupant, RunBox, TauRuns } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'
 import { callerSession } from './caller.ts'
 import { BoxTerminal } from './terminal.ts'
@@ -69,12 +69,14 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
   override async resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
     const session = this.boxSession()
     if (session === undefined) return (await this.localReady).resolveExecutable(command, env, signal)
-    const box = await boxOf(this.self.fleetTauRuns, session)
+    const { box, release } = await holdBox(this.self.fleetTauRuns, session, { kind: 'call', id: randomUUID() })
     try {
       return await box.request('which', { command, env: env === undefined ? null : { ...env } })
     } catch (error) {
       if (error instanceof HelperError && error.code === EXECUTABLE_NOT_FOUND) throw new SubprocessExecutableNotFoundError(error.message, { cause: error })
       throw error
+    } finally {
+      release()
     }
   }
 
@@ -102,9 +104,20 @@ export class FleetSubprocessRuntime extends SubprocessRuntime {
   override async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     const session = this.boxSession()
     if (session === undefined) return (await this.localReady).spawnTerminal(spec)
-    const terminal = await BoxTerminal.start(await boxOf(this.self.fleetTauRuns, session), { ...spec, cwd: this.self.fleetTauRuns.boxPath(session, spec.cwd) })
+    // The user's terminal occupies the box until it ends.
+    const { box, release } = await holdBox(this.self.fleetTauRuns, session, { kind: 'terminal', id: randomUUID() })
+    let terminal: BoxTerminal
+    try {
+      terminal = await BoxTerminal.start(box, { ...spec, cwd: this.self.fleetTauRuns.boxPath(session, spec.cwd) })
+    } catch (error) {
+      release()
+      throw error
+    }
     this.terminals.add(terminal)
-    void terminal.done.finally(() => { this.terminals.delete(terminal) }).catch(() => {})
+    void terminal.done.finally(() => {
+      this.terminals.delete(terminal)
+      release()
+    }).catch(() => {})
     return terminal
   }
 
@@ -126,10 +139,11 @@ function collected(mode: SubprocessOutputMode, name: string): SubprocessCollect 
   return mode
 }
 
-async function boxOf(runs: TauRuns, session: string): Promise<NonNullable<Awaited<ReturnType<TauRuns['boxFor']>>>> {
-  const box = await runs.boxFor(session)
-  if (box === undefined) throw new Error(`fleet: ${session} is not a tau's session, so it has no box`)
-  return box
+/** A session's started box, which `occupant` occupies until the release. */
+async function holdBox(runs: TauRuns, session: string, occupant: Occupant): Promise<{ box: RunBox; release: () => void }> {
+  const held = await runs.hold(session, occupant)
+  if (held === undefined) throw new Error(`fleet: ${session} is not a tau's session, so it has no box`)
+  return held
 }
 
 /** One process in a tau's box. */
@@ -143,7 +157,7 @@ class BoxProcess implements SubprocessHandle {
 
   private readonly id = randomUUID()
   /** The box the process started in, once it has. */
-  private readonly started: Promise<Awaited<ReturnType<typeof boxOf>> | undefined>
+  private readonly started: Promise<RunBox | undefined>
   private terminated = false
 
   constructor(runs: TauRuns, session: string, spec: SubprocessSpawnSpec, stdout: SubprocessCollect, stderr: SubprocessCollect) {
@@ -153,12 +167,13 @@ class BoxProcess implements SubprocessHandle {
     const env: Record<string, string | null> = {}
     for (const [key, value] of Object.entries(spec.env ?? {})) env[key] = value ?? null
     const stdin = spec.stdio.stdin
-    const box = boxOf(runs, session)
-    this.started = box.then(found => found, () => undefined)
-    this.done = box.then(found => found.request('spawn', {
+    // The process occupies its box until it exits.
+    const held = holdBox(runs, session, { kind: 'process', id: this.id })
+    this.started = held.then(({ box }) => box, () => undefined)
+    this.done = held.then(({ box, release }) => box.request('spawn', {
       process: this.id, argv: [...spec.argv], cwd: spec.cwd, env,
       stdin: typeof stdin === 'object' ? stdin.data : null, graceMs: spec.graceMs,
-    }, (event) => { (event.stream === 'stdout' ? out : err).push(Buffer.from(event.data, 'base64')) }))
+    }, (event) => { (event.stream === 'stdout' ? out : err).push(Buffer.from(event.data, 'base64')) }).finally(release))
       .then(({ code, signal }) => ({ exitCode: code, signal: signal as NodeJS.Signals | null }))
     void this.done.catch(() => {})
     const signal = spec.signal
