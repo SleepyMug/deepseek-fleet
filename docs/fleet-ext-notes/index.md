@@ -41,5 +41,5 @@ console.log((await byTag('shop')).map(note => note.text))   // [ 'buy milk' ]
 
 ## Built on
 
-- `fleet-image/ext/client`, in the box, which the client alone imports.
+- `fleet-box-runtime/ext/client`, in the box, which the client alone imports.
 - `fleet-core/ext/plugin`'s types, for `ctx.fleetExts`.

@@ -31,5 +31,5 @@ test('the client implements the notes API as the example tau declares it, and im
   assert.equal(api?.name, 'notes')
   checkImplementation(api, join(CLIENT, 'index.js'))
   const code = await readFile(join(CLIENT, 'index.js'), 'utf8')
-  assert.deepEqual([...code.matchAll(/from ['"]([^'"]+)['"]/gu)].map(match => match[1]), ['fleet-image/ext/client'])
+  assert.deepEqual([...code.matchAll(/from ['"]([^'"]+)['"]/gu)].map(match => match[1]), ['fleet-box-runtime/ext/client'])
 })

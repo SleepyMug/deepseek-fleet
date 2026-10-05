@@ -83,7 +83,7 @@ preset's scope, which each of its sessions' agents has as its parent.
      title. Here `session-<uuid>` is minted, the form dsh's
      session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
-     runtime set it up from the call (fleet-image's tau runtime, below),
+     runtime set it up from the call (fleet-box-runtime's tau runtime, below),
      which reports the prompt, the handles and where things are; copies
      each API's client in, where the runtime says; has the helper link the
      APIs and what the tau exposes (`apis.link`); and stops it.
@@ -93,7 +93,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   A failure removes the box and the session's folder. A tau's session's
   run is in the session's own project; `fleet`'s in the folder it names,
   through its symlinks.
-- **The box's runtime** (fleet-image/tau): the runtime's side of tau's
+- **The box's runtime** (fleet-box-runtime/tau): the runtime's side of tau's
   library, in the image, which owns where a run has its things in its box.
   The host runs it in a run's box with `docker exec` (`Box.pipe`), since
   the helper's lines of JSON would carry the archives only as text:
@@ -110,8 +110,8 @@ preset's scope, which each of its sessions' agents has as its parent.
     each `$out` and `$inout` handle's place, checked with `checkOutputs`, or
     a failure that says why it does not fit. The result is checked on the
     host after it leaves the box, since the box is the agent's by then.
-- **Places**, as the box's runtime has them (fleet-image/tau/layout), each
-  under the base name of the caller's path:
+- **Places**, as the box's runtime has them (fleet-box-runtime/tau/layout),
+  each under the base name of the caller's path:
 
   | What | Where in the box |
   |---|---|
@@ -287,8 +287,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   `readResult`, `checkResult`, `writeResult`.
 - `ctx.fleetExts` (fleet-core/ext).
 - `Box` and `exec` (`fleet-core/box`), with `Box.pipe` for the archives
-  the box's runtime reads and writes, and fleet-image's tau runtime, in the
-  image.
+  the box's runtime reads and writes, and fleet-box-runtime's tau runtime, in
+  the image.
 - `fleet-protocol/tau`, for the wire.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,

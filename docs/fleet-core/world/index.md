@@ -33,7 +33,7 @@ a tau's session does not look; they stay inline instead.
   stand in for it.
 - **The box** of a session comes from `ctx.fleetTauRuns.boxFor`, which
   starts it if it is not running, as after a restart or the run's end. Its
-  helper serves every call (docs/fleet-image/helper/index.md).
+  helper serves every call (docs/fleet-box-runtime/helper/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
   or else to the box of the session it is for, if a tau's. The targets a box

@@ -59,7 +59,7 @@
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
     "@sleepymug/ts-executor": "0.4.0",
-    "fleet-image": "workspace:*",
+    "fleet-box-runtime": "workspace:*",
     "fleet-protocol": "workspace:*"
   },
   "peerDependencies": {

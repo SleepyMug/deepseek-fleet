@@ -39,7 +39,7 @@ export interface Ext {
    * declarations beside it, which the API is checked against. It is copied
    * into each box whose tau declares the API, so it is self-contained: it
    * imports only its own files, Node's modules, and fleet's client runtime,
-   * `fleet-image/ext/client`.
+   * `fleet-box-runtime/ext/client`.
    */
   client: string
   /** Its server's methods, by name; none for a client that works in the box alone. */

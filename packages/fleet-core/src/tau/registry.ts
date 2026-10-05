@@ -9,7 +9,7 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { BoundHandle } from '@sleepymug/tau'
-import { FOLDERS, MODULES } from 'fleet-image/tau/layout'
+import { FOLDERS, MODULES } from 'fleet-box-runtime/tau/layout'
 import type { Result, Targets } from 'fleet-protocol/tau'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */

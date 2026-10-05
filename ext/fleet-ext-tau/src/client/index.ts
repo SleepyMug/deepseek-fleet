@@ -6,9 +6,9 @@
 
 import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
-import { call, callStream } from 'fleet-image/ext/client'
-import { runTau, type Runtime } from 'fleet-image/ext/tau'
-import { RUN } from 'fleet-image/tau/layout'
+import { call, callStream } from 'fleet-box-runtime/ext/client'
+import { runTau, type Runtime } from 'fleet-box-runtime/ext/tau'
+import { RUN } from 'fleet-box-runtime/tau/layout'
 
 /** A value a run takes (docs/spec/values.md). */
 export type Value = string | Handle | readonly Value[] | { readonly [name: string]: Value }

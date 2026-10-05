@@ -2,7 +2,7 @@
  * The runs of taus, and their boxes (docs/fleet-core/tau/index.md): it
  * checks a run's call, tau's archive of the run's values with the content of
  * its handles, and the tau (tau's docs/spec/serialization.md), keeps it, and
- * has a box's runtime set the box up from it (fleet-image/tau/endpoint),
+ * has a box's runtime set the box up from it (fleet-box-runtime/tau/endpoint),
  * which places everything where the box has things, with the tau's APIs
  * linked to the clients of the extensions that implement them (./apis.ts); keeps which box each session has (./registry.ts); starts,
  * stops and removes the box, and copies host files into it as they are asked
@@ -25,9 +25,9 @@ import { Readable, Writable } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
 import { loadTau } from '@sleepymug/tau'
 import { checkResult, placeCall, readCall, readResult, writeResult } from '@sleepymug/tau/call'
-import type { Call } from 'fleet-image/helper/protocol'
-import { HELPER_NODE, TAU_ENTRY } from 'fleet-image/layout'
-import type { Setup } from 'fleet-image/tau/endpoint'
+import type { Call } from 'fleet-box-runtime/helper/protocol'
+import { HELPER_NODE, TAU_ENTRY } from 'fleet-box-runtime/layout'
+import type { Setup } from 'fleet-box-runtime/tau/endpoint'
 import type { Result, Started, Targets } from 'fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
 import { linkApis, type Exts, type Linked } from './apis.ts'
@@ -113,7 +113,7 @@ export class TauRuns {
    * read from it, its values bound to the tau, and the tau's APIs linked to
    * the extensions provided. Then the call is kept in the session's folder;
    * the box is created and started, and its runtime sets it up from the call
-   * (fleet-image/tau/endpoint), placing it all where it has things, and
+   * (fleet-box-runtime/tau/endpoint), placing it all where it has things, and
    * reports the prompt, the handles and where things are; each API's client
    * is copied in, where the runtime says, and the APIs and what the tau
    * exposes linked; and the session is registered. A failure removes the box
@@ -233,10 +233,10 @@ export class TauRuns {
    * Keep the result of a session's run, which ended as `outcome` says, in
    * the session's folder: for a run that succeeded, as its box packs it from
    * what the agent left at the places of its `$out` and `$inout` handles
-   * (fleet-image/tau/endpoint), failing the run when that does not fit the
-   * tau. The result is read again here, and checked against the run, since
-   * the box is the agent's: one that does not fit fails the run too. A run
-   * that failed gives back nothing.
+   * (fleet-box-runtime/tau/endpoint), failing the run when that does not fit
+   * the tau. The result is read again here, and checked against the run,
+   * since the box is the agent's: one that does not fit fails the run too. A
+   * run that failed gives back nothing.
    * @returns how the run ended, as its result has it.
    */
   async pack(sessionId: string, outcome: Result): Promise<Result> {
@@ -448,9 +448,10 @@ async function* spool(bytes: AsyncIterable<Uint8Array>, file: string): AsyncGene
 }
 
 /**
- * What the box's runtime reports of a run it set up (fleet-image/tau/endpoint).
- * It runs before the agent does, on the call the host checked, so it is
- * taken as it is, once it has the shape of one.
+ * What the box's runtime reports of a run it set up
+ * (fleet-box-runtime/tau/endpoint). It runs before the agent does, on the
+ * call the host checked, so it is taken as it is, once it has the shape of
+ * one.
  */
 class Report extends Writable {
   private readonly chunks: Buffer[] = []

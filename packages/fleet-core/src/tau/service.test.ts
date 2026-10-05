@@ -9,8 +9,8 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 import type { BoundHandle } from '@sleepymug/tau'
 import { applyResult, packCall, writeCall, writeResult, type Result } from '@sleepymug/tau/call'
-import { DEFAULT_IMAGE } from 'fleet-image/layout'
-import { pack, setup } from 'fleet-image/tau/endpoint'
+import { DEFAULT_IMAGE } from 'fleet-box-runtime/layout'
+import { pack, setup } from 'fleet-box-runtime/tau/endpoint'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
 import { modulesOf } from '../tools/ts.ts'
@@ -44,7 +44,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
   }))
   // The client of the extension that implements notes, which make()'s extensions provide.
   await mkdir(join(work, 'client'))
-  await writeFile(join(work, 'client', 'index.js'), 'import { call } from "fleet-image/ext/client";\nexport function add(text) { return call("notes", "add", [text]); }\n')
+  await writeFile(join(work, 'client', 'index.js'), 'import { call } from "fleet-box-runtime/ext/client";\nexport function add(text) { return call("notes", "add", [text]); }\n')
   await writeFile(join(work, 'client', 'index.d.ts'), 'export declare function add(text: string): Promise<unknown>;\n')
   await writeFile(join(work, 'notes.md'), 'buy milk\n')
   await mkdir(join(work, 'site'))
@@ -74,7 +74,8 @@ const LEFT: Left = {
  * Boxes that record what is done with them, and fail the verb `failing`
  * names. Each has its files in a folder of `work`, where it places a call,
  * and packs a result from what `left` says the agent left, as its image
- * would (fleet-image/tau/endpoint), or as `tamper` says, in place of that.
+ * would (fleet-box-runtime/tau/endpoint), or as `tamper` says, in place of
+ * that.
  */
 class FakeBoxes implements Boxes {
   readonly calls: string[] = []

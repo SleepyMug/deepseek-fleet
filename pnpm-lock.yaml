@@ -214,12 +214,12 @@ importers:
       '@sleepymug/tau':
         specifier: workspace:*
         version: link:../../../agent_fleet_project/tau
+      fleet-box-runtime:
+        specifier: workspace:*
+        version: link:../../packages/fleet-box-runtime
       fleet-core:
         specifier: workspace:*
         version: link:../../packages/fleet-core
-      fleet-image:
-        specifier: workspace:*
-        version: link:../../packages/fleet-image
 
   ext/fleet-ext-tau:
     devDependencies:
@@ -229,12 +229,36 @@ importers:
       '@sleepymug/tau':
         specifier: workspace:*
         version: link:../../../agent_fleet_project/tau
+      fleet-box-runtime:
+        specifier: workspace:*
+        version: link:../../packages/fleet-box-runtime
       fleet-core:
         specifier: workspace:*
         version: link:../../packages/fleet-core
-      fleet-image:
-        specifier: workspace:*
-        version: link:../../packages/fleet-image
+
+  packages/fleet-box-runtime:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: 4.0.4
+        version: 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
+      '@deepseek-ai/dsh-fs':
+        specifier: 0.1.7-rc.2
+        version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-brand@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-sandbox@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-session@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)))))
+      '@deepseek-ai/dsh-fs-local':
+        specifier: 0.1.7-rc.2
+        version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-fs@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-brand@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-sandbox@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-session@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))))))
+      '@sleepymug/tau':
+        specifier: 0.1.0
+        version: link:../../../agent_fleet_project/tau
+      '@sleepymug/ts-executor':
+        specifier: 0.4.0
+        version: link:../../../agent_fleet_project/ts-executor
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      node-pty:
+        specifier: 1.2.0-beta.15
+        version: 1.2.0-beta.15
 
   packages/fleet-client:
     dependencies:
@@ -253,9 +277,9 @@ importers:
       '@sleepymug/ts-executor':
         specifier: 0.4.0
         version: link:../../../agent_fleet_project/ts-executor
-      fleet-image:
+      fleet-box-runtime:
         specifier: workspace:*
-        version: link:../fleet-image
+        version: link:../fleet-box-runtime
       fleet-protocol:
         specifier: workspace:*
         version: link:../fleet-protocol
@@ -302,30 +326,6 @@ importers:
       '@deepseek-ai/dsh-workspace':
         specifier: 0.1.7-rc.2
         version: 0.1.7-rc.2(bb62eb618f9c24e6adb5430fe59c1ef7)
-
-  packages/fleet-image:
-    dependencies:
-      '@deepseek-ai/cordis':
-        specifier: 4.0.4
-        version: 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
-      '@deepseek-ai/dsh-fs':
-        specifier: 0.1.7-rc.2
-        version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-brand@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-sandbox@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-session@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)))))
-      '@deepseek-ai/dsh-fs-local':
-        specifier: 0.1.7-rc.2
-        version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-fs@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-brand@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-sandbox@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-session@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))))))
-      '@sleepymug/tau':
-        specifier: 0.1.0
-        version: link:../../../agent_fleet_project/tau
-      '@sleepymug/ts-executor':
-        specifier: 0.4.0
-        version: link:../../../agent_fleet_project/ts-executor
-      '@types/node':
-        specifier: 26.6.2
-        version: 26.6.2
-      node-pty:
-        specifier: 1.2.0-beta.15
-        version: 1.2.0-beta.15
 
   packages/fleet-protocol: {}
 

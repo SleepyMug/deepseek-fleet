@@ -1,10 +1,11 @@
 /**
  * A terminal in a tau's box, such as the web UI's sidebar terminal of the
  * session: the box's helper runs the shell on a pseudo-terminal there
- * (fleet-image's helper/cmd/terminal.ts), and this handle relays its input,
- * output and size, and asks the helper for its foreground process group,
- * which it signals, and to end its whole session, background jobs included.
- * The helper does not watch the shell for prompts, so activity is unknown.
+ * (fleet-box-runtime's helper/cmd/terminal.ts), and this handle relays its
+ * input, output and size, and asks the helper for its foreground process
+ * group, which it signals, and to end its whole session, background jobs
+ * included. The helper does not watch the shell for prompts, so activity is
+ * unknown.
  * @module fleet-core/world/terminal
  */
 

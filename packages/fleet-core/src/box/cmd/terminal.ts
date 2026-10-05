@@ -1,11 +1,11 @@
 /**
- * The host's side of the helper's terminals (fleet-image/helper/cmd/terminal):
- * the checks of their answers and events, which the helper connection
- * registers (../helper.ts).
+ * The host's side of the helper's terminals
+ * (fleet-box-runtime/helper/cmd/terminal): the checks of their answers and
+ * events, which the helper connection registers (../helper.ts).
  * @module fleet-core/box/cmd/terminal
  */
 
-import type { EventOf, Methods } from 'fleet-image/helper/protocol'
+import type { EventOf, Methods } from 'fleet-box-runtime/helper/protocol'
 
 export function isTerminalEvent(value: unknown): value is EventOf<'terminal'> {
   if (typeof value !== 'object' || value === null) return false

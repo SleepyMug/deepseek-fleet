@@ -1,11 +1,11 @@
 /**
- * The host's side of the helper's `ts.execute` (fleet-image/helper/cmd/ts):
- * the check of its answer, which the helper connection registers
- * (../helper.ts).
+ * The host's side of the helper's `ts.execute`
+ * (fleet-box-runtime/helper/cmd/ts): the check of its answer, which the
+ * helper connection registers (../helper.ts).
  * @module fleet-core/box/cmd/ts
  */
 
-import type { TsOutcome } from 'fleet-image/helper/protocol'
+import type { TsOutcome } from 'fleet-box-runtime/helper/protocol'
 
 /** Whether a value is what the helper answers `ts.execute` with. */
 export function isTsOutcome(value: unknown): value is TsOutcome {

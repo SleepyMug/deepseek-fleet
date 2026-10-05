@@ -45,15 +45,15 @@ export function apply(ctx: Context) {
   same package, and adding an API means installing a dsh plugin, without
   rebuilding the image. The client must be self-contained: it imports only
   its own files, Node's modules, and fleet's client runtime,
-  `fleet-image/ext/client`, which the box finds in its link tree. A client
-  that needs a package bundles it.
+  `fleet-box-runtime/ext/client`, which the box finds in its link tree. A
+  client that needs a package bundles it.
 - **The client is the implementation the API is checked against.** A run
   checks each API with tau's `checkImplementation` against the client's
   `index.js` and the declarations beside it, and is refused if the client
   does not fit.
 - **A call** goes from the client to the box's helper over its call socket
-  (docs/fleet-image/helper/index.md), and from the helper to the host as a
-  `call`. The runs of taus serve it (`tau/runs.ts`): it must name an API
+  (docs/fleet-box-runtime/helper/index.md), and from the helper to the host as
+  a `call`. The runs of taus serve it (`tau/runs.ts`): it must name an API
   the session's tau declares and a method its server has. A call that
   passes goes to that method with the session and a signal.
 - **The session is the box's.** The host knows which session made a call
@@ -88,5 +88,5 @@ export function apply(ctx: Context) {
 ## Built on
 
 - `@sleepymug/tau`: `loadApis`, `checkImplementation`, `loadExposed`.
-- The helper's call socket and `apis.link` (fleet-image).
+- The helper's call socket and `apis.link` (fleet-box-runtime).
 - `@deepseek-ai/cordis`, for the plugin.

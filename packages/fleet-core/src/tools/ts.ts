@@ -4,8 +4,8 @@
  * `ts_modules` lists what the tau exposes to its programs, its APIs and the
  * packages of its own built on them, and `ts_execute` type-checks one
  * program and runs it in the session's box, through its helper, with
- * ts-executor (fleet-image's helper/cmd/ts.ts). A program imports what the
- * box's /tau/node_modules holds, each API running its extension's client
+ * ts-executor (fleet-box-runtime's helper/cmd/ts.ts). A program imports what
+ * the box's /tau/node_modules holds, each API running its extension's client
  * (docs/fleet-core/ext/index.md).
  * @module fleet-core/tools/ts
  */

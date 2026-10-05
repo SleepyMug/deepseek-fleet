@@ -26,7 +26,7 @@ section on how to use them:
   entry, without the box. What is not exposed resolves too, through the
   same folder: exposing is no security boundary.
 - **A program runs in the box,** through the helper's `ts.execute`
-  (docs/fleet-image/helper/index.md), with ts-executor, which the image
+  (docs/fleet-box-runtime/helper/index.md), with ts-executor, which the image
   carries. ts-executor writes the program in a run folder below `/tau`
   (`/tau/.ts-executor/runs/`), so Node finds `/tau/node_modules` above it,
   and TypeScript does too. It type-checks the program, strictly, with each

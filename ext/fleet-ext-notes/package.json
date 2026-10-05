@@ -30,7 +30,7 @@
     "@deepseek-ai/cordis": "4.0.4",
     "@sleepymug/tau": "workspace:*",
     "fleet-core": "workspace:*",
-    "fleet-image": "workspace:*"
+    "fleet-box-runtime": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4"

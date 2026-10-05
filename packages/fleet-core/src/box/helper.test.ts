@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { PROTOCOL_VERSION } from 'fleet-image/helper/protocol'
-import { SOCKET_VARIABLE } from 'fleet-image/layout'
+import { PROTOCOL_VERSION } from 'fleet-box-runtime/helper/protocol'
+import { SOCKET_VARIABLE } from 'fleet-box-runtime/layout'
 import { Helper, HelperError, METHODS, streamed } from './helper.ts'
 
 /** The helper as built on this machine, run on this Node. */
 const LOCAL_HELPER = [
   process.execPath,
-  join(dirname(fileURLToPath(import.meta.resolve('fleet-image/package.json'))), 'lib/helper/main.js'),
+  join(dirname(fileURLToPath(import.meta.resolve('fleet-box-runtime/package.json'))), 'lib/helper/main.js'),
 ] as const
 
 /** A stand-in that answers every line it reads with `answer`. */
@@ -123,7 +123,7 @@ test('a call\'s bytes reach its handler, and the bytes after its answer reach th
     })())
   })
   try {
-    const client = JSON.stringify(import.meta.resolve('fleet-image/ext/client'))
+    const client = JSON.stringify(import.meta.resolve('fleet-box-runtime/ext/client'))
     const program = [
       `import { callStream } from ${client}`,
       'async function* up() { for (let i = 0; i < 20; i++) yield Buffer.alloc(10000, "u") }',

@@ -28,9 +28,9 @@ or less of it, as `examples/relay` does.
   packs the call there, and puts the result there, where the targets say.
 - **The bytes** of the call and the result cross the helper beside the
   JSON (`callStream`, docs/fleet-core/ext/index.md).
-- **The client imports** `fleet-image/ext/client`, `fleet-image/ext/tau`,
-  tau's caller's side, and `fleet-image/tau/layout`, for where the values
-  are kept.
+- **The client imports** `fleet-box-runtime/ext/client`,
+  `fleet-box-runtime/ext/tau`, tau's caller's side, and
+  `fleet-box-runtime/tau/layout`, for where the values are kept.
 - **A run's runs go with it.** A run that ends deletes the runs it started
   and did not finish; `run` finishes each run it starts.
 
@@ -65,7 +65,7 @@ const result = await run('/tau/self/taus/shout', { text: 'hello', out: { $out: '
 
 ## Built on
 
-- `fleet-image/ext/client`, `fleet-image/ext/tau` and
-  `fleet-image/tau/layout`, in the box, which the client alone imports.
+- `fleet-box-runtime/ext/client`, `fleet-box-runtime/ext/tau` and
+  `fleet-box-runtime/tau/layout`, in the box, which the client alone imports.
 - `fleet-core/ext/plugin`'s and `fleet-core/tau/plugin`'s types, for
   `ctx.fleetExts` and `ctx.fleetTau`.

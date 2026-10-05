@@ -1,7 +1,7 @@
 /**
- * The host's end of a helper (fleet-image/helper/protocol): it starts the
- * helper with a command, completes the handshake, and matches answers, and
- * the events before them, to requests. The calls that clients in the box
+ * The host's end of a helper (fleet-box-runtime/helper/protocol): it starts
+ * the helper with a command, completes the handshake, and matches answers,
+ * and the events before them, to requests. The calls that clients in the box
  * make it hands to whoever started it, and sends their answers back.
  * Whatever runs in the box can impersonate the helper, so every message is
  * checked before it is used, and a helper that breaks the protocol loses its
@@ -12,7 +12,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
-import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
+import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-box-runtime/helper/protocol'
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'

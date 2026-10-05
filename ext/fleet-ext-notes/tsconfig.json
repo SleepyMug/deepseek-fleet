@@ -5,5 +5,5 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/fleet-core" }, { "path": "../../packages/fleet-image" }]
+  "references": [{ "path": "../../packages/fleet-core" }, { "path": "../../packages/fleet-box-runtime" }]
 }

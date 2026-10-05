@@ -5,7 +5,7 @@
  *
  * A process is a tau's session's when that session's turn starts it, or it
  * comes through that session's agent's context (./caller.ts). Its box's
- * helper runs it in a process group of its own (fleet-image's
+ * helper runs it in a process group of its own (fleet-box-runtime's
  * helper/cmd/spawn.ts), in the folder dsh names, and sends what it writes,
  * which is collected here into dsh's in-memory tails, as dsh's bash asks:
  * stdin ignored or given as data, stdout and stderr collected. Collected
@@ -30,7 +30,7 @@ import type {
 } from '@deepseek-ai/dsh-subprocess'
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
-import { EXECUTABLE_NOT_FOUND } from 'fleet-image/helper/protocol'
+import { EXECUTABLE_NOT_FOUND } from 'fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { TauRuns } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'

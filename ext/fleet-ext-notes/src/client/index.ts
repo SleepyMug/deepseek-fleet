@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { call } from 'fleet-image/ext/client'
+import { call } from 'fleet-box-runtime/ext/client'
 
 /** A saved note. */
 export interface Note {

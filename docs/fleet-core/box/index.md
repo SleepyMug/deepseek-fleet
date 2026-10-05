@@ -60,8 +60,8 @@ It also exports:
   than letting each method fail on its own; `start()` then leaves the
   container stopped.
 - **Commands** of the helper's beyond the handshake have a module each in
-  `box/cmd/`, beside their handler in fleet-image's `helper/cmd/`: the check
-  of the command's result, which `box/helper.ts` registers, and what the
+  `box/cmd/`, beside their handler in fleet-box-runtime's `helper/cmd/`: the
+  check of the command's result, which `box/helper.ts` registers, and what the
   host calls it with, such as `exec`.
 - **Copies** work whether the box runs or not. A file goes to the path it is
   given, and a folder's contents into the folder it is given, which is made
@@ -73,8 +73,8 @@ It also exports:
 ## Built on
 
 - The Docker CLI, through `execFile`.
-- `fleet-image/layout`, for where the helper is in the image.
-- `fleet-image/helper/protocol`, for the wire.
+- `fleet-box-runtime/layout`, for where the helper is in the image.
+- `fleet-box-runtime/helper/protocol`, for the wire.
 
 ## How it runs
 

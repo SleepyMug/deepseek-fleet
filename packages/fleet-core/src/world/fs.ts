@@ -4,7 +4,7 @@
  * system, which this service mounts where only it sees it.
  *
  * A call that names a path, `resolve` and `lstat`, goes to a box where the
- * helper serves it with dsh's local file system (fleet-image's
+ * helper serves it with dsh's local file system (fleet-box-runtime's
  * helper/cmd/fs.ts): to the box its path or its `cwd` names, written
  * `fleet-box://<session><path>`, or else to the box of the session it is for
  * (./caller.ts), if that session is a tau's. A tau's session's own work may
@@ -42,7 +42,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
-import type { Methods, Target } from 'fleet-image/helper/protocol'
+import type { Methods, Target } from 'fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { RunBox } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'

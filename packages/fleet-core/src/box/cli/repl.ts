@@ -9,7 +9,7 @@
 
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
-import type { Method } from 'fleet-image/helper/protocol'
+import type { Method } from 'fleet-box-runtime/helper/protocol'
 import { METHODS, type Box } from '../box.ts'
 
 /** What one line asks for. */
