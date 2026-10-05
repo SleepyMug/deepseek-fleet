@@ -5,7 +5,9 @@
  * order, and may send events for a request before it answers it. The other
  * way, the helper sends the calls that clients in the box make to the
  * host's extensions, which the host answers each once, unless the helper
- * cancels it first. The helper exits when its stdin ends, and ends the
+ * cancels it first; a call, and an answer, may have bytes follow it, base64
+ * in messages of their own, which the JSON of the call carries badly. The
+ * helper exits when its stdin ends, and ends the
  * processes it started first. Shared by both ends, so it holds only types
  * and constants.
  * @module fleet-image/helper/protocol
@@ -210,11 +212,31 @@ export interface TsFailure {
   diagnostics?: { category: string; code: number; message: string; file?: string; line?: number; column?: number }[]
 }
 
-/** A call a client in the box makes to an extension on the host: the API it implements, the method, and its arguments. */
+/**
+ * A call a client in the box makes to an extension on the host: the API it
+ * implements, the method, and its arguments; and, with `body`, bytes that
+ * follow it, such as an archive, in `call-data` messages up to its
+ * `call-end`.
+ */
 export interface Call {
   api: string
   method: string
   args: unknown[]
+  body?: true
+}
+
+/** Bytes that follow a call, or its answer, base64. */
+export interface CallData {
+  type: 'call-data'
+  id: number
+  data: string
+}
+
+/** The end of the bytes that follow a call, or its answer; with `error`, cut short. */
+export interface CallEnd {
+  type: 'call-end'
+  id: number
+  error?: string
 }
 
 export type Method = keyof Methods
@@ -222,16 +244,23 @@ export type Method = keyof Methods
 /** What a method sends before its result, or never for a method without events. */
 export type EventOf<M extends Method> = Methods[M] extends { event: infer E } ? E : never
 
-/** Host to helper: a request, or the answer to a call, whose ids the helper gives. */
+/**
+ * Host to helper: a request, or the answer to a call, whose ids the helper
+ * gives, with, when `body` says so, bytes that follow it.
+ */
 export type HostMessage =
   | { type: 'request'; id: number; method: string; params: unknown }
-  | { type: 'call-result'; id: number; value: unknown }
+  | { type: 'call-result'; id: number; value: unknown; body?: true }
   | { type: 'call-error'; id: number; message: string }
+  | CallData
+  | CallEnd
 
-/** Helper to host: a request's answer, or its event; or a call, or that its caller has gone. */
+/** Helper to host: a request's answer, or its event; or a call, the bytes that follow it, or that its caller has gone. */
 export type HelperMessage =
   | { type: 'result'; id: number; value: unknown }
   | { type: 'event'; id: number; value: unknown }
   | { type: 'error'; id: number; message: string; code?: string }
   | ({ type: 'call'; id: number } & Call)
+  | CallData
+  | CallEnd
   | { type: 'call-cancel'; id: number }

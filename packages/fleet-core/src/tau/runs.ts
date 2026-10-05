@@ -391,14 +391,14 @@ export class TauRuns {
    * the extension that implements the API, for an API the session's tau
    * declares, with the session the box is, whatever the call says.
    */
-  private calls(sessionId: string): (call: Call, signal: AbortSignal) => Promise<unknown> {
-    return async ({ api, method, args }, signal) => {
+  private calls(sessionId: string): (call: Call, signal: AbortSignal, body?: AsyncIterable<Uint8Array>) => Promise<unknown> {
+    return async ({ api, method, args }, signal, body) => {
       const entry = await this.registry.get(sessionId)
       if (!entry.apis.includes(api)) throw new Error(`fleet: this run's tau declares no API ${api}`)
       const ext = this.exts.get(api)
       if (ext === undefined) throw new Error(`fleet: no extension implements ${api} now`)
       if (!Object.hasOwn(ext.methods, method)) throw new Error(`fleet: the extension of ${api} has no method ${method}`)
-      return await ext.methods[method]?.(args, { sessionId, signal })
+      return await ext.methods[method]?.(args, { sessionId, signal, ...body === undefined ? {} : { body } })
     }
   }
 

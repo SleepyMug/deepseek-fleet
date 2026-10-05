@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { PROTOCOL_VERSION } from 'fleet-image/helper/protocol'
-import { Helper, HelperError, METHODS } from './helper.ts'
+import { SOCKET_VARIABLE } from 'fleet-image/layout'
+import { Helper, HelperError, METHODS, streamed } from './helper.ts'
 
 /** The helper as built on this machine, run on this Node. */
 const LOCAL_HELPER = [
@@ -94,6 +95,47 @@ test('a helper runs a TypeScript program, whose outcome the host checks', async 
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  } finally {
+    await helper.close()
+  }
+})
+
+test('a call\'s bytes reach its handler, and the bytes after its answer reach the client, through the helper', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-helper-calls-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const socket = process.env[SOCKET_VARIABLE]
+  process.env[SOCKET_VARIABLE] = join(dir, 'calls.sock')
+  t.after(() => { if (socket === undefined) delete process.env[SOCKET_VARIABLE]; else process.env[SOCKET_VARIABLE] = socket })
+  const got: string[] = []
+  const helper = await Helper.start(LOCAL_HELPER, async (call, _signal, body) => {
+    let size = 0
+    for await (const chunk of body ?? []) size += (chunk as Uint8Array).length
+    got.push(`${call.api}.${call.method} ${JSON.stringify(call.args)} ${String(size)}`)
+    if (call.method === 'plain') return 'plain'
+    if (call.method === 'broken') {
+      return streamed('cut', (async function* () {
+        yield Buffer.from('partial')
+        throw new Error('the archive went away')
+      })())
+    }
+    return streamed({ size }, (async function* () {
+      for (let index = 0; index < 30; index++) yield Buffer.alloc(10000, 'd')
+    })())
+  })
+  try {
+    const client = JSON.stringify(import.meta.resolve('fleet-image/ext/client'))
+    const program = [
+      `import { callStream } from ${client}`,
+      'async function* up() { for (let i = 0; i < 20; i++) yield Buffer.alloc(10000, "u") }',
+      'const read = async ({ value, body }) => { let size = 0; for await (const chunk of body) size += chunk.length; return [value, size] }',
+      'const out = [await read(await callStream("tau", "start", ["x"], { body: up() })), await read(await callStream("tau", "plain", []))]',
+      'out.push(await read(await callStream("tau", "broken", [])))',
+      'process.stdout.write(JSON.stringify(out))',
+    ].join('\n')
+    const ran = await helper.request('exec', { argv: [process.execPath, '--input-type=module', '--eval', program] })
+    assert.equal(ran.stderr, '')
+    assert.deepEqual(JSON.parse(ran.stdout), [[{ size: 200000 }, 300000], ['plain', 0], ['cut', 7]])
+    assert.deepEqual(got, ['tau.start ["x"] 200000', 'tau.plain [] 0', 'tau.broken [] 0'])
   } finally {
     await helper.close()
   }

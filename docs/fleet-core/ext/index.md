@@ -63,11 +63,19 @@ export function apply(ctx: Context) {
   box, so a method takes the arguments as JSON, unchecked. Its result must
   be JSON, or nothing for null; what it throws reaches the client as a
   failure with its message.
+- **Bytes** cross beside the JSON, base64 between the helper and the host,
+  for an archive, say: a call the client makes with `callStream` and a
+  `body` gives the method `body`, an async iterable of the bytes, in its
+  context; a method that answers with a `Streamed`,
+  `{ [Symbol.for('fleet.streamed')]: true, value, body }`, or
+  `streamed(value, body)` from `fleet-core/box`, sends `value` as its
+  result and `body` after it, which the client reads as `callStream`'s
+  `body`. A body that fails on the way reaches the client cut short.
 - **A caller that goes away** aborts the method's signal: the client's own
   signal, the program's exit, or the box's helper ending.
-- **A client carries its own encodings.** Only JSON crosses, so a client
-  turns other values, such as dates and bytes, into JSON and back, as its
-  API declares them.
+- **A client carries its own encodings.** JSON and bytes cross, so a client
+  turns other values, such as dates, into JSON and back, as its API
+  declares them.
 - **The model reaches the APIs** with `ts_modules` and `ts_execute`
   (docs/fleet-core/tools/index.md). A program run another way, such as with
   bash's `node`, finds them from a file below `/tau`.
@@ -75,6 +83,8 @@ export function apply(ctx: Context) {
 ## Not yet
 
 - **The `tau` API** (`values`, `run`) has no extension.
+- **Bytes have no back pressure** between the box and the host: each side
+  holds what the other has not read yet, however much that is.
 
 ## Built on
 

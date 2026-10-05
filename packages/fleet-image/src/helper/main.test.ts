@@ -289,6 +289,43 @@ test('the helper relays a client\'s calls to the host, their answers back, and a
   await helper.until(() => helper.answers.some(answer => answer.type === 'result' && answer.id === 2))
 })
 
+test('the helper relays the bytes after a client\'s call to the host, and after the host\'s answer back', async (t) => {
+  const helper = live(t)
+  const client = JSON.stringify(pathToFileURL(fileURLToPath(new URL('../ext/client.js', import.meta.url))).href)
+  const program = (code: string): string[] => [process.execPath, '--input-type=module', '--eval', `import { callStream } from ${client};\n${code}`]
+  const sent = (type: string) => helper.answers.filter(answer => answer.type === type) as { id: number; data?: string; body?: true }[]
+  helper.send({
+    type: 'request', id: 1, method: 'exec',
+    params: {
+      argv: program([
+        'async function* up() { for (let i = 0; i < 50; i++) yield Buffer.alloc(10000, "u") }',
+        'const { value, body } = await callStream("tau", "start", ["x"], { body: up() })',
+        'let down = ""; for await (const chunk of body) down += chunk',
+        'const plain = await callStream("tau", "status", [])',
+        'let none = ""; for await (const chunk of plain.body) none += chunk',
+        'process.stdout.write(JSON.stringify([value, down, plain.value, none]))',
+      ].join(';\n')),
+    },
+  })
+  await helper.until(() => sent('call-end').length === 1)
+  const [call] = sent('call')
+  assert.deepEqual(call, { type: 'call', id: call?.id, api: 'tau', method: 'start', args: ['x'], body: true })
+  const up = Buffer.concat(sent('call-data').map(data => Buffer.from(data.data ?? '', 'base64')))
+  assert.equal(up.length, 500000)
+  assert.ok(up.every(byte => byte === 0x75))
+  const id = call?.id ?? 0
+  helper.send({ type: 'call-result', id, value: 'started', body: true })
+  helper.send({ type: 'call-data', id, data: Buffer.from('down ').toString('base64') })
+  helper.send({ type: 'call-data', id, data: Buffer.from('here').toString('base64') })
+  helper.send({ type: 'call-end', id })
+  await helper.until(() => sent('call').length === 2)
+  const plain = sent('call')[1]
+  assert.equal(plain?.body, undefined)
+  helper.send({ type: 'call-result', id: plain?.id ?? 0, value: 'running' })
+  await helper.until(() => helper.answers.some(answer => answer.type === 'result' && answer.id === 1))
+  assert.equal((helper.answers.find(answer => answer.type === 'result' && answer.id === 1) as { value: { stdout: string } }).value.stdout, '["started","down here","running",""]')
+})
+
 test('the helper type-checks and runs a TypeScript program with what is linked, and cancels one', async (t) => {
   const dir = await folder(t)
   await mkdir(join(dir, 'tau/self/api/stats'), { recursive: true })

@@ -5,8 +5,12 @@
  * starts. Each connection carries one call, a JSON line
  * `{"api", "method", "args"}`, which the helper sends the host as a `call`;
  * it writes the host's answer back as one line, `{"result": …}` or
- * `{"error": {"message": …}}`, and closes. A connection that closes first
- * cancels its call. Which session the call is for, whether it may make it,
+ * `{"error": {"message": …}}`, and closes. A call with `"body": true` is
+ * followed by bytes, up to the end of what the client sends, which the
+ * helper sends the host as they come; an answer with `"body": true` is
+ * followed by bytes, up to the end of the connection, which the helper
+ * writes as the host sends them, and a connection cut short says the host
+ * could not send them all. A connection that closes first cancels its call. Which session the call is for, whether it may make it,
  * and whether its arguments fit is the host's to decide; the helper checks
  * only the call's shape.
  * @module fleet-image/helper/cmd/calls
@@ -18,7 +22,7 @@ import { dirname } from 'node:path'
 import { CALL_SOCKET, SOCKET_VARIABLE } from '../../layout.ts'
 import type { Call, HelperMessage, HostMessage } from '../protocol.ts'
 
-type Answer = Extract<HostMessage, { type: 'call-result' | 'call-error' }>
+type Answer = Extract<HostMessage, { type: 'call-result' | 'call-error' | 'call-data' | 'call-end' }>
 
 export class CallSocket {
   /** Calls sent to the host and not answered yet, by id. */
@@ -38,7 +42,8 @@ export class CallSocket {
     // One left by a helper before this one, which was ended with the box's last start.
     await rm(path, { force: true })
     let socket: CallSocket | undefined
-    const server = createServer((connection) => { socket?.accept(connection) })
+    // A client that sends bytes after its call ends them, and then reads the answer.
+    const server = createServer({ allowHalfOpen: true }, (connection) => { socket?.accept(connection) })
     socket = new CallSocket(server, send)
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -53,13 +58,33 @@ export class CallSocket {
     return socket
   }
 
-  /** Write the host's answer to its caller; one whose caller has gone is dropped. */
+  /** Write the host's answer to its caller, and the bytes after it; one whose caller has gone is dropped. */
   answer(message: Answer): void {
     const connection = this.calls.get(message.id)
     if (connection === undefined) return
-    this.calls.delete(message.id)
-    const reply = message.type === 'call-result' ? { result: message.value } : { error: { message: message.message } }
-    connection.end(`${JSON.stringify(reply)}\n`)
+    switch (message.type) {
+      case 'call-error':
+        this.calls.delete(message.id)
+        connection.end(`${JSON.stringify({ error: { message: message.message } })}\n`)
+        return
+      case 'call-result': {
+        const reply = message.body === true ? { result: message.value, body: true } : { result: message.value }
+        if (message.body === true) {
+          connection.write(`${JSON.stringify(reply)}\n`)
+          return
+        }
+        this.calls.delete(message.id)
+        connection.end(`${JSON.stringify(reply)}\n`)
+        return
+      }
+      case 'call-data':
+        connection.write(Buffer.from(message.data, 'base64'))
+        return
+      case 'call-end':
+        this.calls.delete(message.id)
+        if (message.error === undefined) connection.end()
+        else connection.destroy()
+    }
   }
 
   /** Stop listening, and drop the calls not answered. */
@@ -70,23 +95,35 @@ export class CallSocket {
   }
 
   private accept(connection: Socket): void {
-    let text = ''
+    let received = Buffer.alloc(0)
     let id: number | undefined
-    connection.setEncoding('utf8')
+    let sending = false
     connection.on('error', () => {})
-    connection.on('data', (chunk: string) => {
-      if (id !== undefined) return
-      text += chunk
-      const end = text.indexOf('\n')
+    connection.on('data', (chunk: Buffer) => {
+      if (id !== undefined) {
+        if (sending) this.send({ type: 'call-data', id, data: chunk.toString('base64') })
+        return
+      }
+      received = Buffer.concat([received, chunk])
+      const end = received.indexOf(0x0a)
       if (end < 0) return
-      const call = parse(text.slice(0, end))
+      const call = parse(received.subarray(0, end).toString('utf8'))
       if (call === undefined) {
-        connection.end(`${JSON.stringify({ error: { message: 'fleet: a call is one line of JSON, {"api", "method", "args"}, args a list' } })}\n`)
+        connection.end(`${JSON.stringify({ error: { message: 'fleet: a call is one line of JSON, {"api", "method", "args", "body"?}, args a list' } })}\n`)
         return
       }
       id = this.nextId++
       this.calls.set(id, connection)
       this.send({ type: 'call', id, ...call })
+      sending = call.body === true
+      const rest = received.subarray(end + 1)
+      if (sending && rest.length > 0) this.send({ type: 'call-data', id, data: rest.toString('base64') })
+    })
+    connection.once('end', () => {
+      // The end of a call's bytes; or, of a call without any, its caller gone, whose call the close cancels.
+      if (sending && id !== undefined && this.calls.has(id)) this.send({ type: 'call-end', id })
+      else connection.destroy()
+      sending = false
     })
     connection.once('close', () => {
       if (id === undefined || !this.calls.delete(id)) return
@@ -103,7 +140,7 @@ function parse(line: string): Call | undefined {
     return undefined
   }
   if (typeof value !== 'object' || value === null) return undefined
-  const { api, method, args } = value as Record<string, unknown>
-  if (typeof api !== 'string' || typeof method !== 'string' || !Array.isArray(args)) return undefined
-  return { api, method, args }
+  const { api, method, args, body } = value as Record<string, unknown>
+  if (typeof api !== 'string' || typeof method !== 'string' || !Array.isArray(args) || (body !== undefined && body !== true)) return undefined
+  return body === true ? { api, method, args, body } : { api, method, args }
 }

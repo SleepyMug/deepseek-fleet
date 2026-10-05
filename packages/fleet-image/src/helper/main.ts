@@ -79,7 +79,7 @@ lines.on('line', (line) => {
     process.stderr.write('fleet-helper: unreadable message\n')
     return
   }
-  if (message.type === 'call-result' || message.type === 'call-error') {
+  if (message.type === 'call-result' || message.type === 'call-error' || message.type === 'call-data' || message.type === 'call-end') {
     calls?.answer(message)
     return
   }

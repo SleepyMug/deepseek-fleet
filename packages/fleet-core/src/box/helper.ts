@@ -11,6 +11,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { PassThrough } from 'node:stream'
 import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-image/helper/protocol'
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
@@ -28,11 +29,35 @@ export class HelperError extends Error {
 }
 
 /**
- * Answers a call a client in the box makes, with JSON, or fails with what
- * the client is told. Its signal aborts when the caller has gone, or the
- * connection ends.
+ * Answers a call a client in the box makes, with JSON, or a {@link Streamed},
+ * or fails with what the client is told. `body` is the bytes after a call
+ * that has them, read once; a caller gone cuts them short. Its signal
+ * aborts when the caller has gone, or the connection ends.
  */
-export type CallHandler = (call: Call, signal: AbortSignal) => Promise<unknown>
+export type CallHandler = (call: Call, signal: AbortSignal, body?: AsyncIterable<Uint8Array>) => Promise<unknown>
+
+/**
+ * Marks an answer with bytes after it. It is `Symbol.for`'s, the same in
+ * every module, so whatever answers a call can make one without importing
+ * this one.
+ */
+export const STREAMED = Symbol.for('fleet.streamed')
+
+/** An answer to a call, JSON, with the bytes that follow it, such as an archive. */
+export interface Streamed {
+  readonly [STREAMED]: true
+  readonly value: unknown
+  readonly body: AsyncIterable<Uint8Array>
+}
+
+/** An answer of `value`, followed by `body`. */
+export function streamed(value: unknown, body: AsyncIterable<Uint8Array>): Streamed {
+  return { [STREAMED]: true, value, body }
+}
+
+function isStreamed(value: unknown): value is Streamed {
+  return typeof value === 'object' && value !== null && (value as Partial<Streamed>)[STREAMED] === true
+}
 
 /** What each method's result must look like. */
 const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'] } = {
@@ -87,6 +112,8 @@ export class Helper {
   private readonly pending = new Map<number, Pending>()
   /** The calls being answered, by the helper's id. */
   private readonly calls = new Map<number, AbortController>()
+  /** The bytes after the calls that have them, until their end, by the helper's id. */
+  private readonly uploads = new Map<number, PassThrough>()
   private readonly exited: Promise<void>
   private nextId = 1
   private stderr = ''
@@ -171,7 +198,21 @@ export class Helper {
       return
     }
     if (message?.type === 'call-cancel') {
-      this.calls.get(message.id)?.abort(new Error('fleet: the caller in the box has gone'))
+      const gone = new Error('fleet: the caller in the box has gone')
+      this.calls.get(message.id)?.abort(gone)
+      this.uploads.get(message.id)?.destroy(gone)
+      this.uploads.delete(message.id)
+      return
+    }
+    if (message?.type === 'call-data') {
+      this.uploads.get(message.id)?.write(Buffer.from(message.data, 'base64'))
+      return
+    }
+    if (message?.type === 'call-end') {
+      const upload = this.uploads.get(message.id)
+      this.uploads.delete(message.id)
+      if (message.error === undefined) upload?.end()
+      else upload?.destroy(new Error(`fleet: the caller in the box could not send it all: ${message.error}`))
       return
     }
     const pending = message === undefined ? undefined : this.pending.get(message.id)
@@ -196,26 +237,53 @@ export class Helper {
     }
   }
 
-  /** Answer a call, unless one with its id is being answered, which breaks the protocol. */
-  private answer({ id, api, method, args }: Call & { id: number }): void {
+  /**
+   * Answer a call, unless one with its id is being answered, which breaks
+   * the protocol; and send the bytes after an answer that has them.
+   */
+  private answer({ id, api, method, args, body }: Call & { id: number }): void {
     if (this.calls.has(id)) {
       this.break(new Error('fleet: the helper sent a call with an id in use'))
       return
     }
     const controller = new AbortController()
     this.calls.set(id, controller)
+    let upload: PassThrough | undefined
+    if (body === true) {
+      upload = new PassThrough()
+      this.uploads.set(id, upload)
+    }
     void (async () => {
       let reply: HostMessage
+      let after: AsyncIterable<Uint8Array> | undefined
       try {
-        const value = await this.onCall({ api, method, args }, controller.signal)
-        reply = { type: 'call-result', id, value: value ?? null }
+        const answered = await this.onCall({ api, method, args }, controller.signal, upload)
+        const value = isStreamed(answered) ? answered.value : answered
+        after = isStreamed(answered) ? answered.body : undefined
+        reply = { type: 'call-result', id, value: value ?? null, ...after === undefined ? {} : { body: true } }
         // What is not JSON fails here, not in the box.
         JSON.stringify(reply)
       } catch (error) {
         reply = { type: 'call-error', id, message: error instanceof Error ? error.message : String(error) }
+        after = undefined
+      }
+      const live = (): boolean => !controller.signal.aborted && this.failure === undefined
+      if (live()) this.send(reply)
+      if (reply.type === 'call-result' && after !== undefined) {
+        let error: string | undefined
+        try {
+          for await (const chunk of after) {
+            if (!live()) break
+            this.send({ type: 'call-data', id, data: Buffer.from(chunk).toString('base64') })
+          }
+        } catch (cause) {
+          error = cause instanceof Error ? cause.message : String(cause)
+        }
+        if (live()) this.send(error === undefined ? { type: 'call-end', id } : { type: 'call-end', id, error })
       }
       this.calls.delete(id)
-      if (!controller.signal.aborted && this.failure === undefined) this.send(reply)
+      // What the call sent that its answer did not read.
+      upload?.resume()
     })()
   }
 
@@ -231,6 +299,8 @@ export class Helper {
     for (const pending of this.pending.values()) pending.reject(error)
     this.pending.clear()
     for (const call of this.calls.values()) call.abort(error)
+    for (const upload of this.uploads.values()) upload.destroy(error)
+    this.uploads.clear()
   }
 }
 
@@ -251,8 +321,13 @@ function parse(line: string): HelperMessage | undefined {
   if (value.type === 'error' && typeof value.message === 'string' && (value.code === undefined || typeof value.code === 'string')) {
     return value as HelperMessage
   }
-  if (value.type === 'call' && typeof value.api === 'string' && typeof value.method === 'string' && Array.isArray(value.args)) {
-    return { type: 'call', id: value.id as number, api: value.api, method: value.method, args: value.args as unknown[] }
+  if (value.type === 'call' && typeof value.api === 'string' && typeof value.method === 'string' && Array.isArray(value.args) && (value.body === undefined || value.body === true)) {
+    const call = { type: 'call' as const, id: value.id as number, api: value.api, method: value.method, args: value.args as unknown[] }
+    return value.body === true ? { ...call, body: true } : call
+  }
+  if (value.type === 'call-data' && typeof value.data === 'string') return { type: 'call-data', id: value.id as number, data: value.data }
+  if (value.type === 'call-end' && (value.error === undefined || typeof value.error === 'string')) {
+    return typeof value.error === 'string' ? { type: 'call-end', id: value.id as number, error: value.error } : { type: 'call-end', id: value.id as number }
   }
   if (value.type === 'call-cancel') return { type: 'call-cancel', id: value.id as number }
   return undefined

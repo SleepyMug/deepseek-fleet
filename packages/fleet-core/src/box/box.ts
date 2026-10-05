@@ -15,7 +15,7 @@ import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from 'fleet-image/layout'
 import type { EventOf, Method, Methods } from 'fleet-image/helper/protocol'
 import { Helper, type CallHandler } from './helper.ts'
 
-export { HelperError, METHODS, type CallHandler } from './helper.ts'
+export { HelperError, METHODS, STREAMED, streamed, type CallHandler, type Streamed } from './helper.ts'
 export { exec } from './cmd/exec.ts'
 
 /** The label every box's container carries, with an empty value, which `list` and `open` look for. */

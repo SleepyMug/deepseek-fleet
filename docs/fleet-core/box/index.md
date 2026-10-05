@@ -26,7 +26,9 @@ It also exports:
   `exec`, and gives back what it wrote to stdout; an exit other than 0 fails,
   with what it wrote to stderr;
 - `HelperError`, a failure the helper reports for one request, with its `code`, if it has one;
-- `CallHandler`, what answers a call: `(call, signal) => Promise<JSON>`;
+- `CallHandler`, what answers a call: `(call, signal, body?) => Promise<JSON | Streamed>`,
+  `body` the bytes after a call that has them, and a `Streamed`, made with
+  `streamed(value, body)`, an answer with bytes after it (docs/fleet-core/ext/index.md);
 - `METHODS`, the methods a helper takes;
 - `BOX_LABEL`, the label that marks a box's container.
 

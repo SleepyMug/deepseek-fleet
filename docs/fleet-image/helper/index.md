@@ -16,7 +16,10 @@ the host (docs/fleet-core/ext/index.md).
   path `fleet-image/layout` gives, and is not exported.
 - `fleet-image/ext/client`: fleet's client runtime, which an extension's
   client imports in the box: `call(api, method, args, signal?)` calls the
-  server of the extension that implements `api`, through the call socket.
+  server of the extension that implements `api`, through the call socket;
+  `callStream(api, method, args, { body?, signal? })` does too, sending
+  `body`, bytes such as an archive, after the call, and gives back the
+  result with the bytes the server sends after it, `{ value, body }`.
 
 ## Design
 
@@ -29,12 +32,17 @@ One JSON message per line over the helper's stdin and stdout:
     code of the failure, such as an `FsError`'s, if it has one;
   - `{ "type": "event", "id": 1, "value": … }`, any number of them before
     the request's result, for a method that sends events;
-  - `{ "type": "call", "id": 7, "api": "notes", "method": "addNote", "args": […] }`,
-    a client's call, under an id the helper gives;
+  - `{ "type": "call", "id": 7, "api": "notes", "method": "addNote", "args": […], "body"?: true }`,
+    a client's call, under an id the helper gives; with `body`, bytes
+    follow it;
   - `{ "type": "call-cancel", "id": 7 }`, when the call's caller has gone.
-- host to helper, for a call: `{ "type": "call-result", "id": 7, "value": … }`
+- host to helper, for a call: `{ "type": "call-result", "id": 7, "value": …, "body"?: true }`
   or `{ "type": "call-error", "id": 7, "message": "…" }`, once, unless the
-  call was cancelled.
+  call was cancelled; with `body`, bytes follow it.
+- either way, the bytes after a call or its answer:
+  `{ "type": "call-data", "id": 7, "data": "<base64>" }`, any number of
+  them, then `{ "type": "call-end", "id": 7, "error"?: "…" }`, with `error`
+  when they were cut short.
 
 The helper answers every request exactly once, in any order. When its stdin
 ends, it ends the processes and terminals it started and its watches,
@@ -71,8 +79,12 @@ answers what is left, and exits.
   sets the variable for every process it starts. Each connection carries
   one call, a JSON line `{ "api", "method", "args" }`; the helper sends it
   to the host, writes back the answer, `{ "result": … }` or
-  `{ "error": { "message": … } }`, and closes. A connection that closes
-  first cancels the call. The helper checks only the call's shape: which
+  `{ "error": { "message": … } }`, and closes. A call with `"body": true`
+  is followed by bytes, up to the end of what the client sends, which the
+  helper sends on as they come; an answer with `"body": true` is followed by
+  bytes, up to the end of the connection, which a cut-short `call-end`
+  cuts short too. A connection that closes first, or that a client without
+  bytes to send ends, cancels the call. The helper checks only the call's shape: which
   session it is for, and whether it may make it, is the host's. Without the
   socket, only calls fail.
 - **Back pressure.** While the host has not taken what the helper wrote,

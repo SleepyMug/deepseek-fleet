@@ -10,18 +10,24 @@
 
 import { isAbsolute } from 'node:path'
 
+export { STREAMED, streamed, type Streamed } from '../box/helper.ts'
+
 /** What a server's method is told of a call, besides its arguments. */
 export interface CallContext {
   /** The session whose box made the call, as the fleet host knows it, never as the call says. */
   sessionId: string
   /** Aborts when the caller in the box has gone, or the box's helper has. */
   signal: AbortSignal
+  /** The bytes the call sent after it, such as an archive, if it sent any, read once. */
+  body?: AsyncIterable<Uint8Array>
 }
 
 /**
  * A method of an extension's server. Its arguments come from the box, where
  * the model can send anything, so it checks them; it answers with JSON, or
- * nothing, for null, and what it throws is the client's failure.
+ * nothing, for null, or with JSON and bytes after it, a `Streamed`, which it
+ * makes as `{ [Symbol.for('fleet.streamed')]: true, value, body }`, or with
+ * `streamed(value, body)`; and what it throws is the client's failure.
  */
 export type ExtMethod = (args: unknown[], call: CallContext) => unknown
 
