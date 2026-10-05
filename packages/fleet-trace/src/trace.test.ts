@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { settle, type Services } from './driver.ts'
 import { ScriptedModel } from './model.ts'
 import { render } from './render.ts'
 
@@ -12,9 +13,12 @@ async function folder(t: { after(fn: () => Promise<void>): void }): Promise<stri
   return dir
 }
 
+/** What a turn of a conversation offers the model. */
+const TOOLS = [{ type: 'function', function: { name: 'read' } }]
+
 /** The model's streamed answer, as one object: its text, or its tool call. */
-async function ask(port: number, messages: object[]): Promise<{ text: string; call?: { name: string; arguments: string } }> {
-  const response = await fetch(`http://127.0.0.1:${String(port)}/v1/chat/completions`, { method: 'POST', body: JSON.stringify({ messages }) })
+async function ask(port: number, messages: object[], tools: object[] = TOOLS): Promise<{ text: string; call?: { name: string; arguments: string } }> {
+  const response = await fetch(`http://127.0.0.1:${String(port)}/v1/chat/completions`, { method: 'POST', body: JSON.stringify({ messages, tools }) })
   let text = ''
   let call: { name: string; arguments: string } | undefined
   for (const line of (await response.text()).split('\n')) {
@@ -39,8 +43,10 @@ test('the scripted model holds requests until it knows the prompt, answers the r
   const first = await ask(model.port, [{ role: 'system', content: 'You are…' }, { role: 'user', content: [{ type: 'text', text: 'Read the notes.\n' }] }])
   assert.deepEqual(first, { text: '', call: { name: 'read', arguments: '{"file_path":"/tau/in/a.txt"}' } })
   assert.deepEqual(await ask(model.port, [{ role: 'user', content: 'Read the notes.' }, { role: 'assistant' }, { role: 'tool', content: 'a' }]), { text: 'Done.' })
-  assert.deepEqual(await readdir(dir), ['001.json', '002-run.json', '003-run.json'])
-  assert.deepEqual(model.requests.map(request => request.run), [false, true, true])
+  // A request without tools is no turn, though it quotes the prompt, as dsh's for a title does.
+  assert.deepEqual(await ask(model.port, [{ role: 'user', content: 'Title these: ["Read the notes."]' }], []), { text: 'Title' })
+  assert.deepEqual(await readdir(dir), ['001.json', '002-run.json', '003-run.json', '004.json'])
+  assert.deepEqual(model.requests.map(request => request.run), [false, true, true, false])
 })
 
 test('the scripted model answers a run the run starts with the script whose phrase its prompt holds', async (t) => {
@@ -74,4 +80,32 @@ test('a request renders as its system prompt, its tools, and its conversation', 
   assert.match(conversation, /## user\n\nCount the words\./u)
   assert.match(conversation, /## assistant calls ts_execute \(call_1\)\n\n```json\n\{\n {2}"input": \{\n {4}"a": 1\n {2}\}\n\}\n```\n\n```ts\nexport function main\(\) \{ return 1 \}\n```/u)
   assert.match(conversation, /## tool result \(call_2\), an error/u)
+})
+
+test('the driver makes a session in the folder\'s workspace, prompts it, waits for its agent, and reads how its last turn went', async () => {
+  const calls: string[] = []
+  const idle = Promise.withResolvers<void>()
+  const services: Services = {
+    workspaceRegistry: { create: async (path) => { calls.push(`workspace ${path}`); return { id: 'w1' } } },
+    sessionController: {
+      create: async ({ sessionId, workspaceId }) => { calls.push(`create ${sessionId.slice(0, 8)} ${workspaceId}`) },
+      prompt: async ({ content, mode }) => { calls.push(`prompt ${mode} ${content[0]?.text ?? ''}`) },
+      inspect: async () => ({
+        events: [
+          { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Looking.' }] } } },
+          { type: 'assistant/message', data: { message: { content: [{ type: 'toolCall' }] } } },
+          { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'It ' }, { type: 'text', text: 'shouted.' }] } } },
+          { type: 'turn/end', data: { reason: { kind: 'completed' } } },
+        ],
+      }),
+    },
+    agents: { get: () => ({ whenIdle: () => { calls.push('wait'); return idle.promise } }) },
+  }
+  const settling = settle(services, { project: '/work', prompt: 'Shout.' })
+  while (!calls.includes('wait')) await new Promise(resolve => setImmediate(resolve))
+  idle.resolve()
+  const { sessionId, ...settled } = await settling
+  assert.match(sessionId, /^session-[0-9a-f-]{36}$/u)
+  assert.deepEqual(settled, { end: { kind: 'completed' }, text: 'It shouted.' })
+  assert.deepEqual(calls, ['workspace /work', 'create session- w1', 'prompt queue Shout.', 'wait'])
 })

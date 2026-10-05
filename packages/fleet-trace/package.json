@@ -8,6 +8,10 @@
     "fleet-trace": "./lib/cli.js"
   },
   "exports": {
+    "./driver": {
+      "types": "./lib/driver.d.ts",
+      "default": "./lib/driver.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

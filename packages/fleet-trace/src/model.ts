@@ -1,13 +1,14 @@
 /**
  * The scripted model: an OpenAI-compatible chat endpoint on localhost, which
- * dsh's `llm-pi-ai` reaches as the provider `mock`. It answers the run's
- * conversation, a request carrying the tau's prompt, with the scenario's
- * next step, one per tool result it has had back, and its final text after
- * the last; the conversation of a run the run starts, a request carrying
- * one of the scenario's phrases, likewise, with that phrase's script; any
- * other request, such as dsh's for a session title, with a word. Until it is told the prompt, which the run's start answers with,
- * it holds every request. It writes each request it gets, whole, to its
- * folder.
+ * dsh's `llm-pi-ai` reaches as the provider `mock`. It answers the
+ * scenario's conversation, a request with tools carrying the prompt, the
+ * tau's or the session's, with the scenario's next step, one per tool result
+ * it has had back, and its final text after the last; the conversation of a
+ * run the scenario starts, a request with tools carrying one of the
+ * scenario's phrases, likewise, with that phrase's script; any other
+ * request, such as dsh's for a session title, with a word. Until it is told
+ * the prompt, which a run's start answers with, it holds every request. It
+ * writes each request it gets, whole, to its folder.
  * @module fleet-trace/model
  */
 
@@ -79,10 +80,12 @@ export class ScriptedModel {
   }
 
   private async answer(raw: string, response: import('node:http').ServerResponse): Promise<void> {
-    const body = JSON.parse(raw === '' ? '{}' : raw) as { messages?: Message[] }
+    const body = JSON.parse(raw === '' ? '{}' : raw) as { messages?: Message[]; tools?: unknown[] }
     const messages = body.messages ?? []
     const prompt = await this.known.promise
-    const says = (phrase: string): boolean => messages.some(message => message.role === 'user' && text(message).includes(phrase))
+    // A turn of a conversation offers tools; dsh's other requests, such as for a title, which may quote the prompt, do not.
+    const turn = (body.tools ?? []).length > 0
+    const says = (phrase: string): boolean => turn && messages.some(message => message.role === 'user' && text(message).includes(phrase))
     const run = says(prompt)
     const script = run ? { steps: this.steps, final: this.final } : this.scripts.find(({ match }) => says(match))
     const file = join(this.dir, `${String(this.requests.length + 1).padStart(3, '0')}${run ? '-run' : script === undefined ? '' : '-child'}.json`)

@@ -1,0 +1,19 @@
+{
+  "prompt": "Have the tau in shout/ shout hello into shout.txt, then tell me what it said.",
+  "files": {
+    "shout/PROMPT.md": "Write ${text} in capital letters to ${out}, and nothing else.\n",
+    "shout/tau.json": "{\n  \"description\": \"Shout a text into a file.\",\n  \"params\": {\n    \"text\": { \"type\": \"text\", \"description\": \"What to shout.\" },\n    \"out\": { \"type\": \"file\", \"mode\": \"out\", \"description\": \"The text in capital letters.\" }\n  }\n}\n"
+  },
+  "steps": [
+    { "tool": "read", "args": { "file_path": "shout/tau.json" } },
+    { "tool": "tau_run", "args": { "tau": "shout", "values": { "text": "hello", "out": { "$out": "shout.txt" } } } }
+  ],
+  "final": "It shouted: HELLO.",
+  "runs": [
+    {
+      "match": "in capital letters to",
+      "steps": [{ "tool": "write", "args": { "file_path": "/tau/out/shout.txt", "content": "HELLO\n" } }],
+      "final": "Shouted."
+    }
+  ]
+}
