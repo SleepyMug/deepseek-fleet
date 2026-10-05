@@ -42,8 +42,9 @@ Each of the service's operations takes who calls it, a run's caller:
 tau's session, from its box, which reaches only the runs it started: any
 other is as if it were not there. Who calls makes no difference to a run's
 files, which only the caller reads and writes; a tau's session's runs are
-in its own project. Nothing calls the service from a box yet; the `tau`
-API's extension will.
+in its own project. A tau's session calls it through the `tau` API's
+extension (docs/fleet-ext-tau/index.md), which the plugin provides it to
+as `ctx.fleetTau`.
 
 The patch also declares `tau`, the agent preset a tau's session has: a
 persona, the tau's prompt plugin (`fleet-core/tau/prompt`), bash in the
@@ -276,8 +277,6 @@ preset's scope, which each of its sessions' agents has as its parent.
 - A call and a result are kept whole, however large, in the session's
   folder; and an `$inout` handle merges into the caller's folder, so what
   the agent removed there stays.
-- No box calls the service yet: the `tau` API's extension, which will, is
-  to come.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 

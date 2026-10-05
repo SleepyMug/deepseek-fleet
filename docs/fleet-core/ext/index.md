@@ -82,7 +82,6 @@ export function apply(ctx: Context) {
 
 ## Not yet
 
-- **The `tau` API** (`values`, `run`) has no extension.
 - **Bytes have no back pressure** between the box and the host: each side
   holds what the other has not read yet, however much that is.
 

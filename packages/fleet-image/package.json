@@ -16,6 +16,10 @@
       "types": "./lib/ext/client.d.ts",
       "default": "./lib/ext/client.js"
     },
+    "./ext/tau": {
+      "types": "./lib/ext/tau.d.ts",
+      "default": "./lib/ext/tau.js"
+    },
     "./tau/endpoint": {
       "types": "./lib/tau/endpoint.d.ts",
       "default": "./lib/tau/endpoint.js"

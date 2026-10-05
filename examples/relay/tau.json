@@ -1,0 +1,7 @@
+{
+  "description": "Have another tau shout a word into a report, and say what it said.",
+  "params": {
+    "word": { "type": "text", "description": "The word to shout." },
+    "report": { "type": "file", "mode": "out", "description": "The word, shouted." }
+  }
+}

@@ -20,6 +20,10 @@ the host (docs/fleet-core/ext/index.md).
   `callStream(api, method, args, { body?, signal? })` does too, sending
   `body`, bytes such as an archive, after the call, and gives back the
   result with the bytes the server sends after it, `{ value, body }`.
+- `fleet-image/ext/tau`: tau's caller's side, `packCall`, `applyResult`
+  and `runTau`, from `@sleepymug/tau/call`, for a client in the box, which
+  finds only this package and Node's modules; the `tau` API's client
+  (docs/fleet-ext-tau/index.md) runs taus with it.
 
 ## Design
 

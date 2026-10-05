@@ -221,6 +221,21 @@ importers:
         specifier: workspace:*
         version: link:../../packages/fleet-image
 
+  ext/fleet-ext-tau:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: 4.0.4
+        version: 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
+      '@sleepymug/tau':
+        specifier: workspace:*
+        version: link:../../../agent_fleet_project/tau
+      fleet-core:
+        specifier: workspace:*
+        version: link:../../packages/fleet-core
+      fleet-image:
+        specifier: workspace:*
+        version: link:../../packages/fleet-image
+
   packages/fleet-client:
     dependencies:
       '@sleepymug/tau':

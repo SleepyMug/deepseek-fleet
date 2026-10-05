@@ -1,0 +1,6 @@
+# fleet-ext-tau's bundle patch: list it after fleet-core in the fleet
+# profile's bundles, and a tau that declares api/tau/ runs, its programs
+# importing @api/tau (docs/fleet-ext-tau/index.md).
+- insert:
+    - id: fleet-ext-tau
+      name: fleet-ext-tau/plugin

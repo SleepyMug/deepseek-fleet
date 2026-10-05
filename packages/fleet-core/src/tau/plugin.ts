@@ -6,7 +6,9 @@
  * registry, as the web client's own calls do, so that the web UI lists a
  * tau's session, under the caller's folder, and follows it; and on dsh's
  * agents, to learn when a run's agent is done. It imports only their types.
- * Its config names the dsh home, where it serves its socket.
+ * Its config names the dsh home, where it serves its socket. It provides the
+ * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
+ * through which a tau's session starts runs from its box.
  * @module fleet-core/tau/plugin
  */
 
@@ -21,6 +23,12 @@ import { summarize } from './outcome.ts'
 import { print } from './runs-plugin.ts'
 import { listen } from './server.ts'
 import { TauService, abortable, type Sessions } from './service.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    fleetTau: TauService
+  }
+}
 
 export const name = 'fleet-tau'
 export const inject = ['fleetTauRuns', 'sessionController', 'workspaceRegistry', 'agents']
@@ -50,6 +58,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   try {
     await service.load()
     ctx.effect(() => close, 'fleet-tau socket')
+    ctx.provide('fleetTau', service)
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
     await close()
