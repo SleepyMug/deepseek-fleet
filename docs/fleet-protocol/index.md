@@ -28,7 +28,7 @@ The service answers with one line of JSON and ends the connection.
   |---|---|
   | `start` | `{ "sessionId": "session-…", "box": "fleet-tau-…", "prompt": "…" }` |
   | `list` | a run's status, as `status` answers, for each run |
-  | `status` | `{ "sessionId", "tauDir", "project", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }` |
+  | `status` | `{ "sessionId", "parent"?, "tauDir", "project", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did |
   | `finish` | `{ "ok": true \| false, "text": "…", "failure"?: "…" }`, tau's result |
   | `cancel`, `delete` | `null` |
 

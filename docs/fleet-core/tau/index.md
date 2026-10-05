@@ -28,10 +28,16 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 |---|---|
 | `start { tauDir, callerCwd, values }` | Start a run of the tau with the values: set up its box, start it, make the dsh session and give it its prompt. Answers `{ sessionId, box, prompt }`. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
-| `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`. |
+| `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `finish { sessionId }` | Wait until the run ends, and answer how it did, the same each time. The first time, a run that succeeded puts what it gave back at the caller's paths. |
 | `cancel { sessionId }` | Cancel the run's turn, which ends the run; a run that ended is let be. |
-| `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run. |
+| `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run, and every run it started. |
+
+Each of the service's operations takes who calls it, a run's caller:
+`fleet`, on the host, through the socket, which reaches every run; or a
+tau's session, from its box, whose paths are in its box, and which reaches
+only the runs it started: any other is as if it were not there. Nothing
+calls the service from a box yet; the `tau` API's extension will.
 
 The patch also declares `tau`, the agent preset a tau's session has: a
 persona, the tau's prompt plugin (`fleet-core/tau/prompt`), bash in the
@@ -55,7 +61,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 
 - **Setting up the box** (`runs.ts`), the first part of `start`, goes in
   this order:
-  1. It reads the tau and binds the values with tau's library:
+  1. It reads the tau where its caller has it (`callers.ts`, below), and
+     binds the values with tau's library:
      `loadTau(tauDir).bind(values, { cwd: callerCwd }, place, '/tau/self')`
      checks the values against `tau.json`, places each handle, and expands
      `PROMPT.md` with the places. `checkInputs` then checks the caller's
@@ -94,8 +101,29 @@ preset's scope, which each of its sessions' agents has as its parent.
   `/tau/node_modules`, and TypeScript does too. Each `@api/<name>` there is
   typed by the tau's own declarations, in `/tau/self/api/<name>`, and
   re-exports the client, so every import in a process gets one module.
+- **Callers** (`callers.ts`). `fleet`'s paths are the host's, which the
+  runs read and write as they are. A tau's session's are in its box, which
+  its model controls, so nothing it names is read on the host where it is:
+  - the tau's directory, and each `$in` and `$inout` handle, are copied out
+    of its box, whole, with `docker cp`, to the run's folder on the host,
+    and checked there with tau's `checkInputs`, as the host's paths are; the
+    tau's directory as an `$in` folder is, so that its symlinks lead only
+    inside it, and reading it reads nothing else of the host's. Problems
+    name the paths as the caller does. The copies are copied into the run's
+    box, then removed.
+  - each `$out` handle's folder is checked in the caller's box, with a
+    program the helper runs there, as `checkInputs` checks it on the host.
+  - the run is in the calling session's project, as its dsh workspace.
+  - what the run gives back is put in the caller's box: each path resolved
+    there with `realpath`, a folder merged into a folder there entry by
+    entry, and anything else put whole with `docker cp`, in place of what
+    was there.
+
+  Each of these is one of the calling session's operations on its box, in
+  turn with its others; the box is started for those that run a program.
 - **The registry** (`registry.ts`) has one JSON file per session,
-  `$DSH_HOME/fleet/taus/<session id>.json`: the box, the tau, the project,
+  `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
+  caller; the box, the tau, the project,
   the expanded prompt and the request id it is sent under, each handle (its
   mode, kind, caller's path and place), the names of the APIs the tau
   declares, each linked, what it exposes, with what each says it is, when
@@ -157,6 +185,10 @@ preset's scope, which each of its sessions' agents has as its parent.
   client that lost its connection, as when dsh restarts, asks again.
 - **Cancelling** cancels the session's turn; the run then ends as
   cancelled, which its watch records.
+- **The runs a run started** go with it. Once a run ends, its box is
+  stopped, and nothing it started and did not finish can give anything
+  back, so those runs are deleted. Deleting a run deletes every run it
+  started first, finished or not, and theirs.
 - **Deleting** archives the session, stopping its work, since dsh does not
   delete sessions; then it removes the box and the session's folder, and
   forgets the session. A
@@ -233,6 +265,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - What a run gives back is copied whole, however large, once to the
   session's folder and once to the caller's paths; and an `$inout` handle
   merges into the caller's folder, so what the agent removed there stays.
+- No box calls the service yet: the `tau` API's extension, which will, is
+  to come.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 
@@ -241,8 +275,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - `@sleepymug/tau`: `loadTau`, `bind`, `checkInputs`, `checkOutputs`,
   `loadApis`, `checkImplementation`, `loadExposed`.
 - `ctx.fleetExts` (fleet-core/ext).
-- `Box` and `exec` (`fleet-core/box`), and `copyOutWhole` for what a run
-  gives back.
+- `Box` and `exec` (`fleet-core/box`), and `copyOutWhole` and
+  `copyInWhole` for what a run takes from a box and gives back.
 - `fleet-protocol/tau`, for the wire.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,

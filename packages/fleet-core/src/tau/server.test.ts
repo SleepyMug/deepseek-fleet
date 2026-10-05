@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { PROTOCOL_VERSION } from 'fleet-protocol/tau'
+import type { Caller } from './registry.ts'
 import { listen, type Operations } from './server.ts'
 
 /** Send one line, and read the answer until the service ends the connection. */
@@ -27,25 +28,28 @@ const STATUS = { sessionId: 'session-a', tauDir: '/t', project: '/c', state: 'ru
  * which `aborted` then records.
  */
 function fake(calls: string[], aborted: string[] = []): Operations {
-  const op = (name: string) => (sessionId: string): Promise<void> => {
+  const op = (name: string) => (caller: Caller, sessionId: string): Promise<void> => {
+    assert.equal(caller.kind, 'host')
     calls.push(`${name} ${sessionId}`)
     return sessionId === 'session-fails' ? Promise.reject(new Error(`fleet: no tau session ${sessionId}`)) : Promise.resolve()
   }
   return {
-    start: (tauDir, values, callerCwd) => {
+    start: (caller, tauDir, values, callerCwd) => {
+      assert.equal(caller.kind, 'host')
       calls.push(`start ${tauDir} ${JSON.stringify(values)} ${callerCwd}`)
       return Promise.resolve({ sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' })
     },
-    list: () => {
+    list: (caller) => {
+      assert.equal(caller.kind, 'host')
       calls.push('list')
       return Promise.resolve([STATUS])
     },
-    status: async (sessionId) => {
-      await op('status')(sessionId)
+    status: async (caller, sessionId) => {
+      await op('status')(caller, sessionId)
       return { ...STATUS, sessionId }
     },
-    finish: async (sessionId, signal) => {
-      await op('finish')(sessionId)
+    finish: async (caller, sessionId, signal) => {
+      await op('finish')(caller, sessionId)
       if (sessionId === 'session-waits') {
         await new Promise((resolve) => { signal.addEventListener('abort', resolve, { once: true }) })
         aborted.push(sessionId)

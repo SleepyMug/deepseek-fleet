@@ -77,6 +77,8 @@ export type RunState = 'running' | 'ended' | 'finished'
 /** What `status` answers with, and `list` with for each run. */
 export interface RunStatus {
   sessionId: string
+  /** The run that started this one from its box, if one did. */
+  parent?: string
   /** The tau's directory. */
   tauDir: string
   /** The caller's folder, the dsh workspace the session is in. */

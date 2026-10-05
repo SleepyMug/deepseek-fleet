@@ -18,6 +18,7 @@ in it through any number of starts and stops.
 | `box.stop()` | End the helper and stop the container. | `docker stop` |
 | `box.copyIn(from, to)` | Copy a host file to a path in the box, or a host folder's contents into a folder in the box. | `docker cp <from> <container>:<to>`, or `<from>/.` for a folder |
 | `box.copyOut(from, to)` | Copy a box folder's contents into a host folder. | `docker cp <container>:<from>/. <to>` |
+| `box.copyInWhole(from, to)` | Copy a host file or folder, whole, to a path in the box not there yet. | `docker cp <from> <container>:<to>` |
 | `box.copyOutWhole(from, to)` | Copy a box file or folder, whole, to a host path not there yet; nothing at `from` fails with `MissingInBox`. | `docker cp <container>:<from> <to>` |
 | `box.remove()` | End the helper and remove the container, running or not. | `docker rm --force` |
 
@@ -65,9 +66,9 @@ It also exports:
 - **Copies** work whether the box runs or not. A file goes to the path it is
   given, and a folder's contents into the folder it is given, which is made
   if it is missing. The parent must exist. A folder's copy merges into what
-  is there already, and symlinks are copied as links. A whole copy out puts
-  the file or folder itself at a host path not there yet, keeping modes,
-  and a symlink there as a link. Paths in the box are absolute.
+  is there already, and symlinks are copied as links. A whole copy, in or
+  out, puts the file or folder itself at a path not there yet, keeping
+  modes, and a symlink there as a link. Paths in the box are absolute.
 
 ## Built on
 

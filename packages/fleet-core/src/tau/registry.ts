@@ -14,14 +14,23 @@ import type { Result } from 'fleet-protocol/tau'
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 
+/** Who started a run: `fleet`, on the host, or a tau's session, from its box. */
+export type Caller = { kind: 'host' } | { kind: 'session'; sessionId: string }
+
 export interface Entry {
   sessionId: string
+  /**
+   * Who started the run, whose paths its handles name, and who alone, but
+   * the host, reaches it; the host for an entry written before callers were.
+   */
+  caller?: Caller
   /** The box's container. */
   box: string
   tauDir: string
   /**
-   * The caller's folder, through symlinks: the dsh workspace the session is
-   * in, which the web UI lists it under, and its working folder.
+   * The dsh workspace the session is in, which the web UI lists it under,
+   * and its working folder: the caller's folder, through symlinks, or a
+   * calling session's own project.
    */
   project: string
   /** The tau's prompt, expanded with where the box has each handle. */
@@ -34,7 +43,7 @@ export interface Entry {
   ended?: { at: string; result: Result }
   /** When a `finish` first gave back how the run ended. */
   finishedAt?: string
-  /** Each handle of the run: its mode, its kind, the caller's path, and where the box has it. */
+  /** Each handle of the run: its mode, its kind, the caller's path, in the caller's box for a session, and where the box has it. */
   handles: readonly BoundHandle[]
   /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]

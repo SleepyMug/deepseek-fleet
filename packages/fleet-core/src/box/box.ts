@@ -155,6 +155,19 @@ export class Box {
   }
 
   /**
+   * Copy a host file or folder, whole, to a path in the container that is
+   * not there yet, whether the box runs or not, with `docker cp`. Symlinks
+   * are copied as links, the path's own included, and modes are kept.
+   * @param from - the host path.
+   * @param to - the container's path, absolute, whose parent exists.
+   */
+  copyInWhole(from: string, to: string): Promise<void> {
+    return this.serial(async () => {
+      await run(this.docker, ['cp', resolve(from), `${this.container}:${containerPath(to)}`])
+    })
+  }
+
+  /**
    * Copy a container file or folder, whole, to a host path that is not
    * there yet, whether the box runs or not, with `docker cp`. Symlinks are
    * copied as links, the path's own included, and modes are kept.

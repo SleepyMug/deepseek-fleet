@@ -2,7 +2,8 @@
  * The tau service's socket (fleet-protocol/tau): it reads one request from
  * each connection, has the service carry it out, answers, and ends the
  * connection. A client that goes away first gives up its wait, such as a
- * `finish`'s, and nothing else. Only the owner can open the socket, which is its
+ * `finish`'s, and nothing else. Its clients are the host's, which reach
+ * every run. Only the owner can open the socket, which is its
  * authentication, as the dsh home's own files are. One service serves a
  * socket: another finds it answering and does not start.
  * @module fleet-core/tau/server
@@ -12,6 +13,7 @@ import { chmod, mkdir, unlink } from 'node:fs/promises'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { dirname, isAbsolute } from 'node:path'
 import { PROTOCOL_VERSION, type Request, type Response } from 'fleet-protocol/tau'
+import { HOST } from './runs.ts'
 import type { TauService } from './service.ts'
 
 /** What the server asks of the service. */
@@ -93,16 +95,16 @@ async function answer(service: Operations, line: string, signal: AbortSignal): P
     const request = parse(line)
     switch (request.op) {
       case 'start':
-        return { ok: true, value: await service.start(request.tauDir, request.values, request.callerCwd) }
+        return { ok: true, value: await service.start(HOST, request.tauDir, request.values, request.callerCwd) }
       case 'list':
-        return { ok: true, value: await service.list() }
+        return { ok: true, value: await service.list(HOST) }
       case 'status':
-        return { ok: true, value: await service.status(request.sessionId) }
+        return { ok: true, value: await service.status(HOST, request.sessionId) }
       case 'finish':
-        return { ok: true, value: await service.finish(request.sessionId, signal) }
+        return { ok: true, value: await service.finish(HOST, request.sessionId, signal) }
       case 'cancel':
       case 'delete':
-        await service[request.op](request.sessionId)
+        await service[request.op](HOST, request.sessionId)
         return { ok: true, value: null }
     }
   } catch (error) {

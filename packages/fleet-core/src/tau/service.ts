@@ -5,15 +5,18 @@
  * prompt; watches the run until its agent is done, copies out what it gave
  * back and checks it, and records how it ended (./outcome.ts); gives that
  * back, putting what the run gave back at the caller's paths; and cancels
- * the run, and deletes it with its box. The service reaches dsh's sessions only through {@link Sessions}.
+ * the run, and deletes it with its box. Its caller is `fleet`, on the host,
+ * which reaches every run, or a tau's session, from its box, which reaches
+ * only the runs it started (./callers.ts); a run's end deletes those it
+ * started and did not finish, and its deletion all it started. The service reaches dsh's sessions only through {@link Sessions}.
  * @module fleet-core/tau/service
  */
 
 import { basename } from 'node:path'
 import type { Result, RunStatus, Started, Values } from 'fleet-protocol/tau'
 import { resultOf, type Outcome } from './outcome.ts'
-import type { Entry } from './registry.ts'
-import type { TauRuns } from './runs.ts'
+import type { Caller, Entry } from './registry.ts'
+import { HOST, type TauRuns } from './runs.ts'
 
 /** What the service does with dsh's sessions (./plugin.ts). */
 export interface Sessions {
@@ -61,12 +64,13 @@ export class TauService {
    * Start a run of a tau: set up its box (./runs.ts), start it, make the
    * dsh session, and give it the prompt. A failure on the way undoes it all.
    * Then the run is watched until it ends.
+   * @param caller - who starts it, whose paths the values name: `fleet`, on the host, or a tau's session, in its box.
    * @param tauDir - the tau's directory, absolute.
    * @param values - the run's values, by parameter.
    * @param callerCwd - what relative paths in `values` are relative to, absolute.
    */
-  async start(tauDir: string, values: Values, callerCwd: string): Promise<Started> {
-    const started = await this.runs.create(tauDir, values, callerCwd)
+  async start(caller: Caller, tauDir: string, values: Values, callerCwd: string): Promise<Started> {
+    const started = await this.runs.create(tauDir, values, callerCwd, caller)
     const { sessionId } = started
     let project: string | undefined
     try {
@@ -91,13 +95,13 @@ export class TauService {
   }
 
   /** Where a run is, and how it ended, once it did. */
-  async status(sessionId: string): Promise<RunStatus> {
-    return statusOf(await this.runs.entry(sessionId))
+  async status(caller: Caller, sessionId: string): Promise<RunStatus> {
+    return statusOf(await this.reach(caller, sessionId))
   }
 
-  /** Every run, oldest first. */
-  async list(): Promise<RunStatus[]> {
-    return (await this.runs.list()).map(statusOf)
+  /** Every run the caller reaches, oldest first. */
+  async list(caller: Caller): Promise<RunStatus[]> {
+    return (await this.runs.list()).filter(entry => reaches(caller, entry)).map(statusOf)
   }
 
   /**
@@ -106,8 +110,8 @@ export class TauService {
    * caller's paths, which a finish that fails on the way does again.
    * @param signal - gives up the wait; the run goes on.
    */
-  async finish(sessionId: string, signal: AbortSignal): Promise<Result> {
-    if ((await this.runs.entry(sessionId)).ended === undefined) await abortable(this.watch(sessionId), signal)
+  async finish(caller: Caller, sessionId: string, signal: AbortSignal): Promise<Result> {
+    if ((await this.reach(caller, sessionId)).ended === undefined) await abortable(this.watch(sessionId), signal)
     return await this.serial(sessionId, async () => {
       const { ended, finishedAt } = await this.runs.entry(sessionId)
       if (ended === undefined) throw new Error(`fleet: the fleet host stopped before ${sessionId} ended`)
@@ -121,21 +125,47 @@ export class TauService {
   }
 
   /** Cancel a run's turn, which ends the run; a run that ended is let be. */
-  async cancel(sessionId: string): Promise<void> {
+  async cancel(caller: Caller, sessionId: string): Promise<void> {
+    await this.reach(caller, sessionId)
     await this.serial(sessionId, async () => {
       const entry = await this.runs.entry(sessionId)
       if (entry.promptedAt !== undefined && entry.ended === undefined) this.sessions.cancel(sessionId)
     })
   }
 
-  /** Archive a run's session, remove its box, running or not, and forget the run. */
-  async delete(sessionId: string): Promise<void> {
+  /**
+   * Archive a run's session, remove its box, running or not, and forget the
+   * run; and so with the runs it started, first.
+   */
+  async delete(caller: Caller, sessionId: string): Promise<void> {
+    await this.reach(caller, sessionId)
+    await this.deleteChildren(sessionId, () => true)
     await this.serial(sessionId, async () => {
       const entry = await this.runs.entry(sessionId)
       await this.sessions.archive(sessionId)
       await this.runs.remove(sessionId)
       this.log(`deleted ${sessionId} and its box ${entry.box}`)
     })
+  }
+
+  /**
+   * A run's entry, if the caller reaches it: the host reaches every run, a
+   * tau's session the runs it started. Another is as if it were not there.
+   */
+  private async reach(caller: Caller, sessionId: string): Promise<Entry> {
+    const entry = await this.runs.entry(sessionId)
+    if (!reaches(caller, entry)) throw new Error(`fleet: no tau session ${sessionId}`)
+    return entry
+  }
+
+  /** Delete the runs a run started that `which` picks, and theirs. */
+  private async deleteChildren(parent: string, which: (entry: Entry) => boolean): Promise<void> {
+    const children = (await this.runs.list()).filter(entry => entry.caller?.kind === 'session' && entry.caller.sessionId === parent && which(entry))
+    for (const child of children) {
+      await this.delete(HOST, child.sessionId).catch((error: unknown) => {
+        this.log(`could not delete ${child.sessionId}, which ${parent} started: ${message(error)}`)
+      })
+    }
   }
 
   /** Stop watching the runs; a service started later watches them again. */
@@ -186,6 +216,8 @@ export class TauService {
       this.log(`${sessionId} ended${result.ok ? '' : `, failing: ${String(result.failure)}`}`)
       await this.runs.stop(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${message(error)}`) })
     })
+    // What it started and did not finish cannot give back anything now: its box is its caller's.
+    await this.deleteChildren(sessionId, entry => entry.finishedAt === undefined)
   }
 
   /** Run a session's operations one after another, so that a run's start, end, finish and deletion keep their order. */
@@ -203,12 +235,18 @@ function statusOf(entry: Entry): RunStatus {
   const state = entry.finishedAt !== undefined ? 'finished' : entry.ended !== undefined ? 'ended' : 'running'
   return {
     sessionId: entry.sessionId,
+    ...entry.caller?.kind === 'session' ? { parent: entry.caller.sessionId } : {},
     tauDir: entry.tauDir,
     project: entry.project,
     state,
     createdAt: entry.createdAt,
     ...entry.ended === undefined ? {} : { endedAt: entry.ended.at, result: entry.ended.result },
   }
+}
+
+/** Whether a caller reaches a run: the host every run, a tau's session those it started. */
+function reaches(caller: Caller, entry: Entry): boolean {
+  return caller.kind === 'host' || (entry.caller?.kind === 'session' && entry.caller.sessionId === caller.sessionId)
 }
 
 /** Stop waiting for a promise when the signal aborts; what it waits for goes on. */
