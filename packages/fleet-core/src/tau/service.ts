@@ -15,7 +15,6 @@
  * @module fleet-core/tau/service
  */
 
-import { basename } from 'node:path'
 import type { Finished, Result, RunStatus, Started } from 'fleet-protocol/tau'
 import { resultOf, type Outcome } from './outcome.ts'
 import type { Caller, Entry } from './registry.ts'
@@ -79,7 +78,7 @@ export class TauService {
         const entry = await this.runs.entry(sessionId)
         project = entry.project
         await this.runs.start(sessionId)
-        await this.sessions.create(sessionId, entry.project, basename(entry.tauDir))
+        await this.sessions.create(sessionId, entry.project, entry.title)
         await this.sessions.prompt(sessionId, entry.promptRequestId, entry.prompt)
         await this.runs.prompted(sessionId)
       })
@@ -231,7 +230,7 @@ function statusOf(entry: Entry): RunStatus {
   return {
     sessionId: entry.sessionId,
     ...entry.caller?.kind === 'session' ? { parent: entry.caller.sessionId } : {},
-    tauDir: entry.tauDir,
+    title: entry.title,
     project: entry.project,
     state,
     createdAt: entry.createdAt,

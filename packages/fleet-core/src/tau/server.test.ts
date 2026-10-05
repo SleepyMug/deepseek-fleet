@@ -33,7 +33,7 @@ async function* once(text: string): AsyncGenerator<Uint8Array> {
   yield Buffer.from(text)
 }
 
-const STATUS = { sessionId: 'session-a', tauDir: '/t', project: '/c', state: 'running', createdAt: 'now' } as const
+const STATUS = { sessionId: 'session-a', title: 't', project: '/c', state: 'running', createdAt: 'now' } as const
 
 /**
  * A service that records its calls, and fails a session named
@@ -47,11 +47,11 @@ function fake(calls: string[], aborted: string[] = []): Operations {
     return sessionId === 'session-fails' ? Promise.reject(new Error(`fleet: no tau session ${sessionId}`)) : Promise.resolve()
   }
   return {
-    start: async (caller, { tauDir, project, targets }, call) => {
+    start: async (caller, { title, project, targets }, call) => {
       assert.equal(caller.kind, 'host')
       const chunks: Uint8Array[] = []
       for await (const chunk of call) chunks.push(chunk)
-      calls.push(`start ${tauDir} ${String(project)} ${JSON.stringify(targets)} ${Buffer.concat(chunks).toString()}`)
+      calls.push(`start ${title} ${String(project)} ${JSON.stringify(targets)} ${Buffer.concat(chunks).toString()}`)
       return { sessionId: 'session-new', box: 'fleet-tau-new', prompt: 'hi' }
     },
     list: (caller) => {
@@ -85,7 +85,7 @@ test('the socket answers each request with what the service did', async (t) => {
   try {
     assert.equal((await stat(path)).mode & 0o777, 0o600)
     const request = async (body: object, call?: string): Promise<unknown> => (await exchange(path, JSON.stringify({ protocol: PROTOCOL_VERSION, ...body }), call)).answer
-    const start = { op: 'start', tauDir: '/t', project: '/c', targets: { '/r': '/c/r' } }
+    const start = { op: 'start', title: 't', project: '/c', targets: { '/r': '/c/r' } }
 
     // A start's call is all the client sends after its line.
     const call = 'a call, '.repeat(20000)
@@ -99,10 +99,10 @@ test('the socket answers each request with what the service did', async (t) => {
     })
     assert.deepEqual(await request({ op: 'cancel', sessionId: 'session-a' }), { ok: true, value: null })
     assert.deepEqual(await request({ op: 'delete', sessionId: 'session-fails' }), { ok: false, error: 'fleet: no tau session session-fails' })
-    assert.deepEqual(calls, [`start /t /c {"/r":"/c/r"} ${call}`, 'list', 'status session-b', 'finish session-a', 'cancel session-a', 'delete session-fails'])
+    assert.deepEqual(calls, [`start t /c {"/r":"/c/r"} ${call}`, 'list', 'status session-b', 'finish session-a', 'cancel session-a', 'delete session-fails'])
 
     // A start refused is answered once the client has sent its call.
-    assert.deepEqual(await request({ ...start, tauDir: 't' }, call), { ok: false, error: 'fleet: start takes tauDir, an absolute path' })
+    assert.deepEqual(await request({ ...start, title: ' ' }, call), { ok: false, error: 'fleet: start takes a title' })
     assert.deepEqual(await request({ ...start, project: undefined }, call), { ok: false, error: 'fleet: start takes project, an absolute path' })
     assert.deepEqual(await request({ ...start, targets: { '/r': 'r' } }, call), { ok: false, error: 'fleet: start takes targets, each an absolute path' })
     assert.deepEqual(await request({ op: 'finish' }), { ok: false, error: 'fleet: finish takes a sessionId' })

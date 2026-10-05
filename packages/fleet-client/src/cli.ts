@@ -139,7 +139,7 @@ function report(result: Result): void {
 /** A run as list shows it. */
 function row(status: RunStatus): string {
   const outcome = status.result === undefined ? '-' : status.result.ok ? 'ok' : 'failed'
-  return `${status.sessionId}  ${status.state.padEnd(8)}  ${outcome.padEnd(6)}  ${status.tauDir}`
+  return `${status.sessionId}  ${status.state.padEnd(8)}  ${outcome.padEnd(6)}  ${status.title}`
 }
 
 async function main(argv: string[]): Promise<void> {

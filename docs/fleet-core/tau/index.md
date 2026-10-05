@@ -30,7 +30,7 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 | Op | What it does |
 |---|---|
-| `start { tauDir, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, in the dsh workspace of `project`, and give it its prompt. `tauDir` only names the run; `targets`, where the caller has each `$out` and `$inout` handle, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
+| `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt; `targets`, where the caller has each `$out` and `$inout` handle, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `finish { sessionId }` | Wait until the run ends, and answer how it did and the targets, `{ result, targets }`, then send its result, the same each time; the caller puts what it gave back at the targets. |
@@ -78,8 +78,8 @@ preset's scope, which each of its sessions' agents has as its parent.
      `loadApis`, the extension that implements each one, from
      `ctx.fleetExts`, and `checkImplementation` against its client; then
      `loadExposed`. A tau with an API that no extension implements, or whose
-     client does not fit it, is refused. Problems name the tau's directory
-     as the caller has it. Here `session-<uuid>` is minted, the form dsh's
+     client does not fit it, is refused. Problems name the tau by the run's
+     title. Here `session-<uuid>` is minted, the form dsh's
      session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
      runtime set it up from the call (fleet-image's tau runtime, below),
@@ -133,7 +133,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   re-exports the client, so every import in a process gets one module.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
-  caller; the box, the tau's directory as the caller has it, the project,
+  caller; the box, the run's title, the project,
   the expanded prompt and the request id it is sent under, each handle (its
   mode, kind, name, blob and place), the targets, the working directory and
   the APIs' folder in the box, as the runtime reported them, the names of the APIs the
@@ -151,7 +151,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   then, through dsh's workspace registry and session controller:
   1. makes the project a dsh workspace, or finds the one it is;
   2. makes the session with the entry's id, in that workspace, with the
-     `tau` preset, and titles it with the name of the tau's directory;
+     `tau` preset, and titles it with the run's title;
   3. queues the prompt under the entry's request id;
   4. records in the entry when the session got its prompt.
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { test } from 'node:test'
@@ -181,9 +181,9 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
 }
 
 /** A call of the tau at `tauDir` with `values`, packed in `cwd`, as `fleet` sends it, with what it says of itself. */
-function callOf(tauDir: string, values: unknown, cwd: string): { about: { tauDir: string; project: string; targets: Record<string, string> }; archive: AsyncIterable<Uint8Array> } {
+function callOf(tauDir: string, values: unknown, cwd: string): { about: { title: string; project: string; targets: Record<string, string> }; archive: AsyncIterable<Uint8Array> } {
   const packed = packCall(tauDir, values, { cwd })
-  return { about: { tauDir: packed.tauDir, project: cwd, targets: packed.targets }, archive: packed.archive }
+  return { about: { title: basename(packed.tauDir), project: cwd, targets: packed.targets }, archive: packed.archive }
 }
 
 /** Start a run of the tau at `tauDir` with `values`, packed in `cwd`, as a caller does. */
@@ -296,7 +296,7 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
 
   const entry = await new Registry(join(work, 'taus')).get(created.sessionId)
   assert.equal(entry.box, created.box)
-  assert.equal(entry.tauDir, tauDir)
+  assert.equal(entry.title, 'tau')
   assert.equal(entry.project, project)
   assert.equal(entry.prompt, EXPANDED)
   assert.match(entry.promptRequestId, /^[0-9a-f-]{36}$/u)
@@ -330,16 +330,16 @@ test('start refuses a call that breaks the spec, carries no tau, or whose values
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const service = make(work, () => {}, new FakeSessions(), boxes)
-  const about = { tauDir, project: work, targets: {} }
+  const about = { title: 'tau', project: work, targets: {} }
   const whole = await bytesOf(callOf(tauDir, values, work).archive)
   await assert.rejects(service.start(HOST, about, once(whole.subarray(0, 1024))), /^Error: the call breaks the spec: /u)
   await assert.rejects(service.start(HOST, about, packCall(tauDir, values, { cwd: work }, { tau: false }).archive), /^Error: fleet: the call does not carry its tau$/u)
   const unfit = writeCall({ values: { style: 'terse' }, tau: { kind: 'dir', blob: 'tau' } }, [{ id: 'tau', path: tauDir }])
   await assert.rejects(service.start(HOST, about, unfit), /^Error: the values do not fit the tau:\n {2}no value for notes, site, report, pages$/u)
-  // A tau's problems name it as the caller has it.
+  // A tau's problems name it by the run's title.
   await mkdir(join(work, 'empty'))
   const empty = writeCall({ values: {}, tau: { kind: 'dir', blob: 'tau' } }, [{ id: 'tau', path: join(work, 'empty') }])
-  await assert.rejects(service.start(HOST, { ...about, tauDir: '/callers/tau' }, empty), /^Error: \/callers\/tau: not a tau \(no PROMPT\.md\)$/u)
+  await assert.rejects(service.start(HOST, { ...about, title: 'mine' }, empty), /^Error: the tau mine: not a tau \(no PROMPT\.md\)$/u)
   // A tau whose links lead out of it is no blob.
   await symlink('/etc/passwd', join(tauDir, 'leak.md'))
   await assert.rejects(service.start(HOST, about, writeCall({ values: {}, tau: { kind: 'dir', blob: 'tau' } }, [{ id: 'tau', path: tauDir }])),
@@ -353,7 +353,7 @@ test('start refuses a tau with an API no extension implements, or whose client d
   const { work, tauDir, values } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const none = make(work, () => {}, new FakeSessions(), boxes, new FleetExts())
-  await assert.rejects(startIn(none, HOST, tauDir, values, work), new RegExp(`${tauDir} cannot run here:\n {2}@api/notes: no extension implements it`, 'u'))
+  await assert.rejects(startIn(none, HOST, tauDir, values, work), /the tau tau cannot run here:\n {2}@api\/notes: no extension implements it/u)
   await mkdir(join(work, 'other'))
   await writeFile(join(work, 'other', 'index.js'), 'export function add() {}\n')
   await writeFile(join(work, 'other', 'index.d.ts'), 'export declare function add(text: number): void;\n')
@@ -402,7 +402,7 @@ test('a run starts its box, makes the dsh session in the caller\'s folder with t
   assert.deepEqual(boxes.calls.slice(-2), ['stop', 'start'])
   assert.deepEqual(sessions.calls, [`create ${sessionId} ${project} tau`, `prompt ${sessionId} ${promptRequestId} ${EXPANDED}`])
   assert.notEqual((await new Registry(join(work, 'taus')).get(sessionId)).promptedAt, undefined)
-  assert.deepEqual({ ...await service.status(HOST, sessionId), createdAt: '' }, { sessionId, tauDir, project, state: 'running', createdAt: '' })
+  assert.deepEqual({ ...await service.status(HOST, sessionId), createdAt: '' }, { sessionId, title: 'tau', project, state: 'running', createdAt: '' })
 
   const finishing = finish(service, HOST, sessionId)
   sessions.end(sessionId, completed('Done.'))

@@ -36,8 +36,8 @@ export type Request =
      * the client sends: tau's call archive, which carries the tau.
      */
     op: 'start'
-    /** The tau's directory, as the caller has it, which `list` shows. */
-    tauDir: string
+    /** What names the run, in `list` and dsh's web UI: the name of the tau's directory, say. */
+    title: string
     /** The project identifier: in dsh it is the project's workspace directory. */
     project: string
     targets: Targets
@@ -88,8 +88,8 @@ export interface RunStatus {
   sessionId: string
   /** The run that started this one from its box, if one did. */
   parent?: string
-  /** The tau's directory, as its caller has it. */
-  tauDir: string
+  /** What names the run, as its caller gave it. */
+  title: string
   /** The caller's folder, the dsh workspace the session is in. */
   project: string
   state: RunState

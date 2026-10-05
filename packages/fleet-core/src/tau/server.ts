@@ -124,7 +124,7 @@ async function answer(service: Operations, line: string, body: Readable, signal:
     const request = parse(line)
     switch (request.op) {
       case 'start':
-        return { response: { ok: true, value: await service.start(HOST, { tauDir: request.tauDir, project: request.project, targets: request.targets }, body) } }
+        return { response: { ok: true, value: await service.start(HOST, { title: request.title, project: request.project, targets: request.targets }, body) } }
       case 'list':
         return { response: { ok: true, value: await service.list(HOST) } }
       case 'status':
@@ -157,10 +157,8 @@ function parse(line: string): Request {
   }
   switch (request.op) {
     case 'start':
-      for (const field of ['tauDir', 'project'] as const) {
-        const path = request[field]
-        if (typeof path !== 'string' || !isAbsolute(path)) throw new Error(`fleet: start takes ${field}, an absolute path`)
-      }
+      if (typeof request.title !== 'string' || request.title.trim() === '') throw new Error('fleet: start takes a title')
+      if (typeof request.project !== 'string' || !isAbsolute(request.project)) throw new Error('fleet: start takes project, an absolute path')
       if (!isRecord(request.targets) || !Object.values(request.targets).every(path => typeof path === 'string' && isAbsolute(path))) {
         throw new Error('fleet: start takes targets, each an absolute path')
       }

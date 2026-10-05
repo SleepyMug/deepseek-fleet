@@ -7,7 +7,7 @@
  */
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { BoundHandle } from '@sleepymug/tau'
 import { FOLDERS, MODULES } from 'fleet-image/tau/layout'
 import type { Result, Targets } from 'fleet-protocol/tau'
@@ -27,8 +27,8 @@ export interface Entry {
   caller?: Caller
   /** The box's container. */
   box: string
-  /** The tau's directory, as the caller has it, which only names the run. */
-  tauDir: string
+  /** What names the run, as its caller gave it. */
+  title: string
   /**
    * The dsh workspace the session is in, which the web UI lists it under,
    * and its working folder: the caller's folder, through symlinks, or a
@@ -83,9 +83,9 @@ export class Registry {
   async find(sessionId: string): Promise<Entry | undefined> {
     if (!SESSION_ID.test(sessionId)) return undefined
     try {
-      const entry = JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Omit<Entry, 'cwd' | 'modules'> & Partial<Entry>
-      // Where an entry written before the box's runtime reported them has things.
-      return { ...entry, cwd: entry.cwd ?? FOLDERS.inout, modules: entry.modules ?? MODULES }
+      const entry = JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Omit<Entry, 'cwd' | 'modules' | 'title'> & Partial<Entry> & { tauDir?: string }
+      // What an entry written before the box's runtime reported them, or before runs had titles, has.
+      return { ...entry, title: entry.title ?? basename(entry.tauDir ?? 'tau'), cwd: entry.cwd ?? FOLDERS.inout, modules: entry.modules ?? MODULES }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
       throw error

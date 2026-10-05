@@ -52,8 +52,8 @@ fleet run <tau-dir> [<name>=<value> | <name>:=<json>]...
   fleet-trace uses too). `start` packs the run's call here, with tau's
   `packCall`: it reads the tau, checks the values and the paths they name
   against it, as a runtime would, and sends the call, which carries the
-  tau and the content of each `$in` and `$inout` path, with the tau's
-  directory, which names the run, this folder, which is the session's
+  tau and the content of each `$in` and `$inout` path, with the name of the tau's
+  directory, which titles the run, this folder, which is the session's
   workspace in dsh, and the targets, this side's path of each `$out` and
   `$inout` handle. Relative paths are this folder's. `finish` gets the
   targets back with the run's result, and puts what the result holds at

@@ -38,8 +38,8 @@ export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copy
 
 /** What a call says of itself, besides the archive. */
 export interface About {
-  /** The tau's directory, as the caller has it, which names the run. */
-  tauDir: string
+  /** What names the run, in `list` and dsh's web UI. */
+  title: string
   /** The caller's folder, absolute, for `fleet`; a tau's session's runs are in its own project. */
   project?: string
   /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
@@ -150,8 +150,8 @@ export class TauRuns {
       tau.bind(read.json.values, { cwd: '/' }, ({ name }) => `/${name}`)
       return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
     } catch (error) {
-      // The tau as the caller has it.
-      throw new Error((error as Error).message.replaceAll(tauDir, about.tauDir), { cause: error })
+      // The tau as the caller names it.
+      throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${about.title}`), { cause: error })
     }
   }
 
@@ -175,7 +175,7 @@ export class TauRuns {
         sessionId,
         caller,
         box: box.container,
-        tauDir: about.tauDir,
+        title: about.title,
         project,
         prompt: setup.prompt,
         promptRequestId: randomUUID(),

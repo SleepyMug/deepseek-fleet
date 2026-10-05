@@ -22,7 +22,7 @@ the end of what its side sends, so the client ends what it sends after the
 call.
 
 - client to service:
-  - `{ "protocol": 1, "op": "start", "tauDir": "/…", "project": "/…", "targets": { "/report": "/…" } }`,
+  - `{ "protocol": 1, "op": "start", "title": "…", "project": "/…", "targets": { "/report": "/…" } }`,
     then the call, which carries the tau
   - `{ "protocol": 1, "op": "list" }`
   - `{ "protocol": 1, "op": "status" | "finish" | "cancel" | "delete", "sessionId": "session-…" }`
@@ -33,16 +33,18 @@ call.
   |---|---|
   | `start` | `{ "sessionId": "session-…", "box": "fleet-tau-…", "prompt": "…" }` |
   | `list` | a run's status, as `status` answers, for each run |
-  | `status` | `{ "sessionId", "parent"?, "tauDir", "project", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did |
+  | `status` | `{ "sessionId", "parent"?, "title", "project", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did |
   | `finish` | `{ "result": { "ok": true \| false, "text": "…", "failure"?: "…" }, "targets": { … } }`, then the result |
   | `cancel`, `delete` | `null` |
 
 A `finish` answers once the run ends, however long that takes; a client
 that closes its connection first gives up the wait, not the run.
 
-Paths are absolute. `tauDir` is the tau's directory as the caller has it,
-which only names the run; `project` is the caller's folder, whose dsh
-workspace the run's session is in; `targets` are where the caller has each
+Paths are absolute. The call holds the run, tau and all; the line holds
+only what a call does not: `title` names the run, in `list` and dsh's web
+UI, as `fleet` gives it the name of the tau's directory; `project`
+identifies the project, in dsh the folder whose workspace the run's session
+is in; `targets` are where the caller has each
 `$out` and `$inout` handle, by its JSON Pointer into the values, as tau's
 `packCall` gives them. The service keeps them without reading them, and
 gives them back with the result, for the caller to put what the run gave
