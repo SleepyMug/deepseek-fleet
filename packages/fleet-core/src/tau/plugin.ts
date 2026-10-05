@@ -4,8 +4,10 @@
  * profile. It builds on the runs of taus and their boxes, `ctx.fleetTauRuns`
  * (./runs-plugin.ts), and on dsh's session controller and workspace
  * registry, as the web client's own calls do, so that the web UI lists a
- * tau's session, under the caller's folder, and follows it; and on dsh's
- * agents, to learn when a run's agent is done. It imports only their types.
+ * tau's session, under the caller's folder, and follows it; on dsh's
+ * agents, to learn when a run's agent is done; and on the workspace
+ * registry's writes, to follow which sessions are archived, whose runs have
+ * no box. It imports only their types.
  * Its config names the dsh home, where it serves its socket. It provides the
  * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
  * through which a tau's session starts runs from its box, and for
@@ -18,6 +20,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { socketPath } from 'fleet-protocol/tau'
 import { summarize } from './outcome.ts'
@@ -60,11 +63,37 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     await service.load()
     ctx.effect(() => close, 'fleet-tau socket')
     ctx.provide('fleetTau', service)
+    followArchive(ctx, service)
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
     await close()
     throw error
   }
+}
+
+/**
+ * Tell the service which sessions dsh has archived, now and on each change.
+ * Archiving has no event of its own, but every archive and unarchive
+ * rewrites the workspace registry's state, and the write carries the whole
+ * new list; the registry's own getter lags until the write returns.
+ */
+function followArchive(ctx: Context, service: TauService): void {
+  let archived = new Set<string>(ctx.workspaceRegistry.archivedSessionIds)
+  const follow = (): void => {
+    service.followArchive(archived).catch((error: unknown) => {
+      print(`could not follow the archived sessions: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+  ctx.on('domain/changed', (change: DomainChanged) => {
+    if (change.domain !== 'workspace' || change.table !== '' || change.operation !== 'put') return
+    const ids = (change.value as { archivedSessionIds?: unknown } | null)?.archivedSessionIds
+    if (!Array.isArray(ids)) return
+    const next = new Set(ids.map(String))
+    if (next.size === archived.size && [...next].every(id => archived.has(id))) return
+    archived = next
+    follow()
+  })
+  follow()
 }
 
 /** dsh's sessions, as the service uses them. */

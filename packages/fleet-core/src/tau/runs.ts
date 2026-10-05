@@ -90,6 +90,8 @@ export class TauRuns {
   private readonly taus = new Map<string, { project: string; cwd: string }>()
   /** Each session's host files copied into its box, or on their way, by their place there. */
   private readonly copies = new Map<string, Map<string, Promise<void>>>()
+  /** The sessions whose box is removed while they are archived. */
+  private readonly archived = new Set<string>()
 
   constructor(
     private readonly registry: Registry,
@@ -155,20 +157,45 @@ export class TauRuns {
     }
   }
 
-  private async setUp(sessionId: string, { tauRoot, linked }: Accepted, about: About, project: string, caller: Caller): Promise<Started> {
+  /** Read a kept call's tau again, in the session's folder, and link its APIs to the extensions provided now. */
+  private async reread(sessionId: string, title: string): Promise<Accepted> {
+    const folder = this.registry.folder(sessionId)
+    const tauDir = join(folder, TAU)
+    try {
+      await placeCall(await readCall(createReadStream(join(folder, CALL))), { tau: tauDir })
+      const tau = loadTau(tauDir)
+      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
+    } catch (error) {
+      throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${title}`), { cause: error })
+    }
+  }
+
+  /**
+   * Have a started box's runtime set it up from the session's call, copy
+   * each API's client in, where the runtime says, and link the APIs and what
+   * the tau exposes.
+   * @returns what the runtime reported.
+   */
+  private async furnish(box: RunBox, sessionId: string, { tauRoot, linked }: Accepted): Promise<Setup> {
+    const report = new Report()
+    await box.pipe([HELPER_NODE, TAU_ENTRY, 'setup'], { input: createReadStream(join(this.registry.folder(sessionId), CALL)), output: report })
+    const setup = report.setup()
+    for (const api of linked.apis) await box.copyIn(api.client, posix.join(setup.clients, api.name))
+    await box.request('apis.link', {
+      modules: setup.modules,
+      apis: linked.apis.map(({ name }) => ({ name, client: posix.join(setup.clients, name), types: posix.join(setup.self, 'api', name) })),
+      packages: linked.packages.map(({ name, dir }) => ({ name, dir: posix.join(setup.self, ...relative(tauRoot, dir).split(sep)) })),
+    })
+    return setup
+  }
+
+  private async setUp(sessionId: string, accepted: Accepted, about: About, project: string, caller: Caller): Promise<Started> {
+    const { linked } = accepted
     const box = await this.docker.create(`fleet-tau-${sessionId.slice('session-'.length)}`)
     let setup: Setup
     try {
       await box.start()
-      const report = new Report()
-      await box.pipe([HELPER_NODE, TAU_ENTRY, 'setup'], { input: createReadStream(join(this.registry.folder(sessionId), CALL)), output: report })
-      setup = report.setup()
-      for (const api of linked.apis) await box.copyIn(api.client, posix.join(setup.clients, api.name))
-      await box.request('apis.link', {
-        modules: setup.modules,
-        apis: linked.apis.map(({ name }) => ({ name, client: posix.join(setup.clients, name), types: posix.join(setup.self, 'api', name) })),
-        packages: linked.packages.map(({ name, dir }) => ({ name, dir: posix.join(setup.self, ...relative(tauRoot, dir).split(sep)) })),
-      })
+      setup = await this.furnish(box, sessionId, accepted)
       await box.stop()
       this.taus.set(sessionId, { project, cwd: setup.cwd })
       await this.registry.put({
@@ -300,8 +327,10 @@ export class TauRuns {
 
   /**
    * The started box of a tau's session, for its files and processes
-   * (../world/), started if it is not, as after a restart or a stop; or
-   * undefined for a session that is not a tau's.
+   * (../world/), started if it is not, as after a restart or a stop, and set
+   * up again from the run's call if it is gone, as after an archive; or
+   * undefined for a session that is not a tau's. While the session is
+   * archived ({@link archive}), it fails.
    */
   async boxFor(sessionId: string): Promise<RunBox | undefined> {
     if (!this.taus.has(sessionId)) return undefined
@@ -354,6 +383,37 @@ export class TauRuns {
   }
 
   /**
+   * Remove a session's box, running or not, while the session is archived:
+   * its registry entry and its folder stay, so the run's result does, and
+   * {@link boxFor} fails until {@link unarchive}, after which it sets the box
+   * up again. A box that is gone is let be.
+   */
+  async archive(sessionId: string): Promise<void> {
+    this.archived.add(sessionId)
+    await this.serial(sessionId, async () => {
+      if (!this.taus.has(sessionId) || !this.archived.has(sessionId)) return
+      const entry = await this.registry.get(sessionId)
+      if (await this.docker.exists(entry.box)) {
+        await (await this.box(sessionId)).remove()
+        this.log(`removed the box ${entry.box} of ${sessionId}, which is archived`)
+      }
+      this.boxes.delete(sessionId)
+      this.started.delete(sessionId)
+      this.copies.delete(sessionId)
+    })
+  }
+
+  /** Let a session that is no longer archived have a box again, set up on its next use. */
+  unarchive(sessionId: string): void {
+    this.archived.delete(sessionId)
+  }
+
+  /** Whether a session's box is removed while it is archived. */
+  isArchived(sessionId: string): boolean {
+    return this.archived.has(sessionId)
+  }
+
+  /**
    * Remove a session's box, running or not, its registry entry and its
    * folder. A box removed by other means leaves only the entry.
    */
@@ -371,6 +431,7 @@ export class TauRuns {
       await rm(this.registry.folder(sessionId), { recursive: true, force: true })
       await this.registry.delete(sessionId)
       this.taus.delete(sessionId)
+      this.archived.delete(sessionId)
     })
   }
 
@@ -412,14 +473,57 @@ export class TauRuns {
     return next
   }
 
-  /** A session's box, started if it was not started here, in one of its operations. */
+  /**
+   * A session's box, started if it was not started here, and set up again
+   * if it is gone, in one of its operations; none while it is archived.
+   */
   private async running(sessionId: string): Promise<RunBox> {
+    if (this.archived.has(sessionId)) throw new Error(`fleet: ${sessionId} is archived, so it has no box; unarchive it to have one again`)
+    if (this.started.has(sessionId)) return await this.box(sessionId)
+    const entry = await this.registry.get(sessionId)
+    if (!await this.docker.exists(entry.box)) return await this.rebuild(entry)
     const box = await this.box(sessionId)
-    if (!this.started.has(sessionId)) {
-      await box.start(this.calls(sessionId))
-      this.started.add(sessionId)
-    }
+    await box.start(this.calls(sessionId))
+    this.started.add(sessionId)
     return box
+  }
+
+  /**
+   * Set a session's box up again, in one of its operations, from the run's
+   * call, which is kept, with the APIs linked to the extensions provided
+   * now, and leave it started; what the agent did in the box before is gone.
+   * The entry records when, so the agent is told once (./reset.ts).
+   */
+  private async rebuild(entry: Entry): Promise<RunBox> {
+    const { sessionId } = entry
+    this.boxes.delete(sessionId)
+    let box: RunBox | undefined
+    try {
+      const accepted = await this.reread(sessionId, entry.title)
+      box = await this.docker.create(entry.box)
+      await box.start(this.calls(sessionId))
+      const setup = await this.furnish(box, sessionId, accepted)
+      const { linked } = accepted
+      await this.registry.put({
+        ...entry,
+        handles: setup.handles,
+        cwd: setup.cwd,
+        modules: setup.modules,
+        apis: linked.apis.map(api => api.name),
+        exposed: linked.exposed,
+        resetAt: new Date().toISOString(),
+      })
+      this.taus.set(sessionId, { project: entry.project, cwd: setup.cwd })
+      this.boxes.set(sessionId, Promise.resolve(box))
+      this.started.add(sessionId)
+      this.log(`set up the box ${entry.box} of ${sessionId} again, from its call`)
+      return box
+    } catch (error) {
+      await box?.remove().catch(() => {})
+      throw new Error(`fleet: could not set up the box of ${sessionId} again: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    } finally {
+      await rm(join(this.registry.folder(sessionId), TAU), { recursive: true, force: true })
+    }
   }
 
   /** A session's box, opened the first time it is asked for. */

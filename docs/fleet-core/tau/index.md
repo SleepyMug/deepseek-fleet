@@ -51,8 +51,8 @@ to the sessions' two ways in:
   directory, which it names as `fleet` names its folder.
 
 The patch also declares `tau`, the agent preset a tau's session has: a
-persona, the tau's prompt plugin (`fleet-core/tau/prompt`), bash in the
-foreground only, read/write/edit, `ts_modules` and `ts_execute`
+persona, the tau's prompt plugin (`fleet-core/tau/prompt`), the box's
+reset notice (`fleet-core/tau/reset`), bash in the foreground only, read/write/edit, `ts_modules` and `ts_execute`
 (docs/fleet-core/tools/index.md), and compaction. What its rows register
 reaches only the sessions of that preset: dsh mounts them once, in the
 preset's scope, which each of its sessions' agents has as its parent.
@@ -64,7 +64,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - `boxPath(sessionId, path)`, at once, where a path of a tau's session's
   work is in its box: its project, and what is in it, in `/tau/workspace`;
 - `boxFor(sessionId)`, the started box of a tau's session, started if it is
-  not;
+  not, and set up again from the run's call if it is gone; it fails while
+  the session is archived;
 - `copyInOnce(sessionId, from, to)`, at once, a host file copied into the
   box of a tau's session before its next use, for dsh's attachments.
 
@@ -144,7 +145,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   the APIs' folder in the box, as the runtime reported them, the names of the APIs the
   tau declares, each linked, what it exposes, with what each says it is,
   when it was made, when it was given its prompt, when and how its run
-  ended, and when a `finish` first gave that back. Beside it, a folder of
+  ended, when a `finish` first gave that back, and when the box was last
+  set up again, if it was. Beside it, a folder of
   the session's own, `$DSH_HOME/fleet/taus/<session id>/`, holds the call,
   `call.tar`, and the run's result, `result.tar`, until the session is
   deleted. An entry is
@@ -248,8 +250,35 @@ preset's scope, which each of its sessions' agents has as its parent.
   the plugin loads, each session's project with its id, and keep them as
   sessions are created and deleted, so that
   `isTau` answers at once, as a process's start, which cannot wait, needs.
-- **A box gone.** Deleting a session whose box was removed by other means
-  still forgets the session.
+- **Archiving removes the box.** The plugin follows which sessions dsh has
+  archived, through the workspace registry's writes (`domain/changed`),
+  since archiving has no event of its own, and tells the service, as it
+  loads and on each change. A run whose session is archived, or whose
+  caller is, or the caller's caller, and so on through the registry's
+  callers, has its box removed once the run has ended, since the box packs
+  the run's result as it ends: a stop-and-archive cancels the run's turn,
+  and the run ends soon after. Its entry, call and result stay, so its
+  caller can still `finish` it, and only deleting it forgets it. While the
+  session is archived, `boxFor` fails, and so does the world's work in the
+  box. A session that no longer is archived has no box until its next use.
+- **A box gone is set up again** from the run's call, which the session's
+  folder keeps, when `boxFor`, a start for a `pack`, or a copy next needs
+  it: after an unarchive, or a box removed by other means. The tau is read
+  from the call again, and its APIs linked to the extensions provided now,
+  so one no longer provided fails the set-up, and the box is created under
+  its name, set up by its runtime, given the clients and linked, as when
+  the run started; the entry records the handles, the working directory,
+  the APIs and what the tau exposes as they are now, and when. The box is
+  then as it was when the run began: what the agent did in it is gone.
+- **The agent is told** (`reset.ts`, in the preset). Before each step of a
+  tau's session that sends messages, the plugin has the box ready, through
+  `boxFor`, so a failure to set it up fails the step rather than a tool
+  call. When the box was set up again since the agent was last told, a
+  notice goes before the step's messages, saying so: a user message with a
+  source of its own, `fleet-tau-box`, which the session's log keeps, and
+  which a projection of the log folds into the setup it told of.
+- **A box gone** when the session is deleted still lets the session be
+  forgotten.
 - **The socket** (`server.ts`) has mode 0600, and its folder is made with
   mode 0700, so only the owner can open it. That is its authentication, as
   it is for the dsh home's own files. It takes one request per connection:
@@ -281,13 +310,20 @@ preset's scope, which each of its sessions' agents has as its parent.
 - A call and a result are kept whole, however large, in the session's
   folder; and an `$inout` handle merges into the caller's folder, so what
   the agent removed there stays.
-- The runs a session that is no tau's started with `tau_run` stay when the
-  session is archived; `fleet delete` removes them.
+- The runs a session that is no tau's started with `tau_run`, and their
+  sessions, stay, without their boxes, when the session is archived; `fleet
+  delete` forgets them.
+- A box started for a session's use after its run ended, such as a
+  follow-up turn or a terminal, runs until dsh exits.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 
 ## Built on
 
+- dsh's `domain/changed` (`@deepseek-ai/dsh-storage-domain`), for the
+  archived sessions; `agent/pre-step`, `@deepseek-ai/dsh-llm`'s
+  `createUserMessage` and `@deepseek-ai/dsh-session-projection`, for the
+  notice.
 - `@sleepymug/tau`: `loadTau`, `bind`, `loadApis`, `checkImplementation`,
   `loadExposed`; and `@sleepymug/tau/call`: `readCall`, `placeCall`,
   `readResult`, `checkResult`, `writeResult`.

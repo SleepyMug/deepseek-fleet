@@ -48,6 +48,8 @@ export class TauService {
   private readonly watches = new Map<string, Promise<void>>()
   /** Aborts the watches as the service closes. */
   private readonly closing = new AbortController()
+  /** dsh's archived sessions, as {@link followArchive} was last told. */
+  private archivedSessions: ReadonlySet<string> = new Set()
 
   constructor(
     private readonly runs: TauRuns,
@@ -163,6 +165,41 @@ export class TauService {
         this.log(`could not delete ${child.sessionId}, which ${parent} started: ${message(error)}`)
       })
     }
+  }
+
+  /**
+   * Follow dsh's archived sessions: a run whose session is archived, or was
+   * started, however indirectly, by one that is, has its box removed once
+   * the run ended, keeping its entry and result; one no longer archived has
+   * a box again on its next use, set up from its call ({@link TauRuns.archive}).
+   * @param archived - every archived session, as dsh has them now.
+   */
+  async followArchive(archived: ReadonlySet<string>): Promise<void> {
+    this.archivedSessions = archived
+    if (this.closing.signal.aborted) return
+    const entries = new Map((await this.runs.list()).map(entry => [entry.sessionId, entry]))
+    const under = (entry: Entry | undefined, seen = new Set<string>()): boolean => {
+      if (entry === undefined || seen.has(entry.sessionId)) return false
+      if (archived.has(entry.sessionId)) return true
+      seen.add(entry.sessionId)
+      if (entry.caller?.kind !== 'session') return false
+      return archived.has(entry.caller.sessionId) || under(entries.get(entry.caller.sessionId), seen)
+    }
+    await Promise.all([...entries.values()].map(async (entry) => {
+      const { sessionId } = entry
+      if (!under(entry)) {
+        this.runs.unarchive(sessionId)
+        return
+      }
+      if (this.runs.isArchived(sessionId)) return
+      try {
+        // Its box packs its result as it ends.
+        if (entry.ended === undefined) await this.watch(sessionId)
+        if (this.archivedSessions === archived) await this.runs.archive(sessionId)
+      } catch (error) {
+        this.log(`could not remove the box of ${sessionId}, which is archived: ${message(error)}`)
+      }
+    }))
   }
 
   /** Stop watching the runs; a service started later watches them again. */

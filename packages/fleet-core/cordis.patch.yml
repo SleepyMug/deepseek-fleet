@@ -227,6 +227,11 @@
           - id: tau-prompt
             name: fleet-core/tau/prompt
 
+          # The box ready before each step, set up again from the run's call
+          # if it is gone, as after an archive, which the model is told once.
+          - id: tau-reset
+            name: fleet-core/tau/reset
+
           # bash, foreground only: nothing it starts outlives its call. A
           # command past its timeout is killed rather than moved to the
           # background.

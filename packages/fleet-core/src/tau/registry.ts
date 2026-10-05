@@ -48,6 +48,8 @@ export interface Entry {
   ended?: { at: string; result: Result }
   /** When a `finish` first gave back how the run ended. */
   finishedAt?: string
+  /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
+  resetAt?: string
   /** Each handle of the run, as the call names it: its mode, its kind, its name, its blob, and where the box has it. */
   handles: readonly BoundHandle[]
   /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */

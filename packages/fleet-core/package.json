@@ -19,6 +19,10 @@
       "types": "./lib/tau/plugin.d.ts",
       "default": "./lib/tau/plugin.js"
     },
+    "./tau/reset": {
+      "types": "./lib/tau/reset.d.ts",
+      "default": "./lib/tau/reset.js"
+    },
     "./tau/prompt": {
       "types": "./lib/tau/prompt.d.ts",
       "default": "./lib/tau/prompt.js"
@@ -64,7 +68,8 @@
     "@sleepymug/tau": "0.1.0",
     "@sleepymug/ts-executor": "0.4.0",
     "fleet-box-runtime": "workspace:*",
-    "fleet-protocol": "workspace:*"
+    "fleet-protocol": "workspace:*",
+    "zod": "4.6.5"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -73,8 +78,11 @@
     "@deepseek-ai/dsh-api-workspace-files": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
     "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-storage-domain": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",
@@ -89,8 +97,11 @@
     "@deepseek-ai/dsh-api-workspace-files": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
     "@deepseek-ai/dsh-fs-local": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
     "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-storage-domain": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.1.7-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.1.7-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.1.7-rc.2",

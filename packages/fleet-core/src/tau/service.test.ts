@@ -125,6 +125,7 @@ class FakeBoxes implements Boxes {
       remove: async () => {
         record('remove', 'remove')
         this.existing.delete(name)
+        await rm(this.root(name), { recursive: true, force: true })
       },
       copyIn: async (from, to) => { record('copyIn', `copyIn ${from} ${to}`) },
       pipe: async (argv, io) => {
@@ -697,6 +698,69 @@ test('a tau session\'s box is started for its files and processes once, and agai
   await later.delete(HOST, sessionId)
   assert.equal(later.tauRuns.isTau(sessionId), false)
   assert.equal(await later.tauRuns.boxFor(sessionId), undefined)
+})
+
+test('archiving a run\'s session removes its box once the run ended, keeping the run, and unarchiving has it set up again from the call', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes(work)
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId, box } = await startIn(service, HOST, tauDir, values, work)
+  const archiving = service.followArchive(new Set([sessionId]))
+  // Its box packs the run's result as the run ends, so it stays until then.
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(await boxes.exists(box), true)
+  sessions.end(sessionId, completed('Done.'))
+  await archiving
+  assert.equal(await boxes.exists(box), false)
+  await assert.rejects(service.tauRuns.boxFor(sessionId), /is archived/u)
+  // The run is kept: its caller finishes it as before.
+  assert.deepEqual(await finish(service, HOST, sessionId), { ok: true, text: 'Done.' })
+  assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added milk.\n')
+  assert.equal((await new Registry(join(work, 'taus')).get(sessionId)).resetAt, undefined)
+
+  await service.followArchive(new Set())
+  boxes.calls.length = 0
+  assert.equal((await service.tauRuns.boxFor(sessionId))?.container, box)
+  assert.deepEqual(boxes.calls.map(call => call.split(' ')[0]), ['create', 'start', 'pipe', 'copyIn', 'apis.link'])
+  // As the run began: what the agent left is gone.
+  assert.equal(await readFile(join(boxes.root(box), 'tau', 'in', 'notes.md'), 'utf8'), 'buy milk\n')
+  assert.deepEqual(await readdir(join(boxes.root(box), 'tau', 'workspace', 'site')), ['index.md'])
+  assert.notEqual((await new Registry(join(work, 'taus')).get(sessionId)).resetAt, undefined)
+  boxes.calls.length = 0
+  await service.tauRuns.boxFor(sessionId)
+  assert.deepEqual(boxes.calls, [])
+
+  // And so with a box removed by other means.
+  const { resetAt } = await new Registry(join(work, 'taus')).get(sessionId)
+  await service.tauRuns.stop(sessionId)
+  boxes.existing.delete(box)
+  await rm(boxes.root(box), { recursive: true, force: true })
+  boxes.calls.length = 0
+  await service.tauRuns.boxFor(sessionId)
+  assert.equal(boxes.calls[0], `create ${box}`)
+  assert.notEqual((await new Registry(join(work, 'taus')).get(sessionId)).resetAt, resetAt)
+})
+
+test('archiving a session removes the boxes of the runs it started, and of theirs, and of no other', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes(work)
+  const service = make(work, () => {}, sessions, boxes)
+  // A session that is no tau's, as with tau_run, and a run it started, which started another.
+  const caller = 'session-22222222-2222-4222-8222-222222222222'
+  const child = await startIn(service, from(caller), tauDir, values, work)
+  const grandchild = await startIn(service, from(child.sessionId), tauDir, values, work)
+  const other = await startIn(service, HOST, tauDir, values, work)
+  // Finished, or the end of the run that started it would delete it.
+  sessions.end(grandchild.sessionId, completed('Done.'))
+  await finish(service, from(child.sessionId), grandchild.sessionId)
+  for (const { sessionId } of [child, other]) sessions.end(sessionId, completed('Done.'))
+  await service.followArchive(new Set([caller]))
+  assert.deepEqual(await Promise.all([child, grandchild, other].map(({ box }) => boxes.exists(box))), [false, false, true])
+  assert.deepEqual((await service.list(HOST)).map(status => status.sessionId), [child, grandchild, other].map(({ sessionId }) => sessionId))
+  await service.followArchive(new Set())
+  assert.equal((await service.tauRuns.boxFor(grandchild.sessionId))?.container, grandchild.box)
 })
 
 test('a host file is copied into a tau session\'s box once, before the box\'s next use, and again after a failure', async (t) => {
