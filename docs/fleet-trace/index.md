@@ -14,10 +14,12 @@ workspace's root lists, so `pnpm exec fleet-trace` runs it. It writes to
 
 | File | What it holds |
 |---|---|
-| `requests/NNN.json` | Each request as the model got it, in order; `NNN-run.json` for the run's conversation, the others, such as dsh's for a session title, without. |
+| `requests/NNN.json` | Each request as the model got it, in order; `NNN-run.json` for the run's conversation, `NNN-child.json` for that of a run it started, the others, such as dsh's for a session title, without. |
 | `system-prompt.md` | The last request of the run's system prompt, as it is. |
 | `tools/<name>.json` | Each tool as the model gets it: name, description, parameters. |
 | `conversation.md` | The rest of that request's messages: the user's, each tool call with its arguments, a program's source in a block of its own, and each result as sent, with a JSON result also indented. |
+| `result.json` | How the run ended. |
+| `work/` | The caller's folder after the run, with what the run gave back at its paths. |
 | `dsh.log` | What dsh wrote. |
 
 A scenario is JSON, its paths relative to its file, such as
@@ -38,6 +40,10 @@ A scenario is JSON, its paths relative to its file, such as
 - `values`: the run's values, as `fleet start` sends them.
 - `steps`: the model's tool calls, one per turn, in order.
 - `final`: the model's answer after the last step.
+- `runs`: what the model does in the runs the run starts, through the `tau`
+  API, each `{ match, steps, final }`, for the run whose prompt holds the
+  phrase `match`. `scenarios/relay.json` runs `examples/relay`, whose
+  program runs the tau it holds, `taus/shout`, which writes the report.
 
 ## Design
 
@@ -54,11 +60,15 @@ A scenario is JSON, its paths relative to its file, such as
 - **The scripted model** (`model.ts`) is an OpenAI-compatible endpoint on
   localhost. A request carrying the tau's prompt is the run's: it answers
   with the step after as many as the request has tool results for, and with
-  `final` after the last. It answers any other request with a word. It
+  `final` after the last. A request carrying one of `runs`' phrases is a
+  started run's, answered the same way from its script. It answers any
+  other request with a word. It
   holds every request until it knows the prompt, which `start` answers
   with, since dsh may ask before the answer comes.
-- **The end.** Once the run has ended, as `finish` says, the session is
-  deleted, with its box; a run that failed says why on stderr. dsh is
+- **The end.** Once the run has ended, as `finish` says, and what it gave
+  back is put at the caller's paths, its result and the caller's folder are
+  kept, and the session is deleted, with its box, and the runs it started;
+  a run that failed says why on stderr. dsh is
   stopped, its whole process group, and the temporary folder
   removed. A run that stops when dsh exits says so, with its log. An
   interrupted one, by Ctrl-C or SIGTERM, cleans up the same way before it
@@ -66,5 +76,6 @@ A scenario is JSON, its paths relative to its file, such as
 
 ## Built on
 
-- `fleet-client/connection` and `fleet-protocol/tau`, for the tau service.
+- `fleet-client/connection`, `fleet-client/runs` and `fleet-protocol/tau`,
+  for the tau service.
 - The workspace's dsh, through `pnpm exec dsh`.

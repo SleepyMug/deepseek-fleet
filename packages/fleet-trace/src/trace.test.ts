@@ -43,6 +43,19 @@ test('the scripted model holds requests until it knows the prompt, answers the r
   assert.deepEqual(model.requests.map(request => request.run), [false, true, true])
 })
 
+test('the scripted model answers a run the run starts with the script whose phrase its prompt holds', async (t) => {
+  const dir = await folder(t)
+  const shout = { match: 'in capital letters', steps: [{ tool: 'write', args: { file_path: '/tau/out/r.txt', content: 'HI\n' } }], final: 'Shouted.' }
+  const model = await ScriptedModel.start([], 'Relayed.', dir, [shout])
+  t.after(() => model.close())
+  model.prompt = 'Run shout.'
+  const child = [{ role: 'user', content: 'Write hi in capital letters to /tau/out/r.txt.' }]
+  assert.deepEqual(await ask(model.port, child), { text: '', call: { name: 'write', arguments: '{"file_path":"/tau/out/r.txt","content":"HI\\n"}' } })
+  assert.deepEqual(await ask(model.port, [...child, { role: 'assistant' }, { role: 'tool', content: 'ok' }]), { text: 'Shouted.' })
+  assert.deepEqual(await ask(model.port, [{ role: 'user', content: 'Run shout.' }]), { text: 'Relayed.' })
+  assert.deepEqual(await readdir(dir), ['001-child.json', '002-child.json', '003-run.json'])
+})
+
 test('a request renders as its system prompt, its tools, and its conversation', async (t) => {
   const out = await folder(t)
   render({

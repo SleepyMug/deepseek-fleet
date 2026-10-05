@@ -6,12 +6,12 @@
  * there, through its socket, as `fleet run` does it; and, once the run has
  * ended, the session deleted, dsh stopped and the temporary folder removed. What the model was sent is left
  * in the output folder: every request, and the last of the run's rendered
- * (./render.ts).
+ * (./render.ts); and how the run ended, and the caller's folder after it.
  * @module fleet-trace/run
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -20,7 +20,7 @@ import { promisify } from 'node:util'
 import { ask as askService, type Body } from 'fleet-client/connection'
 import { finishRun, startRun } from 'fleet-client/runs'
 import { socketPath, type Answers } from 'fleet-protocol/tau'
-import { ScriptedModel, type Step } from './model.ts'
+import { ScriptedModel, type Script, type Step } from './model.ts'
 import { render } from './render.ts'
 
 /** A scenario file: the tau, the caller's files and values, and what the model does. */
@@ -35,6 +35,8 @@ export interface Scenario {
   steps: Step[]
   /** The model's last answer, after the last step. */
   final: string
+  /** What the model does in the runs the run starts, each by a phrase of its prompt. */
+  runs?: Script[]
 }
 
 /** This checkout. */
@@ -52,7 +54,7 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-trace-'))
   const home = join(scratch, 'home')
   const work = join(scratch, 'work')
-  const model = await ScriptedModel.start(scenario.steps, scenario.final, join(out, 'requests'))
+  const model = await ScriptedModel.start(scenario.steps, scenario.final, join(out, 'requests'), scenario.runs)
   let dsh: ChildProcess | undefined
   let sessionId: string | undefined
   try {
@@ -83,6 +85,9 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     model.prompt = started.prompt.trim()
     const result = await Promise.race([failing('finish', finishRun(socket, sessionId)), exited, interrupted])
     if (!result.ok) process.stderr.write(`fleet-trace: the run failed: ${String(result.failure)}\n`)
+    // How it ended, and the caller's folder with what it gave back.
+    writeFileSync(join(out, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
+    cpSync(work, join(out, 'work'), { recursive: true, verbatimSymlinks: true })
     await ask(socket, { op: 'delete', sessionId })
     sessionId = undefined
   } finally {
