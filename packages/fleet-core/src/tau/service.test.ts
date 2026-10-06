@@ -83,6 +83,11 @@ class FakeBoxes implements Boxes {
   failing: string | undefined
   left: Left = { ...LEFT }
   tamper: ((outcome: Result, handles: BoundHandle[]) => AsyncIterable<Uint8Array>) | undefined
+  /** How a process a box spawns, such as a run's init, ends, after writing what it writes: by default at once, with 0, writing nothing. */
+  spawn: (params: { argv: string[]; cwd: string }, write: (stream: 'stdout' | 'stderr', text: string) => void) => Promise<{ code: number | null; signal: string | null }> =
+    async () => ({ code: 0, signal: null })
+  /** What a box's `kill` of a process does, besides being recorded. */
+  kill: () => void = () => {}
 
   constructor(private readonly work: string) {}
 
@@ -146,8 +151,12 @@ class FakeBoxes implements Boxes {
         }
         await pipeline(Readable.from(this.tamper?.(outcome, handles) ?? await pack(outcome, root)), io?.output ?? process.stdout)
       },
-      request: (async (method: string, params: unknown) => {
+      request: (async (method: string, params: unknown, onEvent?: (event: unknown) => void) => {
         record(method, `${method} ${JSON.stringify(params)}`)
+        if (method === 'spawn') {
+          return await this.spawn(params as { argv: string[]; cwd: string }, (stream, text) => { onEvent?.({ stream, data: Buffer.from(text).toString('base64') }) })
+        }
+        if (method === 'kill') this.kill()
         return { code: 0, signal: null, stdout: '', stderr: '' }
       }) as RunBox['request'],
     }
@@ -578,6 +587,134 @@ test('a start that fails on the way archives the session, and removes its box an
   assert.deepEqual(await service.list(HOST), [])
 })
 
+/** Give the fixture's tau an init, `node init.ts`. */
+async function withInit(tauDir: string): Promise<void> {
+  const json = JSON.parse(await readFile(join(tauDir, 'tau.json'), 'utf8')) as object
+  await writeFile(join(tauDir, 'tau.json'), JSON.stringify({ ...json, init: 'node init.ts' }))
+}
+
+/** The calls a box's helper got to spawn processes, each its argv and its folder. */
+function spawned(boxes: FakeBoxes): unknown[] {
+  return boxes.calls.filter(call => call.startsWith('spawn ')).map((call) => {
+    const { argv, cwd } = JSON.parse(call.slice('spawn '.length)) as { argv: string[]; cwd: string }
+    return { argv, cwd }
+  })
+}
+
+test('a tau\'s init runs in the tau\'s directory before the agent, and exiting 0 does the run without it, its stdout the final text', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  await withInit(tauDir)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes(work)
+  boxes.spawn = async (_params, write) => {
+    write('stdout', 'Did it ')
+    write('stdout', 'all.\n')
+    write('stderr', 'noise\n')
+    return { code: 0, signal: null }
+  }
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await startIn(service, HOST, tauDir, values, work)
+  const { project } = await new Registry(join(work, 'taus')).get(sessionId)
+  assert.deepEqual(await finish(service, HOST, sessionId), { ok: true, text: 'Did it all.\n' })
+  assert.deepEqual(spawned(boxes), [{ argv: ['sh', '-c', 'node init.ts'], cwd: '/tau/self' }])
+  // The session is made, and never prompted.
+  assert.deepEqual(sessions.calls, [`create ${sessionId} ${project} tau`])
+  assert.equal(boxes.calls.at(-1), 'stop')
+  assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added milk.\n')
+
+  // Without what the tau declares at its handles, the run fails, as an agent's does.
+  boxes.left = {}
+  const { sessionId: bare } = await startIn(service, HOST, tauDir, values, work)
+  const failed = await finish(service, HOST, bare)
+  assert.equal(failed.ok, false)
+  assert.match(String(failed.failure), /did not leave what the tau declares/u)
+})
+
+test('a tau\'s init exiting 100 has the agent run on the prompt as it is, and any other ending tells the agent it failed', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  await withInit(tauDir)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes(work)
+  const service = make(work, () => {}, sessions, boxes)
+  const prompted = async (end: { code: number | null; signal: string | null }, stdout: string, stderr: string): Promise<string> => {
+    sessions.calls.length = 0
+    boxes.spawn = async (_params, write) => {
+      if (stdout !== '') write('stdout', stdout)
+      if (stderr !== '') write('stderr', stderr)
+      return end
+    }
+    const { sessionId } = await startIn(service, HOST, tauDir, values, work)
+    const { promptRequestId } = await new Registry(join(work, 'taus')).get(sessionId)
+    const finishing = finish(service, HOST, sessionId)
+    while (sessions.calls.length < 2) await new Promise(resolve => setImmediate(resolve))
+    sessions.end(sessionId, completed('Done.'))
+    assert.deepEqual(await finishing, { ok: true, text: 'Done.' })
+    const prompt = sessions.calls[1] ?? ''
+    assert.ok(prompt.startsWith(`prompt ${sessionId} ${promptRequestId} `), prompt)
+    return prompt.slice(`prompt ${sessionId} ${promptRequestId} `.length)
+  }
+  assert.equal(await prompted({ code: 100, signal: null }, 'ignored\n', ''), EXPANDED)
+  assert.equal(await prompted({ code: 101, signal: null }, 'Looked up 2 notes.\n', 'no ```site``` found'), [
+    EXPANDED.trimEnd(),
+    '',
+    '---',
+    '',
+    'This TAU\'s init, `node init.ts`, ran before you, and failed: it exited with 101. Do the task yourself; what init left at the handles is still there.',
+    '',
+    'Its stdout:',
+    '',
+    '```',
+    'Looked up 2 notes.',
+    '```',
+    '',
+    'Its stderr:',
+    '',
+    '````',
+    'no ```site``` found',
+    '````',
+    '',
+  ].join('\n'))
+  assert.match(await prompted({ code: 1, signal: null }, '', 'Error: boom\n'), /failed: it exited with 1\. .*\n\nIts stdout: nothing\.\n\nIts stderr:\n\n```\nError: boom\n```\n$/u)
+  assert.match(await prompted({ code: null, signal: 'SIGKILL' }, '', ''), /failed: it was killed by SIGKILL\./u)
+})
+
+test('cancelling a run while its init runs ends the init, and the run, failing, without its agent', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  await withInit(tauDir)
+  const sessions = new FakeSessions()
+  const boxes = new FakeBoxes(work)
+  const killed = Promise.withResolvers<{ code: number | null; signal: string | null }>()
+  boxes.spawn = () => killed.promise
+  boxes.kill = () => { killed.resolve({ code: null, signal: 'SIGTERM' }) }
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await startIn(service, HOST, tauDir, values, work)
+  while (spawned(boxes).length === 0) await new Promise(resolve => setImmediate(resolve))
+  await service.cancel(HOST, sessionId)
+  assert.deepEqual(await finish(service, HOST, sessionId), { ok: false, text: '', failure: 'the run was cancelled while its init ran' })
+  assert.equal(boxes.calls.filter(call => call.startsWith('kill ')).length, 1)
+  assert.equal(sessions.calls.length, 1)
+})
+
+test('a host that stops while a run\'s init runs leaves the run to fail, unprompted, once a service started later watches it', async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  await withInit(tauDir)
+  const boxes = new FakeBoxes(work)
+  const killed = Promise.withResolvers<{ code: number | null; signal: string | null }>()
+  boxes.spawn = () => killed.promise
+  boxes.kill = () => { killed.resolve({ code: null, signal: 'SIGTERM' }) }
+  const sessions = new FakeSessions()
+  const service = make(work, () => {}, sessions, boxes)
+  const { sessionId } = await startIn(service, HOST, tauDir, values, work)
+  while (spawned(boxes).length === 0) await new Promise(resolve => setImmediate(resolve))
+  await service.close()
+  assert.equal(sessions.calls.length, 1)
+  const later = make(work, () => {}, new FakeSessions(), new FakeBoxes(work))
+  // As fleet-tau-runs loads them, before the service.
+  await later.tauRuns.load()
+  await later.load()
+  assert.deepEqual(await finish(later, HOST, sessionId), { ok: false, text: '', failure: 'the fleet host stopped before the run got its prompt' })
+})
+
 test('a service started later watches the runs that had not ended, and fails one that never got its prompt', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   const service = make(work, () => {}, new FakeSessions(), new FakeBoxes(work))
@@ -976,6 +1113,32 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
     assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\nmore\n')
     assert.equal(await readFile(join(work, 'notes.md'), 'utf8'), 'buy milk\n')
     await service.tauRuns.stop(sessionId)
+  } finally {
+    await service.delete(HOST, sessionId)
+  }
+  await assert.rejects(run('docker', ['container', 'inspect', box]), /No such container/u)
+})
+
+test('a real box runs a tau\'s init in the tau\'s directory, whose imports resolve as its programs\' do', { skip: await absent(DEFAULT_IMAGE) }, async (t) => {
+  const { work, tauDir, values } = await fixture(t)
+  await withInit(tauDir)
+  await writeFile(join(tauDir, 'init.ts'), [
+    'import { mkdirSync, writeFileSync } from "node:fs"',
+    'import { add } from "@api/notes"',
+    'const said: string = await add("milk")',
+    'writeFileSync("/tau/out/report.md", `${said}\\n`)',
+    'mkdirSync("/tau/out/pages", { recursive: true })',
+    'console.log(`${said} in ${process.cwd()}`)',
+  ].join('\n'))
+  const sessions = new FakeSessions()
+  const service = make(work, () => {}, sessions)
+  added.length = 0
+  const { sessionId, box } = await startIn(service, HOST, tauDir, values, work)
+  try {
+    assert.deepEqual(await finish(service, HOST, sessionId), { ok: true, text: 'added milk in /tau/self\n' })
+    assert.deepEqual(added, [{ args: ['milk'], sessionId }])
+    assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'added milk\n')
+    assert.equal(sessions.calls.length, 1)
   } finally {
     await service.delete(HOST, sessionId)
   }

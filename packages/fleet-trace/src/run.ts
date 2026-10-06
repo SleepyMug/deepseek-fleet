@@ -113,6 +113,11 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     rmSync(scratch, { recursive: true, force: true })
   }
   const last = model.requests.filter(found => found.run).at(-1)
+  if (last === undefined && scenario.tau !== undefined) {
+    // Its tau's init did the run, so it has how it ended and what it gave back alone.
+    process.stderr.write('fleet-trace: the run made no request of the model, as when its tau\'s init does the run\n')
+    return
+  }
   if (last === undefined) throw new Error('fleet-trace: the model had no request of the scenario\'s conversation')
   render(JSON.parse(readFileSync(last.file, 'utf8')) as Parameters<typeof render>[0], out)
 }

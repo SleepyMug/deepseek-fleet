@@ -10,7 +10,8 @@ puts the result at its paths, so the service never reads or writes a
 caller's files, and serves a caller on the host and one in a box alike.
 `start` sets up the run's box, mints the session's id and expands its prompt,
 then makes the dsh session, in the caller's folder as its workspace, so the
-web UI lists it there, and gives it the prompt. The session's bash and file
+web UI lists it there, and gives it the prompt, once the tau's init, if it
+has one, asks for the agent. The session's bash and file
 tools work in its box, through
 fleet-core's world (docs/fleet-core/world/index.md). Each API the tau
 declares is linked to the client of the extension that implements it
@@ -30,11 +31,11 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 | Op | What it does |
 |---|---|
-| `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt; `targets`, where the caller has each `$out` and `$inout` handle, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
+| `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch; `targets`, where the caller has each `$out` and `$inout` handle, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `finish { sessionId, history? }` | Wait until the run ends, and answer how it did and the targets, `{ result, targets }`, then send its result, the same each time; the caller puts what it gave back at the targets. With `history: true`, the answer holds the session's history too, `history`. |
-| `cancel { sessionId }` | Cancel the run's turn, which ends the run; a run that ended is let be. |
+| `cancel { sessionId }` | Cancel the run's init, or its turn, which ends the run; a run that ended is let be. |
 | `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run, and every run it started. |
 
 Each of the service's operations takes who calls it, a run's caller:
@@ -149,7 +150,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
   caller; the box, the run's title, the project,
-  the expanded prompt and the request id it is sent under, each handle (its
+  the expanded prompt and the request id it is sent under, the tau's init,
+  its command and the tau's directory in the box, if it has one, each handle (its
   mode, kind, name, blob and place), the targets, the working directory and
   the APIs' folder in the box, as the runtime reported them, the names of the APIs the
   tau declares, each linked, what it exposes, with what each says it is,
@@ -171,10 +173,30 @@ preset's scope, which each of its sessions' agents has as its parent.
   3. queues the prompt under the entry's request id;
   4. records in the entry when the session got its prompt.
 
+  For a tau with an init, the start stops after step 2, and the run's
+  watch runs the init first (below), then takes steps 3 and 4 unless the
+  init did the run.
+
   A failure on the way archives the session and removes the box and the
   entry, so a run either started or left nothing. A session's operations
   run one after another, so its start, its end, a finish and a deletion
   keep their order.
+- **The init** of a tau that has one (`init.ts`, tau's docs/spec/init.md)
+  runs as its run's watch begins: the helper spawns `sh -c` with the
+  command, in the tau's directory, `/tau/self`, as `spawn` does a bash
+  command of the agent's, with `$FLEET_SOCKET`, so its imports resolve as
+  the agent's programs do and its API calls are the session's, nested runs
+  included; it occupies the box until it exits. Its exit says what comes
+  next: 0, `TAU_SKIP`, ends the run without the agent, which the session
+  never gets a prompt for, init's stdout its text, and the run succeeds as
+  if the agent had, packing what init left (below); 100, `TAU_RUN`, gives
+  the session its prompt as it is; 101, `TAU_FALLBACK`, and any other
+  exit, or a signal, gives it the prompt followed by a note that init
+  failed, how it ended, and what it wrote to stdout and stderr, each in a
+  fenced block. An init that cannot run at all fails the run. Cancelling
+  the run kills the init's process group and ends the run as cancelled;
+  a host that stops meanwhile kills it too, and the run then ends as one
+  whose start was cut short before its prompt.
 - **A run ends** at the first time its agent is done with its prompt: the
   service waits for the agent's `whenIdle()`, then reads the session's log
   with the session controller's `inspect` (`outcome.ts`). The run succeeded
@@ -215,8 +237,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   answer, read when it answers, failed run or not. It is dsh's, not
   tau's spec's, so its form is dsh's session log's, and the caller
   writes it where it wants it, as with the result.
-- **Cancelling** cancels the session's turn; the run then ends as
-  cancelled, which its watch records.
+- **Cancelling** cancels the session's turn, or its init, while that
+  runs; the run then ends as cancelled, which its watch records.
 - **The runs a run started** go with it. Once a run ends, its box is
   stopped, and nothing it started and did not finish can give anything
   back, so those runs are deleted. Deleting a run deletes every run it

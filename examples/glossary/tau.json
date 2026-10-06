@@ -1,0 +1,9 @@
+{
+  "description": "Define a term, from a glossary when it has the term, and write the definition to a file.",
+  "params": {
+    "glossary": { "type": "file", "mode": "in", "description": "A JSON object from each term, in lower case, to its definition." },
+    "term": { "type": "text", "description": "The term to define." },
+    "definition": { "type": "file", "mode": "out", "description": "The term's definition." }
+  },
+  "init": "node init.ts"
+}

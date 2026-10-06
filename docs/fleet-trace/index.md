@@ -23,6 +23,9 @@ workspace's root lists, so `pnpm exec fleet-trace` runs it. It writes to
 | `work/` | The caller's folder after the run or the session, with what the runs gave back at its paths. |
 | `dsh.log` | What dsh wrote. |
 
+A run whose tau's init does it, without the model, has no requests, and so
+only `result.json`, `work/` and `dsh.log`.
+
 A scenario is JSON, its paths relative to its file, such as
 `packages/fleet-trace/scenarios/notebook.json`:
 
@@ -49,6 +52,11 @@ A scenario is JSON, its paths relative to its file, such as
   API, or the session, with `tau_run`, each `{ match, steps, final }`, for
   the run whose prompt holds the phrase `match`. `scenarios/relay.json` runs `examples/relay`, whose
   program runs the tau it holds, `taus/shout`, which writes the report.
+
+`scenarios/glossary.json` runs `examples/glossary`, whose init defines a
+term its glossary has without the model; `scenarios/glossary-broken.json`
+gives it a glossary that is not JSON, so its init fails, and the agent,
+told so after the prompt, defines the term.
 
 ## Design
 

@@ -2,8 +2,9 @@
  * The tau service (docs/fleet-core/tau/index.md), what `fleet` asks of the
  * fleet host: it starts a run of a call, tau's archive of a run, with its
  * box (./runs.ts) and its dsh session, in the caller's folder as its
- * workspace, which it gives the prompt; watches the run until its agent is
- * done, has its box pack what it gave back, and records how it ended
+ * workspace, which it gives the prompt, once the tau's init, if it has one,
+ * asks for the agent (./init.ts); watches the run until its agent is
+ * done, or its init did the run, has its box pack what it gave back, and records how it ended
  * (./outcome.ts); gives back its result, and where the caller has its
  * handles, for the caller to put what the run gave back there; and cancels
  * the run, and deletes it with its box. It never reads or writes a caller's
@@ -16,6 +17,7 @@
  */
 
 import type { Finished, Result, RunStatus, Started } from 'fleet-protocol/tau'
+import { fellBack, nextOf } from './init.ts'
 import { resultOf, type Outcome } from './outcome.ts'
 import type { Caller, Entry } from './registry.ts'
 import { HOST, type About, type TauRuns } from './runs.ts'
@@ -48,6 +50,8 @@ export class TauService {
   private readonly queues = new Map<string, Promise<void>>()
   /** Each run watched until it ends, by its session. */
   private readonly watches = new Map<string, Promise<void>>()
+  /** What cancels each run whose init runs, or whose prompt follows its init, by its session. */
+  private readonly inits = new Map<string, AbortController>()
   /** Aborts the watches as the service closes. */
   private readonly closing = new AbortController()
   /** dsh's archived sessions, as {@link followArchive} was last told. */
@@ -68,8 +72,9 @@ export class TauService {
 
   /**
    * Start a run of a call: set up its box (./runs.ts), start it, make the
-   * dsh session, and give it the prompt. A failure on the way undoes it all.
-   * Then the run is watched until it ends.
+   * dsh session, and give it the prompt, unless its tau has an init, which
+   * the watch runs first. A failure on the way undoes it all. Then the run
+   * is watched until it ends.
    * @param caller - who starts it: `fleet`, on the host, or a session: a tau's, from its box, or another, with `tau_run`.
    * @param call - tau's archive of the call, which carries the tau.
    */
@@ -77,12 +82,15 @@ export class TauService {
     const started = await this.runs.create(call, about, caller)
     const { sessionId } = started
     let project: string | undefined
+    let init = false
     try {
       await this.serial(sessionId, async () => {
         const entry = await this.runs.entry(sessionId)
         project = entry.project
+        init = entry.init !== undefined
         await this.runs.start(sessionId)
         await this.sessions.create(sessionId, entry.project, entry.title)
+        if (init) return
         await this.sessions.prompt(sessionId, entry.promptRequestId, entry.prompt)
         await this.runs.prompted(sessionId)
       })
@@ -93,8 +101,8 @@ export class TauService {
       }).catch((undoing: unknown) => { this.log(`could not undo the start of ${sessionId}: ${message(undoing)}`) })
       throw error
     }
-    this.log(`started ${sessionId} in ${String(project)}, and gave it its prompt`)
-    void this.watch(sessionId)
+    this.log(`started ${sessionId} in ${String(project)}, ${init ? 'to run its init' : 'and gave it its prompt'}`)
+    void this.watch(sessionId, init)
     return started
   }
 
@@ -126,12 +134,13 @@ export class TauService {
     })
   }
 
-  /** Cancel a run's turn, which ends the run; a run that ended is let be. */
+  /** Cancel a run's init, or its turn, which ends the run; a run that ended is let be. */
   async cancel(caller: Caller, sessionId: string): Promise<void> {
     await this.reach(caller, sessionId)
     await this.serial(sessionId, async () => {
       const entry = await this.runs.entry(sessionId)
       if (entry.promptedAt !== undefined && entry.ended === undefined) this.sessions.cancel(sessionId)
+      else this.inits.get(sessionId)?.abort()
     })
   }
 
@@ -212,14 +221,15 @@ export class TauService {
   }
 
   /**
-   * Watch a run until it ends, once however many ask: record how it ended,
-   * and stop its box. It settles once the run's end is recorded, or the run
-   * is gone, or the service closes.
+   * Watch a run until it ends, once however many ask: run its init, if
+   * asked, record how it ended, and stop its box. It settles once the run's
+   * end is recorded, or the run is gone, or the service closes.
+   * @param init - whether to run the init of the run its start just set up.
    */
-  private watch(sessionId: string): Promise<void> {
+  private watch(sessionId: string, init = false): Promise<void> {
     const known = this.watches.get(sessionId)
     if (known !== undefined) return known
-    const watching = this.untilEnd(sessionId).catch((error: unknown) => {
+    const watching = this.untilEnd(sessionId, init).catch((error: unknown) => {
       if (!this.closing.signal.aborted && this.runs.isTau(sessionId)) this.log(`could not record how ${sessionId} ended: ${message(error)}`)
     }).finally(() => {
       if (this.watches.get(sessionId) === watching) this.watches.delete(sessionId)
@@ -228,11 +238,15 @@ export class TauService {
     return watching
   }
 
-  private async untilEnd(sessionId: string): Promise<void> {
+  private async untilEnd(sessionId: string, init: boolean): Promise<void> {
     // After the start's own operations, so a start under way has given the prompt.
     const prompted = await this.serial(sessionId, async () => (await this.runs.entry(sessionId)).promptedAt !== undefined)
+    // A run its start just set up runs its init first, which ends the run without its agent, or prompts it.
+    const initialized = !prompted && init ? await this.initialize(sessionId) : undefined
     let result: Result
-    if (!prompted) {
+    if (initialized !== undefined) {
+      result = initialized
+    } else if (!prompted && !init) {
       result = { ok: false, text: '', failure: 'the fleet host stopped before the run got its prompt' }
     } else {
       try {
@@ -253,6 +267,43 @@ export class TauService {
     })
     // What it started and did not finish cannot give back anything now: its box is its caller's.
     await this.deleteChildren(sessionId, entry => entry.finishedAt === undefined)
+  }
+
+  /**
+   * Run a run's init (./init.ts), and then, unless it did the run, give the
+   * session its prompt, telling the agent, after it, when init failed. A
+   * service that closes meanwhile throws, and leaves the run unprompted.
+   * @returns how the run ended without its agent: init did the run, could not run, or the run was cancelled; undefined once the agent has its prompt.
+   */
+  private async initialize(sessionId: string): Promise<Result | undefined> {
+    const cancel = new AbortController()
+    this.inits.set(sessionId, cancel)
+    const cancelled: Result = { ok: false, text: '', failure: 'the run was cancelled while its init ran' }
+    try {
+      let end
+      try {
+        end = await this.runs.init(sessionId, AbortSignal.any([cancel.signal, this.closing.signal]))
+      } catch (error) {
+        if (this.closing.signal.aborted) throw error
+        return cancel.signal.aborted ? cancelled : { ok: false, text: '', failure: `could not run the tau's init: ${message(error)}` }
+      }
+      this.closing.signal.throwIfAborted()
+      const next = nextOf(end)
+      this.log(`the init of ${sessionId} ${end.code === null ? `was killed by ${String(end.signal)}` : `exited with ${end.code}`}: ${next}`)
+      if (cancel.signal.aborted) return cancelled
+      if (next === 'skip') return { ok: true, text: end.stdout }
+      return await this.serial(sessionId, async () => {
+        // Cancelled once init ended, before this.
+        if (cancel.signal.aborted) return cancelled
+        const entry = await this.runs.entry(sessionId)
+        const prompt = next === 'run' || entry.init === undefined ? entry.prompt : fellBack(entry.prompt, entry.init.command, end)
+        await this.sessions.prompt(sessionId, entry.promptRequestId, prompt)
+        await this.runs.prompted(sessionId)
+        return undefined
+      })
+    } finally {
+      this.inits.delete(sessionId)
+    }
   }
 
   /** Run a session's operations one after another, so that a run's start, end, finish and deletion keep their order. */

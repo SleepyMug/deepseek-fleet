@@ -5,8 +5,8 @@
  * has a box's runtime set the box up from it (fleet-box-runtime/tau/endpoint),
  * which places everything where the box has things, with the tau's APIs
  * linked to the clients of the extensions that implement them (./apis.ts); keeps which box each session has (./registry.ts); starts,
- * stops and removes the box, and copies host files into it as they are asked
- * for; keeps the run's result, the archive of what it gave back, which its
+ * stops and removes the box, runs the tau's init in it (./init.ts), and
+ * copies host files into it as they are asked for; keeps the run's result, the archive of what it gave back, which its
  * box packs; and answers the calls the clients in the box make, with the
  * extensions' servers. It never reads or writes a caller's files: the caller
  * packs the call, and puts the result at its paths. It uses nothing of
@@ -70,7 +70,21 @@ interface Accepted {
   /** The tau's root, read from the call, through symlinks. */
   tauRoot: string
   linked: Linked
+  /** The tau's init, its command, if it has one. */
+  init: string | undefined
 }
+
+/** How a run's init ended (./init.ts). */
+export interface InitEnd {
+  /** Its exit code, or null when a signal killed it. */
+  code: number | null
+  signal: string | null
+  stdout: string
+  stderr: string
+}
+
+/** How long a run's init, cancelled, has after SIGTERM before SIGKILL. */
+const INIT_GRACE_MS = 5_000
 
 /** `fleet`, on the host. */
 export const HOST: Caller = { kind: 'host' }
@@ -174,7 +188,7 @@ export class TauRuns {
       const tau = loadTau(tauDir)
       // Where the box places each handle is its own; here, only whether the values fit.
       tau.bind(read.json.values, { cwd: '/' }, ({ name }) => `/${name}`)
-      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
+      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts), init: tau.init }
     } catch (error) {
       // The tau as the caller names it.
       throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${about.title}`), { cause: error })
@@ -188,7 +202,7 @@ export class TauRuns {
     try {
       await placeCall(await readCall(createReadStream(join(folder, CALL))), { tau: tauDir })
       const tau = loadTau(tauDir)
-      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
+      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts), init: tau.init }
     } catch (error) {
       throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${title}`), { cause: error })
     }
@@ -214,7 +228,7 @@ export class TauRuns {
   }
 
   private async setUp(sessionId: string, accepted: Accepted, about: About, project: string, caller: Caller): Promise<Started> {
-    const { linked } = accepted
+    const { linked, init } = accepted
     const box = await this.docker.create(`fleet-tau-${sessionId.slice('session-'.length)}`)
     let setup: Setup
     try {
@@ -229,6 +243,7 @@ export class TauRuns {
         title: about.title,
         project,
         prompt: setup.prompt,
+        ...init === undefined ? {} : { init: { command: init, dir: setup.self } },
         promptRequestId: randomUUID(),
         handles: setup.handles,
         targets: about.targets,
@@ -269,6 +284,35 @@ export class TauRuns {
   async list(): Promise<Entry[]> {
     const entries = await Promise.all((await this.registry.list()).map(sessionId => this.registry.find(sessionId)))
     return entries.filter(entry => entry !== undefined).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  }
+
+  /**
+   * Run a session's init, its tau's command, with `sh -c` in the tau's own
+   * directory in its box, which it occupies until the command ends, and
+   * collect what it writes; the signal ends the command's process group.
+   * A session whose tau has no init fails.
+   */
+  async init(sessionId: string, signal: AbortSignal): Promise<InitEnd> {
+    const { init } = await this.registry.get(sessionId)
+    if (init === undefined) throw new Error(`fleet: the tau of ${sessionId} has no init`)
+    const process = randomUUID()
+    const held = await this.hold(sessionId, { kind: 'process', id: process })
+    if (held === undefined) throw new Error(`fleet: no tau session ${sessionId}`)
+    const { box, release } = held
+    const kill = (): void => { void box.request('kill', { process }).catch(() => {}) }
+    signal.addEventListener('abort', kill, { once: true })
+    try {
+      signal.throwIfAborted()
+      const stdout: Buffer[] = []
+      const stderr: Buffer[] = []
+      const { code, signal: killed } = await box.request('spawn', {
+        process, argv: ['sh', '-c', init.command], cwd: init.dir, env: {}, stdin: null, graceMs: INIT_GRACE_MS,
+      }, (event) => { (event.stream === 'stdout' ? stdout : stderr).push(Buffer.from(event.data, 'base64')) })
+      return { code, signal: killed, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') }
+    } finally {
+      signal.removeEventListener('abort', kill)
+      release()
+    }
   }
 
   /** Record that a session was given its prompt. */

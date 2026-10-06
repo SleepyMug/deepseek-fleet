@@ -1,0 +1,7 @@
+{
+  "tau": "../../../examples/glossary",
+  "files": { "glossary.json": "{ \"tau\": \"An agent packaged as a directory.\" }\n" },
+  "values": { "glossary": { "$in": "glossary.json" }, "term": "TAU", "definition": { "$out": "out/tau.txt" } },
+  "steps": [],
+  "final": "unused: the tau's init defines the term, and the agent does not run."
+}
