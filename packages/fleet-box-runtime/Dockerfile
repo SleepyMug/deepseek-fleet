@@ -3,7 +3,7 @@
 # package in the build context's fleet/, compiled, with the packages it
 # depends on as installed on the host in fleet/node_modules
 # (src/image/stage.ts), so nothing is installed or compiled here.
-ARG NODE_IMAGE=node:26.9.0-trixie-slim
+ARG NODE_IMAGE=node:26.9.0-trixie
 FROM ${NODE_IMAGE}
 # The package and its node_modules at once; the links between packages in
 # node_modules are relative, and stay links.
