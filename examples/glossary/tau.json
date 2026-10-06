@@ -5,5 +5,5 @@
     "term": { "type": "text", "description": "The term to define." },
     "definition": { "type": "file", "mode": "out", "description": "The term's definition." }
   },
-  "init": "node init.mts"
+  "init": "node ${self}/init.mts"
 }

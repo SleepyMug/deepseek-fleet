@@ -40,7 +40,7 @@ export interface Entry {
   project: string
   /** The tau's prompt, expanded with where the box has each handle. */
   prompt: string
-  /** The tau's init, its command, and the tau's own directory in the box, where it runs (./init.ts); none for a tau without one. */
+  /** The tau's init, its command, `${self}` expanded, and the agent's working directory in the box, where it runs (./init.ts); none for a tau without one. */
   init?: { command: string; dir: string }
   /** The id the prompt is sent under, so that sending it again is sending it once. */
   promptRequestId: string

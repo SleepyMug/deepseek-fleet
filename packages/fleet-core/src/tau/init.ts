@@ -1,6 +1,6 @@
 /**
  * A tau's init (tau's docs/spec/init.md): the command a run's box runs in
- * the tau's own directory before the agent (./runs.ts), whose exit says
+ * the agent's working directory before the agent (./runs.ts), whose exit says
  * what comes next: the agent skipped, init's stdout the run's final text;
  * the agent run on the prompt as it is; or, for any other ending, the agent
  * run on the prompt and told, after it, that init failed, with what it

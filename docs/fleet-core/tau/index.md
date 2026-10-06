@@ -111,12 +111,12 @@ preset's scope, which each of its sessions' agents has as its parent.
   the helper's lines of JSON would carry the archives only as text:
   - `setup` reads the call on its stdin, checked again, places the tau and
     the content of the `$in` and `$inout` handles, binds the values, which
-    expands the prompt, makes each `$out` folder, keeps the handles and the
+    expands the prompt, and the tau's init, if it has one, makes each `$out` folder, keeps the handles and the
     values the agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its
     tau library has it, at `/tau/TAU.md`, and reports
-    `{ prompt, cwd, modules, self, clients, handles }`: the prompt, the
-    agent's working directory, where the APIs and the clients go, where the
-    tau is, and each handle with its place. It runs before the agent, on a
+    `{ prompt, cwd, modules, self, clients, handles, init? }`: the prompt,
+    the agent's working directory, where the APIs and the clients go, where
+    the tau is, each handle with its place, and the init. It runs before the agent, on a
     call the host checked, and runs no code of the tau's, so the host takes
     its report as its own.
   - `pack` writes the result on its stdout, from what the agent left at
@@ -151,7 +151,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
   caller; the box, the run's title, the project,
   the expanded prompt and the request id it is sent under, the tau's init,
-  its command and the tau's directory in the box, if it has one, each handle (its
+  its expanded command and where it runs in the box, if it has one, each handle (its
   mode, kind, name, blob and place), the targets, the working directory and
   the APIs' folder in the box, as the runtime reported them, the names of the APIs the
   tau declares, each linked, what it exposes, with what each says it is,
@@ -183,10 +183,11 @@ preset's scope, which each of its sessions' agents has as its parent.
   keep their order.
 - **The init** of a tau that has one (`init.ts`, tau's docs/spec/init.md)
   runs as its run's watch begins: the helper spawns `sh -c` with the
-  command, in the tau's directory, `/tau/self`, as `spawn` does a bash
-  command of the agent's, with `$FLEET_SOCKET`, so its imports resolve as
-  the agent's programs do and its API calls are the session's, nested runs
-  included; it occupies the box until it exits. Its exit says what comes
+  command, `${self}` expanded as `/tau/self` by the box's `setup`, in the
+  agent's working directory, `/tau/workspace`, as `spawn` does a bash
+  command of the agent's, with `$FLEET_SOCKET`, so a program of the tau's,
+  such as `node ${self}/init.mts`, imports what the agent's programs do,
+  and its API calls are the session's, nested runs included; it occupies the box until it exits. Its exit says what comes
   next: 0, `TAU_SKIP`, ends the run without the agent, which the session
   never gets a prompt for, init's stdout its text, and the run succeeds as
   if the agent had, packing what init left (below); 100, `TAU_RUN`, gives

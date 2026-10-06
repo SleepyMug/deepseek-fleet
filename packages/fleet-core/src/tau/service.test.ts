@@ -587,10 +587,10 @@ test('a start that fails on the way archives the session, and removes its box an
   assert.deepEqual(await service.list(HOST), [])
 })
 
-/** Give the fixture's tau an init, `node init.ts`. */
+/** Give the fixture's tau an init, `node ${self}/init.mts`. */
 async function withInit(tauDir: string): Promise<void> {
   const json = JSON.parse(await readFile(join(tauDir, 'tau.json'), 'utf8')) as object
-  await writeFile(join(tauDir, 'tau.json'), JSON.stringify({ ...json, init: 'node init.ts' }))
+  await writeFile(join(tauDir, 'tau.json'), JSON.stringify({ ...json, init: 'node ${self}/init.mts' }))
 }
 
 /** The calls a box's helper got to spawn processes, each its argv and its folder. */
@@ -601,7 +601,7 @@ function spawned(boxes: FakeBoxes): unknown[] {
   })
 }
 
-test('a tau\'s init runs in the tau\'s directory before the agent, and exiting 0 does the run without it, its stdout the final text', async (t) => {
+test('a tau\'s init runs in the agent\'s working directory before the agent, its ${self} expanded, and exiting 0 does the run without it, its stdout the final text', async (t) => {
   const { work, tauDir, values } = await fixture(t)
   await withInit(tauDir)
   const sessions = new FakeSessions()
@@ -616,7 +616,7 @@ test('a tau\'s init runs in the tau\'s directory before the agent, and exiting 0
   const { sessionId } = await startIn(service, HOST, tauDir, values, work)
   const { project } = await new Registry(join(work, 'taus')).get(sessionId)
   assert.deepEqual(await finish(service, HOST, sessionId), { ok: true, text: 'Did it all.\n' })
-  assert.deepEqual(spawned(boxes), [{ argv: ['sh', '-c', 'node init.ts'], cwd: '/tau/self' }])
+  assert.deepEqual(spawned(boxes), [{ argv: ['sh', '-c', 'node /tau/self/init.mts'], cwd: '/tau/workspace' }])
   // The session is made, and never prompted.
   assert.deepEqual(sessions.calls, [`create ${sessionId} ${project} tau`])
   assert.equal(boxes.calls.at(-1), 'stop')
@@ -659,7 +659,7 @@ test('a tau\'s init exiting 100 has the agent run on the prompt as it is, and an
     '',
     '---',
     '',
-    'This TAU\'s init, `node init.ts`, ran before you, and failed: it exited with 101. Do the task yourself; what init left at the handles is still there.',
+    'This TAU\'s init, `node /tau/self/init.mts`, ran before you, and failed: it exited with 101. Do the task yourself; what init left at the handles is still there.',
     '',
     'Its stdout:',
     '',
@@ -1119,10 +1119,10 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
   await assert.rejects(run('docker', ['container', 'inspect', box]), /No such container/u)
 })
 
-test('a real box runs a tau\'s init in the tau\'s directory, whose imports resolve as its programs\' do', { skip: await absent(DEFAULT_IMAGE) }, async (t) => {
+test('a real box runs a tau\'s init in the agent\'s working directory, and a program of the tau\'s it names with ${self} imports what the agent\'s programs do', { skip: await absent(DEFAULT_IMAGE) }, async (t) => {
   const { work, tauDir, values } = await fixture(t)
   await withInit(tauDir)
-  await writeFile(join(tauDir, 'init.ts'), [
+  await writeFile(join(tauDir, 'init.mts'), [
     'import { mkdirSync, writeFileSync } from "node:fs"',
     'import { add } from "@api/notes"',
     'const said: string = await add("milk")',
@@ -1135,7 +1135,7 @@ test('a real box runs a tau\'s init in the tau\'s directory, whose imports resol
   added.length = 0
   const { sessionId, box } = await startIn(service, HOST, tauDir, values, work)
   try {
-    assert.deepEqual(await finish(service, HOST, sessionId), { ok: true, text: 'added milk in /tau/self\n' })
+    assert.deepEqual(await finish(service, HOST, sessionId), { ok: true, text: 'added milk in /tau/workspace\n' })
     assert.deepEqual(added, [{ args: ['milk'], sessionId }])
     assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'added milk\n')
     assert.equal(sessions.calls.length, 1)

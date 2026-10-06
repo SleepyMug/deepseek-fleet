@@ -37,6 +37,8 @@ export interface Setup {
   clients: string
   /** Each handle of the run, with where the box has it. */
   handles: BoundHandle[]
+  /** The tau's init, its command, `${self}` expanded; none for a tau without one. */
+  init?: string
 }
 
 /** What the runtime keeps of a run in its box. */
@@ -68,7 +70,10 @@ export async function setup(call: AsyncIterable<Uint8Array>, root = '/'): Promis
     const kept: Kept = { handles: [...run.handles], values: { ...run.values } }
     await writeFile(at(RUN), `${JSON.stringify(kept)}\n`)
     await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), at(PRIMER))
-    return { prompt: run.prompt, cwd: FOLDERS.inout, modules: MODULES, self: SELF, clients: CLIENTS, handles: kept.handles }
+    return {
+      prompt: run.prompt, cwd: FOLDERS.inout, modules: MODULES, self: SELF, clients: CLIENTS, handles: kept.handles,
+      ...run.init === undefined ? {} : { init: run.init },
+    }
   } finally {
     await rm(scratch, { recursive: true, force: true })
   }

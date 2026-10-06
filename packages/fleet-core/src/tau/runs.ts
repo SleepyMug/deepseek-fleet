@@ -70,8 +70,6 @@ interface Accepted {
   /** The tau's root, read from the call, through symlinks. */
   tauRoot: string
   linked: Linked
-  /** The tau's init, its command, if it has one. */
-  init: string | undefined
 }
 
 /** How a run's init ended (./init.ts). */
@@ -188,7 +186,7 @@ export class TauRuns {
       const tau = loadTau(tauDir)
       // Where the box places each handle is its own; here, only whether the values fit.
       tau.bind(read.json.values, { cwd: '/' }, ({ name }) => `/${name}`)
-      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts), init: tau.init }
+      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
     } catch (error) {
       // The tau as the caller names it.
       throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${about.title}`), { cause: error })
@@ -202,7 +200,7 @@ export class TauRuns {
     try {
       await placeCall(await readCall(createReadStream(join(folder, CALL))), { tau: tauDir })
       const tau = loadTau(tauDir)
-      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts), init: tau.init }
+      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
     } catch (error) {
       throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${title}`), { cause: error })
     }
@@ -228,7 +226,7 @@ export class TauRuns {
   }
 
   private async setUp(sessionId: string, accepted: Accepted, about: About, project: string, caller: Caller): Promise<Started> {
-    const { linked, init } = accepted
+    const { linked } = accepted
     const box = await this.docker.create(`fleet-tau-${sessionId.slice('session-'.length)}`)
     let setup: Setup
     try {
@@ -243,7 +241,7 @@ export class TauRuns {
         title: about.title,
         project,
         prompt: setup.prompt,
-        ...init === undefined ? {} : { init: { command: init, dir: setup.self } },
+        ...setup.init === undefined ? {} : { init: { command: setup.init, dir: setup.cwd } },
         promptRequestId: randomUUID(),
         handles: setup.handles,
         targets: about.targets,
@@ -287,8 +285,8 @@ export class TauRuns {
   }
 
   /**
-   * Run a session's init, its tau's command, with `sh -c` in the tau's own
-   * directory in its box, which it occupies until the command ends, and
+   * Run a session's init, its tau's command, with `sh -c` in the agent's
+   * working directory in its box, which it occupies until the command ends, and
    * collect what it writes; the signal ends the command's process group.
    * A session whose tau has no init fails.
    */
@@ -782,7 +780,7 @@ class Report extends Writable {
       throw new Error(`fleet: the box's runtime reported something else than JSON: ${text.slice(0, 200)}`)
     }
     const paths = [setup.cwd, setup.modules, setup.self, setup.clients]
-    if (typeof setup.prompt !== 'string' || !Array.isArray(setup.handles) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
+    if (typeof setup.prompt !== 'string' || !Array.isArray(setup.handles) || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
       throw new Error('fleet: the box\'s runtime reported no setup')
     }
     return setup as Setup
