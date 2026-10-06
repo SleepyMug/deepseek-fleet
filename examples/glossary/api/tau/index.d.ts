@@ -34,3 +34,12 @@ export declare function run(
 	values: { readonly [name: string]: Value },
 	signal?: AbortSignal,
 ): Promise<Result>;
+
+/** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */
+export declare const TAU_SKIP: 0;
+
+/** Init's exit code when the agent is to run on the prompt, as it would without init. */
+export declare const TAU_RUN: 100;
+
+/** Init's exit code when it failed: the agent runs, told so, as with any other ending. */
+export declare const TAU_FALLBACK: 101;

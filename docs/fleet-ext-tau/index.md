@@ -13,7 +13,7 @@ provides the extension of `tau` to `ctx.fleetExts`, on the tau service,
 
 | Half | Module | |
 |---|---|---|
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as `@api/tau`, in the box: `values()`, which reads the values the box's runtime kept when it set the box up, and `run(agent, values, signal?, options?)`, which runs a tau with tau's `runTau` on the fleet host: it packs the call from the box's files, starts it, waits for it, and puts what it gave back at the box's paths; `options.history`, fleet's own, is where it writes the run's session's history. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as `@api/tau`, in the box: `values()`, which reads the values the box's runtime kept when it set the box up, and `run(agent, values, signal?, options?)`, which runs a tau with tau's `runTau` on the fleet host: it packs the call from the box's files, starts it, waits for it, and puts what it gave back at the box's paths; `options.history`, fleet's own, is where it writes the run's session's history; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
 | server | `src/tau.ts` | The methods `start`, with the call after its arguments `{ title, targets }`; `finish(id, { history? })`, which answers `{ result, targets, history? }` with the result after it; and `cancel`; each on the tau service as the calling session, which reaches only the runs it started. Each checks what the box sent. |
 
 A tau uses it by declaring `api/tau/index.d.ts`, the spec's declaration,

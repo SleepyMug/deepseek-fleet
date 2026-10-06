@@ -83,3 +83,12 @@ function host(history: string | undefined): Runtime {
 export function run(agent: string, values: { readonly [name: string]: Value }, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
   return runTau(host(options.history), agent, values, { cwd: process.cwd() }, signal)
 }
+
+/** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */
+export const TAU_SKIP = 0
+
+/** Init's exit code when the agent is to run on the prompt, as it would without init. */
+export const TAU_RUN = 100
+
+/** Init's exit code when it failed: the agent runs, told so, as with any other ending. */
+export const TAU_FALLBACK = 101
