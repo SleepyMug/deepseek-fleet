@@ -132,8 +132,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   | an `$inout` handle | `/tau/workspace/<base name>` |
   | an `$out` handle | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
-  | the APIs, `@api/<name>`, and the packages the tau exposes | `/node_modules` |
-  | the client of each API's extension | `/node_modules/.fleet/<name>` |
+  | the APIs, `@api/<name>`, and the packages the tau exposes | `/tau/node_modules` |
+  | the client of each API's extension | `/tau/node_modules/.fleet/<name>` |
   | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
 
   A base name already taken in its folder gets a suffix in its stem:
@@ -142,9 +142,13 @@ preset's scope, which each of its sessions' agents has as its parent.
   `file` or a `path`, since the agent makes what it leaves.
 
   Node looks for a package in every folder above the file that imports it,
-  so a program anywhere in the box, and the tau's own packages, find
-  `/node_modules`, as tau's docs/spec/runtimes.md asks, and TypeScript does
-  too. Each `@api/<name>` there is
+  so code anywhere below `/tau`, the tau's own packages included, finds
+  `/tau/node_modules`, and TypeScript does too. The agent runs its programs
+  from the tau's own directory, `cd /tau/self; node -`, Node reading the
+  program from stdin and resolving its imports from its working directory,
+  so a program resolves as the tau's code does: the tau's `node_modules`
+  first, every package of its own whether exposed or not, then
+  `/tau/node_modules`. Each `@api/<name>` there is
   typed by the tau's own declarations, in `/tau/self/api/<name>`, and
   re-exports the client, so every import in a process gets one module.
 - **The registry** (`registry.ts`) has one JSON file per session,
@@ -284,11 +288,11 @@ preset's scope, which each of its sessions' agents has as its parent.
   model works, its box, that its working directory is `/tau/workspace`,
   and that `/tau/TAU.md` says what a tau is, and what a run of one
   promises; after it, for a tau that exposes something, a section,
-  `fleet:tau-programs`, says to run programs with `node`, as JavaScript or
-  as TypeScript Node runs as is, and lists what they import, each exposed
-  API or package with its folder in `/node_modules` and what it says it is,
-  from the session's registry entry, so the model reads its declarations
-  there; and the assembly leaves out dsh's sections about the host,
+  `fleet:tau-programs`, says to run programs with `node` from the tau's
+  directory, `cd /tau/self; node - <<'EOF'`, and that they import, resolving
+  from `/tau/self`, what it lists: each exposed API or package, with what it
+  says it is, from the session's registry entry, whose declarations the
+  model reads in its folder; and the assembly leaves out dsh's sections about the host,
   which are false in a box: the harness's checkout (`harness:source`), the
   web GUI at its URL (`app:web-surface`), the web UI's file cards and links
   (`ui:deliverable-file-references`), and `@` mentions as host paths

@@ -70,6 +70,7 @@ test('a request renders as its system prompt, its tools, and its conversation', 
       { role: 'user', content: 'Count the words.' },
       { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', function: { name: 'write', arguments: JSON.stringify({ file_path: '/tau/workspace/count.ts', content: 'console.log(1)\n' }) } }] },
       { role: 'tool', tool_call_id: 'call_1', content: '{"bytes":15}' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'call_2', function: { name: 'bash', arguments: JSON.stringify({ command: "cd /tau/self; node - <<'EOF'\nconsole.log(2)\nEOF", description: 'Count' }) } }] },
       { role: 'tool', tool_call_id: 'call_2', content: 'Error: {"name":"TypeError"}' },
     ],
     tools: [{ function: { name: 'write' } }],
@@ -79,6 +80,7 @@ test('a request renders as its system prompt, its tools, and its conversation', 
   const conversation = await readFile(join(out, 'conversation.md'), 'utf8')
   assert.match(conversation, /## user\n\nCount the words\./u)
   assert.match(conversation, /## assistant calls write \(call_1\)\n\n```json\n\{\n {2}"file_path": "\/tau\/workspace\/count\.ts"\n\}\n```\n\n```ts\nconsole\.log\(1\)\n```/u)
+  assert.match(conversation, /## assistant calls bash \(call_2\)\n\n```json\n\{\n {2}"description": "Count"\n\}\n```\n\n```sh\ncd \/tau\/self; node - <<'EOF'\nconsole\.log\(2\)\nEOF\n```/u)
   assert.match(conversation, /## tool result \(call_2\), an error/u)
 })
 

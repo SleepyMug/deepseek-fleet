@@ -4,18 +4,18 @@
  * of the sessions that preset makes: it tells the model where it works, its
  * box, its working directory there, /tau/workspace, and where tau's
  * TAU.md is, /tau/TAU.md (fleet-box-runtime/tau/layout); how it runs its
- * programs, and what they import, what its tau exposes, as the session's
- * registry entry has it, each in its folder in the box's /node_modules; and
+ * programs, from the tau's own directory, /tau/self, so that they resolve
+ * as the tau's code does, and what they import, what its tau exposes, as
+ * the session's registry entry has it; and
  * leaves out the sections dsh writes for a person at the host, which are
  * false in a box, and the runtime context on the host's sandbox policy.
  * @module fleet-core/tau/prompt
  */
 
-import { posix } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { AssembledSection } from '@deepseek-ai/dsh-system-prompt'
-import { FOLDERS, PRIMER } from 'fleet-box-runtime/tau/layout'
+import { FOLDERS, PRIMER, SELF } from 'fleet-box-runtime/tau/layout'
 import type { Entry } from './registry.ts'
 import type {} from './runs-plugin.ts'
 
@@ -43,18 +43,17 @@ export const HOST_CONTEXTS: ReadonlySet<string> = new Set([
 ])
 
 /** Where the model works, and what a tau is, which follow the persona. */
-export const WHERE = `You work in a box of your own, a container, which your tools act on: bash and the file tools. Your working directory is ${FOLDERS.inout}. What a tau is, and what a run of one promises, is in ${PRIMER}.`
+export const WHERE = `You work in a box of your own, a container, which your tools act on: bash and the file tools. Your working directory is ${FOLDERS.inout}. What a TAU is, and what a run of one promises, is in ${PRIMER}.`
 
 /** How the model runs its programs, and what they import, which follow where it works; nothing for a tau that exposes nothing. */
-export function programs({ exposed, modules }: Pick<Entry, 'exposed' | 'modules'>): string {
+export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
   if (exposed.length === 0) return ''
   return [
-    'Run your programs with `node`: JavaScript, or TypeScript that Node.js runs as is, stripping its types, so with no enums, namespaces or parameter properties. '
-      + 'Wherever a program is in your box, it imports by name what your tau exposes, listed below. '
-      + 'Before you call one, read its `package.json`, and the declarations its `types` names, in its folder. '
-      + 'What an API does stays done when a program fails.',
+    `You can run programs with \`node\`, from the TAU's directory: \`cd ${SELF}; node - <<'EOF'\`, the program, then \`EOF\`. `
+      + `This environment provides the modules below for them to import, resolving from ${SELF}. `
+      + 'To understand a module\'s API, read its `package.json`, and the declarations its `types` names, in its folder.',
     '',
-    ...exposed.map(({ specifier, description }) => `- \`${specifier}\`, in ${posix.join(modules, specifier)}${description === undefined ? '' : `: ${description}`}`),
+    ...exposed.map(({ specifier, description }) => `- \`${specifier}\`${description === undefined ? '' : `: ${description}`}`),
   ].join('\n')
 }
 

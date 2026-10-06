@@ -13,7 +13,7 @@ const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 async function prompted(exposed: Entry['exposed']): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
-  ctx.provide('fleetTauRuns', { isTau: (sessionId: string) => sessionId === SESSION, entry: async () => ({ exposed, modules: '/node_modules' }) } as unknown as TauRuns)
+  ctx.provide('fleetTauRuns', { isTau: (sessionId: string) => sessionId === SESSION, entry: async () => ({ exposed }) } as unknown as TauRuns)
   await ctx.plugin(TauPrompt)
   return ctx
 }
@@ -37,7 +37,7 @@ test('a tau\'s prompt says where the model works, and where TAU.md is, and leave
   assert.equal(
     sections.find(section => section.name === 'fleet:tau-where')?.text,
     'You work in a box of your own, a container, which your tools act on: bash and the file tools. Your working directory is /tau/workspace. '
-      + 'What a tau is, and what a run of one promises, is in /tau/TAU.md.',
+      + 'What a TAU is, and what a run of one promises, is in /tau/TAU.md.',
   )
 })
 
@@ -47,8 +47,8 @@ test('a tau\'s prompt says how the model runs its programs, and lists what its t
   const names = sections.map(section => section.name)
   assert.equal(names.indexOf('fleet:tau-programs'), names.indexOf('fleet:tau-where') + 1)
   const text = sections.find(section => section.name === 'fleet:tau-programs')?.text ?? ''
-  assert.match(text, /^Run your programs with `node`/u)
-  assert.match(text, /\n\n- `@api\/notes`, in \/node_modules\/@api\/notes: Notes, \{\{tagged\}\}\.\n- `notes-digest`, in \/node_modules\/notes-digest$/u)
+  assert.match(text, /^You can run programs with `node`, from the TAU's directory: `cd \/tau\/self; node - <<'EOF'`, the program, then `EOF`\. This environment provides the modules below for them to import, resolving from \/tau\/self\. /u)
+  assert.match(text, /\n\n- `@api\/notes`: Notes, \{\{tagged\}\}\.\n- `notes-digest`$/u)
   // A session not a tau's, and a tau that exposes nothing, get none.
   assert.ok(!(await ctx.systemPrompt.assemble(forSession('session-11111111-1111-4111-8111-111111111111'))).sections.some(section => section.name === 'fleet:tau-programs'))
   assert.ok(!(await (await prompted([])).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))

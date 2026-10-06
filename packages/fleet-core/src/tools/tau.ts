@@ -35,19 +35,19 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'tau_run',
-    description: 'Run a tau: a folder with a PROMPT.md, the task, and a tau.json, which declares the values it takes, by parameter, '
+    description: 'Run a TAU: a folder with a PROMPT.md, the task, and a tau.json, which declares the values it takes, by parameter, '
       + 'each with its type and, for a file or a folder, its mode. An agent of its own does the task in a container of its own, '
       + 'with copies of what it is given, and what it leaves at its `$out` and `$inout` handles is put at your paths once it ends. '
       + 'Read tau.json first. Waits until the run ends, and returns { sessionId, ok, text, failure? }: the run\'s session, '
       + 'whether it succeeded, its agent\'s final text, and why it failed, if it did. Cancelling the call cancels the run. '
       + 'Several calls run at once.',
     parameters: {
-      tau: { type: 'string', required: true, description: 'The tau\'s folder; a relative path is your working directory\'s.' },
+      tau: { type: 'string', required: true, description: 'The TAU\'s folder; a relative path is your working directory\'s.' },
       values: {
         type: 'json',
         description: 'The values, by parameter, as tau.json declares them: a text as a string; a file, a folder or a path as a handle, '
           + '{ "$in": path }, { "$out": path } or { "$inout": path }, in the mode tau.json declares; lists and records of these. '
-          + 'Relative paths are your working directory\'s. None for a tau that takes none.',
+          + 'Relative paths are your working directory\'s. None for a TAU that takes none.',
       },
       history: {
         type: 'string',

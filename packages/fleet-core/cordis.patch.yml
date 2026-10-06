@@ -223,7 +223,7 @@
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              prefix: You are an agent powered by the {{model}} model, running a tau; its prompt is your task.
+              prefix: You are an agent powered by the {{model}} model, running a TAU; its prompt is your task.
 
           # Where the model works, its box and the run's folders, in place of
           # dsh's sections about the host, which are false in a box.

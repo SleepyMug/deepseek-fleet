@@ -39,9 +39,16 @@ export function render(request: Request, out: string): void {
   writeFileSync(join(out, 'conversation.md'), parts.join('\n'))
 }
 
-/** A call's arguments; what it writes, such as a program, in a block of its own, in its file's language. */
+/**
+ * A call's arguments; a command, which may carry a program, or what a call
+ * writes, in a block of its own, in its language.
+ */
 function argumentsOf(json: string): string {
   const args = JSON.parse(json) as Record<string, unknown>
+  if (typeof args.command === 'string') {
+    const { command, ...rest } = args
+    return `${fenced(JSON.stringify(rest, null, 2), 'json')}\n${fenced(command, 'sh')}`
+  }
   if (typeof args.content !== 'string') return `${fenced(JSON.stringify(args, null, 2), 'json')}`
   const { content, ...rest } = args
   return `${fenced(JSON.stringify(rest, null, 2), 'json')}\n${fenced(content, typeof rest.file_path === 'string' ? extname(rest.file_path).slice(1) : '')}`

@@ -6,13 +6,12 @@
   },
   "steps": [
     {
-      "tool": "write",
+      "tool": "bash",
       "args": {
-        "file_path": "/tau/workspace/relay.ts",
-        "content": "import { run, values } from '@api/tau'\n\nconst { word, report } = values() as { word: string; report: { $out: string } }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { text: word, out: report })))\n"
+        "command": "cd /tau/self; node - <<'EOF'\nimport { run, values } from '@api/tau'\n\nconst { word, report } = values() as { word: string; report: { $out: string } }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { text: word, out: report })))\nEOF",
+        "description": "Run the shout TAU on the word"
       }
-    },
-    { "tool": "bash", "args": { "command": "node /tau/workspace/relay.ts", "description": "Run the shout tau on the word" } }
+    }
   ],
   "final": "It said: Shouted.",
   "runs": [

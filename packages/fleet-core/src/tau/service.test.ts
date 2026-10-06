@@ -292,10 +292,10 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
     `create ${created.box}`,
     'start',
     'pipe setup',
-    `copyIn ${join(work, 'client')} /node_modules/.fleet/notes`,
+    `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/notes`,
     `apis.link ${JSON.stringify({
-      modules: '/node_modules',
-      apis: [{ name: 'notes', client: '/node_modules/.fleet/notes', types: '/tau/self/api/notes' }],
+      modules: '/tau/node_modules',
+      apis: [{ name: 'notes', client: '/tau/node_modules/.fleet/notes', types: '/tau/self/api/notes' }],
       packages: [],
     })}`,
     'stop',
@@ -326,7 +326,7 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
   ])
   assert.deepEqual(entry.targets, { '/site': join(work, 'site'), '/report': join(work, 'out', 'report.md'), '/pages': join(work, 'out', 'pages') })
   assert.equal(entry.cwd, '/tau/workspace')
-  assert.equal(entry.modules, '/node_modules')
+  assert.equal(entry.modules, '/tau/node_modules')
   assert.match(logged.join('\n'), new RegExp(`created ${created.sessionId} in box ${created.box}`, 'u'))
 })
 
@@ -1078,21 +1078,32 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
   try {
     assert.equal(prompt, EXPANDED)
     await service.tauRuns.start(sessionId)
-    const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-not', '-type', 'd', '-print'])
+    const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
       '/tau/.run.json', '/tau/TAU.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
-    // A program imports the API, and its client's call reaches the extension's server, as this session's.
+    // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.
     added.length = 0
     const started = await service.tauRuns.boxFor(sessionId)
     const program = 'import { add } from "@api/notes"; process.stdout.write(await add("milk"));'
     const ran = await started?.request('exec', { argv: ['sh', '-c', `cd /tau/workspace && node --input-type=module --eval '${program}'`] })
     assert.deepEqual(ran, { code: 0, signal: null, stdout: 'added milk', stderr: '' })
     assert.deepEqual(added, [{ args: ['milk'], sessionId }])
-    // So does a TypeScript program anywhere in the box, which node runs as is, as the model runs one with bash.
-    const source = Buffer.from('import { add } from "@api/notes"\nconst said: string = await add(process.argv[2] ?? "")\nprocess.stdout.write(said)\n').toString('base64')
-    const typed = await started?.request('exec', { argv: ['sh', '-c', `echo ${source} | base64 -d > /tmp/add.ts && node /tmp/add.ts eggs`] })
-    assert.deepEqual(typed, { code: 0, signal: null, stdout: 'added eggs', stderr: '' })
+    // A TypeScript program the model runs from the tau's directory, as its prompt says, which node runs as is, imports a
+    // package of the tau's own, which nothing links, built on the API.
+    await started?.request('exec', { argv: ['sh', '-c', [
+      'mkdir -p /tau/self/node_modules/twice',
+      `echo '{"name":"twice","type":"module","exports":"./index.js"}' > /tau/self/node_modules/twice/package.json`,
+      `echo 'import { add } from "@api/notes"; export const twice = async text => [await add(text), await add(text)]' > /tau/self/node_modules/twice/index.js`,
+    ].join(' && ')] })
+    const typed = await started?.request('exec', { argv: ['sh', '-c', [
+      "cd /tau/self; node - eggs <<'EOF'",
+      'import { twice } from "twice"',
+      'const said: string[] = await twice(process.argv[2] ?? "")',
+      'process.stdout.write(said.join(", "))',
+      'EOF',
+    ].join('\n')] })
+    assert.deepEqual(typed, { code: 0, signal: null, stdout: 'added eggs, added eggs', stderr: '' })
     assert.deepEqual(added.at(-1), { args: ['eggs'], sessionId })
     assert.equal((await run('docker', ['exec', box, 'cat', '/tau/in/notes.md'])).stdout, 'buy milk\n')
     await run('docker', ['exec', box, 'test', '-d', '/tau/out/pages'])
