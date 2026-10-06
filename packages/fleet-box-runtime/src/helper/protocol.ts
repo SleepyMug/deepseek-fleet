@@ -177,45 +177,6 @@ export interface Methods {
     }
     result: null
   }
-
-  /**
-   * Type-checks one TypeScript program and runs it in a fresh Node process,
-   * under the host's id `execution`, with ts-executor (./cmd/ts.ts): it
-   * calls the program's `main(input)`, and answers with what that returned,
-   * or why it failed, and all the program wrote. `root` is where packages
-   * resolve from, and where its runs' folders are made; `modules` are what
-   * it lists as importable, each a package's folder.
-   */
-  'ts.execute': {
-    params: {
-      execution: string
-      root: string
-      modules: { specifier: string; root: string; description?: string }[]
-      source: string
-      cwd: string
-      /** JSON, passed to `main`; left out, `main` gets undefined. */
-      input?: unknown
-    }
-    result: TsOutcome
-  }
-  /** Ends an execution, its whole process group, which then answers as aborted; nothing for one not there. */
-  'ts.cancel': { params: { execution: string }; result: null }
-}
-
-/** How a program's run ended, with all it wrote to stdout and stderr. */
-export type TsOutcome =
-  | { ok: true; value: unknown; stdout: string; stderr: string; durationMs: number }
-  | { ok: false; error: TsFailure; stdout: string; stderr: string }
-
-/** Why a program failed: TypeScript's errors, its own error, or its run aborted. */
-export interface TsFailure {
-  /** `TypeCheckError`, `ExecutionAbortedError`, or the program's own error's name. */
-  name: string
-  message: string
-  /** The program's own error's stack. */
-  stack?: string
-  /** TypeScript's diagnostics, for a `TypeCheckError`. */
-  diagnostics?: { category: string; code: number; message: string; file?: string; line?: number; column?: number }[]
 }
 
 /**

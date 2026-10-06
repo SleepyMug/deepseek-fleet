@@ -18,7 +18,7 @@ workspace's root lists, so `pnpm exec fleet-trace` runs it. It writes to
 | `requests/NNN.json` | Each request as the model got it, in order; `NNN-run.json` for the scenario's conversation, the run's or the session's, `NNN-child.json` for that of a run it started, the others, such as dsh's for a session title, without. |
 | `system-prompt.md` | The last request of the scenario's conversation's system prompt, as it is. |
 | `tools/<name>.json` | Each tool as the model gets it: name, description, parameters. |
-| `conversation.md` | The rest of that request's messages: the user's, each tool call with its arguments, a program's source in a block of its own, and each result as sent, with a JSON result also indented. |
+| `conversation.md` | The rest of that request's messages: the user's, each tool call with its arguments, what a call writes, such as a program, in a block of its own, and each result as sent, with a JSON result also indented. |
 | `result.json` | How the run ended; for a session, `{ sessionId, end, text }`: why its last turn ended, as dsh logs it, and its agent's last text. |
 | `work/` | The caller's folder after the run or the session, with what the runs gave back at its paths. |
 | `dsh.log` | What dsh wrote. |
@@ -31,7 +31,7 @@ A scenario is JSON, its paths relative to its file, such as
   "tau": "../../../examples/notebook",
   "files": { "list.txt": "buy milk #shop\n" },
   "values": { "list": { "$in": "list.txt" }, "tag": "shop", "report": { "$out": "out/report.txt" } },
-  "steps": [{ "tool": "ts_modules", "args": {} }],
+  "steps": [{ "tool": "read", "args": { "file_path": "/node_modules/@api/notes/api/index.d.ts" } }],
   "final": "Done."
 }
 ```

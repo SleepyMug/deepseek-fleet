@@ -2,12 +2,11 @@ packages:
   - packages/*
   # Extensions of the fleet host, built in and examples, each a dsh bundle of its own.
   - ext/*
-  # tau and ts-executor are developed in checkouts of their own beside this
-  # one, and join this workspace from there. Install only here: `pnpm install`
-  # inside one of them installs it on its own again, from its own lockfile,
-  # and the next install here switches it back.
+  # tau is developed in a checkout of its own beside this one, and joins
+  # this workspace from there. Install only here: `pnpm install` inside it
+  # installs it on its own again, from its own lockfile, and the next install
+  # here switches it back.
   - ../agent_fleet_project/tau
-  - ../agent_fleet_project/ts-executor
 # A dependency on a member's version, such as fleet-core's on tau 0.1.0,
 # links the member, so the members' manifests stay as they are.
 linkWorkspacePackages: true
@@ -18,8 +17,6 @@ allowBuilds:
   koffi: true
   node-pty: true
   protobufjs: true
-  # tsx's, which finds its platform binary in @esbuild/<platform> at runtime.
-  esbuild: false
 # dsh is a release candidate, newer than the release age pnpm waits for.
 minimumReleaseAgeExclude:
   - '@deepseek-ai/*'

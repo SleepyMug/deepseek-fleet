@@ -35,10 +35,6 @@
       "types": "./lib/tools/tau.d.ts",
       "default": "./lib/tools/tau.js"
     },
-    "./tools/ts": {
-      "types": "./lib/tools/ts.d.ts",
-      "default": "./lib/tools/ts.js"
-    },
     "./world/fs": {
       "types": "./lib/world/fs.d.ts",
       "default": "./lib/world/fs.js"
@@ -66,7 +62,6 @@
   },
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
-    "@sleepymug/ts-executor": "0.4.0",
     "fleet-box-runtime": "workspace:*",
     "fleet-protocol": "workspace:*",
     "zod": "4.6.5"

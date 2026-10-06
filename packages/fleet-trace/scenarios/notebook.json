@@ -9,28 +9,32 @@
     "report": { "$out": "out/report.txt" }
   },
   "steps": [
-    { "tool": "ts_modules", "args": {} },
-    { "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/package.json" } },
-    { "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/api/index.d.ts" } },
+    { "tool": "read", "args": { "file_path": "/node_modules/@api/notes/package.json" } },
+    { "tool": "read", "args": { "file_path": "/node_modules/@api/notes/api/index.d.ts" } },
     {
-      "tool": "ts_execute",
+      "tool": "write",
       "args": {
-        "source": "import { readFileSync } from 'node:fs'\nimport { addNote } from '@api/notes'\n\nexport async function main(input: { list: string }): Promise<number[]> {\n  const ids: number[] = []\n  for (const line of readFileSync(input.list, 'utf8').split('\\n').filter(Boolean)) {\n    const [text, tags = ''] = line.split('#')\n    const note = await addNote(text.trim(), tags.split(',').map(tag => tag.trim()).filter(Boolean))\n    ids.push(note.id)\n  }\n  return ids\n}\n",
-        "input": { "list": "/tau/in/list.txt" }
+        "file_path": "/tau/workspace/save.ts",
+        "content": "import { readFileSync } from 'node:fs'\nimport { addNote } from '@api/notes'\n\nconst ids: number[] = []\nfor (const line of readFileSync(process.argv[2] ?? '', 'utf8').split('\\n').filter(Boolean)) {\n  const [text = '', tags = ''] = line.split('#')\n  const note = await addNote(text.trim(), tags.split(',').map(tag => tag.trim()).filter(Boolean))\n  ids.push(note.id)\n}\nconsole.log(JSON.stringify(ids))\n"
       }
     },
+    { "tool": "bash", "args": { "command": "node /tau/workspace/save.ts /tau/in/list.txt", "description": "Save each line of the list as a note" } },
     {
-      "tool": "ts_execute",
+      "tool": "write",
       "args": {
-        "source": "import { byTag } from '@api/notes'\n\nexport async function main(): Promise<void> {\n  await byTag(42)\n}\n"
+        "file_path": "/tau/workspace/wrong.ts",
+        "content": "import { byTag } from '@api/notes'\n\nawait byTag(42)\n"
       }
     },
+    { "tool": "bash", "args": { "command": "node /tau/workspace/wrong.ts", "description": "Find the notes with a mistaken tag" } },
     {
-      "tool": "ts_execute",
+      "tool": "write",
       "args": {
-        "source": "import { writeFileSync } from 'node:fs'\nimport { byTag } from '@api/notes'\n\nexport async function main(): Promise<string[]> {\n  const texts = (await byTag('shop')).map(note => note.text)\n  writeFileSync('/tau/out/report.txt', texts.join('\\n') + '\\n')\n  return texts\n}\n"
+        "file_path": "/tau/workspace/report.ts",
+        "content": "import { writeFileSync } from 'node:fs'\nimport { byTag } from '@api/notes'\n\nconst texts = (await byTag('shop')).map(note => note.text)\nwriteFileSync('/tau/out/report.txt', texts.join('\\n') + '\\n')\nconsole.log(JSON.stringify(texts))\n"
       }
-    }
+    },
+    { "tool": "bash", "args": { "command": "node /tau/workspace/report.ts", "description": "Write the shop notes to the report" } }
   ],
   "final": "Saved the three notes, and wrote the two tagged shop to /tau/out/report.txt."
 }

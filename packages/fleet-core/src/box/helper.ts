@@ -17,7 +17,6 @@ import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'
 import { isActivity, isForeground, isGroupId, isTerminalEvent } from './cmd/terminal.ts'
-import { isTsOutcome } from './cmd/ts.ts'
 
 /** A failure the helper reported for one request, with its code, such as an `FsError`'s, if it had one. */
 export class HelperError extends Error {
@@ -88,8 +87,6 @@ const results: { [M in Method]: (value: unknown) => value is Methods[M]['result'
   'terminal.signal': isGroupId,
   'terminal.end': isNull,
   'apis.link': isNull,
-  'ts.execute': isTsOutcome,
-  'ts.cancel': isNull,
 }
 
 /** What each method's events must look like; a method not here sends none. */

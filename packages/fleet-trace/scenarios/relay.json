@@ -6,11 +6,13 @@
   },
   "steps": [
     {
-      "tool": "ts_execute",
+      "tool": "write",
       "args": {
-        "source": "import { run, values } from '@api/tau'\n\nexport async function main(): Promise<unknown> {\n  const { word, report } = values() as { word: string; report: { $out: string } }\n  return await run('/tau/self/taus/shout', { text: word, out: report })\n}\n"
+        "file_path": "/tau/workspace/relay.ts",
+        "content": "import { run, values } from '@api/tau'\n\nconst { word, report } = values() as { word: string; report: { $out: string } }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { text: word, out: report })))\n"
       }
-    }
+    },
+    { "tool": "bash", "args": { "command": "node /tau/workspace/relay.ts", "description": "Run the shout tau on the word" } }
   ],
   "final": "It said: Shouted.",
   "runs": [

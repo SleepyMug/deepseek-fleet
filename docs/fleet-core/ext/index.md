@@ -76,9 +76,9 @@ export function apply(ctx: Context) {
 - **A client carries its own encodings.** JSON and bytes cross, so a client
   turns other values, such as dates, into JSON and back, as its API
   declares them.
-- **The model reaches the APIs** with `ts_modules` and `ts_execute`
-  (docs/fleet-core/tools/index.md). A program run another way, such as with
-  bash's `node`, finds them from a file below `/tau`.
+- **The model reaches the APIs** with programs it runs with bash's `node`,
+  which find them from any file in the box, in `/node_modules`; its prompt
+  lists what its tau exposes (docs/fleet-core/tau/index.md).
 
 ## Not yet
 

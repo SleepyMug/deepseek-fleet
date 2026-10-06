@@ -49,7 +49,7 @@ test('the REPL sends each line, printing results and errors apart, until .exit',
 
 test('the REPL lists the methods and commands', async () => {
   const { output } = await session('.help\n')
-  assert.match(output, /^methods: hello, echo, exec, fs\.resolve, .*, spawn, kill, which, terminal, .*, terminal\.end, apis\.link, ts\.execute, ts\.cancel$/mu)
+  assert.match(output, /^methods: hello, echo, exec, fs\.resolve, .*, spawn, kill, which, terminal, .*, terminal\.end, apis\.link$/mu)
   assert.match(output, /^\.exit /mu)
 })
 

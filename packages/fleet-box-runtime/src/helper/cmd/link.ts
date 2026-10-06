@@ -5,18 +5,15 @@
  * their folder, so that their imports resolve there, and whose code
  * re-exports the client of the extension that implements it, so that every
  * import in a process gets that one module. Each exposed package of the
- * tau's own is linked by its name, this package as `fleet-box-runtime`, whose
- * client runtime the extensions' clients import (../../ext/client.ts), and
- * this package's Node types as `@types/node`, which TypeScript checks the
- * tau's programs against (./ts.ts). Node looks for a package in every folder
- * above the file that imports it, so a program anywhere below the folder
- * holding `modules`, and the tau's own packages, find them, and TypeScript
- * does too.
+ * tau's own is linked by its name, and this package as `fleet-box-runtime`,
+ * whose client runtime the extensions' clients import (../../ext/client.ts).
+ * Node looks for a package in every folder above the file that imports it,
+ * so a program anywhere below the folder holding `modules`, and the tau's
+ * own packages, find them, and TypeScript does too.
  * @module fleet-box-runtime/helper/cmd/link
  */
 
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { PACKAGE_ROOT } from '../../layout.ts'
@@ -50,8 +47,7 @@ export async function apisLink(params: Params): Promise<null> {
     await writeFile(join(folder, 'index.js'), code.join('\n'))
     await symlink(types, join(folder, 'api'))
   }
-  const nodeTypes = dirname(createRequire(import.meta.url).resolve('@types/node/package.json'))
-  for (const { name, dir } of [...packages, { name: 'fleet-box-runtime', dir: PACKAGE_ROOT }, { name: '@types/node', dir: nodeTypes }]) {
+  for (const { name, dir } of [...packages, { name: 'fleet-box-runtime', dir: PACKAGE_ROOT }]) {
     const link = join(modules, name)
     await mkdir(dirname(link), { recursive: true })
     await rm(link, { recursive: true, force: true })
@@ -69,9 +65,9 @@ function checked(params: Params): Params {
   }
   const packageName = (name: unknown): boolean => typeof name === 'string'
     && (name.startsWith('@') ? name.slice(1).split('/') : [name]).every(part => NAME.test(part))
-    && name.split('/').length === (name.startsWith('@') ? 2 : 1) && !['fleet-box-runtime', '@types/node'].includes(name) && !name.startsWith(`${API_SCOPE}/`)
+    && name.split('/').length === (name.startsWith('@') ? 2 : 1) && name !== 'fleet-box-runtime' && !name.startsWith(`${API_SCOPE}/`)
   if (!Array.isArray(packages) || !packages.every(entry => packageName(entry?.name) && absolute(entry?.dir))) {
-    throw new TypeError('apis.link takes packages, a list of { name, dir }, each a package name, not @api/…, fleet-box-runtime or @types/node, and an absolute path')
+    throw new TypeError('apis.link takes packages, a list of { name, dir }, each a package name, not @api/… or fleet-box-runtime, and an absolute path')
   }
   return { modules, apis, packages }
 }

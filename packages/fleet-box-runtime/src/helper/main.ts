@@ -15,7 +15,6 @@ import {
 } from './cmd/fs.ts'
 import { apisLink } from './cmd/link.ts'
 import { kill, killAll, spawn, which } from './cmd/spawn.ts'
-import { cancelAll, tsCancel, tsExecute } from './cmd/ts.ts'
 import { endAll, terminal, terminalActivity, terminalEnd, terminalForeground, terminalResize, terminalSignal, terminalWrite } from './cmd/terminal.ts'
 import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from './protocol.ts'
 
@@ -58,8 +57,6 @@ const handlers: Handlers = {
   'terminal.signal': terminalSignal,
   'terminal.end': terminalEnd,
   'apis.link': apisLink,
-  'ts.execute': tsExecute,
-  'ts.cancel': tsCancel,
 }
 
 /** Requests not answered yet. */
@@ -90,7 +87,6 @@ lines.on('line', (line) => {
 })
 // The host has gone, or is done with the box: what it asked is answered, its processes, terminals and watches ended first.
 lines.once('close', () => {
-  cancelAll()
   void Promise.allSettled([killAll(), endAll(), unwatchAll(), calls?.close()])
     .then(() => Promise.allSettled([...inFlight]))
     .finally(() => { process.exit(0) })

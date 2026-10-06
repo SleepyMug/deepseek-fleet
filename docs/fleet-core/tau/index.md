@@ -52,8 +52,8 @@ to the sessions' two ways in:
 
 The patch also declares `tau`, the agent preset a tau's session has: a
 persona, the tau's prompt plugin (`fleet-core/tau/prompt`), the box's
-reset notice (`fleet-core/tau/reset`), bash in the foreground only, read/write/edit, `ts_modules` and `ts_execute`
-(docs/fleet-core/tools/index.md), the tau's skills, and compaction. What its rows register
+reset notice (`fleet-core/tau/reset`), bash in the foreground only, read/write/edit, the tau's skills,
+and compaction. What its rows register
 reaches only the sessions of that preset: dsh mounts them once, in the
 preset's scope, which each of its sessions' agents has as its parent.
 
@@ -131,8 +131,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   | an `$inout` handle | `/tau/workspace/<base name>` |
   | an `$out` handle | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
-  | the APIs, `@api/<name>`, and the packages the tau exposes | `/tau/node_modules` |
-  | the client of each API's extension | `/tau/node_modules/.fleet/<name>` |
+  | the APIs, `@api/<name>`, and the packages the tau exposes | `/node_modules` |
+  | the client of each API's extension | `/node_modules/.fleet/<name>` |
   | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
 
   A base name already taken in its folder gets a suffix in its stem:
@@ -141,8 +141,9 @@ preset's scope, which each of its sessions' agents has as its parent.
   `file` or a `path`, since the agent makes what it leaves.
 
   Node looks for a package in every folder above the file that imports it,
-  so a program anywhere below `/tau`, and the tau's own packages, find
-  `/tau/node_modules`, and TypeScript does too. Each `@api/<name>` there is
+  so a program anywhere in the box, and the tau's own packages, find
+  `/node_modules`, as tau's docs/spec/runtimes.md asks, and TypeScript does
+  too. Each `@api/<name>` there is
   typed by the tau's own declarations, in `/tau/self/api/<name>`, and
   re-exports the client, so every import in a process gets one module.
 - **The registry** (`registry.ts`) has one JSON file per session,
@@ -259,7 +260,12 @@ preset's scope, which each of its sessions' agents has as its parent.
   `prompt.ts` in the preset: after the persona, a section says where the
   model works, its box, that its working directory is `/tau/workspace`,
   and that `/tau/TAU.md` says what a tau is, and what a run of one
-  promises; and the assembly leaves out dsh's sections about the host,
+  promises; after it, for a tau that exposes something, a section,
+  `fleet:tau-programs`, says to run programs with `node`, as JavaScript or
+  as TypeScript Node runs as is, and lists what they import, each exposed
+  API or package with its folder in `/node_modules` and what it says it is,
+  from the session's registry entry, so the model reads its declarations
+  there; and the assembly leaves out dsh's sections about the host,
   which are false in a box: the harness's checkout (`harness:source`), the
   web GUI at its URL (`app:web-surface`), the web UI's file cards and links
   (`ui:deliverable-file-references`), and `@` mentions as host paths
@@ -282,7 +288,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   a session's work in its workspace's folder, the project, a host path the
   box does not have; the runs' `boxPath` puts that folder, and any path in
   it, in the working directory instead, for every process, terminal and file call the
-  world serves from the box, and for `ts_execute`.
+  world serves from the box.
 - **Which sessions are a tau's.** The runs read the registry's entries when
   the plugin loads, each session's project with its id, and keep them as
   sessions are created and deleted, so that

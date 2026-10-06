@@ -6,7 +6,7 @@
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { extname, join } from 'node:path'
 import { text } from './model.ts'
 
 interface Request {
@@ -39,12 +39,12 @@ export function render(request: Request, out: string): void {
   writeFileSync(join(out, 'conversation.md'), parts.join('\n'))
 }
 
-/** A call's arguments; a program's source in a block of its own. */
+/** A call's arguments; what it writes, such as a program, in a block of its own, in its file's language. */
 function argumentsOf(json: string): string {
   const args = JSON.parse(json) as Record<string, unknown>
-  if (typeof args.source !== 'string') return `${fenced(JSON.stringify(args, null, 2), 'json')}`
-  const { source, ...rest } = args
-  return `${fenced(JSON.stringify(rest, null, 2), 'json')}\n${fenced(source, 'ts')}`
+  if (typeof args.content !== 'string') return `${fenced(JSON.stringify(args, null, 2), 'json')}`
+  const { content, ...rest } = args
+  return `${fenced(JSON.stringify(rest, null, 2), 'json')}\n${fenced(content, typeof rest.file_path === 'string' ? extname(rest.file_path).slice(1) : '')}`
 }
 
 /** A result that is JSON, an error's after its `Error: `, indented, after the result as sent. */

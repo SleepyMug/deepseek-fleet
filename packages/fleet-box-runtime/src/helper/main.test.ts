@@ -251,10 +251,12 @@ test('the helper links a tau\'s APIs to their clients, and its exposed packages,
   await mkdir(join(dir, 'client'))
   await writeFile(join(dir, 'client/index.js'), 'export const hello = () => "hi"; export default "whole";\n')
   await mkdir(join(dir, 'tau/scratch'))
-  await writeFile(join(dir, 'tau/scratch/main.mjs'), [
+  // TypeScript, which Node runs as is.
+  await writeFile(join(dir, 'tau/scratch/main.ts'), [
     'import notes, { hello } from "@api/notes";',
     'import { loud } from "wrap";',
-    'process.stdout.write(JSON.stringify([hello(), notes, loud()]));',
+    'const said: string[] = [hello(), notes, loud()];',
+    'process.stdout.write(JSON.stringify(said));',
   ].join('\n'))
   const answers = await exchange([
     {
@@ -264,7 +266,7 @@ test('the helper links a tau\'s APIs to their clients, and its exposed packages,
         packages: [{ name: 'wrap', dir: join(dir, 'tau/self/node_modules/wrap') }],
       },
     },
-    { type: 'request', id: 2, method: 'exec', params: { argv: [process.execPath, join(dir, 'tau/scratch/main.mjs')] } },
+    { type: 'request', id: 2, method: 'exec', params: { argv: [process.execPath, join(dir, 'tau/scratch/main.ts')] } },
     { type: 'request', id: 3, method: 'apis.link', params: { modules: 'relative', apis: [], packages: [] } },
   ], { sorted: false })
   assert.deepEqual(answers.find(answer => answer.id === 1), { type: 'result', id: 1, value: null })
@@ -339,38 +341,4 @@ test('the helper relays the bytes after a client\'s call to the host, and after 
   helper.send({ type: 'call-result', id: plain?.id ?? 0, value: 'running' })
   await helper.until(() => helper.answers.some(answer => answer.type === 'result' && answer.id === 1))
   assert.equal((helper.answers.find(answer => answer.type === 'result' && answer.id === 1) as { value: { stdout: string } }).value.stdout, '["started","down here","running",""]')
-})
-
-test('the helper type-checks and runs a TypeScript program with what is linked, and cancels one', async (t) => {
-  const dir = await folder(t)
-  await mkdir(join(dir, 'tau/self/api/stats'), { recursive: true })
-  await writeFile(join(dir, 'tau/self/api/stats/index.d.ts'), '/** Counting. @packageDocumentation */\nexport declare function count(text: string): number;\n')
-  await mkdir(join(dir, 'client'))
-  await writeFile(join(dir, 'client/index.js'), 'export const count = text => text.split(/\\s+/).filter(Boolean).length;\n')
-  const root = join(dir, 'tau')
-  const modules = [{ specifier: '@api/stats', root: join(root, 'node_modules/@api/stats'), description: 'Counting.' }]
-  const execute = (id: number, source: string, input?: unknown): HostMessage => ({
-    type: 'request', id, method: 'ts.execute',
-    params: { execution: `e${id}`, root, modules, source, cwd: dir, ...input === undefined ? {} : { input } },
-  })
-  const helper = live(t)
-  helper.send({ type: 'request', id: 1, method: 'apis.link', params: { modules: join(root, 'node_modules'), apis: [{ name: 'stats', client: join(dir, 'client'), types: join(root, 'self/api/stats') }], packages: [] } })
-  helper.send(execute(2, [
-    'import { count } from "@api/stats"',
-    'import { readFileSync } from "node:fs"',
-    'export function main(input: { text: string }): number { console.log("in", process.cwd()); return count(input.text) }',
-  ].join('\n'), { text: 'one two three' }))
-  helper.send(execute(3, 'import { count } from "@api/stats"\nexport function main(): number { return count(3) }'))
-  helper.send(execute(4, 'export async function main(): Promise<void> { await new Promise(resolve => setTimeout(resolve, 60_000)) }'))
-  await helper.until(() => [2, 3].every(id => helper.answers.some(answer => answer.id === id)))
-  const answer = (id: number): { value: Record<string, unknown> } => helper.answers.find(found => found.id === id) as { value: Record<string, unknown> }
-  assert.deepEqual({ ...answer(2).value, durationMs: 0 }, { ok: true, value: 3, stdout: `in ${dir}\n`, stderr: '', durationMs: 0 })
-  const failed = answer(3).value as { ok: boolean; error: { name: string; diagnostics: { code: number }[] } }
-  assert.equal(failed.ok, false)
-  assert.equal(failed.error.name, 'TypeCheckError')
-  assert.equal((failed.error as { stack?: string }).stack, undefined)
-  assert.deepEqual(failed.error.diagnostics.map(diagnostic => diagnostic.code), [2345])
-  helper.send({ type: 'request', id: 5, method: 'ts.cancel', params: { execution: 'e4' } })
-  await helper.until(() => helper.answers.some(found => found.id === 4))
-  assert.equal((answer(4).value as { error: { name: string } }).error.name, 'ExecutionAbortedError')
 })

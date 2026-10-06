@@ -68,17 +68,17 @@ test('a request renders as its system prompt, its tools, and its conversation', 
     messages: [
       { role: 'system', content: 'You are an agent.' },
       { role: 'user', content: 'Count the words.' },
-      { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', function: { name: 'ts_execute', arguments: JSON.stringify({ source: 'export function main() { return 1 }\n', input: { a: 1 } }) } }] },
-      { role: 'tool', tool_call_id: 'call_1', content: '{"value":1}' },
-      { role: 'tool', tool_call_id: 'call_2', content: 'Error: {"name":"TypeCheckError"}' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'call_1', function: { name: 'write', arguments: JSON.stringify({ file_path: '/tau/workspace/count.ts', content: 'console.log(1)\n' }) } }] },
+      { role: 'tool', tool_call_id: 'call_1', content: '{"bytes":15}' },
+      { role: 'tool', tool_call_id: 'call_2', content: 'Error: {"name":"TypeError"}' },
     ],
-    tools: [{ function: { name: 'ts_execute' } }],
+    tools: [{ function: { name: 'write' } }],
   }, out)
   assert.equal(await readFile(join(out, 'system-prompt.md'), 'utf8'), 'You are an agent.\n')
-  assert.deepEqual(JSON.parse(await readFile(join(out, 'tools', 'ts_execute.json'), 'utf8')), { function: { name: 'ts_execute' } })
+  assert.deepEqual(JSON.parse(await readFile(join(out, 'tools', 'write.json'), 'utf8')), { function: { name: 'write' } })
   const conversation = await readFile(join(out, 'conversation.md'), 'utf8')
   assert.match(conversation, /## user\n\nCount the words\./u)
-  assert.match(conversation, /## assistant calls ts_execute \(call_1\)\n\n```json\n\{\n {2}"input": \{\n {4}"a": 1\n {2}\}\n\}\n```\n\n```ts\nexport function main\(\) \{ return 1 \}\n```/u)
+  assert.match(conversation, /## assistant calls write \(call_1\)\n\n```json\n\{\n {2}"file_path": "\/tau\/workspace\/count\.ts"\n\}\n```\n\n```ts\nconsole\.log\(1\)\n```/u)
   assert.match(conversation, /## tool result \(call_2\), an error/u)
 })
 

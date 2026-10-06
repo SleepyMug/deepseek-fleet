@@ -14,7 +14,6 @@ import { DEFAULT_IMAGE } from 'fleet-box-runtime/layout'
 import { pack, setup } from 'fleet-box-runtime/tau/endpoint'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
-import { modulesOf } from '../tools/ts.ts'
 import type { Exts } from './apis.ts'
 import { Registry, type Caller } from './registry.ts'
 import { HOST, TauRuns, type Boxes, type RunBox } from './runs.ts'
@@ -284,10 +283,10 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
     `create ${created.box}`,
     'start',
     'pipe setup',
-    `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/notes`,
+    `copyIn ${join(work, 'client')} /node_modules/.fleet/notes`,
     `apis.link ${JSON.stringify({
-      modules: '/tau/node_modules',
-      apis: [{ name: 'notes', client: '/tau/node_modules/.fleet/notes', types: '/tau/self/api/notes' }],
+      modules: '/node_modules',
+      apis: [{ name: 'notes', client: '/node_modules/.fleet/notes', types: '/tau/self/api/notes' }],
       packages: [],
     })}`,
     'stop',
@@ -318,7 +317,7 @@ test('setting up a run\'s box reads its call, has the box place the handles, cop
   ])
   assert.deepEqual(entry.targets, { '/site': join(work, 'site'), '/report': join(work, 'out', 'report.md'), '/pages': join(work, 'out', 'pages') })
   assert.equal(entry.cwd, '/tau/workspace')
-  assert.equal(entry.modules, '/tau/node_modules')
+  assert.equal(entry.modules, '/node_modules')
   assert.match(logged.join('\n'), new RegExp(`created ${created.sessionId} in box ${created.box}`, 'u'))
 })
 
@@ -942,26 +941,22 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
   try {
     assert.equal(prompt, EXPANDED)
     await service.tauRuns.start(sessionId)
-    const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
+    const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
       '/tau/.run.json', '/tau/TAU.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
-    // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.
+    // A program imports the API, and its client's call reaches the extension's server, as this session's.
     added.length = 0
     const started = await service.tauRuns.boxFor(sessionId)
     const program = 'import { add } from "@api/notes"; process.stdout.write(await add("milk"));'
     const ran = await started?.request('exec', { argv: ['sh', '-c', `cd /tau/workspace && node --input-type=module --eval '${program}'`] })
     assert.deepEqual(ran, { code: 0, signal: null, stdout: 'added milk', stderr: '' })
     assert.deepEqual(added, [{ args: ['milk'], sessionId }])
-    // A TypeScript program, checked against the tau's declarations, as ts_execute runs one.
-    const entry = await new Registry(join(work, 'taus')).get(sessionId)
-    const params = { root: '/tau', modules: modulesOf(entry), cwd: service.tauRuns.boxPath(sessionId, entry.project) }
-    const source = 'import { add } from "@api/notes"\nexport async function main(input: string): Promise<void> { await add(input) }'
-    const outcome = await started?.request('ts.execute', { ...params, execution: 'e1', source, input: 'eggs' })
-    assert.deepEqual({ ...outcome, durationMs: 0 }, { ok: true, value: null, stdout: '', stderr: '', durationMs: 0 })
+    // So does a TypeScript program anywhere in the box, which node runs as is, as the model runs one with bash.
+    const source = Buffer.from('import { add } from "@api/notes"\nconst said: string = await add(process.argv[2] ?? "")\nprocess.stdout.write(said)\n').toString('base64')
+    const typed = await started?.request('exec', { argv: ['sh', '-c', `echo ${source} | base64 -d > /tmp/add.ts && node /tmp/add.ts eggs`] })
+    assert.deepEqual(typed, { code: 0, signal: null, stdout: 'added eggs', stderr: '' })
     assert.deepEqual(added.at(-1), { args: ['eggs'], sessionId })
-    const mistaken = await started?.request('ts.execute', { ...params, execution: 'e2', source: 'import { add } from "@api/notes"\nexport function main(): void { add(1) }' })
-    assert.equal(mistaken?.ok === false && mistaken.error.name, 'TypeCheckError')
     assert.equal((await run('docker', ['exec', box, 'cat', '/tau/in/notes.md'])).stdout, 'buy milk\n')
     await run('docker', ['exec', box, 'test', '-d', '/tau/out/pages'])
     // The caller's folder, where dsh runs the session's work, is /tau/workspace in the box, and not there at its own path.
@@ -975,7 +970,7 @@ test('a real box places a call\'s handles and the tau, and packs what its agent 
     // What the agent leaves is packed in the box, read and checked here, and put at the caller's paths by the caller.
     await exec('rm /tau/out/pages/leak && ln -s a.md /tau/out/pages/latest && echo more >> /tau/workspace/site/index.md')
     assert.deepEqual(await service.tauRuns.pack(sessionId, { ok: true, text: 'Done.' }), { ok: true, text: 'Done.' })
-    assert.deepEqual(await applyResult(await service.tauRuns.result(sessionId), entry.targets), { ok: true, text: 'Done.' })
+    assert.deepEqual(await applyResult(await service.tauRuns.result(sessionId), (await new Registry(join(work, 'taus')).get(sessionId)).targets), { ok: true, text: 'Done.' })
     assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added.\n')
     assert.equal(await readlink(join(work, 'out', 'pages', 'latest')), 'a.md')
     assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\nmore\n')

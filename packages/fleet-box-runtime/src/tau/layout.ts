@@ -6,8 +6,9 @@
  * caller's path, and the tau's own directory at /tau/self. A base name
  * already taken in its folder gets a suffix in its stem: notes.md,
  * notes-1.md, notes-2.md. The tau's APIs, and what it exposes, are in
- * /tau/node_modules, so code anywhere below /tau finds them, and the clients
- * that implement the APIs in a hidden folder there. What the runtime keeps
+ * /node_modules, so a program anywhere in the box finds them, as tau's
+ * docs/spec/runtimes.md has it, and the clients that implement the APIs in
+ * a hidden folder there. What the runtime keeps
  * of the run is in /tau/.run.json, and tau's TAU.md, what a tau is, for the
  * agent to read, in /tau/TAU.md.
  * @module fleet-box-runtime/tau/layout
@@ -23,7 +24,7 @@ export const FOLDERS: { readonly [M in Mode]: string } = { in: '/tau/in', inout:
 export const SELF = '/tau/self'
 
 /** Where the tau's code finds its APIs, and the packages of its own it exposes. */
-export const MODULES = '/tau/node_modules'
+export const MODULES = '/node_modules'
 
 /** Where each API's client is, in a folder by the API's name. */
 export const CLIENTS = `${MODULES}/.fleet`
