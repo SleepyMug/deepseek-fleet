@@ -2,7 +2,7 @@
   "name": "fleet-ext-tau",
   "version": "0.0.1",
   "private": true,
-  "description": "An extension of the fleet host: the tau API, the values of a run, and runs of other taus, each in a box of its own",
+  "description": "An extension of the fleet host: the tau API, the files and args of a run, and runs of other taus, each in a box of its own",
   "type": "module",
   "exports": {
     "./plugin": {

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { extractBlob, readCall, writeResult, type CallJson, type Targets } from '@sleepymug/tau/call'
+import { extractContent, readCall, writeResult, type CallJson, type Targets } from '@sleepymug/tau/call'
 import type { About } from '../tau/runs.ts'
 import type { Caller } from '../tau/registry.ts'
 import { abortable } from '../tau/service.ts'
@@ -16,18 +16,18 @@ import { apply } from './tau.ts'
 const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 const RUN = 'session-11111111-1111-4111-8111-111111111111'
 
-/** A session's working directory with a tau that takes a text, a file to read and a file to write, and the file to read. */
+/** A session's working directory with a tau that takes a file to read, a file to write and an arg, and the file to read. */
 async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<string> {
   const work = await mkdtemp(join(tmpdir(), 'fleet-tau-run-'))
   t.after(() => rm(work, { recursive: true, force: true }))
   await mkdir(join(work, 'tau'))
   await writeFile(join(work, 'tau', 'PROMPT.md'), 'Summarize ${notes} in ${style} words into ${report}.\n')
   await writeFile(join(work, 'tau', 'tau.json'), JSON.stringify({
-    params: {
-      style: { type: 'text', description: 'How.' },
-      notes: { type: 'file', mode: 'in', description: 'What.' },
-      report: { type: 'file', mode: 'out', description: 'The summary.' },
+    files: {
+      notes: { kind: 'file', mode: 'in', description: 'What.' },
+      report: { kind: 'file', mode: 'out', description: 'The summary.' },
     },
+    args: { type: 'object', properties: { style: { type: 'string', description: 'How.' } }, required: ['style'] },
   }))
   await writeFile(join(work, 'notes.md'), 'buy milk\n')
   await mkdir(join(work, 'out'))
@@ -37,7 +37,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<str
 /**
  * The tau service, as the tool uses it: it reads the call it is started
  * with, and gives back, once {@link end} is called, a result that put
- * `report` at the `/report` handle, with the targets it was given.
+ * `report` at the file `report`, with the targets it was given.
  */
 class FakeTau {
   readonly calls: string[] = []
@@ -49,10 +49,10 @@ class FakeTau {
   constructor(private readonly work: string) {}
 
   async start(caller: Caller, about: About, archive: AsyncIterable<Uint8Array>): Promise<{ sessionId: string }> {
-    const { json, blobs } = await readCall(archive)
+    const { json, contents } = await readCall(archive)
     await mkdir(join(this.work, 'call'))
-    for await (const blob of blobs) await extractBlob(blob, join(this.work, 'call', blob.id))
-    this.started = { caller, about, json, notes: await readFile(join(this.work, 'call', 'b0'), 'utf8') }
+    for await (const content of contents) await extractContent(content, join(this.work, 'call', content.file ?? 'tau'))
+    this.started = { caller, about, json, notes: await readFile(join(this.work, 'call', 'notes'), 'utf8') }
     return { sessionId: RUN }
   }
 
@@ -61,7 +61,7 @@ class FakeTau {
     this.finishing.resolve()
     await abortable(this.ending.promise, signal)
     await writeFile(join(this.work, 'left.md'), 'Milk.\n')
-    const archive = writeResult({ ok: true, text: 'Done.', outputs: { '/report': { $out: { name: 'report.md', kind: 'file', blob: 'o0' } } } }, [{ id: 'o0', path: join(this.work, 'left.md') }])
+    const archive = writeResult({ ok: true, text: 'Done.', outputs: { report: { kind: 'file' } } }, [{ file: 'report', from: join(this.work, 'left.md') }])
     const history = options?.history === true ? { history: [{ type: 'user/message' }, { type: 'turn/end' }] } : {}
     return { result: { ok: true, text: 'Done.' }, targets: this.started?.about.targets ?? {}, ...history, archive }
   }
@@ -94,12 +94,12 @@ test('tau_run packs the call from the session\'s folder, runs it as the session\
   const tau = new FakeTau(work)
   const tool = toolOn(tau)
   assert.equal(tool.isConcurrencySafe?.({ tau: 'tau' }), true)
-  const values = { style: 'few', notes: { $in: 'notes.md' }, report: { $out: 'out/report.md' } }
-  const running = tool.execute({ tau: 'tau', values }, execIn(work))
+  const running = tool.execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few, as ${notes} has it' } }, execIn(work))
   await Promise.race([tau.finishing.promise, running])
   assert.deepEqual(tau.started?.caller, { kind: 'session', sessionId: SESSION })
-  assert.deepEqual(tau.started?.about, { title: 'tau', project: work, targets: { '/report': join(work, 'out', 'report.md') } })
-  assert.deepEqual(tau.started?.json.values, { style: 'few', notes: { $in: { name: 'notes.md', kind: 'file', blob: 'b0' } }, report: { $out: { name: 'report.md' } } })
+  assert.deepEqual(tau.started?.about, { title: 'tau', project: work, targets: { report: join(work, 'out', 'report.md') } })
+  assert.deepEqual(tau.started?.json.files, { notes: { mode: 'in', base: 'notes.md', kind: 'file' }, report: { mode: 'out', base: 'report.md' } })
+  assert.deepEqual(tau.started?.json.args, { style: 'few, as ${notes} has it' })
   assert.equal(tau.started?.notes, 'buy milk\n')
   tau.end()
   assert.deepEqual(await running, { sessionId: RUN, ok: true, text: 'Done.' })
@@ -110,8 +110,7 @@ test('tau_run packs the call from the session\'s folder, runs it as the session\
 test('tau_run writes the run\'s session\'s history where it is asked to, a relative path the session\'s', async (t) => {
   const work = await fixture(t)
   const tau = new FakeTau(work)
-  const values = { style: 'few', notes: { $in: 'notes.md' }, report: { $out: 'out/report.md' } }
-  const running = toolOn(tau).execute({ tau: 'tau', values, history: 'logs/run.jsonl' }, execIn(work))
+  const running = toolOn(tau).execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' }, history: 'logs/run.jsonl' }, execIn(work))
   await Promise.race([tau.finishing.promise, running])
   tau.end()
   assert.deepEqual(await running, { sessionId: RUN, ok: true, text: 'Done.' })
@@ -119,10 +118,10 @@ test('tau_run writes the run\'s session\'s history where it is asked to, a relat
   assert.deepEqual(tau.calls, [`finish ${SESSION} ${RUN} with history`])
 })
 
-test('tau_run refuses values that do not fit the tau before it starts a run', async (t) => {
+test('tau_run refuses a call that does not fit the tau before it starts a run', async (t) => {
   const work = await fixture(t)
   const tau = new FakeTau(work)
-  await assert.rejects(toolOn(tau).execute({ tau: 'tau', values: { style: 'few' } }, execIn(work)), /notes/u)
+  await assert.rejects(toolOn(tau).execute({ tau: 'tau', args: { style: 'few' } }, execIn(work)), /no path for notes, report/u)
   assert.equal(tau.started, undefined)
 })
 
@@ -130,8 +129,7 @@ test('cancelling tau_run cancels the run, and puts nothing at the session\'s pat
   const work = await fixture(t)
   const tau = new FakeTau(work)
   const cancelling = new AbortController()
-  const values = { style: 'few', notes: { $in: 'notes.md' }, report: { $out: 'out/report.md' } }
-  const running = toolOn(tau).execute({ tau: join(work, 'tau'), values }, execIn(work, cancelling.signal))
+  const running = toolOn(tau).execute({ tau: join(work, 'tau'), files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' } }, execIn(work, cancelling.signal))
   await Promise.race([tau.finishing.promise, running])
   cancelling.abort()
   await assert.rejects(running)

@@ -8,7 +8,7 @@
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import type { BoundHandle } from '@sleepymug/tau'
+import type { BoundFile } from '@sleepymug/tau'
 import { FOLDERS, MODULES } from 'fleet-box-runtime/tau/layout'
 import type { Result, Targets } from 'fleet-protocol/tau'
 
@@ -38,9 +38,9 @@ export interface Entry {
    * calling session's own project.
    */
   project: string
-  /** The tau's prompt, expanded with where the box has each handle. */
+  /** The tau's prompt, expanded with where the box has each file. */
   prompt: string
-  /** The tau's init, its command, `${self}` expanded, and the agent's working directory in the box, where it runs (./init.ts); none for a tau without one. */
+  /** The tau's init, its command, its placeholders expanded, and the agent's working directory in the box, where it runs (./init.ts); none for a tau without one. */
   init?: { command: string; dir: string }
   /** The id the prompt is sent under, so that sending it again is sending it once. */
   promptRequestId: string
@@ -52,9 +52,9 @@ export interface Entry {
   finishedAt?: string
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
   resetAt?: string
-  /** Each handle of the run, as the call names it: its mode, its kind, its name, its blob, and where the box has it. */
-  handles: readonly BoundHandle[]
-  /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
+  /** Each file of the run, as the call names it: its name, its mode, its kind, its base name, and where the box has it. */
+  files: readonly BoundFile[]
+  /** Where the caller has each `out` and `inout` file, which `finish` gives back. */
   targets: Targets
   /** The agent's working directory in the box, as the box's runtime reported it. */
   cwd: string

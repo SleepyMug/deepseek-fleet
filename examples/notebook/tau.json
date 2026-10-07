@@ -1,8 +1,14 @@
 {
   "description": "Keep a list of things to remember as notes, and report those with a tag.",
-  "params": {
-    "list": { "type": "file", "mode": "in", "description": "Things to remember, one per line, each with its tags after a #, separated by commas." },
-    "tag": { "type": "text", "description": "The tag to report." },
-    "report": { "type": "file", "mode": "out", "description": "The notes with the tag, one per line." }
+  "files": {
+    "list": { "kind": "file", "mode": "in", "description": "Things to remember, one per line, each with its tags after a #, separated by commas." },
+    "report": { "kind": "file", "mode": "out", "description": "The notes with the tag, one per line." }
+  },
+  "args": {
+    "type": "object",
+    "properties": {
+      "tag": { "type": "string", "description": "The tag to report." }
+    },
+    "required": ["tag"]
   }
 }

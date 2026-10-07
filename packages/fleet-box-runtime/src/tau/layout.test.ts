@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
 import { basename } from 'node:path'
 import { test } from 'node:test'
-import type { Kind, Mode } from '@sleepymug/tau'
+import type { Mode } from '@sleepymug/tau'
 import { placer } from './layout.ts'
 
-/** Place handles of one run, each `[mode, host path]`. */
-function places(handles: [Mode, string][], kind: Kind = 'path'): string[] {
+/** Place the files of one run, each `[mode, host path]`. */
+function places(files: [Mode, string][]): string[] {
   const place = placer()
-  return handles.map(([mode, host], index) => place({ at: `h${String(index)}`, pointer: `/h${String(index)}`, mode, kind, name: basename(host), host }))
+  return files.map(([mode, host], index) => place({ name: `f${String(index)}`, mode, base: basename(host), host }))
 }
 
-test('each handle goes in the folder of its mode, under its base name', () => {
+test('each file goes in the folder of its mode, under the base name its place keeps', () => {
   assert.deepEqual(places([['in', '/a/notes.md'], ['inout', '/b/site'], ['out', '/c/out/report.md']]), [
     '/tau/in/notes.md', '/tau/workspace/site', '/tau/out/report.md',
   ])

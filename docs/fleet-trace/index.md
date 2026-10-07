@@ -33,19 +33,20 @@ A scenario is JSON, its paths relative to its file, such as
 {
   "tau": "../../../examples/notebook",
   "files": { "list.txt": "buy milk #shop\n" },
-  "values": { "list": { "$in": "list.txt" }, "tag": "shop", "report": { "$out": "out/report.txt" } },
+  "call": { "files": { "list": "list.txt", "report": "out/report.txt" }, "args": { "tag": "shop" } },
   "steps": [{ "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/api/index.d.ts" } }],
   "final": "Done."
 }
 ```
 
 - `tau`: the tau's directory.
-- `prompt`: in place of `tau` and `values`, what a person tells a session
+- `prompt`: in place of `tau` and `call`, what a person tells a session
   that the web UI makes, in the caller's folder; its model works on the
   host. `scenarios/tau-run.json` has it run a tau of the caller's folder,
   with `tau_run`.
 - `files`: the caller's folder, each file by its path, with its text.
-- `values`: the run's values, as `fleet start` sends them.
+- `call`: the run's call, its `files` and `args`, as `fleet start` sends
+  them.
 - `steps`: the model's tool calls, one per turn, in order.
 - `final`: the model's answer after the last step.
 - `runs`: what the model does in the runs the run starts, through the `tau`
@@ -70,7 +71,8 @@ told so after the prompt, defines the term.
 - **The run** is started and finished through the tau service's socket, as
   `fleet run` does it, with fleet-client's `startRun` and `finishRun`, which
   pack the call and put the result at the caller's paths, with the caller's
-  folder made from `files`, and the folders of the `$out` handles.
+  folder made from `files`, and the folder of each file's path in `call`,
+  where an `out` goes.
 - **A session** is made through the driver (`driver.ts`), a dsh plugin of
   this package on a socket in the scratch home, as the web UI makes one: in
   the dsh workspace of the caller's folder, with the profile's default

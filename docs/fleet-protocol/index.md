@@ -48,8 +48,7 @@ only what a call does not: `title` names the run, in `list` and dsh's web
 UI, as `fleet` gives it the name of the tau's directory; `project`
 identifies the project, in dsh the folder whose workspace the run's session
 is in; `targets` are where the caller has each
-`$out` and `$inout` handle, by its JSON Pointer into the values, as tau's
-`packCall` gives them. The service keeps them without reading them, and
+`out` and `inout` file, by its name, as tau's `packCall` gives them. The service keeps them without reading them, and
 gives them back with the result, for the caller to put what the run gave
 back there: the caller trusts the service as to what goes where. The service
 reads no path a caller names, but the project's, to find its workspace.

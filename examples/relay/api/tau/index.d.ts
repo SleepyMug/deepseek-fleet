@@ -1,14 +1,19 @@
 /**
- * The values of this run, and runs of other taus.
+ * This run's files and args, and runs of other taus.
  *
  * @packageDocumentation
  */
 
-/** A value a run takes (docs/spec/values.md). */
-export type Value = string | Handle | readonly Value[] | { readonly [name: string]: Value };
+/** A JSON value. */
+export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json };
 
-/** A file or a directory, with what the agent does with it. */
-export type Handle = { readonly $in: string } | { readonly $out: string } | { readonly $inout: string };
+/** A call of a tau (docs/spec/calls.md): a path for each of its files, and its args. */
+export interface Call {
+	/** A path for each file, by name, or, for an `in` file, a list of paths. */
+	readonly files?: { readonly [name: string]: string | readonly string[] };
+	/** The args, which fit the tau's schema. */
+	readonly args?: { readonly [name: string]: Json };
+}
 
 /** How a run ended. */
 export interface Result {
@@ -20,17 +25,25 @@ export interface Result {
 	readonly failure?: string;
 }
 
-/** This run's values, by parameter, each handle's path where this agent sees it. */
-export declare function values(): { readonly [name: string]: Value };
+/** Where this agent sees each of this run's files, by name. */
+export declare function files(): { readonly [name: string]: string };
+
+/** This run's args, each `${name}` naming a file, and `${self}`, expanded. */
+export declare function args(): { readonly [name: string]: Json };
 
 /**
- * Run the tau at `agent`, a directory, with `values`, by parameter. `agent` and the paths of the
- * handles may be relative to `process.cwd()`. Resolves once the run ends; aborting `signal` stops
- * it, and the run fails.
- * @throws when the run cannot start, such as when `agent` is not a tau, or the values do not fit it.
+ * Run the tau at `agent`, a directory, with `call`. `agent` and the paths of the call's files may
+ * be relative to `process.cwd()`. Resolves once the run ends; aborting `signal` stops it, and the
+ * run fails.
+ * @throws when the run cannot start, such as when `agent` is not a tau, or the call does not fit it.
  */
-export declare function run(
-	agent: string,
-	values: { readonly [name: string]: Value },
-	signal?: AbortSignal,
-): Promise<Result>;
+export declare function run(agent: string, call: Call, signal?: AbortSignal): Promise<Result>;
+
+/** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */
+export declare const TAU_SKIP: 0;
+
+/** Init's exit code when the agent is to run on the prompt, as it would without init. */
+export declare const TAU_RUN: 100;
+
+/** Init's exit code when it failed: the agent runs, told so, as with any other ending. */
+export declare const TAU_FALLBACK: 101;

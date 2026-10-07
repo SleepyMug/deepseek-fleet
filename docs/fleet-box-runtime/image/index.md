@@ -16,9 +16,9 @@ Builds the box image: a Node base image with fleet's runtime on top.
   owns where a run has its things in its box (`fleet-box-runtime/tau/layout`):
   the host runs `node /opt/fleet/lib/tau/main.js setup`, with the run's
   call on stdin, which sets the box up and reports, as JSON, the prompt,
-  the handles and where things are; and `… pack '{"outcome"}'`, which
+  the files and where things are; and `… pack '{"outcome"}'`, which
   writes the run's result on stdout, packed from what the agent left at its
-  `$out` and `$inout` handles, or a failure, when that does not fit the tau
+  `out` and `inout` files, or a failure, when that does not fit the tau
   (docs/fleet-core/tau/index.md). `fleet-box-runtime/tau/endpoint` exports
   both, each with the root the box's paths are under, for tests.
 

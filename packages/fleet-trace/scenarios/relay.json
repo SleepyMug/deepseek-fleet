@@ -1,14 +1,14 @@
 {
   "tau": "../../../examples/relay",
-  "values": {
-    "word": "hello",
-    "report": { "$out": "out/report.txt" }
+  "call": {
+    "files": { "report": "out/report.txt" },
+    "args": { "word": "hello" }
   },
   "steps": [
     {
       "tool": "bash",
       "args": {
-        "command": "cd /tau/self; node - <<'EOF'\nimport { run, values } from '@api/tau'\n\nconst { word, report } = values() as { word: string; report: { $out: string } }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { text: word, out: report })))\nEOF",
+        "command": "cd /tau/self; node - <<'EOF'\nimport { args, files, run } from '@api/tau'\n\nconst { word } = args() as { word: string }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { files: { out: files().report }, args: { text: word } })))\nEOF",
         "description": "Run the shout TAU on the word"
       }
     }

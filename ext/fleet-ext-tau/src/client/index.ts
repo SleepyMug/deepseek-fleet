@@ -1,5 +1,5 @@
 /**
- * The values of this run, and runs of other taus.
+ * This run's files and args, and runs of other taus.
  *
  * @packageDocumentation
  */
@@ -11,11 +11,16 @@ import { call, callStream } from 'fleet-box-runtime/ext/client'
 import { runTau, type Runtime } from 'fleet-box-runtime/ext/tau'
 import { RUN } from 'fleet-box-runtime/tau/layout'
 
-/** A value a run takes (docs/spec/values.md). */
-export type Value = string | Handle | readonly Value[] | { readonly [name: string]: Value }
+/** A JSON value. */
+export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json }
 
-/** A file or a directory, with what the agent does with it. */
-export type Handle = { readonly $in: string } | { readonly $out: string } | { readonly $inout: string }
+/** A call of a tau (docs/spec/calls.md): a path for each of its files, and its args. */
+export interface Call {
+  /** A path for each file, by name, or, for an `in` file, a list of paths. */
+  readonly files?: { readonly [name: string]: string | readonly string[] }
+  /** The args, which fit the tau's schema. */
+  readonly args?: { readonly [name: string]: Json }
+}
 
 /** How a run ended. */
 export interface Result {
@@ -37,13 +42,27 @@ export interface RunOptions {
   readonly history?: string
 }
 
-let kept: { readonly [name: string]: Value } | undefined
+/** What the box's runtime kept of this run when it set the box up. */
+interface Kept {
+  files: readonly { name: string; view: string }[]
+  args: { readonly [name: string]: Json }
+}
 
-/** This run's values, by parameter, each handle's path where this agent sees it. */
-export function values(): { readonly [name: string]: Value } {
-  // As the box's runtime kept them when it set the box up.
-  kept ??= (JSON.parse(readFileSync(RUN, 'utf8')) as { values: { [name: string]: Value } }).values
+let kept: Kept | undefined
+
+function read(): Kept {
+  kept ??= JSON.parse(readFileSync(RUN, 'utf8')) as Kept
   return kept
+}
+
+/** Where this agent sees each of this run's files, by name. */
+export function files(): { readonly [name: string]: string } {
+  return Object.fromEntries(read().files.map(({ name, view }) => [name, view]))
+}
+
+/** This run's args, each `${name}` naming a file, and `${self}`, expanded. */
+export function args(): { readonly [name: string]: Json } {
+  return read().args
 }
 
 /**
@@ -61,7 +80,7 @@ function host(history: string | undefined): Runtime {
     async finish(id, signal) {
       const args = history === undefined ? [id] : [id, { history: true }]
       const { value, body } = await callStream('tau', 'finish', args, signal === undefined ? {} : { signal })
-      const finished = value as { targets: { [pointer: string]: string }; history?: unknown[] }
+      const finished = value as { targets: { [name: string]: string }; history?: unknown[] }
       if (history !== undefined) {
         await mkdir(dirname(resolve(history)), { recursive: true })
         await writeFile(history, (finished.history ?? []).map(event => `${JSON.stringify(event)}\n`).join(''))
@@ -75,13 +94,13 @@ function host(history: string | undefined): Runtime {
 }
 
 /**
- * Run the tau at `agent`, a directory, with `values`, by parameter. `agent` and the paths of the
- * handles may be relative to `process.cwd()`. Resolves once the run ends; aborting `signal` stops
- * it, and the run fails. `options` are fleet's, beyond tau's spec.
- * @throws when the run cannot start, such as when `agent` is not a tau, or the values do not fit it.
+ * Run the tau at `agent`, a directory, with `call`. `agent` and the paths of the call's files may
+ * be relative to `process.cwd()`. Resolves once the run ends; aborting `signal` stops it, and the
+ * run fails. `options` are fleet's, beyond tau's spec.
+ * @throws when the run cannot start, such as when `agent` is not a tau, or the call does not fit it.
  */
-export function run(agent: string, values: { readonly [name: string]: Value }, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
-  return runTau(host(options.history), agent, values, { cwd: process.cwd() }, signal)
+export function run(agent: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
+  return runTau(host(options.history), agent, call, { cwd: process.cwd() }, signal)
 }
 
 /** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */

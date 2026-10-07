@@ -8,7 +8,7 @@ the fleet host (docs/fleet-core/tau/index.md). It loads no dsh module.
 
 ```
 fleet start <tau-dir> [<name>=<value> | <name>:=<json>]...
-                       start a run of the tau with these values, and print its
+                       start a run of the tau with this call, and print its
                        session's id, then the tau's prompt; the web UI lists
                        the session under this folder
 fleet list             list the runs: session, state, how each ended, tau
@@ -29,8 +29,8 @@ fleet run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
   once `finish` has given back how it ended, which it does again each time.
 - `finish` and `run` report a run as tau's docs/spec/results.md has it: the
   final text on stdout, and why the run failed on stderr. By then, for a
-  run that succeeded, they have put what it left at its `$out` and `$inout`
-  handles at their paths, a folder merging into one there; a run that
+  run that succeeded, they have put what it left at its `out` and `inout`
+  files at their paths, a folder merging into one there; a run that
   failed puts nothing there. A `finish` asked again puts the same again.
 - `--history <file>`, with `finish` and `run`, writes the run's session's
   history to `<file>`, its folder made if missing, failed run or not, so
@@ -47,24 +47,26 @@ fleet run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
 
 ## Design
 
-- **Values** (`values.ts`) come from the tau's `tau.json`, which `start`
-  and `run` read with tau's library:
-  - `<name>=<value>` gives a text, or, for a parameter whose type is a
-    `file`, a `dir` or a `path`, a handle of the mode the type declares, to
-    the path `<value>`, as `{"$in": "<value>"}`;
-  - `<name>:=<json>` gives any value as JSON, as tau's docs/spec/values.md
-    has them: a list, a record, or a handle written out.
+- **The call** (`call.ts`), its files and args, as tau's
+  docs/spec/calls.md has them, comes from the command line, by the files
+  the tau's `tau.json` declares, which `start` and `run` read with tau's
+  library:
+  - `<name>=<value>` gives the file `<name>` the path `<value>`, when the
+    tau declares that file, and else the arg `<name>` the string `<value>`;
+  - `<name>:=<json>` gives either as JSON: a file a path, or, for an `in`,
+    a list of paths; an arg any JSON.
 
-  A name the tau does not declare passes as a text, for tau's library to
-  refuse.
+  A name the tau does not declare as a file passes as an arg, for the
+  tau's schema to take or refuse. In a string of the args, `${<file>}` is
+  where the tau's agent sees that file, as in `'start=${site}/index.html'`.
 - **Calls and results** (`runs.ts`, exported as `fleet-client/runs`, which
   fleet-trace uses too). `start` packs the run's call here, with tau's
-  `packCall`: it reads the tau, checks the values and the paths they name
+  `packCall`: it reads the tau, checks the call and the paths it names
   against it, as a runtime would, and sends the call, which carries the
-  tau and the content of each `$in` and `$inout` path, with the name of the tau's
+  tau and the content of each `in` and `inout` file, with the name of the tau's
   directory, which titles the run, this folder, which is the session's
-  workspace in dsh, and the targets, this side's path of each `$out` and
-  `$inout` handle. Relative paths are this folder's. `finish` gets the
+  workspace in dsh, and the targets, this side's path of each `out` and
+  `inout` file. Relative paths are this folder's. `finish` gets the
   targets back with the run's result, and puts what the result holds at
   them, with tau's `applyResult`, trusting the service as to what goes
   where; so any `finish`, in any folder, can finish a run another process
@@ -86,7 +88,7 @@ fleet run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
 
 ## Built on
 
-- `@sleepymug/tau`'s `loadTau`, for the tau's parameters, and
+- `@sleepymug/tau`'s `loadTau`, for the tau's files, and
   `@sleepymug/tau/call`'s `packCall` and `applyResult`.
 - `fleet-protocol/tau`, for the wire.
 - `node:util`'s `parseArgs`, for the command line.

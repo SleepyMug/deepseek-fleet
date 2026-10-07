@@ -28,7 +28,7 @@ import type { Request, Settled } from './driver.ts'
 import { ScriptedModel, type Script, type Step } from './model.ts'
 import { render } from './render.ts'
 
-/** A scenario file: the tau and its values, or a session's prompt; the caller's files; and what the model does. */
+/** A scenario file: the tau and its call, or a session's prompt; the caller's files; and what the model does. */
 export interface Scenario {
   /** The tau's directory, relative to the scenario file; or, in its place, `prompt`. */
   tau?: string
@@ -36,8 +36,8 @@ export interface Scenario {
   prompt?: string
   /** The caller's folder: each file by its relative path, with its text. */
   files?: Record<string, string>
-  /** The run's values, as `fleet start` sends them; relative paths are the caller's folder's. */
-  values?: Record<string, unknown>
+  /** The run's call, its files and args, as `fleet start` sends them; relative paths are the caller's folder's. */
+  call?: { files?: Record<string, string | string[]>; args?: Record<string, unknown> }
   /** The model's tool calls, in order, one per turn. */
   steps: Step[]
   /** The model's last answer, after the last step. */
@@ -56,7 +56,7 @@ const CHECKOUT = fileURLToPath(new URL('../../../', import.meta.url))
  */
 export async function runScenario(scenarioFile: string, out: string, signal?: AbortSignal): Promise<void> {
   const scenario = JSON.parse(readFileSync(scenarioFile, 'utf8')) as Scenario
-  if ((scenario.tau === undefined) === (scenario.prompt === undefined)) throw new Error('fleet-trace: a scenario has a tau, with its values, or a prompt')
+  if ((scenario.tau === undefined) === (scenario.prompt === undefined)) throw new Error('fleet-trace: a scenario has a tau, with its call, or a prompt')
   rmSync(out, { recursive: true, force: true })
   mkdirSync(join(out, 'requests'), { recursive: true })
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-trace-'))
@@ -90,9 +90,10 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     }
     let result: unknown
     if (scenario.tau !== undefined) {
-      const values = scenario.values ?? {}
-      for (const path of outPaths(values)) mkdirSync(dirname(resolve(work, path)), { recursive: true })
-      const started = await failing('start', startRun(socket, resolve(dirname(scenarioFile), scenario.tau), values, work))
+      const call = scenario.call ?? {}
+      // The folder of each file's path, where an `out` goes.
+      for (const path of Object.values(call.files ?? {}).flat()) mkdirSync(dirname(resolve(work, path)), { recursive: true })
+      const started = await failing('start', startRun(socket, resolve(dirname(scenarioFile), scenario.tau), call, work))
       model.prompt = started.prompt.trim()
       const ended = await Promise.race([failing('finish', finishRun(socket, started.sessionId)), exited, interrupted])
       if (!ended.ok) process.stderr.write(`fleet-trace: the run failed: ${String(ended.failure)}\n`)
@@ -223,13 +224,6 @@ async function failing<T>(op: string, answer: Promise<T>): Promise<T> {
   return await answer.catch((error: unknown) => {
     throw new Error(`fleet-trace: ${op} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   })
-}
-
-/** Each `$out` handle's path in a run's values, at any depth. */
-function outPaths(value: unknown): string[] {
-  if (typeof value !== 'object' || value === null) return []
-  if (typeof (value as { $out?: unknown }).$out === 'string') return [(value as { $out: string }).$out]
-  return Object.values(value).flatMap(outPaths)
 }
 
 /** Once `found` holds, checking every 200 ms. */

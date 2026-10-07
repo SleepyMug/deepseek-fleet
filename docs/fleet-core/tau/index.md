@@ -2,7 +2,7 @@
 
 The tau service. It starts runs of taus, each a box and a dsh session, and
 watches each until its agent is done, then gives back how it ended, with
-what it left at its `$out` and `$inout` handles, and cancels and deletes
+what it left at its `out` and `inout` files, and cancels and deletes
 runs. It runs in dsh's process, in the fleet profile. A run comes as a
 **call** and goes back as a **result**, the archives of tau's
 docs/spec/serialization.md: the caller packs the call from its files, and
@@ -31,7 +31,7 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 | Op | What it does |
 |---|---|
-| `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch; `targets`, where the caller has each `$out` and `$inout` handle, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
+| `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch; `targets`, where the caller has each `out` and `inout` file, by its name, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `finish { sessionId, history? }` | Wait until the run ends, and answer how it did and the targets, `{ result, targets }`, then send its result, the same each time; the caller puts what it gave back at the targets. With `history: true`, the answer holds the session's history too, `history`. |
@@ -85,9 +85,10 @@ preset's scope, which each of its sessions' agents has as its parent.
      `$DSH_HOME/fleet/taus/<session id>/call.tar`, as it reads it: tau's
      `readCall` checks it whole, as tau's docs/spec/serialization.md has
      it, and the tau it carries is extracted beside it, a call without one
-     being refused. `loadTau(tau).bind(values, …)` checks the values against
-     `tau.json`, and each handle's kind against its type; where the box
-     places each handle is the box's. Then `apis.ts` links the tau's APIs:
+     being refused. `loadTau(tau).bind({ files, args }, …)` checks the call
+     against `tau.json`: each file's mode and kind, and the args against the
+     schema; where the box places each file is the box's. Then `apis.ts`
+     links the tau's APIs:
      `loadApis`, the extension that implements each one, from
      `ctx.fleetExts`, and `checkImplementation` against its client; then
      `loadExposed`. A tau with an API that no extension implements, or whose
@@ -96,7 +97,7 @@ preset's scope, which each of its sessions' agents has as its parent.
      session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
      runtime set it up from the call (fleet-box-runtime's tau runtime, below),
-     which reports the prompt, the handles and where things are; copies
+     which reports the prompt, the files and where things are; copies
      each API's client in, where the runtime says; has the helper link the
      APIs and what the tau exposes (`apis.link`); and stops it.
   3. It writes the registry entry, with what the runtime reported, and
@@ -110,36 +111,38 @@ preset's scope, which each of its sessions' agents has as its parent.
   The host runs it in a run's box with `docker exec` (`Box.pipe`), since
   the helper's lines of JSON would carry the archives only as text:
   - `setup` reads the call on its stdin, checked again, places the tau and
-    the content of the `$in` and `$inout` handles, binds the values, which
-    expands the prompt, and the tau's init, if it has one, makes each `$out` folder, keeps the handles and the
-    values the agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its
-    tau library has it, at `/tau/TAU.md`, and reports
-    `{ prompt, cwd, modules, self, clients, handles, init? }`: the prompt,
-    the agent's working directory, where the APIs and the clients go, where
-    the tau is, each handle with its place, and the init. It runs before the agent, on a
+    the content of the `in` and `inout` files, binds the call, which
+    expands the args, the prompt, and the tau's init, if it has one, makes
+    each `out` folder, keeps the files and the args the agent sees in
+    `/tau/.run.json`, puts tau's `TAU.md`, as its tau library has it, at
+    `/tau/TAU.md`, and reports `{ prompt, cwd, modules, self, clients,
+    files, init? }`: the prompt, the agent's working directory, where the
+    APIs and the clients go, where the tau is, each file with its place,
+    and the init. It runs before the agent, on a
     call the host checked, and runs no code of the tau's, so the host takes
     its report as its own.
   - `pack` writes the result on its stdout, from what the agent left at
-    each `$out` and `$inout` handle's place, checked with `checkOutputs`, or
+    each `out` and `inout` file's place, checked with `checkOutputs`, or
     a failure that says why it does not fit. The result is checked on the
     host after it leaves the box, since the box is the agent's by then.
 - **Places**, as the box's runtime has them (fleet-box-runtime/tau/layout),
-  each under the base name of the caller's path:
+  each under the base name of the caller's path, or, for an `in` given a
+  list of paths, the file's name:
 
   | What | Where in the box |
   |---|---|
-  | an `$in` handle | `/tau/in/<base name>` |
-  | an `$inout` handle | `/tau/workspace/<base name>` |
-  | an `$out` handle | `/tau/out/<base name>` |
+  | an `in` file | `/tau/in/<base name>` |
+  | an `inout` file | `/tau/workspace/<base name>` |
+  | an `out` file | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
   | the APIs, `@api/<name>`, and the packages the tau exposes | `/tau/node_modules` |
   | the client of each API's extension | `/tau/node_modules/.fleet/<name>` |
   | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
 
   A base name already taken in its folder gets a suffix in its stem:
-  `notes.md`, `notes-1.md`, `notes-2.md`. An `$out` handle has no content
+  `notes.md`, `notes-1.md`, `notes-2.md`. An `out` file has no content
   in a call. Its folder is made for a `dir`, and only its parent for a
-  `file` or a `path`, since the agent makes what it leaves.
+  `file` or one that may be either, since the agent makes what it leaves.
 
   Node looks for a package in every folder above the file that imports it,
   so code anywhere below `/tau`, the tau's own packages included, finds
@@ -155,8 +158,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
   caller; the box, the run's title, the project,
   the expanded prompt and the request id it is sent under, the tau's init,
-  its expanded command and where it runs in the box, if it has one, each handle (its
-  mode, kind, name, blob and place), the targets, the working directory and
+  its expanded command and where it runs in the box, if it has one, each file (its
+  name, mode, kind, base name and place), the targets, the working directory and
   the APIs' folder in the box, as the runtime reported them, the names of the APIs the
   tau declares, each linked, what it exposes, with what each says it is,
   when it was made, when it was given its prompt, when and how its run
@@ -223,8 +226,8 @@ preset's scope, which each of its sessions' agents has as its parent.
 - **What a run gives back**, once its last turn completed, its box packs
   (`pack`, above) into the session's folder, and the service reads it
   again, as tau's library does, `readResult`, and checks it against the
-  run's handles, `checkResult`: an output for each `$out` and `$inout`
-  handle, of its mode, name and kind, and the agent's own text. One that
+  run's files, `checkResult`: an output for each `out` and `inout`
+  file, of its kind, and the agent's own text. One that
   does not fit fails the run. A run that failed gives nothing back: its
   result, which the host writes, holds how it ended alone.
 - **Finishing** waits for the run's end, which a client that goes away
@@ -311,7 +314,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   since its root is no host path. Its catalog is kept per agent, so each
   session sees its own tau's.
 - **The working directory** of a tau's session is `/tau/workspace` in its
-  box, where its `$inout` handles are, as the runtime reported it. dsh runs
+  box, where its `inout` files are, as the runtime reported it. dsh runs
   a session's work in its workspace's folder, the project, a host path the
   box does not have; the runs' `boxPath` puts that folder, and any path in
   it, in the working directory instead, for every process, terminal and file call the
@@ -337,7 +340,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   from the call again, and its APIs linked to the extensions provided now,
   so one no longer provided fails the set-up, and the box is created under
   its name, set up by its runtime, given the clients and linked, as when
-  the run started; the entry records the handles, the working directory,
+  the run started; the entry records the files, the working directory,
   the APIs and what the tau exposes as they are now, and when. The box is
   then as it was when the run began: what the agent did in it is gone.
 - **The agent is told** (`reset.ts`, in the preset). Before each step of a
@@ -378,7 +381,7 @@ preset's scope, which each of its sessions' agents has as its parent.
 ## Not yet
 
 - A call and a result are kept whole, however large, in the session's
-  folder; and an `$inout` handle merges into the caller's folder, so what
+  folder; and an `inout` file merges into the caller's folder, so what
   the agent removed there stays.
 - The runs a session that is no tau's started with `tau_run`, and their
   sessions, stay, without their boxes, when the session is archived; `fleet

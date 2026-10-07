@@ -3,7 +3,7 @@
  * on the tau service, as that session's, so it reaches only the runs it
  * started. A run comes as a call, tau's archive, after `start`'s arguments,
  * and goes back as a result, after `finish`'s, with where the caller has its
- * handles in its box, which its client puts the result at, and its
+ * files in its box, which its client puts the result at, and its
  * session's history, if asked for. Its methods take
  * what the box sends, so they check it.
  * @module fleet-ext-tau/tau

@@ -3,10 +3,9 @@
   "files": {
     "list.txt": "buy milk #shop\ncall mum #family\neggs #shop,breakfast\n"
   },
-  "values": {
-    "list": { "$in": "list.txt" },
-    "tag": "shop",
-    "report": { "$out": "out/report.txt" }
+  "call": {
+    "files": { "list": "list.txt", "report": "out/report.txt" },
+    "args": { "tag": "shop" }
   },
   "steps": [
     { "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/package.json" } },

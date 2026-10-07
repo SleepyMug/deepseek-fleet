@@ -6,7 +6,7 @@
  * asks for the agent (./init.ts); watches the run until its agent is
  * done, or its init did the run, has its box pack what it gave back, and records how it ended
  * (./outcome.ts); gives back its result, and where the caller has its
- * handles, for the caller to put what the run gave back there; and cancels
+ * files, for the caller to put what the run gave back there; and cancels
  * the run, and deletes it with its box. It never reads or writes a caller's
  * files, so it serves `fleet`, on the host, which reaches every run, and a
  * session, a tau's from its box or another with `tau_run`, which reaches
@@ -118,7 +118,7 @@ export class TauService {
 
   /**
    * Wait until a run ends, and give back how it did, where the caller has
-   * its handles, and its result's archive, which holds what it gave back for
+   * its files, and its result's archive, which holds what it gave back for
    * them, the same each time; and, if asked, its session's history.
    * @param signal - gives up the wait; the run goes on.
    */

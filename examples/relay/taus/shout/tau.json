@@ -1,7 +1,13 @@
 {
   "description": "Shout a text into a file.",
-  "params": {
-    "text": { "type": "text", "description": "What to shout." },
-    "out": { "type": "file", "mode": "out", "description": "The text in capital letters." }
+  "files": {
+    "out": { "kind": "file", "mode": "out", "description": "The text in capital letters." }
+  },
+  "args": {
+    "type": "object",
+    "properties": {
+      "text": { "type": "string", "description": "What to shout." }
+    },
+    "required": ["text"]
   }
 }

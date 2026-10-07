@@ -14,15 +14,15 @@ import type { Result, Started } from 'fleet-protocol/tau'
 import { ask, receive } from './connection.ts'
 
 /**
- * Start a run of the tau at `tauDir` with `values`: pack its call, which
- * checks the values and the caller's paths against the tau, and send it,
- * titled with the name of the tau's directory.
- * @param cwd - what relative paths in `values` are relative to.
+ * Start a run of the tau at `tauDir` for `call`: pack it, which checks the
+ * call and the caller's paths against the tau, and send it, titled with the
+ * name of the tau's directory.
+ * @param cwd - what relative paths in `call` are relative to.
  * @param project - the folder whose dsh workspace the run's session is in; `cwd` by default.
  */
-export async function startRun(socket: string, tauDir: string, values: unknown, cwd: string, project = cwd): Promise<Started> {
-  const call = packCall(tauDir, values, { cwd })
-  return await ask(socket, { op: 'start', title: basename(call.tauDir), project, targets: call.targets }, call.archive)
+export async function startRun(socket: string, tauDir: string, call: unknown, cwd: string, project = cwd): Promise<Started> {
+  const packed = packCall(tauDir, call, { cwd })
+  return await ask(socket, { op: 'start', title: basename(packed.tauDir), project, targets: packed.targets }, packed.archive)
 }
 
 /**

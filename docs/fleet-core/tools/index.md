@@ -15,7 +15,7 @@ where the session has the tool, since the tool's description says what
 
 | Tool | Takes | Gives |
 |---|---|---|
-| `tau_run` | `{ tau, values?, history? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did; with `history`, a path, the run's session's history written there. Values that do not fit the tau, or a run that cannot start, are a tool error. |
+| `tau_run` | `{ tau, files?, args?, history? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did; with `history`, a path, the run's session's history written there. A call that does not fit the tau, or a run that cannot start, is a tool error. |
 
 ## Design
 
@@ -29,10 +29,11 @@ where the session has the tool, since the tool's description says what
   web UI lists it there.
 - **Its files are the session's,** on the host: the tool packs the run's
   call from the session's working directory, where `tau` and relative paths
-  in `values` resolve, as `fleet` does from its folder, and puts the result
-  at the paths given, as tau's `packCall` and `applyResult` do. The values
-  are tau's docs/spec/values.md: a text, a handle, `{ "$in" | "$out" |
-  "$inout": path }`, or lists and records of these.
+  in `files` resolve, as `fleet` does from its folder, and puts the result
+  at the paths given, as tau's `packCall` and `applyResult` do. The call is
+  tau's docs/spec/calls.md: `files`, a path for each file, or, for an `in`,
+  a list of paths; and `args`, JSON that fits the tau's schema, in whose
+  strings `${name}` is where the run's agent sees the file `name`.
 - **Its history,** if `history` names a path, the session's working
   directory's if relative, is the run's session's history, as a `finish`
   gives it (docs/fleet-core/tau/index.md): dsh's events, one JSON object per

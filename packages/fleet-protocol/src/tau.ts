@@ -21,12 +21,12 @@ export function socketPath(dshHome: string): string {
 }
 
 /**
- * Where the caller has each `$out` and `$inout` handle of a run: its path,
- * absolute, by the handle's JSON Pointer into the values, as tau's
- * `packCall` gives them. The service keeps them, without reading them, and
- * gives them back with the run's result, which the caller puts there.
+ * Where the caller has each `out` and `inout` file of a run: its path,
+ * absolute, by the file's name, as tau's `packCall` gives them. The service
+ * keeps them, without reading them, and gives them back with the run's
+ * result, which the caller puts there.
  */
-export type Targets = { readonly [pointer: string]: string }
+export type Targets = { readonly [name: string]: string }
 
 /** Client to service. Paths are absolute. */
 export type Request =
@@ -72,7 +72,7 @@ export interface Started {
   sessionId: string
   /** The box's container. */
   box: string
-  /** The tau's prompt, expanded with where the box has each handle. */
+  /** The tau's prompt, expanded with where the box has each file. */
   prompt: string
 }
 

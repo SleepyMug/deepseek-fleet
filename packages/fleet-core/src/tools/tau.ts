@@ -35,19 +35,23 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'tau_run',
-    description: 'Run a TAU: a folder with a PROMPT.md, the task, and a tau.json, which declares the values it takes, by parameter, '
-      + 'each with its type and, for a file or a folder, its mode. An agent of its own does the task in a container of its own, '
-      + 'with copies of what it is given, and what it leaves at its `$out` and `$inout` handles is put at your paths once it ends. '
+    description: 'Run a TAU: a folder with a PROMPT.md, the task, and a tau.json, which declares the files it takes, by name, '
+      + 'each with its mode, in, out or inout, and its args, as a JSON Schema. An agent of its own does the task in a container of its own, '
+      + 'with copies of what it is given, and what it leaves at its out and inout files is put at your paths once it ends. '
       + 'Read tau.json first. Waits until the run ends, and returns { sessionId, ok, text, failure? }: the run\'s session, '
       + 'whether it succeeded, its agent\'s final text, and why it failed, if it did. Cancelling the call cancels the run. '
       + 'Several calls run at once.',
     parameters: {
       tau: { type: 'string', required: true, description: 'The TAU\'s folder; a relative path is your working directory\'s.' },
-      values: {
+      files: {
         type: 'json',
-        description: 'The values, by parameter, as tau.json declares them: a text as a string; a file, a folder or a path as a handle, '
-          + '{ "$in": path }, { "$out": path } or { "$inout": path }, in the mode tau.json declares; lists and records of these. '
-          + 'Relative paths are your working directory\'s. None for a TAU that takes none.',
+        description: 'A path for each file tau.json declares, by name; for an in file, a list of paths gives a folder holding each. '
+          + 'Relative paths are your working directory\'s. None for a TAU that takes no files.',
+      },
+      args: {
+        type: 'json',
+        description: 'The args, a JSON object that fits the schema tau.json declares. In any string of them, ${name}, naming a file, '
+          + 'is where the TAU\'s agent sees that file, as in "${site}/index.html". None for a TAU that takes no args.',
       },
       history: {
         type: 'string',
@@ -76,7 +80,7 @@ export function apply(ctx: Context): void {
       const cwd = session?.cwd
       if (session === undefined || cwd === undefined) throw new Error('tau_run works only in a session with a working directory')
       const caller: Caller = { kind: 'session', sessionId: session.id }
-      const call = packCall(resolve(cwd, args.tau), args.values ?? {}, { cwd })
+      const call = packCall(resolve(cwd, args.tau), { files: args.files ?? {}, args: args.args ?? {} }, { cwd })
       const { sessionId } = await ctx.fleetTau.start(caller, { title: basename(call.tauDir), project: cwd, targets: call.targets }, call.archive)
       const cancel = (): void => { ctx.fleetTau.cancel(caller, sessionId).catch(() => {}) }
       exec.signal.addEventListener('abort', cancel, { once: true })

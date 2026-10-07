@@ -1,7 +1,7 @@
 /**
  * The runs of taus, and their boxes (docs/fleet-core/tau/index.md): it
- * checks a run's call, tau's archive of the run's values with the content of
- * its handles, and the tau (tau's docs/spec/serialization.md), keeps it, and
+ * checks a run's call, tau's archive of the run's args with the content of
+ * its files, and the tau (tau's docs/spec/serialization.md), keeps it, and
  * has a box's runtime set the box up from it (fleet-box-runtime/tau/endpoint),
  * which places everything where the box has things, with the tau's APIs
  * linked to the clients of the extensions that implement them (./apis.ts); keeps which box each session has (./registry.ts); starts,
@@ -56,7 +56,7 @@ export interface About {
   title: string
   /** The caller's folder, absolute, unless it is a tau's session, whose runs are in its own project. */
   project?: string
-  /** Where the caller has each `$out` and `$inout` handle, which `finish` gives back. */
+  /** Where the caller has each `out` and `inout` file, which `finish` gives back. */
   targets: Targets
 }
 
@@ -148,11 +148,11 @@ export class TauRuns {
    * Set up a box for a run of a call, and leave it stopped. First the call
    * is checked as it comes, before anything is kept or made of it: read
    * whole, as tau's docs/spec/serialization.md has it, the tau it carries
-   * read from it, its values bound to the tau, and the tau's APIs linked to
+   * read from it, the call bound to the tau, and the tau's APIs linked to
    * the extensions provided. Then the call is kept in the session's folder;
    * the box is created and started, and its runtime sets it up from the call
    * (fleet-box-runtime/tau/endpoint), placing it all where it has things, and
-   * reports the prompt, the handles and where things are; each API's client
+   * reports the prompt, the files and where things are; each API's client
    * is copied in, where the runtime says, and the APIs and what the tau
    * exposes linked; and the session is registered. A failure removes the box
    * and the session's folder.
@@ -181,11 +181,11 @@ export class TauRuns {
     try {
       const read = await readCall(spool(call, join(folder, CALL)))
       if (read.json.tau === undefined) throw new Error('fleet: the call does not carry its tau')
-      // Every blob read, and so the whole call checked, before anything is made of it.
+      // Every content read, and so the whole call checked, before anything is made of it.
       await placeCall(read, { tau: tauDir })
       const tau = loadTau(tauDir)
-      // Where the box places each handle is its own; here, only whether the values fit.
-      tau.bind(read.json.values, { cwd: '/' }, ({ name }) => `/${name}`)
+      // Where the box places each file is its own; here, only whether the call fits.
+      tau.bind({ files: read.json.files, args: read.json.args }, { cwd: '/' }, ({ name }) => `/${name}`)
       return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
     } catch (error) {
       // The tau as the caller names it.
@@ -243,7 +243,7 @@ export class TauRuns {
         prompt: setup.prompt,
         ...setup.init === undefined ? {} : { init: { command: setup.init, dir: setup.cwd } },
         promptRequestId: randomUUID(),
-        handles: setup.handles,
+        files: setup.files,
         targets: about.targets,
         cwd: setup.cwd,
         modules: setup.modules,
@@ -326,7 +326,7 @@ export class TauRuns {
   /**
    * Keep the result of a session's run, which ended as `outcome` says, in
    * the session's folder: for a run that succeeded, as its box packs it from
-   * what the agent left at the places of its `$out` and `$inout` handles
+   * what the agent left at the places of its `out` and `inout` files
    * (fleet-box-runtime/tau/endpoint), failing the run when that does not fit
    * the tau. The result is read again here, and checked against the run,
    * since the box is the agent's: one that does not fit fails the run too. A
@@ -335,7 +335,7 @@ export class TauRuns {
    */
   async pack(sessionId: string, outcome: Result): Promise<Result> {
     return await this.serial(sessionId, async () => {
-      const { handles } = await this.registry.get(sessionId)
+      const { files } = await this.registry.get(sessionId)
       const folder = this.registry.folder(sessionId)
       await mkdir(folder, { recursive: true, mode: 0o700 })
       const file = join(folder, RESULT)
@@ -344,10 +344,10 @@ export class TauRuns {
         try {
           const box = await this.running(sessionId)
           await box.pipe([HELPER_NODE, TAU_ENTRY, 'pack', JSON.stringify({ outcome })], { output: createWriteStream(file, { mode: 0o600 }) })
-          const { json, blobs } = await readResult(createReadStream(file))
+          const { json, contents } = await readResult(createReadStream(file))
           if (json.text !== outcome.text) throw new Error('its text is not the agent\'s')
-          checkResult(json, handles)
-          for await (const blob of blobs) for await (const _ of blob.entries);
+          checkResult(json, files)
+          for await (const content of contents) for await (const _ of content.entries);
           return json.failure === undefined ? { ok: json.ok, text: json.text } : { ok: json.ok, text: json.text, failure: json.failure }
         } catch (error) {
           ended = { ok: false, text: outcome.text, failure: `could not get back what the run gave: ${error instanceof Error ? error.message : String(error)}` }
@@ -710,7 +710,7 @@ export class TauRuns {
       const { linked } = accepted
       await this.registry.put({
         ...entry,
-        handles: setup.handles,
+        files: setup.files,
         cwd: setup.cwd,
         modules: setup.modules,
         apis: linked.apis.map(api => api.name),
@@ -780,7 +780,7 @@ class Report extends Writable {
       throw new Error(`fleet: the box's runtime reported something else than JSON: ${text.slice(0, 200)}`)
     }
     const paths = [setup.cwd, setup.modules, setup.self, setup.clients]
-    if (typeof setup.prompt !== 'string' || !Array.isArray(setup.handles) || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
+    if (typeof setup.prompt !== 'string' || !Array.isArray(setup.files) || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
       throw new Error('fleet: the box\'s runtime reported no setup')
     }
     return setup as Setup

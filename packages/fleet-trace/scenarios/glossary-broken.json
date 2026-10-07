@@ -1,7 +1,7 @@
 {
   "tau": "../../../examples/glossary",
   "files": { "glossary.json": "{ \"tau\": \"An agent packaged as a directory.\",\n}\n" },
-  "values": { "glossary": { "$in": "glossary.json" }, "term": "TAU", "definition": { "$out": "out/tau.txt" } },
+  "call": { "files": { "glossary": "glossary.json", "definition": "out/tau.txt" }, "args": { "term": "TAU" } },
   "steps": [
     { "tool": "read", "args": { "file_path": "/tau/in/glossary.json" } },
     { "tool": "write", "args": { "file_path": "/tau/out/tau.txt", "content": "An agent packaged as a directory.\n" } }
