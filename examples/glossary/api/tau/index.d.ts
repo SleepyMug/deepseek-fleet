@@ -7,10 +7,22 @@
 /** A JSON value. */
 export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json };
 
-/** A call of a tau (docs/spec/calls.md): a path for each of its files, and its args. */
+/**
+ * A file of a call given with its mode: one the tau does not declare, which the call gives the
+ * agent beside those it declares, or one it does.
+ */
+export interface CallFile {
+	readonly mode: "in" | "out" | "inout";
+	/** Its path, or, for an `in` file, a list of paths. */
+	readonly path: string | readonly string[];
+	/** What it is, a file or a directory; without it, either. */
+	readonly kind?: "file" | "dir";
+}
+
+/** A call of a tau (docs/spec/calls.md): a path for each of its files, extra files, and its args. */
 export interface Call {
-	/** A path for each file, by name, or, for an `in` file, a list of paths. */
-	readonly files?: { readonly [name: string]: string | readonly string[] };
+	/** A path for each file, by name, or, for an `in` file, a list of paths, or the file with its mode. */
+	readonly files?: { readonly [name: string]: string | readonly string[] | CallFile };
 	/** The args, which fit the tau's schema. */
 	readonly args?: { readonly [name: string]: Json };
 }
@@ -25,10 +37,13 @@ export interface Result {
 	readonly failure?: string;
 }
 
-/** Where this agent sees each of this run's files, by name. */
+/** Where this agent sees each of this run's files, by name, extra files included. */
 export declare function files(): { readonly [name: string]: string };
 
-/** This run's args, each `${name}` naming a file, and `${self}`, expanded. */
+/**
+ * This run's args, each `${name}` naming a file, and `${self}`, expanded, and each `${name}`
+ * preceded by `$` with one `$` less.
+ */
 export declare function args(): { readonly [name: string]: Json };
 
 /**

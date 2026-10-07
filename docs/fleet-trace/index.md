@@ -53,6 +53,10 @@ A scenario is JSON, its paths relative to its file, such as
   API, or the session, with `tau_run`, each `{ match, steps, final }`, for
   the run whose prompt holds the phrase `match`. `scenarios/relay.json` runs `examples/relay`, whose
   program runs the tau it holds, `taus/shout`, which writes the report.
+  `scenarios/best-of.json` runs `examples/best-of`, given a shout tau of the
+  caller's folder and the report as extra files, and a call to make, which
+  its program makes twice at once, each run with an `out` of its own, and
+  keeps one; the call's `$${out}` reaches each shout as its own place.
 
 `scenarios/glossary.json` runs `examples/glossary`, whose init defines a
 term its glossary has without the model; `scenarios/glossary-broken.json`

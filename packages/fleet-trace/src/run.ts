@@ -37,7 +37,7 @@ export interface Scenario {
   /** The caller's folder: each file by its relative path, with its text. */
   files?: Record<string, string>
   /** The run's call, its files and args, as `fleet start` sends them; relative paths are the caller's folder's. */
-  call?: { files?: Record<string, string | string[]>; args?: Record<string, unknown> }
+  call?: { files?: Record<string, string | string[] | { path: string | string[] }>; args?: Record<string, unknown> }
   /** The model's tool calls, in order, one per turn. */
   steps: Step[]
   /** The model's last answer, after the last step. */
@@ -92,7 +92,8 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     if (scenario.tau !== undefined) {
       const call = scenario.call ?? {}
       // The folder of each file's path, where an `out` goes.
-      for (const path of Object.values(call.files ?? {}).flat()) mkdirSync(dirname(resolve(work, path)), { recursive: true })
+      const paths = Object.values(call.files ?? {}).flatMap(file => typeof file === 'object' && !Array.isArray(file) ? file.path : file)
+      for (const path of paths) mkdirSync(dirname(resolve(work, path)), { recursive: true })
       const started = await failing('start', startRun(socket, resolve(dirname(scenarioFile), scenario.tau), call, work))
       model.prompt = started.prompt.trim()
       const ended = await Promise.race([failing('finish', finishRun(socket, started.sessionId)), exited, interrupted])

@@ -32,8 +32,10 @@ where the session has the tool, since the tool's description says what
   in `files` resolve, as `fleet` does from its folder, and puts the result
   at the paths given, as tau's `packCall` and `applyResult` do. The call is
   tau's docs/spec/calls.md: `files`, a path for each file, or, for an `in`,
-  a list of paths; and `args`, JSON that fits the tau's schema, in whose
-  strings `${name}` is where the run's agent sees the file `name`.
+  a list of paths, and each extra file, one the tau does not declare, with
+  its mode, `{ mode, path, kind? }`; and `args`, JSON that fits the tau's
+  schema, in whose strings `${name}` is where the run's agent sees the file
+  `name`, and `$${name}` reaches it as `${name}`, for a run it makes.
 - **Its history,** if `history` names a path, the session's working
   directory's if relative, is the run's session's history, as a `finish`
   gives it (docs/fleet-core/tau/index.md): dsh's events, one JSON object per

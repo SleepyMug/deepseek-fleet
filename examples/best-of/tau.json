@@ -1,0 +1,18 @@
+{
+  "description": "Make several runs of a TAU with one call, each leaving what it makes in a folder of its own, and keep the best.",
+  "args": {
+    "type": "object",
+    "properties": {
+      "tau": { "type": "string", "description": "The TAU to run: its folder, which a caller gives as an extra in file, named here as \"${name}\"." },
+      "runs": { "type": "integer", "minimum": 1, "description": "How many runs to make." },
+      "call": {
+        "type": "object",
+        "properties": { "files": { "type": "object" }, "args": { "type": "object" } },
+        "additionalProperties": false,
+        "description": "The call to make: each path names a file given as an extra file, as \"${name}\", and a placeholder meant for the TAU's agent takes one $ more, as \"$${name}\"."
+      },
+      "judge": { "type": "string", "description": "What makes a run the best." }
+    },
+    "required": ["tau", "runs", "call", "judge"]
+  }
+}

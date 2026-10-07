@@ -46,12 +46,15 @@ export function apply(ctx: Context): void {
       files: {
         type: 'json',
         description: 'A path for each file tau.json declares, by name; for an in file, a list of paths gives a folder holding each. '
+          + 'A file tau.json does not declare, an extra file, which the args name, is given with its mode, '
+          + 'as { "mode": "in", "path": "notes.md" }, or "out" or "inout", and optionally "kind", "file" or "dir". '
           + 'Relative paths are your working directory\'s. None for a TAU that takes no files.',
       },
       args: {
         type: 'json',
         description: 'The args, a JSON object that fits the schema tau.json declares. In any string of them, ${name}, naming a file, '
-          + 'is where the TAU\'s agent sees that file, as in "${site}/index.html". None for a TAU that takes no args.',
+          + 'is where the TAU\'s agent sees that file, as in "${site}/index.html", and a $ before one escapes it once, so "$${site}" '
+          + 'reaches the agent as "${site}", for a run it makes. None for a TAU that takes no args.',
       },
       history: {
         type: 'string',

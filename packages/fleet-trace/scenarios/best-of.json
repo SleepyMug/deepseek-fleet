@@ -1,0 +1,40 @@
+{
+  "tau": "../../../examples/best-of",
+  "files": {
+    "shout/PROMPT.md": "Write ${text} in capital letters to ${out}, and nothing else.\n",
+    "shout/tau.json": "{\"files\": {\"out\": {\"kind\": \"file\", \"mode\": \"out\", \"description\": \"The text in capital letters.\"}}, \"args\": {\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}}\n"
+  },
+  "call": {
+    "files": {
+      "inner": { "mode": "in", "kind": "dir", "path": "shout" },
+      "report": { "mode": "out", "kind": "file", "path": "out/report.txt" }
+    },
+    "args": {
+      "tau": "${inner}",
+      "runs": 2,
+      "judge": "the shout that reads best",
+      "call": { "files": { "out": "${report}" }, "args": { "text": "where $${out} is" } }
+    }
+  },
+  "steps": [
+    {
+      "tool": "bash",
+      "args": {
+        "command": "cd /tau/self; node - <<'EOF'\nimport { mkdirSync, readFileSync } from 'node:fs'\nimport { args, run } from '@api/tau'\n\nconst { tau, runs, call } = args() as { tau: string; runs: number; call: { files: { out: string }; args: object } }\nconst ran = await Promise.all(Array.from({ length: runs }, async (_, i) => {\n  const out = `/tmp/run-${i + 1}/report.txt`\n  mkdirSync(`/tmp/run-${i + 1}`, { recursive: true })\n  const result = await run(tau, { files: { ...call.files, out }, args: call.args })\n  return { run: i + 1, ...result, left: result.ok ? readFileSync(out, 'utf8') : null }\n}))\nconsole.log(JSON.stringify(ran, null, 2))\nEOF",
+        "description": "Run the TAU twice at once, each with its own out file"
+      }
+    },
+    {
+      "tool": "bash",
+      "args": { "command": "cp /tmp/run-1/report.txt /tau/out/report.txt", "description": "Keep the first run's shout" }
+    }
+  ],
+  "final": "Kept run 1: both runs shouted alike, so the first.",
+  "runs": [
+    {
+      "match": "Write where /tau/out/report.txt is in capital letters",
+      "steps": [{ "tool": "write", "args": { "file_path": "/tau/out/report.txt", "content": "WHERE /TAU/OUT/REPORT.TXT IS\n" } }],
+      "final": "Shouted."
+    }
+  ]
+}

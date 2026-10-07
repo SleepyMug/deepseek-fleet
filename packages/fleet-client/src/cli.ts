@@ -13,12 +13,12 @@ import { loadTau } from '@sleepymug/tau'
 import type { Result, RunStatus, Started } from 'fleet-protocol/tau'
 import { ConnectionLost, NoService, ask, defaultSocket } from './connection.ts'
 import { finishRun, startRun } from './runs.ts'
-import { UsageError, parseCall } from './call.ts'
+import { MODE_OPTIONS, type ModedFiles, UsageError, parseCall } from './call.ts'
 
 const USAGE = `Usage: fleet <command>
 
 Commands:
-  start <tau-dir> [<name>=<value> | <name>:=<json>]...
+  start <tau-dir> [<call>]...
                          start a run of the tau with this call, and print
                          its session's id, then the tau's prompt; the web UI
                          lists the session under this folder
@@ -32,7 +32,7 @@ Commands:
                          <file>, an event of dsh's per line, failed or not
   cancel <session-id>    cancel the run's turn, which ends the run
   delete <session-id>    archive the run's session, remove its box, and forget it
-  run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
+  run [--history <file>] <tau-dir> [<call>]...
                          start a run and finish it, as finish does; Ctrl-C
                          cancels the run, and Ctrl-C again leaves it running
 
@@ -40,12 +40,17 @@ A run is running until its agent is done, then ended, and finished once
 finish has given back how it ended, which it does again each time, putting
 what the run gave back at its out and inout files' paths again.
 
-Calls: <name>=<value> gives the file <name> the path <value>, when tau.json
-declares that file, and else the arg <name> the string <value>. <name>:=<json>
-gives either as JSON: a file a path, or, for an in file, a list of paths; an
-arg any JSON, as tau's docs/spec/calls.md has them. Relative paths are this
+Calls: each <call> is <name>=<value>, <name>:=<json>, or --in, --out or
+--inout, then <name>=<path> or <name>:=<json>. <name>=<value> gives the file
+<name> the path <value>, when tau.json declares that file, and else the arg
+<name> the string <value>. <name>:=<json> gives either as JSON: a file a path,
+or, for an in file, a list of paths; an arg any JSON, as tau's
+docs/spec/calls.md has them. --in, --out and --inout give a file with that
+mode, which is how a call gives the tau's agent a file tau.json does not
+declare. Relative paths are this
 folder's. In a string of the args, \${<file>} is where the tau's agent sees
-that file, as in 'start=\${site}/index.html'.
+that file, as in 'start=\${site}/index.html', and \$\${<file>} passes on
+\${<file>}, for a run the agent makes.
 
 The tau service listens on $DSH_HOME/fleet/tau.sock, ~/.dsh/fleet/tau.sock
 when DSH_HOME is not set.
@@ -58,7 +63,8 @@ const HISTORY = { history: { type: 'string' } } as const
 
 const commands: Record<string, (args: string[]) => Promise<void>> = {
   async start(args) {
-    const started = await start(parseArgs({ args, allowPositionals: true }).positionals)
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: MODE_OPTIONS })
+    const started = await start(positionals, values)
     process.stdout.write(`${started.sessionId}\n${started.prompt}${started.prompt.endsWith('\n') ? '' : '\n'}`)
   },
   async list(args) {
@@ -83,8 +89,8 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     await ask(socket, { op: 'delete', sessionId: sessionOf('delete', args) })
   },
   async run(args) {
-    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: HISTORY })
-    const { sessionId } = await start(positionals)
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { ...HISTORY, ...MODE_OPTIONS } })
+    const { sessionId } = await start(positionals, values)
     process.stderr.write(`fleet: started ${sessionId}\n`)
     let cancelling = false
     const interrupt = (): void => {
@@ -103,11 +109,11 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
 }
 
 /** Start a run of the tau a command line names, with the call it gives. */
-async function start(positionals: string[]): Promise<Started> {
+async function start(positionals: string[], moded: ModedFiles): Promise<Started> {
   const [dir, ...callArgs] = positionals
   if (dir === undefined) throw new UsageError('give a tau directory, then its files and args')
   const tau = loadTau(dir)
-  return await startRun(socket, dir, parseCall(callArgs, tau.files), process.cwd())
+  return await startRun(socket, dir, parseCall(callArgs, tau.files, moded), process.cwd())
 }
 
 /** The one session's id a command takes. */

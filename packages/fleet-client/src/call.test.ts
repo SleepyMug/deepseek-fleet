@@ -38,3 +38,19 @@ test('a mistaken argument is a usage error', () => {
     assert.throws(() => parseCall(args, FILES), (error: unknown) => error instanceof UsageError && message.test(error.message))
   }
 })
+
+test('--in, --out and --inout give a file with its mode, an extra file or a declared one', () => {
+  const moded = { in: ['guide=g.md', 'drafts:=["a.md","b.md"]'], out: ['best=out/best.md'], inout: ['site=s'] }
+  assert.deepEqual(parseCall(['notes=a.md', 'start=$${guide}'], FILES, moded), {
+    files: {
+      notes: 'a.md',
+      guide: { mode: 'in', path: 'g.md' },
+      drafts: { mode: 'in', path: ['a.md', 'b.md'] },
+      best: { mode: 'out', path: 'out/best.md' },
+      site: { mode: 'inout', path: 's' },
+    },
+    args: { start: '$${guide}' },
+  })
+  assert.throws(() => parseCall(['guide=x'], FILES, { in: ['guide=g.md'] }), (error: unknown) => error instanceof UsageError && /guide is given twice/u.test(error.message))
+  assert.throws(() => parseCall([], FILES, { out: ['best'] }), (error: unknown) => error instanceof UsageError && /--out best is neither --out <name>=<value>/u.test(error.message))
+})

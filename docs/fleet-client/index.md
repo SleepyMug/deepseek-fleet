@@ -7,7 +7,7 @@ the fleet host (docs/fleet-core/tau/index.md). It loads no dsh module.
 ## Provides
 
 ```
-fleet start <tau-dir> [<name>=<value> | <name>:=<json>]...
+fleet start <tau-dir> [<call>]...
                        start a run of the tau with this call, and print its
                        session's id, then the tau's prompt; the web UI lists
                        the session under this folder
@@ -20,7 +20,7 @@ fleet finish [--history <file>] <session-id>
                        run's session's history to <file>
 fleet cancel <session-id>    cancel the run's turn, which ends the run
 fleet delete <session-id>    archive the run's session, remove its box, and forget it
-fleet run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
+fleet run [--history <file>] <tau-dir> [<call>]...
                        start a run and finish it, as finish does; Ctrl-C
                        cancels the run, and Ctrl-C again leaves it running
 ```
@@ -54,11 +54,17 @@ fleet run [--history <file>] <tau-dir> [<name>=<value> | <name>:=<json>]...
   - `<name>=<value>` gives the file `<name>` the path `<value>`, when the
     tau declares that file, and else the arg `<name>` the string `<value>`;
   - `<name>:=<json>` gives either as JSON: a file a path, or, for an `in`,
-    a list of paths; an arg any JSON.
+    a list of paths; an arg any JSON;
+  - `--in`, `--out` or `--inout`, then `<name>=<path>` or `<name>:=<json>`,
+    gives a file with that mode, `{"mode", "path"}`, which is how a call
+    gives the tau's agent an extra file, one the tau does not declare, as
+    `fleet run best-of --in inner=shout --out report=out/report.txt …`.
 
-  A name the tau does not declare as a file passes as an arg, for the
-  tau's schema to take or refuse. In a string of the args, `${<file>}` is
-  where the tau's agent sees that file, as in `'start=${site}/index.html'`.
+  A name the tau does not declare as a file passes as an arg, unless an
+  option gives it a mode, for the tau's schema to take or refuse. In a
+  string of the args, `${<file>}` is where the tau's agent sees that file,
+  as in `'start=${site}/index.html'`, and `$${<file>}` passes `${<file>}`
+  on, for a run the agent makes.
 - **Calls and results** (`runs.ts`, exported as `fleet-client/runs`, which
   fleet-trace uses too). `start` packs the run's call here, with tau's
   `packCall`: it reads the tau, checks the call and the paths it names
