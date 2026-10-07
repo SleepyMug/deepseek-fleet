@@ -2,8 +2,8 @@
  * The runtime of a tau's run in its box (tau's docs/spec/library.md), which
  * owns where the run has its things there (./layout.ts). The host has it set
  * the box up from the run's call, which the host checked first: it places
- * the tau and the content of the files, binds the call, which expands the
- * args and the prompt, keeps what it needs of the run, puts tau's TAU.md, as the
+ * the tau, checks the call against it, places the content of the files,
+ * expands the args and the prompt with where it placed each, keeps what it needs of the run, puts tau's TAU.md, as the
  * runtime's tau library has it, beside them, and reports to the host what
  * the host needs: the prompt, and where things are. Once the run ended well,
  * the host has it pack the run's result, which the host reads and checks
@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
-import { loadTau, type BoundFile, type Json } from '@sleepymug/tau'
+import { loadTau, type CheckedCall, type Json } from '@sleepymug/tau'
 import { packResult, placeCall, readCall, type Result } from '@sleepymug/tau/call'
 import { CLIENTS, FOLDERS, MODULES, PRIMER, RUN, SELF, placer } from './layout.ts'
 
@@ -35,27 +35,26 @@ export interface Setup {
   self: string
   /** The folder for the clients of the APIs, each in a folder by the API's name. */
   clients: string
-  /** Each file of the run, with where the box has it. */
-  files: BoundFile[]
   /** The tau's init, its command, its placeholders expanded; none for a tau without one. */
   init?: string
 }
 
-/** What the runtime keeps of a run in its box. */
+/** What the runtime keeps of a run in its box: each file, where the box has each, and the args, expanded. */
 interface Kept {
-  files: BoundFile[]
+  files: CheckedCall['files']
+  places: { [name: string]: string }
   args: { [name: string]: Json }
 }
 
 /**
  * Set a box up for a run of a call: make its folders, place the tau the
- * call carries, bind the call, place the content of each file, make each
+ * call carries, check the call, place the content of each file, make each
  * `out` file's folder for a directory, and put TAU.md there.
  * @param root - where the box's paths are, the box's root unless a test has them elsewhere.
  */
 export async function setup(call: AsyncIterable<Uint8Array>, root = '/'): Promise<Setup> {
   const at = (path: string): string => join(root, path)
-  // Kept, to be read twice: for the tau, then, once the call is bound, for the files.
+  // Kept, to be read twice: for the tau, then, once the call is checked, for the files.
   const scratch = await mkdtemp(join(tmpdir(), 'fleet-call-'))
   try {
     const file = join(scratch, 'call.tar')
@@ -64,14 +63,18 @@ export async function setup(call: AsyncIterable<Uint8Array>, root = '/'): Promis
     if (read.json.tau === undefined) throw new Error('the call does not carry its tau')
     for (const folder of [...Object.values(FOLDERS), CLIENTS]) await mkdir(at(folder), { recursive: true })
     await placeCall(read, { tau: at(SELF) })
-    const run = loadTau(at(SELF)).bind({ files: read.json.files, args: read.json.args }, { cwd: '/' }, placer(), SELF)
-    await placeCall(await readCall(createReadStream(file)), { files: run.files.map(bound => ({ ...bound, view: at(bound.view) })) })
-    for (const bound of run.files) if (bound.mode === 'out' && bound.kind === 'dir') await mkdir(at(bound.view), { recursive: true })
-    const kept: Kept = { files: [...run.files], args: { ...run.args } }
+    const tau = loadTau(at(SELF))
+    const checked = tau.check(read.json)
+    const place = placer()
+    const places = Object.fromEntries(Object.entries(checked.files).map(([name, file]) => [name, place(file)]))
+    const run = tau.expand(checked, places, SELF)
+    await placeCall(await readCall(createReadStream(file)), { places: rooted(places, at) })
+    for (const [name, { mode, kind }] of Object.entries(checked.files)) if (mode === 'out' && kind === 'dir') await mkdir(at(places[name]), { recursive: true })
+    const kept: Kept = { files: { ...checked.files }, places, args: { ...run.args } }
     await writeFile(at(RUN), `${JSON.stringify(kept)}\n`)
     await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), at(PRIMER))
     return {
-      prompt: run.prompt, cwd: FOLDERS.inout, modules: MODULES, self: SELF, clients: CLIENTS, files: kept.files,
+      prompt: run.prompt, cwd: FOLDERS.inout, modules: MODULES, self: SELF, clients: CLIENTS,
       ...run.init === undefined ? {} : { init: run.init },
     }
   } finally {
@@ -86,6 +89,11 @@ export async function setup(call: AsyncIterable<Uint8Array>, root = '/'): Promis
  * @param root - where the box's paths are, the box's root unless a test has them elsewhere.
  */
 export async function pack(outcome: Result, root = '/'): Promise<AsyncIterable<Uint8Array>> {
-  const { files } = JSON.parse(await readFile(join(root, RUN), 'utf8')) as Kept
-  return packResult(outcome, files, ({ view }) => join(root, view))
+  const { files, places } = JSON.parse(await readFile(join(root, RUN), 'utf8')) as Kept
+  return packResult(outcome, { files }, rooted(places, path => join(root, path)))
+}
+
+/** Each place, where `at` has it. */
+function rooted(places: { [name: string]: string }, at: (path: string) => string): { [name: string]: string } {
+  return Object.fromEntries(Object.entries(places).map(([name, place]) => [name, at(place)]))
 }

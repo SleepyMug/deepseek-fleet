@@ -85,9 +85,10 @@ preset's scope, which each of its sessions' agents has as its parent.
      `$DSH_HOME/fleet/taus/<session id>/call.tar`, as it reads it: tau's
      `readCall` checks it whole, as tau's docs/spec/serialization.md has
      it, and the tau it carries is extracted beside it, a call without one
-     being refused. `loadTau(tau).bind({ files, args }, …)` checks the call
-     against `tau.json`: each file's mode and kind, and the args against the
-     schema; where the box places each file is the box's. Then `apis.ts`
+     being refused. `loadTau(tau).check(json)` checks the call against
+     `tau.json`: each file's mode and kind, each extra file's name, and the
+     args against the schema, and gives the files the registry keeps; where
+     the box places each file is the box's. Then `apis.ts`
      links the tau's APIs:
      `loadApis`, the extension that implements each one, from
      `ctx.fleetExts`, and `checkImplementation` against its client; then
@@ -97,10 +98,11 @@ preset's scope, which each of its sessions' agents has as its parent.
      session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
      runtime set it up from the call (fleet-box-runtime's tau runtime, below),
-     which reports the prompt, the files and where things are; copies
+     which reports the prompt and where things are; copies
      each API's client in, where the runtime says; has the helper link the
      APIs and what the tau exposes (`apis.link`); and stops it.
-  3. It writes the registry entry, with what the runtime reported, and
+  3. It writes the registry entry, with the files it checked and what the
+     runtime reported, and
      removes the tau it read; the call stays until the run is deleted.
 
   A failure removes the box and the session's folder. A tau's session's
@@ -110,15 +112,15 @@ preset's scope, which each of its sessions' agents has as its parent.
   library, in the image, which owns where a run has its things in its box.
   The host runs it in a run's box with `docker exec` (`Box.pipe`), since
   the helper's lines of JSON would carry the archives only as text:
-  - `setup` reads the call on its stdin, checked again, places the tau and
-    the content of the `in` and `inout` files, binds the call, which
-    expands the args, the prompt, and the tau's init, if it has one, makes
-    each `out` folder, keeps the files and the args the agent sees in
-    `/tau/.run.json`, puts tau's `TAU.md`, as its tau library has it, at
-    `/tau/TAU.md`, and reports `{ prompt, cwd, modules, self, clients,
-    files, init? }`: the prompt, the agent's working directory, where the
-    APIs and the clients go, where the tau is, each file with its place,
-    and the init. It runs before the agent, on a
+  - `setup` reads the call on its stdin, places the tau, checks the call
+    again (`check`), gives each file its place (./layout.ts), places the
+    content of the `in` and `inout` files there, expands the args, the
+    prompt, and the tau's init, if it has one, with the places (`expand`),
+    makes each `out` folder, keeps the files, their places and the args the
+    agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its tau library
+    has it, at `/tau/TAU.md`, and reports `{ prompt, cwd, modules, self,
+    clients, init? }`: the prompt, the agent's working directory, where the
+    APIs and the clients go, where the tau is, and the init. It runs before the agent, on a
     call the host checked, and runs no code of the tau's, so the host takes
     its report as its own.
   - `pack` writes the result on its stdout, from what the agent left at
@@ -395,7 +397,7 @@ preset's scope, which each of its sessions' agents has as its parent.
   archived sessions; `agent/pre-step`, `@deepseek-ai/dsh-llm`'s
   `createUserMessage` and `@deepseek-ai/dsh-session-projection`, for the
   notice.
-- `@sleepymug/tau`: `loadTau`, `bind`, `loadApis`, `checkImplementation`,
+- `@sleepymug/tau`: `loadTau`, `check`, `expand`, `loadApis`, `checkImplementation`,
   `loadExposed`; and `@sleepymug/tau/call`: `readCall`, `placeCall`,
   `readResult`, `checkResult`, `writeResult`.
 - `ctx.fleetExts` (fleet-core/ext).

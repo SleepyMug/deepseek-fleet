@@ -54,9 +54,9 @@ export interface RunOptions {
   readonly history?: string
 }
 
-/** What the box's runtime kept of this run when it set the box up. */
+/** What the box's runtime kept of this run when it set the box up: where the agent sees each file, and the args, expanded. */
 interface Kept {
-  files: readonly { name: string; view: string }[]
+  places: { readonly [name: string]: string }
   args: { readonly [name: string]: Json }
 }
 
@@ -69,7 +69,7 @@ function read(): Kept {
 
 /** Where this agent sees each of this run's files, by name, extra files included. */
 export function files(): { readonly [name: string]: string } {
-  return Object.fromEntries(read().files.map(({ name, view }) => [name, view]))
+  return read().places
 }
 
 /**
@@ -115,7 +115,7 @@ function host(history: string | undefined): Runtime {
  * @throws when the run cannot start, such as when `agent` is not a tau, or the call does not fit it.
  */
 export function run(agent: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
-  return runTau(host(options.history), agent, call, { cwd: process.cwd() }, signal)
+  return runTau(host(options.history), agent, call, process.cwd(), signal)
 }
 
 /** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */

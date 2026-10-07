@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
-import type { BoundFile } from '@sleepymug/tau'
+import type { CheckedCall } from '@sleepymug/tau'
 import { applyResult, packCall, writeCall, writeResult, type Result } from '@sleepymug/tau/call'
 import { DEFAULT_IMAGE } from 'fleet-box-runtime/layout'
 import { pack, setup } from 'fleet-box-runtime/tau/endpoint'
@@ -82,7 +82,7 @@ class FakeBoxes implements Boxes {
   readonly existing = new Set<string>()
   failing: string | undefined
   left: Left = { ...LEFT }
-  tamper: ((outcome: Result, files: BoundFile[]) => AsyncIterable<Uint8Array>) | undefined
+  tamper: ((outcome: Result, files: CheckedCall['files']) => AsyncIterable<Uint8Array>) | undefined
   /** How a process a box spawns, such as a run's init, ends, after writing what it writes: by default at once, with 0, writing nothing. */
   spawn: (params: { argv: string[]; cwd: string }, write: (stream: 'stdout' | 'stderr', text: string) => void) => Promise<{ code: number | null; signal: string | null }> =
     async () => ({ code: 0, signal: null })
@@ -143,7 +143,7 @@ class FakeBoxes implements Boxes {
           return
         }
         const { outcome } = JSON.parse(json ?? '') as { outcome: Result }
-        const { files } = JSON.parse(await readFile(join(root, '/tau/.run.json'), 'utf8')) as { files: BoundFile[] }
+        const { files } = JSON.parse(await readFile(join(root, '/tau/.run.json'), 'utf8')) as { files: CheckedCall['files'] }
         for (const [path, text] of Object.entries(this.left).sort(([a], [b]) => a.localeCompare(b))) {
           const at = join(root, path)
           if (text === null) await mkdir(at, { recursive: true })
@@ -193,7 +193,7 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
 
 /** A call of the tau at `tauDir`, packed in `cwd`, as `fleet` sends it, with what it says of itself. */
 function callOf(tauDir: string, call: unknown, cwd: string): { about: { title: string; project: string; targets: Record<string, string> }; archive: AsyncIterable<Uint8Array> } {
-  const packed = packCall(tauDir, call, { cwd })
+  const packed = packCall(tauDir, call, cwd)
   return { about: { title: basename(packed.tauDir), project: cwd, targets: packed.targets }, archive: packed.archive }
 }
 
@@ -318,12 +318,12 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
   assert.equal(entry.promptedAt, undefined)
   assert.deepEqual(entry.apis, ['notes'])
   assert.deepEqual(entry.exposed, [{ specifier: '@api/notes' }])
-  assert.deepEqual(entry.files.map(file => [file.name, file.mode, file.kind, file.base, file.host, file.view]), [
-    ['notes', 'in', 'file', 'notes.md', undefined, '/tau/in/notes.md'],
-    ['site', 'inout', 'dir', 'site', undefined, '/tau/workspace/site'],
-    ['report', 'out', 'file', 'report.md', undefined, '/tau/out/report.md'],
-    ['pages', 'out', 'dir', 'pages', undefined, '/tau/out/pages'],
-  ])
+  assert.deepEqual(entry.files, {
+    notes: { mode: 'in', kind: 'file', base: 'notes.md' },
+    site: { mode: 'inout', kind: 'dir', base: 'site' },
+    report: { mode: 'out', kind: 'file', base: 'report.md' },
+    pages: { mode: 'out', kind: 'dir', base: 'pages' },
+  })
   assert.deepEqual(entry.targets, { site: join(work, 'site'), report: join(work, 'out', 'report.md'), pages: join(work, 'out', 'pages') })
   assert.equal(entry.cwd, '/tau/workspace')
   assert.equal(entry.modules, '/tau/node_modules')
@@ -348,7 +348,7 @@ test('start refuses a call that breaks the spec, carries no tau, or that does no
   const about = { title: 'tau', project: work, targets: {} }
   const whole = await bytesOf(callOf(tauDir, call, work).archive)
   await assert.rejects(service.start(HOST, about, once(whole.subarray(0, 1024))), /^Error: the call breaks the spec: /u)
-  await assert.rejects(service.start(HOST, about, packCall(tauDir, call, { cwd: work }, { tau: false }).archive), /^Error: fleet: the call does not carry its tau$/u)
+  await assert.rejects(service.start(HOST, about, packCall(tauDir, call, work, { tau: false }).archive), /^Error: fleet: the call does not carry its tau$/u)
   const unfit = writeCall({ files: {}, args: { style: 'terse' }, tau: true }, [{ from: tauDir }])
   await assert.rejects(service.start(HOST, about, unfit), /^Error: the call does not fit the tau:\n {2}no path for notes, site, report, pages$/u)
   // A tau's problems name it by the run's title.
@@ -491,7 +491,7 @@ test('a run whose agent did not leave what its tau declares fails, and gives bac
   const result = await finish(service, HOST, sessionId)
   assert.equal(result.ok, false)
   assert.equal(result.text, 'Done.')
-  assert.match(result.failure ?? '', /^the run did not leave what the tau declares:\n {2}report: \S+\/tau\/out\/report\.md does not exist$/u)
+  assert.match(result.failure ?? '', /^the run did not leave what the call asks:\n {2}report: \S+\/tau\/out\/report\.md does not exist$/u)
   assert.deepEqual(await readdir(join(work, 'out')), [])
   assert.deepEqual(await readdir(join(work, 'site')), ['index.md'])
 })
@@ -627,7 +627,7 @@ test('a tau\'s init runs in the agent\'s working directory before the agent, its
   const { sessionId: bare } = await startIn(service, HOST, tauDir, call, work)
   const failed = await finish(service, HOST, bare)
   assert.equal(failed.ok, false)
-  assert.match(String(failed.failure), /did not leave what the tau declares/u)
+  assert.match(String(failed.failure), /did not leave what the call asks/u)
 })
 
 test('a tau\'s init exiting 100 has the agent run on the prompt as it is, and any other ending tells the agent it failed', async (t) => {
@@ -1114,7 +1114,7 @@ test('a real box places a call\'s files and the tau, and packs what its agent le
     const exec = async (script: string): Promise<void> => { assert.equal((await started?.request('exec', { argv: ['sh', '-c', script] }))?.code, 0) }
     await exec('echo Added. > /tau/out/report.md && echo A > /tau/out/pages/a.md && ln -s /etc/passwd /tau/out/pages/leak')
     const leaked = await service.tauRuns.pack(sessionId, { ok: true, text: 'Done.' })
-    assert.match(leaked.failure ?? '', /^the run did not leave what the tau declares:\n {2}pages: \/tau\/out\/pages\/leak: leads to the absolute path \/etc\/passwd/u)
+    assert.match(leaked.failure ?? '', /^the run did not leave what the call asks:\n {2}pages: \/tau\/out\/pages\/leak: leads to the absolute path \/etc\/passwd/u)
     // What the agent leaves is packed in the box, read and checked here, and put at the caller's paths by the caller.
     await exec('rm /tau/out/pages/leak && ln -s a.md /tau/out/pages/latest && echo more >> /tau/workspace/site/index.md')
     assert.deepEqual(await service.tauRuns.pack(sessionId, { ok: true, text: 'Done.' }), { ok: true, text: 'Done.' })

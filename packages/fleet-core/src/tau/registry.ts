@@ -8,7 +8,7 @@
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import type { BoundFile } from '@sleepymug/tau'
+import type { CheckedCall } from '@sleepymug/tau'
 import { FOLDERS, MODULES } from 'fleet-box-runtime/tau/layout'
 import type { Result, Targets } from 'fleet-protocol/tau'
 
@@ -52,8 +52,8 @@ export interface Entry {
   finishedAt?: string
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
   resetAt?: string
-  /** Each file of the run, as the call names it: its name, its mode, its kind, its base name, and where the box has it. */
-  files: readonly BoundFile[]
+  /** Each file of the run, by name, as the call has it, checked against the tau: its mode, its kind, and its base name. */
+  files: CheckedCall['files']
   /** Where the caller has each `out` and `inout` file, which `finish` gives back. */
   targets: Targets
   /** The agent's working directory in the box, as the box's runtime reported it. */

@@ -83,7 +83,7 @@ export function apply(ctx: Context): void {
       const cwd = session?.cwd
       if (session === undefined || cwd === undefined) throw new Error('tau_run works only in a session with a working directory')
       const caller: Caller = { kind: 'session', sessionId: session.id }
-      const call = packCall(resolve(cwd, args.tau), { files: args.files ?? {}, args: args.args ?? {} }, { cwd })
+      const call = packCall(resolve(cwd, args.tau), { files: args.files ?? {}, args: args.args ?? {} }, cwd)
       const { sessionId } = await ctx.fleetTau.start(caller, { title: basename(call.tauDir), project: cwd, targets: call.targets }, call.archive)
       const cancel = (): void => { ctx.fleetTau.cancel(caller, sessionId).catch(() => {}) }
       exec.signal.addEventListener('abort', cancel, { once: true })

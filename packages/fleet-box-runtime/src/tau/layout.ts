@@ -16,7 +16,7 @@
  */
 
 import { extname, posix } from 'node:path'
-import type { Mode, Placing } from '@sleepymug/tau'
+import type { CallFile, Mode } from '@sleepymug/tau'
 
 /** The folder for the files of each mode. */
 export const FOLDERS: { readonly [M in Mode]: string } = { in: '/tau/in', inout: '/tau/workspace', out: '/tau/out' }
@@ -30,14 +30,14 @@ export const MODULES = '/tau/node_modules'
 /** Where each API's client is, in a folder by the API's name. */
 export const CLIENTS = `${MODULES}/.fleet`
 
-/** What the runtime keeps of a run: its files, and its args as the agent sees them. */
+/** What the runtime keeps of a run: its files, where the box has each, and its args as the agent sees them. */
 export const RUN = '/tau/.run.json'
 
 /** tau's TAU.md, what a tau is, and what a run of one promises, for the agent to read. */
 export const PRIMER = '/tau/TAU.md'
 
-/** A `place` for one run, as tau's `bind` takes it: where the box has each file. */
-export function placer(): (file: Placing) => string {
+/** Where the box has each file of one run, asked for each in turn. */
+export function placer(): (file: CallFile) => string {
   const taken = new Set<string>()
   return ({ mode, base }) => {
     const extension = extname(base)

@@ -4,10 +4,10 @@ import { test } from 'node:test'
 import type { Mode } from '@sleepymug/tau'
 import { placer } from './layout.ts'
 
-/** Place the files of one run, each `[mode, host path]`. */
+/** Place the files of one run, each `[mode, the caller's path]`. */
 function places(files: [Mode, string][]): string[] {
   const place = placer()
-  return files.map(([mode, host], index) => place({ name: `f${String(index)}`, mode, base: basename(host), host }))
+  return files.map(([mode, host]) => place({ mode, base: basename(host) }))
 }
 
 test('each file goes in the folder of its mode, under the base name its place keeps', () => {

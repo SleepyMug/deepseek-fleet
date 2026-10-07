@@ -21,7 +21,7 @@ import { ask, receive } from './connection.ts'
  * @param project - the folder whose dsh workspace the run's session is in; `cwd` by default.
  */
 export async function startRun(socket: string, tauDir: string, call: unknown, cwd: string, project = cwd): Promise<Started> {
-  const packed = packCall(tauDir, call, { cwd })
+  const packed = packCall(tauDir, call, cwd)
   return await ask(socket, { op: 'start', title: basename(packed.tauDir), project, targets: packed.targets }, packed.archive)
 }
 

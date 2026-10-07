@@ -23,7 +23,7 @@ import { mkdir, open, realpath, rm } from 'node:fs/promises'
 import { join, posix, relative, sep } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
-import { loadTau } from '@sleepymug/tau'
+import { type CheckedCall, loadTau } from '@sleepymug/tau'
 import { checkResult, placeCall, readCall, readResult, writeResult } from '@sleepymug/tau/call'
 import type { Call } from 'fleet-box-runtime/helper/protocol'
 import { HELPER_NODE, TAU_ENTRY } from 'fleet-box-runtime/layout'
@@ -69,6 +69,8 @@ const RESULT = 'result.tar'
 interface Accepted {
   /** The tau's root, read from the call, through symlinks. */
   tauRoot: string
+  /** Each file of the call, checked against the tau. */
+  files: CheckedCall['files']
   linked: Linked
 }
 
@@ -185,8 +187,8 @@ export class TauRuns {
       await placeCall(read, { tau: tauDir })
       const tau = loadTau(tauDir)
       // Where the box places each file is its own; here, only whether the call fits.
-      tau.bind({ files: read.json.files, args: read.json.args }, { cwd: '/' }, ({ name }) => `/${name}`)
-      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
+      const { files } = tau.check(read.json)
+      return { tauRoot: await realpath(tau.dir), files, linked: linkApis(tau, this.exts) }
     } catch (error) {
       // The tau as the caller names it.
       throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${about.title}`), { cause: error })
@@ -198,9 +200,11 @@ export class TauRuns {
     const folder = this.registry.folder(sessionId)
     const tauDir = join(folder, TAU)
     try {
-      await placeCall(await readCall(createReadStream(join(folder, CALL))), { tau: tauDir })
+      const read = await readCall(createReadStream(join(folder, CALL)))
+      await placeCall(read, { tau: tauDir })
       const tau = loadTau(tauDir)
-      return { tauRoot: await realpath(tau.dir), linked: linkApis(tau, this.exts) }
+      const { files } = tau.check(read.json)
+      return { tauRoot: await realpath(tau.dir), files, linked: linkApis(tau, this.exts) }
     } catch (error) {
       throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${title}`), { cause: error })
     }
@@ -243,7 +247,7 @@ export class TauRuns {
         prompt: setup.prompt,
         ...setup.init === undefined ? {} : { init: { command: setup.init, dir: setup.cwd } },
         promptRequestId: randomUUID(),
-        files: setup.files,
+        files: accepted.files,
         targets: about.targets,
         cwd: setup.cwd,
         modules: setup.modules,
@@ -346,7 +350,7 @@ export class TauRuns {
           await box.pipe([HELPER_NODE, TAU_ENTRY, 'pack', JSON.stringify({ outcome })], { output: createWriteStream(file, { mode: 0o600 }) })
           const { json, contents } = await readResult(createReadStream(file))
           if (json.text !== outcome.text) throw new Error('its text is not the agent\'s')
-          checkResult(json, files)
+          checkResult(json, { files })
           for await (const content of contents) for await (const _ of content.entries);
           return json.failure === undefined ? { ok: json.ok, text: json.text } : { ok: json.ok, text: json.text, failure: json.failure }
         } catch (error) {
@@ -710,7 +714,7 @@ export class TauRuns {
       const { linked } = accepted
       await this.registry.put({
         ...entry,
-        files: setup.files,
+        files: accepted.files,
         cwd: setup.cwd,
         modules: setup.modules,
         apis: linked.apis.map(api => api.name),
@@ -780,7 +784,7 @@ class Report extends Writable {
       throw new Error(`fleet: the box's runtime reported something else than JSON: ${text.slice(0, 200)}`)
     }
     const paths = [setup.cwd, setup.modules, setup.self, setup.clients]
-    if (typeof setup.prompt !== 'string' || !Array.isArray(setup.files) || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
+    if (typeof setup.prompt !== 'string' || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
       throw new Error('fleet: the box\'s runtime reported no setup')
     }
     return setup as Setup

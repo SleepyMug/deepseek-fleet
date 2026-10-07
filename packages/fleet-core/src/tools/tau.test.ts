@@ -98,7 +98,7 @@ test('tau_run packs the call from the session\'s folder, runs it as the session\
   await Promise.race([tau.finishing.promise, running])
   assert.deepEqual(tau.started?.caller, { kind: 'session', sessionId: SESSION })
   assert.deepEqual(tau.started?.about, { title: 'tau', project: work, targets: { report: join(work, 'out', 'report.md') } })
-  assert.deepEqual(tau.started?.json.files, { notes: { mode: 'in', base: 'notes.md', kind: 'file' }, report: { mode: 'out', base: 'report.md' } })
+  assert.deepEqual(tau.started?.json.files, { notes: { mode: 'in', base: 'notes.md', kind: 'file' }, report: { mode: 'out', kind: 'file', base: 'report.md' } })
   assert.deepEqual(tau.started?.json.args, { style: 'few, as ${notes} has it' })
   assert.equal(tau.started?.notes, 'buy milk\n')
   tau.end()
