@@ -47,10 +47,10 @@ A tau uses it by holding a copy of the contract, made with tau's
 ## How it runs
 
 ```
-pnpm exec dsh plugin --profile fleet add link:<checkout>/ext/fleet-ext-tau
+pnpm exec dsh plugin --profile web add link:<checkout>/ext/fleet-ext-tau
 ```
 
-lists it in the fleet profile's bundles, after fleet-core. Then a run of
+lists it in the `web` profile's bundles, after fleet-core. Then a run of
 `examples/relay` runs the tau it holds, `taus/shout`, in a box of its own,
 giving it its own `out` file, which the shout fills, and the relay gives
 back:

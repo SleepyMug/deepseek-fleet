@@ -24,10 +24,10 @@ A tau uses it by holding a copy of the contract, made with tau's
 ## How it runs
 
 ```
-pnpm exec dsh plugin --profile fleet add link:<checkout>/ext/fleet-ext-notes
+pnpm exec dsh plugin --profile web add link:<checkout>/ext/fleet-ext-notes
 ```
 
-lists it in the fleet profile's bundles, after fleet-core. Then a run of
+lists it in the `web` profile's bundles, after fleet-core. Then a run of
 `examples/notebook` saves a list as notes, and reports those with a tag:
 
 ```

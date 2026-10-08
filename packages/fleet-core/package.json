@@ -34,9 +34,21 @@
       "types": "./lib/tools/tau.d.ts",
       "default": "./lib/tools/tau.js"
     },
+    "./world/box-fs": {
+      "types": "./lib/world/box-fs.d.ts",
+      "default": "./lib/world/box-fs.js"
+    },
+    "./world/box-subprocess": {
+      "types": "./lib/world/box-subprocess.d.ts",
+      "default": "./lib/world/box-subprocess.js"
+    },
     "./world/fs": {
       "types": "./lib/world/fs.d.ts",
       "default": "./lib/world/fs.js"
+    },
+    "./world/spill": {
+      "types": "./lib/world/spill.d.ts",
+      "default": "./lib/world/spill.js"
     },
     "./world/subprocess": {
       "types": "./lib/world/subprocess.d.ts",
@@ -75,10 +87,16 @@
     "@deepseek-ai/dsh-api-workspace-files": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs-local": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-fs-sandbox": "0.2.0-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-permission-presets": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.0-rc.2",
     "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-spill": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-spill-local": "0.2.0-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.2.0-rc.2",
@@ -94,10 +112,16 @@
     "@deepseek-ai/dsh-api-workspace-files": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs-local": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-fs-sandbox": "0.2.0-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-permission-presets": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.0-rc.2",
     "@deepseek-ai/dsh-scope": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session": "0.2.0-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-spill": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-spill-local": "0.2.0-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.2.0-rc.2",
     "@deepseek-ai/dsh-subprocess-local": "0.2.0-rc.2",

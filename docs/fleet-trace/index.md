@@ -2,9 +2,9 @@
 
 Shows what fleet's models are sent. `fleet-trace` runs a tau, or a session
 given a prompt, as the web UI makes one, against a scripted model on a
-scratch fleet host, and dumps every request dsh makes of the model: the
-system prompt, the tools, and the conversation, each call and each result as
-sent. It is for working on the prompt and the tools, not a
+scratch dsh host with fleet, and dumps every request dsh makes of the
+model: the system prompt, the tools, and the conversation, each call and
+each result as sent. It is for working on the prompt and the tools, not a
 test of the model.
 
 ## Provides
@@ -66,8 +66,9 @@ told so after the prompt, defines the term.
 ## Design
 
 - **A scratch host.** Each run makes a dsh home in a temporary folder,
-  whose fleet profile links this checkout's fleet-core and every extension
-  in `ext/`, after dsh's base and web bundles, mounts fleet-trace's driver,
+  whose profile, `fleet`, links this checkout's fleet-core and every
+  extension in `ext/`, after dsh's base and web bundles, as dsh's `web`
+  profile has them, mounts fleet-trace's driver,
   and routes the model to the scripted one; dsh's own `plugin install`
   installs it. It runs the
   workspace's dsh, on a free port, and the image `fleet:local`, so build
@@ -80,7 +81,8 @@ told so after the prompt, defines the term.
 - **A session** is made through the driver (`driver.ts`), a dsh plugin of
   this package on a socket in the scratch home, as the web UI makes one: in
   the dsh workspace of the caller's folder, with the profile's default
-  agent preset, `fleet`, given the prompt. The driver answers once the
+  agent preset, dsh's `standard`, given the prompt; its model works on the
+  host, in dsh's sandbox, `workspace-write`. The driver answers once the
   session's agent is done, with how its last turn went.
 - **The scripted model** (`model.ts`) is an OpenAI-compatible endpoint on
   localhost. A request with tools carrying the prompt, the tau's or the

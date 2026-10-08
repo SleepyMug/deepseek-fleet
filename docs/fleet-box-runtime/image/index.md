@@ -58,7 +58,7 @@ rebuild.
 
 The command builds from the package it is in, as installed, so it runs from
 the install the host runs: in a profile installed from npm, one that lists
-this package beside fleet-core, `dsh plugin --profile fleet exec
+this package beside fleet-core, `dsh plugin --profile web exec
 fleet-box-image` (docs/install.md).
 
 Not yet: a build is tagged without checking its helper first.

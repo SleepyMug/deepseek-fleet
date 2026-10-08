@@ -38,7 +38,7 @@ test('a request goes as one line with the protocol version, and its answer comes
 test('without a service, a request says how to start one', async () => {
   const refused = request('/nonexistent/tau.sock', { op: 'cancel', sessionId: 'session-a' })
   await assert.rejects(refused, NoService)
-  await assert.rejects(refused, /no tau service at \/nonexistent\/tau\.sock; start the fleet host/u)
+  await assert.rejects(refused, /no tau service at \/nonexistent\/tau\.sock; start dsh with fleet-core in its profile/u)
 })
 
 test('a service that goes away before it answers is a lost connection, and its error is ask\'s', async (t) => {

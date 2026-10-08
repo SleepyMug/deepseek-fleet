@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { extractContent, readCall, writeResult, type CallJson, type Targets } from '@sleepymug/tau/call'
@@ -15,6 +16,9 @@ import { apply } from './tau.ts'
 
 const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 const RUN = 'session-11111111-1111-4111-8111-111111111111'
+const TAU_SESSION = 'session-22222222-2222-4222-8222-222222222222'
+/** A file outside every writable root of a session in a temporary folder, under workspace-write, in a folder that is there. */
+const OUTSIDE = '/fleet-tau-run-report.md'
 
 /** A session's working directory with a tau that takes a file to read, a file to write and an arg, and the file to read. */
 async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<string> {
@@ -75,18 +79,31 @@ class FakeTau {
   }
 }
 
-/** `tau_run`, registered on a context whose tau service is `tau`. */
-function toolOn(tau: FakeTau): ToolDefinition {
+/** The sandbox of the session, as dsh's sandbox policy resolves it, whose mode a test may change. */
+class FakePolicy {
+  constructor(public mode: SandboxMode) {}
+
+  resolve({ session }: { session: { header: { cwd: string } } }): { mode: SandboxMode; workspaceRoot: string } {
+    return { mode: this.mode, workspaceRoot: session.header.cwd }
+  }
+}
+
+/** `tau_run`, registered on a context whose tau service is `tau`, with the session's sandbox `policy`, if any, and the one tau's session `TAU_SESSION`. */
+function toolOn(tau: FakeTau, policy?: FakePolicy): ToolDefinition {
   let tool: ToolDefinition | undefined
   const systemPrompt = { section: () => {}, getSectionOrder: () => 0 }
-  apply({ tools: { register: (registered: ToolDefinition) => { tool = registered } }, systemPrompt, fleetTau: tau } as unknown as Context)
+  const fleetTauRuns = { isTau: (sessionId: string) => sessionId === TAU_SESSION }
+  apply({
+    tools: { register: (registered: ToolDefinition) => { tool = registered } }, systemPrompt, fleetTau: tau, fleetTauRuns,
+    get: (name: string) => name === 'sandboxPolicy' ? policy : undefined,
+  } as unknown as Context)
   assert.ok(tool !== undefined)
   return tool
 }
 
-/** A call of the tool from the session, in `cwd`. */
-function execIn(cwd: string, signal = new AbortController().signal): ToolRunContext {
-  return { agent: { session: { header: { id: SESSION, cwd } } }, signal } as unknown as ToolRunContext
+/** A call of the tool from the session, or another, in `cwd`. */
+function execIn(cwd: string, signal = new AbortController().signal, session = SESSION): ToolRunContext {
+  return { agent: { session: { header: { id: session, cwd } } }, signal } as unknown as ToolRunContext
 }
 
 test('tau_run packs the call from the session\'s folder, runs it as the session\'s, and puts what it gave back at the session\'s paths', async (t) => {
@@ -125,6 +142,61 @@ test('tau_run refuses a call that does not fit the tau before it starts a run', 
   assert.equal(tau.started, undefined)
 })
 
+test('tau_run writes nothing a read-only session may not, and refuses before it starts a run', async (t) => {
+  const work = await fixture(t)
+  const tau = new FakeTau(work)
+  const tool = toolOn(tau, new FakePolicy('read-only'))
+  await assert.rejects(
+    tool.execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' } }, execIn(work)),
+    { message: `tau_run cannot write ${join(work, 'out', 'report.md')}: this session's sandbox, read-only, lets it write nothing` },
+  )
+  assert.equal(tau.started, undefined)
+})
+
+test('tau_run writes a workspace-write session\'s results under its writable roots only, each path as its links resolve', async (t) => {
+  const work = await fixture(t)
+  // A link in the session's folder to a folder outside every root.
+  await symlink('/', join(work, 'root'))
+  for (const [report, history] of [[OUTSIDE, undefined], ['out/report.md', `${OUTSIDE}.d/run.jsonl`], [`root${OUTSIDE}`, undefined]] as const) {
+    const tau = new FakeTau(work)
+    await assert.rejects(
+      toolOn(tau, new FakePolicy('workspace-write')).execute({
+        tau: 'tau', files: { notes: 'notes.md', report }, args: { style: 'few' }, ...history === undefined ? {} : { history },
+      }, execIn(work)),
+      /^Error: tau_run cannot write .*: this session's sandbox, workspace-write, lets it write only under /u,
+    )
+    assert.equal(tau.started, undefined)
+  }
+  const tau = new FakeTau(work)
+  const running = toolOn(tau, new FakePolicy('workspace-write')).execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' } }, execIn(work))
+  await Promise.race([tau.finishing.promise, running])
+  tau.end()
+  assert.deepEqual(await running, { sessionId: RUN, ok: true, text: 'Done.' })
+  assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Milk.\n')
+})
+
+test('tau_run puts nothing a session\'s sandbox no longer lets it write once the run ends', async (t) => {
+  const work = await fixture(t)
+  const tau = new FakeTau(work)
+  const policy = new FakePolicy('workspace-write')
+  const running = toolOn(tau, policy).execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' } }, execIn(work))
+  await Promise.race([tau.finishing.promise, running])
+  policy.mode = 'read-only'
+  tau.end()
+  await assert.rejects(running, /this session's sandbox, read-only, lets it write nothing/u)
+  await assert.rejects(readFile(join(work, 'out', 'report.md')), /ENOENT/u)
+})
+
+test('tau_run refuses a tau\'s session, whose files are its box\'s', async (t) => {
+  const work = await fixture(t)
+  const tau = new FakeTau(work)
+  await assert.rejects(
+    toolOn(tau).execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' } }, execIn(work, undefined, TAU_SESSION)),
+    /a TAU's session runs TAUs with its tau API, not tau_run/u,
+  )
+  assert.equal(tau.started, undefined)
+})
+
 test('cancelling tau_run cancels the run, and puts nothing at the session\'s paths', async (t) => {
   const work = await fixture(t)
   const tau = new FakeTau(work)
@@ -143,7 +215,7 @@ test('a session with tau_run has tau\'s TAU.md in its prompt, and one without it
   const registered = new Map<string, ToolDefinition>()
   let enabled = true
   const tools = { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) }, get: (name: string) => enabled ? registered.get(name) : undefined }
-  apply({ tools, systemPrompt: ctx.systemPrompt, fleetTau: {} } as unknown as Context)
+  apply({ tools, systemPrompt: ctx.systemPrompt, fleetTau: {}, fleetTauRuns: {} } as unknown as Context)
   const primer = await readFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), 'utf8')
   assert.match(primer, /^# TAU \(Transportable Agent Unit\)/u)
   assert.equal((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:tau')?.text, primer)

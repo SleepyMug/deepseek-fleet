@@ -21,7 +21,7 @@ export const name = 'fleet-signin'
 export const inject = ['authorization']
 
 export interface Config {
-  /** Provider signed in to when none is named: the fleet profile's ChatGPT subscription route. */
+  /** Provider signed in to when none is named: the ChatGPT subscription route. */
   provider: string
   /** Credential scope for a bare provider argument, so `openai-codex` means `llm-pi-ai/openai-codex`. */
   defaultScope: string

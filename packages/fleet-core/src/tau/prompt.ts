@@ -9,11 +9,16 @@
  * the session's registry entry has it; and
  * leaves out the sections dsh writes for a person at the host, which are
  * false in a box, and the runtime context on the host's sandbox policy.
+ * It leaves out the host's tools, which every session has, such as
+ * tau_run (../tools/tau.ts), since they work on the host: a tau's session
+ * has its preset's tools alone, which work in its box, and runs taus with
+ * its tau API.
  * @module @sleepymug/fleet-core/tau/prompt
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
+import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { AssembledSection } from '@deepseek-ai/dsh-system-prompt'
 import { FOLDERS, PRIMER, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import type { Entry } from './registry.ts'
@@ -78,4 +83,17 @@ export function apply(ctx: Context): void {
       contexts: assembly.contexts.filter(context => !HOST_CONTEXTS.has(context.name)),
     }
   }, { prepend: true })
+  // Hidden from every agent of the preset, so from each tau's session, as each is registered: dsh mounts
+  // the preset as it starts, maybe before tau_run's plugin, or another bundle's, registers its tool.
+  ctx.inject(['tools'], (inner) => {
+    const hidden = new Set<string>()
+    const hide = (): void => {
+      const names = inner.tools.schemas().map(({ name }) => name).filter(name => name !== RUN_CODE_NAME && !hidden.has(name))
+      if (names.length === 0) return
+      for (const name of names) hidden.add(name)
+      inner.tools.restrict({ deny: names })
+    }
+    inner.on('tools/change', hide)
+    hide()
+  })
 }

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
+import { bindScopeParent, createScope } from '@deepseek-ai/dsh-scope'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { AssembleContext } from '@deepseek-ai/dsh-system-prompt'
+import { ToolRuntime, defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as TauPrompt from './prompt.ts'
 import type { Entry } from './registry.ts'
 import type { TauRuns } from './runs.ts'
@@ -52,4 +54,23 @@ test('a tau\'s prompt says how the model runs its programs, and lists what its t
   // A session not a tau's, and a tau that exposes nothing, get none.
   assert.ok(!(await ctx.systemPrompt.assemble(forSession('session-11111111-1111-4111-8111-111111111111'))).sections.some(section => section.name === 'fleet:tau-programs'))
   assert.ok(!(await (await prompted([])).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))
+})
+
+test('the preset hides the host\'s tools, such as tau_run, from each of its agents, and from no other, as each is registered', async () => {
+  const ctx = new Context()
+  await ctx.plugin(SystemPrompt, {})
+  await ctx.plugin(ToolRuntime, {})
+  ctx.provide('fleetTauRuns', { isTau: () => true, entry: async () => ({ exposed: [] }) } as unknown as TauRuns)
+  const tool = (name: string): Parameters<typeof ctx.tools.register>[0] => defineContentToolFixture({ name, description: 'A tool.', parameters: {}, execute: async () => [] })
+  ctx.tools.register(tool('web_fetch'))
+  const preset = { preset: 'tau' }
+  const presetCtx = createScope(ctx, preset).ctx
+  await presetCtx.plugin(TauPrompt)
+  // The preset's own, and one registered after the preset is mounted, as dsh may mount it first.
+  await presetCtx.plugin({ inject: ['tools'], apply: (inner: Context) => { inner.tools.register(tool('bash')) } })
+  ctx.tools.register(tool('tau_run'))
+  const agent = { agent: 'a tau\'s' }
+  bindScopeParent(agent, preset)
+  assert.deepEqual(ctx.tools.schemas(agent).map(({ name }) => name), ['bash'])
+  assert.deepEqual(ctx.tools.schemas({ agent: 'another' }).map(({ name }) => name).sort(), ['tau_run', 'web_fetch'])
 })

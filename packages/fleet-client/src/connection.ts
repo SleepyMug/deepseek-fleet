@@ -106,7 +106,7 @@ export function exchange(socket: string, body: Body, upload?: AsyncIterable<Uint
       settle(() => {
         connection.destroy()
         reject(error.code === 'ENOENT' || error.code === 'ECONNREFUSED'
-          ? new NoService(`fleet: no tau service at ${socket}; start the fleet host with \`dsh --profile fleet\``, { cause: error })
+          ? new NoService(`fleet: no tau service at ${socket}; start dsh with fleet-core in its profile, as \`dsh web\``, { cause: error })
           : error)
       })
     })

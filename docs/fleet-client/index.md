@@ -101,7 +101,7 @@ fleet run [--history <file>] <tau-dir> [<call>]...
 
 ## How it runs
 
-With `pnpm exec dsh --profile fleet` running, after `pnpm build` and
+With `pnpm exec dsh web` running, after `pnpm build` and
 `pnpm image`, in a folder with `notes.md`, a folder `site`, and a folder
 `out`:
 

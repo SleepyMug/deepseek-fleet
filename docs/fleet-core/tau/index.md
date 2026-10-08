@@ -3,7 +3,8 @@
 The tau service. It starts runs of taus, each a box and a dsh session, and
 watches each until its agent is done, then gives back how it ended, with
 what it left at its `out` and `inout` files, and cancels and deletes
-runs. It runs in dsh's process, in the fleet profile. A run comes as a
+runs. It runs in dsh's process, in the profile fleet-core is installed
+in, such as dsh's `web` (docs/install.md). A run comes as a
 **call** and goes back as a **result**, the archives of tau's
 docs/spec/serialization.md: the caller packs the call from its files, and
 puts the result at its paths, so the service never reads or writes a
@@ -51,12 +52,17 @@ to the sessions' two ways in:
   (docs/fleet-core/tools/index.md), and its runs are in its working
   directory, which it names as `fleet` names its folder.
 
-The patch also declares `tau`, the agent preset a tau's session has: a
-persona, the tau's prompt plugin (`@sleepymug/fleet-core/tau/prompt`), the box's
-reset notice (`@sleepymug/fleet-core/tau/reset`), bash in the foreground only, read/write/edit, the tau's skills,
-and compaction. What its rows register
-reaches only the sessions of that preset: dsh mounts them once, in the
-preset's scope, which each of its sessions' agents has as its parent.
+The patch also declares `tau`, the agent preset a tau's session has, last
+in the web UI's list: a persona, the tau's prompt plugin
+(`@sleepymug/fleet-core/tau/prompt`), the box's reset notice
+(`@sleepymug/fleet-core/tau/reset`), the tools as they are, whatever the
+host presents; in its `box` group, its world, the box's file system and
+subprocess runtime (docs/fleet-core/world/index.md), and over them dsh's
+local bash, bash in the foreground only, read/write/edit, the tau's
+skills; and compaction. What its rows register reaches only the sessions
+of that preset: dsh mounts them once, in the preset's scope, which each of
+its sessions' agents has as its parent. Every other preset is dsh's, as
+the web UI's sessions have them.
 
 `ctx.fleetTauRuns` gives fleet-core's world
 (docs/fleet-core/world/index.md) what it needs:
@@ -178,7 +184,10 @@ preset's scope, which each of its sessions' agents has as its parent.
   then, through dsh's workspace registry and session controller:
   1. makes the project a dsh workspace, or finds the one it is;
   2. makes the session with the entry's id, in that workspace, with the
-     `tau` preset, and titles it with the run's title;
+     `tau` preset, gives it dsh's `danger-full-access` permission preset,
+     no sandbox and approval `never`, in its log, since its box is its own
+     and nothing in it waits on a person, and titles it with the run's
+     title;
   3. queues the prompt under the entry's request id;
   4. records in the entry when the session got its prompt.
 
@@ -307,6 +316,16 @@ preset's scope, which each of its sessions' agents has as its parent.
   cannot shadow. It also leaves out the runtime context on the sandbox
   policy (`sandbox:policy`), the host's file policy, full access, which is
   not the box's. The web UI's own sessions keep dsh's whole prompt.
+- **Its tools are its preset's.** Each tool registered at the top, for
+  every session, such as `tau_run`, works on the host, so the prompt plugin
+  hides each from the preset's agents (`ctx.tools.restrict`, in the
+  preset's scope), as each is registered, since dsh mounts the preset as
+  it starts, maybe before another plugin registers its tool; and the
+  preset presents the tools as they are, so a program the model writes
+  runs in the box, with bash's `node`, not on the host, as PTC's
+  `run_code` would under dsh's `DSH_TOOLS_MODE`. The web UI's Permissions
+  selector changes nothing for a tau's session: its tools have no sandbox
+  but its box.
 - **The tau's skills** are dsh's: the preset mounts dsh's file-system skill
   provider with one root, `/tau/self/skills`, each skill a folder in it
   with a `SKILL.md`, and none of dsh's project, user or bundled roots, and
@@ -348,7 +367,10 @@ preset's scope, which each of its sessions' agents has as its parent.
 - **The agent is told** (`reset.ts`, in the preset). Before each step of a
   tau's session that sends messages, the plugin has the box ready, through
   `boxFor`, so a failure to set it up fails the step rather than a tool
-  call. When the box was set up again since the agent was last told, a
+  call. A session that is not a tau's, as one a person gives the preset in
+  the web UI, has no box, so each step fails, saying the preset is for the
+  runs `fleet run` and `tau_run` start, before the model is asked
+  anything; and its tools reach nothing of the host. When the box was set up again since the agent was last told, a
   notice goes before the step's messages, saying so: a user message with a
   source of its own, `fleet-tau-box`, which the session's log keeps, and
   which a projection of the log folds into the setup it told of.
@@ -390,6 +412,13 @@ preset's scope, which each of its sessions' agents has as its parent.
   delete` forgets them.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
+- The `tau` preset is in the web UI's list of presets, and its settings'
+  default, since dsh has no hidden preset; a session given it fails each
+  step.
+- fleet-core depends on dsh-base's row ids, `fs-sandbox`, `subprocess` and
+  `spill-local`, whose modules its world mounts in their place; a profile
+  that provides one of their services under another row has two providers
+  of it.
 
 ## Built on
 
@@ -407,13 +436,17 @@ preset's scope, which each of its sessions' agents has as its parent.
 - `@sleepymug/fleet-protocol/tau`, for the wire.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,
-  `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash`, `dsh-tool-fs`,
-  `dsh-skill-filesystem` and `dsh-tool-skill` for the `tau` preset.
+  `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-permission-presets`,
+  for a session's full access.
+- `@deepseek-ai/dsh-agent-preset`, `dsh-agent-tool-presentation`,
+  `dsh-bash-local`, `dsh-tool-bash`, `dsh-tool-fs`, `dsh-skill-filesystem`
+  and `dsh-tool-skill` for the `tau` preset, and `@deepseek-ai/dsh-tools`
+  for hiding the host's tools.
 
 ## How it runs
 
-The fleet profile lists fleet-core after dsh's base and web bundles, in
-`$DSH_HOME/profiles/fleet/package.json`:
+dsh's `web` profile lists fleet-core after dsh's base and web bundles, in
+`$DSH_HOME/profiles/web/package.json`:
 
 ```json
 {
@@ -422,15 +455,14 @@ The fleet profile lists fleet-core after dsh's base and web bundles, in
 }
 ```
 
-`pnpm exec dsh plugin --profile fleet add link:<checkout>/packages/fleet-core`
-makes it so; each extension is a bundle listed after fleet-core, added the
-same way, such as `link:<checkout>/ext/fleet-ext-notes`. fleet-core's patch
-is the profile's layer as well: no sandbox,
-nothing that waits on a person, and one agent preset, `fleet`, for the web
-UI's sessions, whose tools work on the host. docs/install.md installs it
+`pnpm exec dsh plugin --profile web add link:<checkout>/packages/fleet-core`
+makes it so, the profile made from dsh's web template if it was not
+there; each extension is a bundle listed after fleet-core, added the same
+way, such as `link:<checkout>/ext/fleet-ext-notes`. The web UI's sessions
+stay as dsh has them, with `tau_run` added. docs/install.md installs it
 all from npm instead.
 
-After `pnpm build` and `pnpm image`, `pnpm exec dsh --profile fleet`, with
+After `pnpm build` and `pnpm image`, `pnpm exec dsh web`, with
 the dsh the workspace pins, starts the service with the web host, and
 `fleet` talks to it
 (docs/fleet-client/index.md). On dsh's stderr:

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * `fleet`: start runs of taus, see where they are, wait for how they ended,
- * and cancel and delete them, through the tau service in the fleet host
- * (`dsh --profile fleet`), on its socket (./connection.ts); a run's call is
- * packed, and its result put at the caller's paths, here (./runs.ts).
+ * and cancel and delete them, through the tau service of the dsh host
+ * fleet-core is installed in (`dsh web`), on its socket (./connection.ts);
+ * a run's call is packed, and its result put at the caller's paths, here
+ * (./runs.ts).
  * @module @sleepymug/fleet-client/cli
  */
 

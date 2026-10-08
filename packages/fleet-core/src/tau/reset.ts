@@ -6,7 +6,9 @@
  * failure to set it up fails the step rather than a tool call; and it tells
  * the model once, with a notice before the step's messages, that its box was
  * set up again and what it did there before is gone. The session's log
- * records the notice, so a projection of it knows which setup was told.
+ * records the notice, so a projection of it knows which setup was told. A
+ * session that is not a tau's, as one a person gives the preset in the web
+ * UI, has no box, so each of its steps fails, saying why.
  * @module @sleepymug/fleet-core/tau/reset
  */
 
@@ -46,6 +48,10 @@ export const inject = ['fleetTauRuns', 'sessionProjections']
 export const NOTICE = `Your box was set up again from your run's call, as it was when your run began: ${SELF}, ${FOLDERS.in}, `
   + `${FOLDERS.inout} and ${FOLDERS.out} hold again what they held then, and whatever you changed or installed in the box since is gone.`
 
+/** Why the step of a session that is not a tau's fails, as of one a person gave this preset. */
+export const NOT_A_TAU = 'This session is no run of a TAU, which the `tau` agent preset is for: `fleet run` and tau_run start those. '
+  + 'Start a session with another preset.'
+
 export function apply(ctx: Context): void {
   ctx.sessionProjections.register({
     key: 'fleetTauBox',
@@ -60,7 +66,7 @@ export function apply(ctx: Context): void {
     // dsh skips a step with nothing to send; a notice must not turn it into a model call.
     if (decision.kind === 'reject' || signal.aborted || decision.messages.length === 0) return decision
     const sessionId = agent.session.header.id
-    if (!ctx.fleetTauRuns.isTau(sessionId)) return decision
+    if (!ctx.fleetTauRuns.isTau(sessionId)) throw new Error(NOT_A_TAU)
     await ctx.fleetTauRuns.boxFor(sessionId)
     const { resetAt } = await ctx.fleetTauRuns.entry(sessionId)
     if (resetAt === undefined || ctx.sessionProjections.stateOf(agent.session, 'fleetTauBox')?.noticed === resetAt) return decision

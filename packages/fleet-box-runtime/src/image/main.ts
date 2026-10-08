@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * `fleet-box-image [<tag>]`: build the box image (./build.ts) from this
- * package as installed, so run it from the install the host runs, as the
- * fleet profile's: `dsh plugin --profile fleet exec fleet-box-image`.
+ * package as installed, so run it from the install the host runs, as that
+ * of the profile fleet-core is in: `dsh plugin --profile web exec fleet-box-image`.
  * `pnpm image` at the workspace root runs it too.
  * @module @sleepymug/fleet-box-runtime/image/main
  */

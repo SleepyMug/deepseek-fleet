@@ -1,6 +1,6 @@
 /**
  * One run of a scenario on a scratch fleet host: a dsh home of its own in a
- * temporary folder, whose fleet profile links this checkout's fleet-core and
+ * temporary folder, whose profile links this checkout's fleet-core and
  * extensions, and fleet-trace's driver (./driver.ts), and routes the model
  * to the scripted one (./model.ts); dsh itself, the workspace's, started on
  * a free port; there, a run of the tau, through the tau service's socket, as
@@ -125,10 +125,11 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
 }
 
 /**
- * The fleet profile of a scratch dsh home: this checkout's fleet-core and
- * every extension in ext/, linked, after dsh's base and web bundles; the
- * driver, on its socket in the home; and the model routed to the scripted
- * one, installed with dsh's own `plugin`.
+ * The profile of a scratch dsh home, `fleet`: dsh's base and web bundles,
+ * as dsh's own `web` profile has them, then this checkout's fleet-core and
+ * every extension in ext/, linked; the driver, on its socket in the home;
+ * and the model routed to the scripted one, installed with dsh's own
+ * `plugin`.
  */
 async function profile(home: string, port: number): Promise<void> {
   const dir = join(home, 'profiles', 'fleet')

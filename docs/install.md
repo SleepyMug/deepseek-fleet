@@ -1,9 +1,10 @@
 # Installing fleet
 
-Fleet is dsh bundles, in a dsh profile of their own, `fleet`; a box image,
-built from what that profile installed; and `fleet`, a command of its own.
-Each package is published as `@sleepymug/<name>`, all but fleet-trace,
-which runs on a checkout only (docs/fleet-trace/index.md).
+Fleet is dsh bundles, installed in a dsh profile with dsh's web app, such
+as dsh's own `web` profile, whose sessions stay as dsh has them; a box
+image, built from what that profile installed; and `fleet`, a command of
+its own. Each package is published as `@sleepymug/<name>`, all but
+fleet-trace, which runs on a checkout only (docs/fleet-trace/index.md).
 
 ## From npm
 
@@ -16,15 +17,18 @@ On linux, with Docker and pnpm on the PATH:
    npm install --global @deepseek-ai/dsh@0.2.0-rc.2
    ```
 
-2. The fleet profile, from dsh's web template, which lists dsh's base and
-   web bundles; then fleet-core, after them; then each extension, after
-   fleet-core:
+2. fleet-core, after dsh's base and web bundles, which `web` lists; then
+   each extension, after fleet-core. dsh makes the `web` profile from its
+   template if it has none yet:
 
    ```
-   dsh --profile fleet --from-default-profile web --dump-config > /dev/null
-   dsh plugin --profile fleet add @sleepymug/fleet-core
-   dsh plugin --profile fleet add @sleepymug/fleet-ext-tau @sleepymug/fleet-ext-notes
+   dsh plugin --profile web add @sleepymug/fleet-core
+   dsh plugin --profile web add @sleepymug/fleet-ext-tau @sleepymug/fleet-ext-notes
    ```
+
+   A profile of its own works the same, made from dsh's web template
+   first: `dsh --profile <name> --from-default-profile web --dump-config >
+   /dev/null`.
 
 3. The box image, built by the profile's own fleet-box-runtime, which the
    host runs in each box (docs/fleet-box-runtime/image/index.md). Listing
@@ -33,8 +37,8 @@ On linux, with Docker and pnpm on the PATH:
    version of the others, so the two are one install:
 
    ```
-   dsh plugin --profile fleet add @sleepymug/fleet-box-runtime
-   dsh plugin --profile fleet exec fleet-box-image
+   dsh plugin --profile web add @sleepymug/fleet-box-runtime
+   dsh plugin --profile web exec fleet-box-image
    ```
 
    Build it again after each update of the profile.
@@ -54,8 +58,9 @@ On linux, with Docker and pnpm on the PATH:
    dsh fleet-signin
    ```
 
-Then `dsh fleet` starts the host, with the web UI, and `fleet run <tau-dir>`
-runs a tau.
+Then `dsh web` starts the host, with the web UI, and `fleet run <tau-dir>`
+runs a tau. Each session the web UI makes has `tau_run`, which runs one
+too, where its sandbox lets it write (docs/fleet-core/tools/index.md).
 
 Each extension implements a contract of tau's, which it depends on, such as
 `@sleepymug/tau-api-notes`, so a tau that holds a copy of it runs. Making a
@@ -69,6 +74,8 @@ cd <tau-dir>; tau add notes @sleepymug/tau-api-notes
 
 - The image holds the packages as installed on the host, so the host must
   be linux, on the architecture of Docker's server.
+- dsh's sandbox, which confines the sessions the web UI makes, needs
+  bubblewrap or Landlock on linux (dsh's sandbox-local).
 
 ## From a checkout
 
@@ -76,6 +83,6 @@ cd <tau-dir>; tau add notes @sleepymug/tau-api-notes
 checkout beside this one, its library, its `tau` command and its contracts
 joining the workspace (pnpm-workspace.yaml). The workspace pins dsh,
 run as `pnpm exec dsh`; each package's "How it runs" links its checkout
-into the profile, as `pnpm exec dsh plugin --profile fleet add
+into the profile, as `pnpm exec dsh plugin --profile web add
 link:<checkout>/packages/fleet-core`, and runs `fleet` as
 `node <checkout>/packages/fleet-client/lib/cli.js`.

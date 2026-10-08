@@ -1,14 +1,15 @@
 /**
  * fleet-tau, the tau service (./service.ts) on its socket (./server.ts), as
- * a dsh plugin: fleet-core's cordis.patch.yml mounts it in the fleet
- * profile. It builds on the runs of taus and their boxes, `ctx.fleetTauRuns`
- * (./runs-plugin.ts), and on dsh's session controller and workspace
- * registry, as the web client's own calls do, so that the web UI lists a
- * tau's session, under the caller's folder, and follows it; on dsh's
- * agents, to learn when a run's agent is done, and while it runs, when it
- * occupies its box; and on the workspace registry's writes, to follow which
- * sessions are archived, whose runs have no box. It imports only their
- * types.
+ * a dsh plugin: fleet-core's cordis.patch.yml mounts it in the profile it
+ * is installed in. It builds on the runs of taus and their boxes,
+ * `ctx.fleetTauRuns` (./runs-plugin.ts), and on dsh's session controller
+ * and workspace registry, as the web client's own calls do, so that the web
+ * UI lists a tau's session, under the caller's folder, and follows it, and
+ * gives it dsh's full-access permission preset, since its box is its own;
+ * on dsh's agents, to learn when a run's agent is done, and while it runs,
+ * when it occupies its box; and on the workspace registry's writes, to
+ * follow which sessions are archived, whose runs have no box. It imports
+ * only their types.
  * Its config names the dsh home, where it serves its socket. It provides the
  * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
  * through which a tau's session starts runs from its box, and for
@@ -19,6 +20,7 @@
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-permission-presets'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
@@ -40,6 +42,9 @@ export const inject = ['fleetTauRuns', 'sessionController', 'workspaceRegistry',
 
 /** The agent preset a tau's session has, which fleet-core's cordis.patch.yml declares. */
 export const PRESET = 'tau'
+
+/** The permission preset of a tau's session, dsh's own: no sandbox, and approval `never`. */
+const FULL_ACCESS = 'danger-full-access'
 
 /** For a prompt, which goes through once sent, whoever waits for it. */
 const UNCANCELLED = new AbortController().signal
@@ -133,6 +138,9 @@ function sessions(ctx: Context): Sessions {
       // The same folder's workspace each time, which the session controller attaches the session to.
       const workspace = await ctx.workspaceRegistry.create(project)
       await ctx.sessionController.create({ sessionId: sessionId as SessionId, workspaceId: workspace.id, agentPreset: PRESET })
+      // Full access, and nothing asks a person: the box is the session's own, and its tools go nowhere else.
+      const agent = ctx.agents.get(sessionId as SessionId)
+      if (agent !== undefined) ctx.get('permissionPresets')?.set(agent.session, FULL_ACCESS)
       // A title only helps people find the session in the web UI; the session goes on without it.
       await ctx.sessionController.rename({ sessionId: sessionId as SessionId, title }).catch((error: unknown) => {
         print(`could not title ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
