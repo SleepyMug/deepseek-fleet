@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-ext-notes",
   "version": "0.0.1",
-  "description": "An extension of the fleet host: the notes API, a notebook of short notes for each session, kept by its server in dsh",
+  "description": "An extension of the fleet host: the contract @sleepymug/tau-api-notes, a notebook of short notes for each session, kept by its server in the dsh home",
   "type": "module",
   "exports": {
     "./plugin": {
@@ -28,9 +28,11 @@
       "patch": "./cordis.patch.yml"
     }
   },
+  "dependencies": {
+    "@sleepymug/tau-api-notes": "0.1.0"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
-    "@sleepymug/tau": "workspace:*",
     "@sleepymug/fleet-core": "workspace:*",
     "@sleepymug/fleet-box-runtime": "workspace:*"
   },

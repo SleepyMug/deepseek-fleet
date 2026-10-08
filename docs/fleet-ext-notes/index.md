@@ -1,22 +1,25 @@
 # fleet-ext-notes
 
 An extension of the fleet host (docs/fleet-core/ext/index.md), and the
-example of one: the `notes` API, a notebook of short notes, each with tags
-to find it by later. Each session has a notebook of its own, which its
-server keeps in dsh's process for as long as dsh runs.
+example of one: the contract `@sleepymug/tau-api-notes`, a notebook of
+short notes, each with tags to find them by later, which persist. Each
+session has a notebook of its own, which its server keeps in the dsh home,
+as `fleet/notes/<session>.json`, so its notes outlast dsh's process.
 
 ## Provides
 
-A dsh bundle, whose `cordis.patch.yml` mounts `@sleepymug/fleet-ext-notes/plugin`. It
-provides the extension of `notes` to `ctx.fleetExts`:
+A dsh bundle, whose `cordis.patch.yml` mounts `@sleepymug/fleet-ext-notes/plugin`,
+its config naming the dsh home. It provides the extension of
+`@sleepymug/tau-api-notes` to `ctx.fleetExts`, at the version of the
+contract's package it depends on, and types its client by:
 
 | Half | Module | |
 |---|---|---|
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as `@api/notes`, in the box: `addNote(text, tags?)` and `byTag(tag)`, each calling its server. A note's `written` crosses as an ISO date, which the client turns into a `Date`. |
-| server | `src/notes.ts` | The methods `addNote` and `byTag`, on the calling session's notebook. Each checks what the box sent. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API that holds a copy of the contract, such as `@api/notes`, in the box: `addNote(text, tags?)` and `byTag(tag)`, each calling its server. A note's `written` crosses as an ISO date, which the client turns into a `Date`. |
+| server | `src/notes.ts` | The methods `addNote` and `byTag`, on the calling session's notebook, a file each, written whole. Each checks what the box sent. |
 
-A tau uses it by declaring `api/notes/index.d.ts`, as `examples/notebook`
-does, with what it uses of the client's declarations.
+A tau uses it by holding a copy of the contract, made with tau's
+`tau add notes @sleepymug/tau-api-notes`, as `examples/notebook` does.
 
 ## How it runs
 

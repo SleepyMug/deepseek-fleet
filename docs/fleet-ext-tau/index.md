@@ -1,23 +1,25 @@
 # fleet-ext-tau
 
-An extension of the fleet host (docs/fleet-core/ext/index.md): the `tau`
-API of tau's docs/spec/tau-api.md, with which a tau's programs read their
+An extension of the fleet host (docs/fleet-core/ext/index.md): the
+contract `@sleepymug/tau-api`, the tau API of tau's docs/spec/tau-api.md,
+with which a tau's programs read their
 run's files and args, and run other taus, each a run of its own, in a box of its
 own, started by the session that runs the program.
 
 ## Provides
 
 A dsh bundle, whose `cordis.patch.yml` mounts `@sleepymug/fleet-ext-tau/plugin`. It
-provides the extension of `tau` to `ctx.fleetExts`, on the tau service,
+provides the extension of `@sleepymug/tau-api` to `ctx.fleetExts`, at the
+version of the contract's package it depends on, on the tau service,
 `ctx.fleetTau` (docs/fleet-core/tau/index.md):
 
 | Half | Module | |
 |---|---|---|
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as `@api/tau`, in the box: `files()` and `args()`, which read the places of the run's files, extra files included, and its args, expanded, as the box's runtime kept them when it set the box up, and `run(agent, call, signal?, options?)`, which runs a tau with tau's `runTau` on the fleet host: it packs the call from the box's files, starts it, waits for it, and puts what it gave back at the box's paths; `options.history`, fleet's own, is where it writes the run's session's history; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API that holds a copy of the contract, by convention `@api/tau`, in the box: `files()` and `args()`, which read the places of the run's files, extra files included, and its args, expanded, as the box's runtime kept them when it set the box up, and `run(agent, call, signal?, options?)`, which runs a tau with tau's `runTau` on the fleet host: it packs the call from the box's files, starts it, waits for it, and puts what it gave back at the box's paths; `options.history`, fleet's own, is where it writes the run's session's history; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
 | server | `src/tau.ts` | The methods `start`, with the call after its arguments `{ title, targets }`; `finish(id, { history? })`, which answers `{ result, targets, history? }` with the result after it; and `cancel`; each on the tau service as the calling session, which reaches only the runs it started. Each checks what the box sent. |
 
-A tau uses it by declaring `api/tau/index.d.ts`, the spec's declaration,
-or less of it, as `examples/relay` does.
+A tau uses it by holding a copy of the contract, made with tau's
+`tau add tau @sleepymug/tau-api`, as `examples/relay` does.
 
 ## Design
 
@@ -36,10 +38,9 @@ or less of it, as `examples/relay` does.
   relative, has `finish` ask for the run's session's history
   (docs/fleet-core/tau/index.md), and writes it there, dsh's events, one
   JSON object per line, its folder made if missing, before the result is
-  put at its paths, whether the run succeeded or not. A tau that uses it
-  declares it in its `api/tau/index.d.ts`, as an optional fourth parameter
-  of `run`, `options?: { readonly history?: string }`; one that declares
-  the spec's `run` links to the same client, which only adds a parameter.
+  put at its paths, whether the run succeeded or not. The contract does not
+  declare it, so a program passes it as an argument its types do not
+  name.
 - **A run's runs go with it.** A run that ends deletes the runs it started
   and did not finish; `run` finishes each run it starts.
 

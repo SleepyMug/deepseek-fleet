@@ -220,10 +220,10 @@ export class TauRuns {
     const report = new Report()
     await box.pipe([HELPER_NODE, TAU_ENTRY, 'setup'], { input: createReadStream(join(this.registry.folder(sessionId), CALL)), output: report })
     const setup = report.setup()
-    for (const api of linked.apis) await box.copyIn(api.client, posix.join(setup.clients, api.name))
+    for (const api of linked.apis) await box.copyIn(api.client, posix.join(setup.clients, api.alias))
     await box.request('apis.link', {
       modules: setup.modules,
-      apis: linked.apis.map(({ name }) => ({ name, client: posix.join(setup.clients, name), types: posix.join(setup.self, 'api', name) })),
+      apis: linked.apis.map(({ alias }) => ({ name: alias, client: posix.join(setup.clients, alias), types: posix.join(setup.self, 'api', alias) })),
       packages: linked.packages.map(({ name, dir }) => ({ name, dir: posix.join(setup.self, ...relative(tauRoot, dir).split(sep)) })),
     })
     return setup
@@ -251,7 +251,7 @@ export class TauRuns {
         targets: about.targets,
         cwd: setup.cwd,
         modules: setup.modules,
-        apis: linked.apis.map(api => api.name),
+        apis: linked.apis.map(api => api.contract),
         exposed: linked.exposed,
         createdAt: new Date().toISOString(),
       })
@@ -619,16 +619,17 @@ export class TauRuns {
 
   /**
    * What answers the calls of the clients in a session's box: the server of
-   * the extension that implements the API, for an API the session's tau
-   * declares, with the session the box is, whatever the call says.
+   * the extension that implements the contract, for a contract of an API
+   * the session's tau holds, with the session the box is, whatever the call
+   * says.
    */
   private calls(sessionId: string): (call: Call, signal: AbortSignal, body?: AsyncIterable<Uint8Array>) => Promise<unknown> {
-    return async ({ api, method, args }, signal, body) => {
+    return async ({ contract, method, args }, signal, body) => {
       const entry = await this.registry.get(sessionId)
-      if (!entry.apis.includes(api)) throw new Error(`fleet: this run's tau declares no API ${api}`)
-      const ext = this.exts.get(api)
-      if (ext === undefined) throw new Error(`fleet: no extension implements ${api} now`)
-      if (!Object.hasOwn(ext.methods, method)) throw new Error(`fleet: the extension of ${api} has no method ${method}`)
+      if (!entry.apis.includes(contract)) throw new Error(`fleet: this run's tau holds no API of ${contract}`)
+      const ext = this.exts.get(contract)
+      if (ext === undefined) throw new Error(`fleet: no extension implements ${contract} now`)
+      if (!Object.hasOwn(ext.methods, method)) throw new Error(`fleet: the extension of ${contract} has no method ${method}`)
       return await ext.methods[method]?.(args, { sessionId, signal, ...body === undefined ? {} : { body } })
     }
   }
@@ -717,7 +718,7 @@ export class TauRuns {
         files: accepted.files,
         cwd: setup.cwd,
         modules: setup.modules,
-        apis: linked.apis.map(api => api.name),
+        apis: linked.apis.map(api => api.contract),
         exposed: linked.exposed,
         resetAt: new Date().toISOString(),
       })

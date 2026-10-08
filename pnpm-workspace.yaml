@@ -7,6 +7,10 @@ packages:
   # installs it on its own again, from its own lockfile, and the next install
   # here switches it back.
   - ../agent_fleet_project/tau
+  # Its tau command, which copies contracts into the examples' api/, and its
+  # contracts, which the extensions implement.
+  - ../agent_fleet_project/tau/dev
+  - ../agent_fleet_project/tau/contracts/*
 # A dependency on a member's version, such as fleet-core's on tau 0.1.0,
 # links the member, so the members' manifests stay as they are.
 linkWorkspacePackages: true

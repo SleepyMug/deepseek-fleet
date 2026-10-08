@@ -57,13 +57,24 @@ On linux, with Docker and pnpm on the PATH:
 Then `dsh fleet` starts the host, with the web UI, and `fleet run <tau-dir>`
 runs a tau.
 
+Each extension implements a contract of tau's, which it depends on, such as
+`@sleepymug/tau-api-notes`, so a tau that holds a copy of it runs. Making a
+tau that does takes tau's own command, `tau add` (tau's
+docs/spec/development.md):
+
+```
+npm install --global @sleepymug/tau-dev
+cd <tau-dir>; tau add notes @sleepymug/tau-api-notes
+```
+
 - The image holds the packages as installed on the host, so the host must
   be linux, on the architecture of Docker's server.
 
 ## From a checkout
 
 `pnpm install`, `pnpm build` and `pnpm image` at the root, with tau's
-checkout beside this one (pnpm-workspace.yaml). The workspace pins dsh,
+checkout beside this one, its library, its `tau` command and its contracts
+joining the workspace (pnpm-workspace.yaml). The workspace pins dsh,
 run as `pnpm exec dsh`; each package's "How it runs" links its checkout
 into the profile, as `pnpm exec dsh plugin --profile fleet add
 link:<checkout>/packages/fleet-core`, and runs `fleet` as

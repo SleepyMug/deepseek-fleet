@@ -1,0 +1,16 @@
+{
+  "name": "@sleepymug/tau-api",
+  "version": "0.1.0",
+  "description": "The tau API: this run's files and args, runs of other taus, and init's exit codes.",
+  "tau": {
+    "contract": true
+  },
+  "type": "module",
+  "types": "./index.d.ts",
+  "files": [
+    "index.d.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

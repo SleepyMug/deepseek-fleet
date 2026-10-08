@@ -1,17 +1,19 @@
 # fleet-core/ext
 
-Extensions of the fleet host. An extension implements one API a tau may
-declare (tau's docs/spec/apis.md) in two halves:
+Extensions of the fleet host. An extension implements one contract, an
+API as it is published, at a version (tau's docs/spec/contracts.md), in two
+halves:
 
-- **a client**, the module the tau's programs import as `@api/<name>`, which
-  runs in the box;
+- **a client**, the module the tau's programs import as `@api/<alias>`,
+  where the tau holds a copy of the contract, which runs in the box;
 - **a server**, its methods, which run in dsh, and which the client calls
   through fleet.
 
 Each extension is a package and a dsh plugin of its own, such as
 `ext/fleet-ext-notes` (docs/fleet-ext-notes/index.md). fleet provides only
-what connects the halves. A run of a tau links each API it declares to the
-client of the extension that implements it (docs/fleet-core/tau/index.md).
+what connects the halves. A run of a tau links each API it holds to the
+client of the extension that implements its contract
+(docs/fleet-core/tau/index.md).
 
 ## Provides
 
@@ -25,8 +27,9 @@ import type {} from '@sleepymug/fleet-core/ext/plugin'   // for ctx.fleetExts
 export const inject = ['fleetExts']
 export function apply(ctx: Context) {
   ctx.effect(() => ctx.fleetExts.provide({
-    api: 'notes',                              // the API it implements, by its name in api/<name>/
-    client: '/…/lib/client/',                  // index.js, with its declarations beside it
+    contract: '@sleepymug/tau-api-notes',      // the contract it implements, by its package's name
+    version: '0.1.0',                          // and the version, as the contract's package has it
+    client: '/…/lib/client/',                  // index.js
     methods: { addNote: (args, { sessionId, signal }) => … },
   }))
 }
@@ -34,27 +37,32 @@ export function apply(ctx: Context) {
 
 - `provide(ext)` provides an extension until the function it returns is
   called, as the plugin's effect does when the plugin unloads. A second
-  extension of the same API is refused.
-- `get(api)` gives the extension that implements an API, if one is
-  provided.
+  extension of the same contract is refused.
+- `get(contract)` gives the extension that implements a contract, if one
+  is provided.
 
 ## Design
 
-- **The client is copied into each box** whose tau declares its API, when
-  the run is created. So the client and the server always come from the
+- **The client is copied into each box** whose tau holds its contract,
+  when the run is created. So the client and the server always come from the
   same package, and adding an API means installing a dsh plugin, without
   rebuilding the image. The client must be self-contained: it imports only
   its own files, Node's modules, and fleet's client runtime,
   `@sleepymug/fleet-box-runtime/ext/client`, which the box finds in its link tree. A
   client that needs a package bundles it.
-- **The client is the implementation the API is checked against.** A run
-  checks each API with tau's `checkImplementation` against the client's
-  `index.js` and the declarations beside it, and is refused if the client
-  does not fit.
+- **An extension says which contract it implements, and at which
+  version.** A run links each API to the extension of its contract whose
+  version serves the tau's copy, as tau's `serves` has it, and is refused
+  if there is none; nothing checks the client against the copy's
+  declarations. An extension depends on the contract's package at the
+  version it implements, types its client by it, so that TypeScript checks
+  the client as the package is built, and provides that version, read from
+  the package, as `ext/fleet-ext-notes` does.
 - **A call** goes from the client to the box's helper over its call socket
   (docs/fleet-box-runtime/helper/index.md), and from the helper to the host as
-  a `call`. The runs of taus serve it (`tau/runs.ts`): it must name an API
-  the session's tau declares and a method its server has. A call that
+  a `call`. The runs of taus serve it (`tau/runs.ts`): it must name, by
+  its contract, an API the session's tau holds, whatever alias the tau
+  gives it, and a method its server has. A call that
   passes goes to that method with the session and a signal.
 - **The session is the box's.** The host knows which session made a call
   from which box's helper sent it, and never from the call. So a client
@@ -88,6 +96,6 @@ export function apply(ctx: Context) {
 
 ## Built on
 
-- `@sleepymug/tau`: `loadApis`, `checkImplementation`, `loadExposed`.
+- `@sleepymug/tau`: `loadTau`'s `apis` and `exposed`, `serves`, `parseVersion`.
 - The helper's call socket and `apis.link` (fleet-box-runtime).
 - `@deepseek-ai/cordis`, for the plugin.

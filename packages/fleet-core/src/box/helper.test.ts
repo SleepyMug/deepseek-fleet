@@ -88,7 +88,7 @@ test('a call\'s bytes reach its handler, and the bytes after its answer reach th
   const helper = await Helper.start(LOCAL_HELPER, async (call, _signal, body) => {
     let size = 0
     for await (const chunk of body ?? []) size += (chunk as Uint8Array).length
-    got.push(`${call.api}.${call.method} ${JSON.stringify(call.args)} ${String(size)}`)
+    got.push(`${call.contract}.${call.method} ${JSON.stringify(call.args)} ${String(size)}`)
     if (call.method === 'plain') return 'plain'
     if (call.method === 'broken') {
       return streamed('cut', (async function* () {

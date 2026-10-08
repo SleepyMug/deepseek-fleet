@@ -1,20 +1,14 @@
 /**
- * A notebook of short notes, each with tags to find it by later. The notes
- * are the session's, kept on the fleet host, so every program of the
- * session sees the same notebook.
- *
- * @packageDocumentation
+ * The client of @sleepymug/tau-api-notes: a notebook of short notes, each
+ * with tags to find them by later, which its server keeps on the fleet host,
+ * one for each session, so every program of the session sees the same
+ * notebook.
+ * @module @sleepymug/fleet-ext-notes/client
  */
 
 import { call } from '@sleepymug/fleet-box-runtime/ext/client'
-
-/** A saved note. */
-export interface Note {
-  readonly id: number
-  text: string
-  tags: string[]
-  written: Date
-}
+import type { Note } from '@sleepymug/tau-api-notes'
+import { CONTRACT } from './contract.ts'
 
 /** A note as it crosses to the host and back. */
 interface WireNote {
@@ -24,18 +18,12 @@ interface WireNote {
   written: string
 }
 
-/**
- * Remember something, and return the new note.
- * @param text - What to remember.
- * @param tags - Labels to find it by later.
- */
-export async function addNote(text: string, tags: string[] = []): Promise<Note> {
-  return note(await call('notes', 'addNote', [text, tags]) as WireNote)
+export async function addNote(text: string, tags: readonly string[] = []): Promise<Note> {
+  return note(await call(CONTRACT, 'addNote', [text, tags]) as WireNote)
 }
 
-/** The notes carrying `tag`, oldest first. */
 export async function byTag(tag: string): Promise<Note[]> {
-  return (await call('notes', 'byTag', [tag]) as WireNote[]).map(note)
+  return (await call(CONTRACT, 'byTag', [tag]) as WireNote[]).map(note)
 }
 
 function note(wire: WireNote): Note {

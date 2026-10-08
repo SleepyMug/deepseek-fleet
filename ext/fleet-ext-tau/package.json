@@ -28,9 +28,11 @@
       "patch": "./cordis.patch.yml"
     }
   },
+  "dependencies": {
+    "@sleepymug/tau-api": "0.1.0"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
-    "@sleepymug/tau": "workspace:*",
     "@sleepymug/fleet-core": "workspace:*",
     "@sleepymug/fleet-box-runtime": "workspace:*"
   },

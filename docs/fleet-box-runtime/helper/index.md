@@ -36,9 +36,9 @@ One JSON message per line over the helper's stdin and stdout:
     code of the failure, such as an `FsError`'s, if it has one;
   - `{ "type": "event", "id": 1, "value": … }`, any number of them before
     the request's result, for a method that sends events;
-  - `{ "type": "call", "id": 7, "api": "notes", "method": "addNote", "args": […], "body"?: true }`,
-    a client's call, under an id the helper gives; with `body`, bytes
-    follow it;
+  - `{ "type": "call", "id": 7, "contract": "@sleepymug/tau-api-notes", "method": "addNote", "args": […], "body"?: true }`,
+    a client's call, by the contract its extension implements, under an id
+    the helper gives; with `body`, bytes follow it;
   - `{ "type": "call-cancel", "id": 7 }`, when the call's caller has gone.
 - host to helper, for a call: `{ "type": "call-result", "id": 7, "value": …, "body"?: true }`
   or `{ "type": "call-error", "id": 7, "message": "…" }`, once, unless the
@@ -70,7 +70,7 @@ answers what is left, and exits.
 | `terminal.activity` | `{ terminal }` | `{ idle }` | Whether the terminal is idle: no process of its session is left, or its program, the shell, is the session's only process, holds the foreground and sleeps, as at its prompt. A loop of the shell's builtins that sleeps looks the same. A terminal not there has ended, so it is idle. |
 | `terminal.signal` | `{ terminal, signal }` | the group's id | Signal the foreground process group: `SIGINT`, `SIGTERM`, `SIGKILL`, `SIGTSTP` or `SIGHUP`. |
 | `terminal.end` | `{ terminal }` | `null` | End every process in the terminal's session, background jobs included: SIGHUP and SIGTERM, then SIGKILL after `graceMs`. It answers once none is left. |
-| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>` whose types are the folder `types`, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; and `@sleepymug/fleet-box-runtime`, a link to this package, for the clients' runtime. |
+| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>`, by the API's alias, whose types are the folder `types`, the tau's copy of its contract, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; and `@sleepymug/fleet-box-runtime`, a link to this package, for the clients' runtime. |
 
 - **Process groups.** A spawned program and what it starts share a process
   group, except what starts a session of its own. `kill` and the helper's
@@ -80,7 +80,7 @@ answers what is left, and exits.
 - **The call socket** (`cmd/calls.ts`). Before it reads a request, the
   helper listens at `$FLEET_SOCKET`, by default `/run/fleet/calls.sock`, and
   sets the variable for every process it starts. Each connection carries
-  one call, a JSON line `{ "api", "method", "args" }`; the helper sends it
+  one call, a JSON line `{ "contract", "method", "args" }`; the helper sends it
   to the host, writes back the answer, `{ "result": … }` or
   `{ "error": { "message": … } }`, and closes. A call with `"body": true`
   is followed by bytes, up to the end of what the client sends, which the

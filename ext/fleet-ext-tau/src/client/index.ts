@@ -1,7 +1,8 @@
 /**
- * This run's files and args, and runs of other taus.
- *
- * @packageDocumentation
+ * The client of @sleepymug/tau-api, the tau API: this run's files and args,
+ * which the box's runtime kept, and runs of other taus, each in a box of its
+ * own, which its server starts on the fleet host as this session's.
+ * @module @sleepymug/fleet-ext-tau/client
  */
 
 import { readFileSync } from 'node:fs'
@@ -10,39 +11,8 @@ import { basename, dirname, resolve } from 'node:path'
 import { call, callStream } from '@sleepymug/fleet-box-runtime/ext/client'
 import { runTau, type Runtime } from '@sleepymug/fleet-box-runtime/ext/tau'
 import { RUN } from '@sleepymug/fleet-box-runtime/tau/layout'
-
-/** A JSON value. */
-export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json }
-
-/**
- * A file of a call given with its mode: one the tau does not declare, which the call gives the
- * agent beside those it declares, or one it does.
- */
-export interface CallFile {
-  readonly mode: 'in' | 'out' | 'inout'
-  /** Its path, or, for an `in` file, a list of paths. */
-  readonly path: string | readonly string[]
-  /** What it is, a file or a directory; without it, either. */
-  readonly kind?: 'file' | 'dir'
-}
-
-/** A call of a tau (docs/spec/calls.md): a path for each of its files, extra files, and its args. */
-export interface Call {
-  /** A path for each file, by name, or, for an `in` file, a list of paths, or the file with its mode. */
-  readonly files?: { readonly [name: string]: string | readonly string[] | CallFile }
-  /** The args, which fit the tau's schema. */
-  readonly args?: { readonly [name: string]: Json }
-}
-
-/** How a run ended. */
-export interface Result {
-  /** Whether it succeeded. */
-  readonly ok: boolean
-  /** The agent's final text; empty when it gave none. */
-  readonly text: string
-  /** Why it failed, when it did. */
-  readonly failure?: string
-}
+import type { Call, Json, Result } from '@sleepymug/tau-api'
+import { CONTRACT } from './contract.ts'
 
 /** How to run a tau, besides what tau's spec has: fleet's own. */
 export interface RunOptions {
@@ -89,12 +59,12 @@ export function args(): { readonly [name: string]: Json } {
 function host(history: string | undefined): Runtime {
   return {
     async start(packed) {
-      const { value } = await callStream('tau', 'start', [{ title: basename(packed.tauDir), targets: packed.targets }], { body: packed.archive })
+      const { value } = await callStream(CONTRACT, 'start', [{ title: basename(packed.tauDir), targets: packed.targets }], { body: packed.archive })
       return (value as { sessionId: string }).sessionId
     },
     async finish(id, signal) {
       const args = history === undefined ? [id] : [id, { history: true }]
-      const { value, body } = await callStream('tau', 'finish', args, signal === undefined ? {} : { signal })
+      const { value, body } = await callStream(CONTRACT, 'finish', args, signal === undefined ? {} : { signal })
       const finished = value as { targets: { [name: string]: string }; history?: unknown[] }
       if (history !== undefined) {
         await mkdir(dirname(resolve(history)), { recursive: true })
@@ -103,7 +73,7 @@ function host(history: string | undefined): Runtime {
       return { result: body, targets: finished.targets }
     },
     async cancel(id) {
-      await call('tau', 'cancel', [id])
+      await call(CONTRACT, 'cancel', [id])
     },
   }
 }

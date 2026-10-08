@@ -162,15 +162,15 @@ export interface Methods {
 
   /**
    * Makes `modules` the node_modules folder where a tau's code finds its
-   * APIs, each linked to its extension's client, as the package `@api/<name>`
-   * typed by the tau's declarations, and the packages of the tau's own that
+   * APIs, each linked to the client of the extension that implements its
+   * contract, as the package `@api/<alias>` typed by the tau's copy, and the packages of the tau's own that
    * it exposes, so that Node, and TypeScript, find them from any file below
    * the folder above `modules` (./cmd/link.ts).
    */
   'apis.link': {
     params: {
       modules: string
-      /** Each API: its name, its client's folder, with its index.js, and the folder of the tau's declarations. */
+      /** Each API: its alias, its client's folder, with its index.js, and the folder of the tau's copy of its contract. */
       apis: { name: string; client: string; types: string }[]
       /** Each exposed package of the tau's own: its name, and its folder. */
       packages: { name: string; dir: string }[]
@@ -180,13 +180,13 @@ export interface Methods {
 }
 
 /**
- * A call a client in the box makes to an extension on the host: the API it
- * implements, the method, and its arguments; and, with `body`, bytes that
+ * A call a client in the box makes to an extension on the host: the
+ * contract it implements, by its name, the method, and its arguments; and, with `body`, bytes that
  * follow it, such as an archive, in `call-data` messages up to its
  * `call-end`.
  */
 export interface Call {
-  api: string
+  contract: string
   method: string
   args: unknown[]
   body?: true

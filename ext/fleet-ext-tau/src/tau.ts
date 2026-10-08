@@ -1,5 +1,5 @@
 /**
- * The server of the `tau` API: the runs a tau's session starts from its box,
+ * The server of @sleepymug/tau-api, the tau API: the runs a tau's session starts from its box,
  * on the tau service, as that session's, so it reaches only the runs it
  * started. A run comes as a call, tau's archive, after `start`'s arguments,
  * and goes back as a result, after `finish`'s, with where the caller has its

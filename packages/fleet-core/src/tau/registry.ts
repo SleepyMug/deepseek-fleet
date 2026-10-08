@@ -60,9 +60,9 @@ export interface Entry {
   cwd: string
   /** Where the tau's code finds its APIs in the box, as the box's runtime reported it. */
   modules: string
-  /** The APIs the tau declares, by name, each linked to the client of the extension that implements it. */
+  /** The contracts of the tau's APIs, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]
-  /** What the tau exposes to its programs: `@api/<name>`, or a package of its own, by name, with what it says it is. */
+  /** What the tau exposes to its programs: `@api/<alias>`, or a package of its own, by name, with what it says it is. */
   exposed: readonly { specifier: string; description?: string }[]
   createdAt: string
 }

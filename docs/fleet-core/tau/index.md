@@ -89,11 +89,11 @@ preset's scope, which each of its sessions' agents has as its parent.
      `tau.json`: each file's mode and kind, each extra file's name, and the
      args against the schema, and gives the files the registry keeps; where
      the box places each file is the box's. Then `apis.ts`
-     links the tau's APIs:
-     `loadApis`, the extension that implements each one, from
-     `ctx.fleetExts`, and `checkImplementation` against its client; then
-     `loadExposed`. A tau with an API that no extension implements, or whose
-     client does not fit it, is refused. Problems name the tau by the run's
+     links the tau's APIs, as `loadTau` read them, each a copy of a
+     contract, to the extension of its contract, from `ctx.fleetExts`,
+     whose version serves the copy's, as tau's `serves` has it. A tau with
+     an API whose contract no extension implements, or at no version that
+     serves the copy's, is refused. Problems name the tau by the run's
      title. Here `session-<uuid>` is minted, the form dsh's
      session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
@@ -137,8 +137,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   | an `inout` file | `/tau/workspace/<base name>` |
   | an `out` file | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
-  | the APIs, `@api/<name>`, and the packages the tau exposes | `/tau/node_modules` |
-  | the client of each API's extension | `/tau/node_modules/.fleet/<name>` |
+  | the APIs, `@api/<alias>`, and the packages the tau exposes | `/tau/node_modules` |
+  | the client of each API's extension | `/tau/node_modules/.fleet/<alias>` |
   | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
 
   A base name already taken in its folder gets a suffix in its stem:
@@ -153,8 +153,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   program from stdin and resolving its imports from its working directory,
   so a program resolves as the tau's code does: the tau's `node_modules`
   first, every package of its own whether exposed or not, then
-  `/tau/node_modules`. Each `@api/<name>` there is
-  typed by the tau's own declarations, in `/tau/self/api/<name>`, and
+  `/tau/node_modules`. Each `@api/<alias>` there is
+  typed by the tau's copy of its contract, in `/tau/self/api/<alias>`, and
   re-exports the client, so every import in a process gets one module.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
@@ -162,8 +162,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   the expanded prompt and the request id it is sent under, the tau's init,
   its expanded command and where it runs in the box, if it has one, each file (its
   name, mode, kind, base name and place), the targets, the working directory and
-  the APIs' folder in the box, as the runtime reported them, the names of the APIs the
-  tau declares, each linked, what it exposes, with what each says it is,
+  the APIs' folder in the box, as the runtime reported them, the contracts of the
+  APIs the tau holds, each linked, what it exposes, with what each says it is,
   when it was made, when it was given its prompt, when and how its run
   ended, when a `finish` first gave that back, and when the box was last
   set up again, if it was. Beside it, a folder of
@@ -397,8 +397,8 @@ preset's scope, which each of its sessions' agents has as its parent.
   archived sessions; `agent/pre-step`, `@deepseek-ai/dsh-llm`'s
   `createUserMessage` and `@deepseek-ai/dsh-session-projection`, for the
   notice.
-- `@sleepymug/tau`: `loadTau`, `check`, `expand`, `loadApis`, `checkImplementation`,
-  `loadExposed`; and `@sleepymug/tau/call`: `readCall`, `placeCall`,
+- `@sleepymug/tau`: `loadTau`, with its `apis` and `exposed`, `check`, `expand`, and
+  `serves`; and `@sleepymug/tau/call`: `readCall`, `placeCall`,
   `readResult`, `checkResult`, `writeResult`.
 - `ctx.fleetExts` (fleet-core/ext).
 - `Box` and `exec` (`@sleepymug/fleet-core/box`), with `Box.pipe` for the archives

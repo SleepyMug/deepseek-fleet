@@ -1,9 +1,9 @@
 /**
  * `apis.link`: the node_modules folder where a tau's code finds its APIs
  * (tau's docs/spec/implementations.md). Each API becomes a package
- * `@api/<name>`, whose types are the tau's declarations, through a link to
- * their folder, so that their imports resolve there, and whose code
- * re-exports the client of the extension that implements it, so that every
+ * `@api/<alias>`, whose types are the tau's copy of its contract, through a
+ * link to its folder, so that their imports resolve there, and whose code
+ * re-exports the client of the extension that implements the contract, so that every
  * import in a process gets that one module. Each exposed package of the
  * tau's own is linked by its name, and this package by its own,
  * whose client runtime the extensions' clients import (../../ext/client.ts).
@@ -24,7 +24,7 @@ type Params = Methods['apis.link']['params']
 /** How programs import an API. */
 const API_SCOPE = '@api'
 
-/** What an API's name, and each part of a package's, may be. */
+/** What an API's alias, and each part of a package's, may be. */
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
 
 export async function apisLink(params: Params): Promise<null> {
@@ -61,7 +61,7 @@ function checked(params: Params): Params {
   if (typeof modules !== 'string' || !isAbsolute(modules)) throw new TypeError('apis.link takes modules, an absolute path')
   const absolute = (value: unknown): boolean => typeof value === 'string' && isAbsolute(value)
   if (!Array.isArray(apis) || !apis.every(api => typeof api?.name === 'string' && NAME.test(api.name) && absolute(api.client) && absolute(api.types))) {
-    throw new TypeError('apis.link takes apis, a list of { name, client, types }, each a name and two absolute paths')
+    throw new TypeError('apis.link takes apis, a list of { name, client, types }, each an alias and two absolute paths')
   }
   const packageName = (name: unknown): boolean => typeof name === 'string'
     && (name.startsWith('@') ? name.slice(1).split('/') : [name]).every(part => NAME.test(part))

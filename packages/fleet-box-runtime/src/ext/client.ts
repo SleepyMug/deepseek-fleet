@@ -4,7 +4,7 @@
  * (docs/fleet-core/ext/index.md): through the helper's call socket, which
  * every process the helper starts finds at $FLEET_SOCKET
  * (../helper/cmd/calls.ts). What crosses is JSON: a client turns other
- * values, such as dates, into JSON and back, as the API it implements
+ * values, such as dates, into JSON and back, as the contract it implements
  * declares them; bytes, such as an archive, go after the call, and come
  * after its answer, with {@link callStream}.
  * @module @sleepymug/fleet-box-runtime/ext/client
@@ -16,14 +16,14 @@ import { PassThrough } from 'node:stream'
 import { SOCKET_VARIABLE } from '../layout.ts'
 
 /**
- * Call a method of the server of the extension that implements an API.
- * @param api - the API's name, which its extension is provided under.
+ * Call a method of the server of the extension that implements a contract.
+ * @param contract - the contract's name, which its extension is provided under.
  * @param args - JSON; an `undefined` at the end is left out, as an optional argument not given.
  * @param signal - cancels the call, which closes its connection, and the server's signal aborts.
  * @returns the method's result, as the server gives it; a failure there rejects with its message.
  */
-export function call(api: string, method: string, args: readonly unknown[], signal?: AbortSignal): Promise<unknown> {
-  const where = `${api}.${method}`
+export function call(contract: string, method: string, args: readonly unknown[], signal?: AbortSignal): Promise<unknown> {
+  const where = `${contract}.${method}`
   const path = process.env[SOCKET_VARIABLE]
   if (path === undefined || path === '') return Promise.reject(new Error(`${where}: ${SOCKET_VARIABLE} is not set, so the fleet host cannot be reached`))
   if (signal?.aborted === true) return Promise.reject(signal.reason)
@@ -31,7 +31,7 @@ export function call(api: string, method: string, args: readonly unknown[], sign
   while (given.length > 0 && given.at(-1) === undefined) given.pop()
   let line: string
   try {
-    line = `${JSON.stringify({ api, method, args: given })}\n`
+    line = `${JSON.stringify({ contract, method, args: given })}\n`
   } catch (error) {
     return Promise.reject(new TypeError(`${where}: its arguments are not JSON`, { cause: error }))
   }
@@ -77,12 +77,12 @@ export function call(api: string, method: string, args: readonly unknown[], sign
  * @param options.signal - cancels the call, which closes its connection, and the server's signal aborts.
  */
 export function callStream(
-  api: string,
+  contract: string,
   method: string,
   args: readonly unknown[],
   options: { body?: AsyncIterable<Uint8Array>; signal?: AbortSignal } = {},
 ): Promise<{ value: unknown; body: AsyncIterable<Uint8Array> }> {
-  const where = `${api}.${method}`
+  const where = `${contract}.${method}`
   const { body, signal } = options
   const path = process.env[SOCKET_VARIABLE]
   if (path === undefined || path === '') return Promise.reject(new Error(`${where}: ${SOCKET_VARIABLE} is not set, so the fleet host cannot be reached`))
@@ -91,7 +91,7 @@ export function callStream(
   while (given.length > 0 && given.at(-1) === undefined) given.pop()
   let line: string
   try {
-    line = `${JSON.stringify({ api, method, args: given, ...body === undefined ? {} : { body: true } })}\n`
+    line = `${JSON.stringify({ contract, method, args: given, ...body === undefined ? {} : { body: true } })}\n`
   } catch (error) {
     return Promise.reject(new TypeError(`${where}: its arguments are not JSON`, { cause: error }))
   }

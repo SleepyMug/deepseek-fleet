@@ -239,7 +239,7 @@ export class Helper {
    * Answer a call, unless one with its id is being answered, which breaks
    * the protocol; and send the bytes after an answer that has them.
    */
-  private answer({ id, api, method, args, body }: Call & { id: number }): void {
+  private answer({ id, contract, method, args, body }: Call & { id: number }): void {
     if (this.calls.has(id)) {
       this.break(new Error('fleet: the helper sent a call with an id in use'))
       return
@@ -255,7 +255,7 @@ export class Helper {
       let reply: HostMessage
       let after: AsyncIterable<Uint8Array> | undefined
       try {
-        const answered = await this.onCall({ api, method, args }, controller.signal, upload)
+        const answered = await this.onCall({ contract, method, args }, controller.signal, upload)
         const value = isStreamed(answered) ? answered.value : answered
         after = isStreamed(answered) ? answered.body : undefined
         reply = { type: 'call-result', id, value: value ?? null, ...after === undefined ? {} : { body: true } }
@@ -303,7 +303,7 @@ export class Helper {
 }
 
 function refuseCalls(call: Call): Promise<never> {
-  return Promise.reject(new Error(`fleet: this box serves no calls, so none to ${call.api}.${call.method}`))
+  return Promise.reject(new Error(`fleet: this box serves no calls, so none to ${call.contract}.${call.method}`))
 }
 
 /** A helper message, or undefined for anything else. */
@@ -319,8 +319,8 @@ function parse(line: string): HelperMessage | undefined {
   if (value.type === 'error' && typeof value.message === 'string' && (value.code === undefined || typeof value.code === 'string')) {
     return value as HelperMessage
   }
-  if (value.type === 'call' && typeof value.api === 'string' && typeof value.method === 'string' && Array.isArray(value.args) && (value.body === undefined || value.body === true)) {
-    const call = { type: 'call' as const, id: value.id as number, api: value.api, method: value.method, args: value.args as unknown[] }
+  if (value.type === 'call' && typeof value.contract === 'string' && typeof value.method === 'string' && Array.isArray(value.args) && (value.body === undefined || value.body === true)) {
+    const call = { type: 'call' as const, id: value.id as number, contract: value.contract, method: value.method, args: value.args as unknown[] }
     return value.body === true ? { ...call, body: true } : call
   }
   if (value.type === 'call-data' && typeof value.data === 'string') return { type: 'call-data', id: value.id as number, data: value.data }

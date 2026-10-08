@@ -3,7 +3,7 @@
  * calls its server on the host. The helper listens at $FLEET_SOCKET, by
  * default {@link CALL_SOCKET}, and sets the variable for every process it
  * starts. Each connection carries one call, a JSON line
- * `{"api", "method", "args"}`, which the helper sends the host as a `call`;
+ * `{"contract", "method", "args"}`, which the helper sends the host as a `call`;
  * it writes the host's answer back as one line, `{"result": …}` or
  * `{"error": {"message": …}}`, and closes. A call with `"body": true` is
  * followed by bytes, up to the end of what the client sends, which the
@@ -109,7 +109,7 @@ export class CallSocket {
       if (end < 0) return
       const call = parse(received.subarray(0, end).toString('utf8'))
       if (call === undefined) {
-        connection.end(`${JSON.stringify({ error: { message: 'fleet: a call is one line of JSON, {"api", "method", "args", "body"?}, args a list' } })}\n`)
+        connection.end(`${JSON.stringify({ error: { message: 'fleet: a call is one line of JSON, {"contract", "method", "args", "body"?}, args a list' } })}\n`)
         return
       }
       id = this.nextId++
@@ -140,7 +140,7 @@ function parse(line: string): Call | undefined {
     return undefined
   }
   if (typeof value !== 'object' || value === null) return undefined
-  const { api, method, args, body } = value as Record<string, unknown>
-  if (typeof api !== 'string' || typeof method !== 'string' || !Array.isArray(args) || (body !== undefined && body !== true)) return undefined
-  return body === true ? { api, method, args, body } : { api, method, args }
+  const { contract, method, args, body } = value as Record<string, unknown>
+  if (typeof contract !== 'string' || typeof method !== 'string' || !Array.isArray(args) || (body !== undefined && body !== true)) return undefined
+  return body === true ? { contract, method, args, body } : { contract, method, args }
 }

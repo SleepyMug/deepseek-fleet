@@ -287,7 +287,7 @@ test('the helper relays a client\'s calls to the host, their answers back, and a
     params: { argv: program('const got = await call("notes", "add", ["milk", undefined]); const failed = await call("notes", "nope", []).catch(error => error.message); process.stdout.write(JSON.stringify([got, failed]))') },
   })
   await helper.until(() => calls().length === 1)
-  assert.deepEqual(calls()[0], { type: 'call', id: calls()[0]?.id, api: 'notes', method: 'add', args: ['milk'] })
+  assert.deepEqual(calls()[0], { type: 'call', id: calls()[0]?.id, contract: 'notes', method: 'add', args: ['milk'] })
   helper.send({ type: 'call-result', id: calls()[0]?.id ?? 0, value: { id: 1 } })
   await helper.until(() => calls().length === 2)
   helper.send({ type: 'call-error', id: calls()[1]?.id ?? 0, message: 'no method nope' })
@@ -326,7 +326,7 @@ test('the helper relays the bytes after a client\'s call to the host, and after 
   })
   await helper.until(() => sent('call-end').length === 1)
   const [call] = sent('call')
-  assert.deepEqual(call, { type: 'call', id: call?.id, api: 'tau', method: 'start', args: ['x'], body: true })
+  assert.deepEqual(call, { type: 'call', id: call?.id, contract: 'tau', method: 'start', args: ['x'], body: true })
   const up = Buffer.concat(sent('call-data').map(data => Buffer.from(data.data ?? '', 'base64')))
   assert.equal(up.length, 500000)
   assert.ok(up.every(byte => byte === 0x75))
