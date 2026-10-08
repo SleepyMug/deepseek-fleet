@@ -52,9 +52,8 @@ export function apply(ctx: Context): void {
       },
       args: {
         type: 'json',
-        description: 'The args, a JSON object that fits the schema tau.json declares. In any string of them, ${name}, naming a file, '
-          + 'is where the TAU\'s agent sees that file, as in "${site}/index.html", and a $ before one escapes it once, so "$${site}" '
-          + 'reaches the agent as "${site}", for a run it makes. None for a TAU that takes no args.',
+        description: 'The args, a JSON object that fits the schema tau.json declares, its strings with placeholders as TAU has them, '
+          + 'as in "${site}/index.html", where the TAU\'s agent sees the file site. None for a TAU that takes no args.',
       },
       history: {
         type: 'string',

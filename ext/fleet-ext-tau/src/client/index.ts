@@ -73,8 +73,8 @@ export function files(): { readonly [name: string]: string } {
 }
 
 /**
- * This run's args, each `${name}` naming a file, and `${self}`, expanded, and each `${name}`
- * preceded by `$` with one `$` less.
+ * This run's args, their placeholders expanded: each `${self}`, `${name}` naming a file, and
+ * `${name}` naming an arg, and each run of `$` before a `{` with one `$` less.
  */
 export function args(): { readonly [name: string]: Json } {
   return read().args

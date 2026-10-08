@@ -61,10 +61,10 @@ fleet run [--history <file>] <tau-dir> [<call>]...
     `fleet run best-of --in inner=shout --out report=out/report.txt …`.
 
   A name the tau does not declare as a file passes as an arg, unless an
-  option gives it a mode, for the tau's schema to take or refuse. In a
-  string of the args, `${<file>}` is where the tau's agent sees that file,
-  as in `'start=${site}/index.html'`, and `$${<file>}` passes `${<file>}`
-  on, for a run the agent makes.
+  option gives it a mode, for the tau's schema to take or refuse. The
+  args' strings hold placeholders as tau's docs/spec/placeholders.md has
+  them, as in `'start=${site}/index.html'`, where the tau's agent sees the
+  file `site`.
 - **Calls and results** (`runs.ts`, exported as `fleet-client/runs`, which
   fleet-trace uses too). `start` packs the run's call here, with tau's
   `packCall`: it reads the tau, checks the call and the paths it names

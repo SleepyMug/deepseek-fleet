@@ -48,9 +48,9 @@ or, for an in file, a list of paths; an arg any JSON, as tau's
 docs/spec/calls.md has them. --in, --out and --inout give a file with that
 mode, which is how a call gives the tau's agent a file tau.json does not
 declare. Relative paths are this
-folder's. In a string of the args, \${<file>} is where the tau's agent sees
-that file, as in 'start=\${site}/index.html', and \$\${<file>} passes on
-\${<file>}, for a run the agent makes.
+folder's. The args' strings hold placeholders as tau's
+docs/spec/placeholders.md has them, as in 'start=\${site}/index.html', where
+the tau's agent sees the file site.
 
 The tau service listens on $DSH_HOME/fleet/tau.sock, ~/.dsh/fleet/tau.sock
 when DSH_HOME is not set.
