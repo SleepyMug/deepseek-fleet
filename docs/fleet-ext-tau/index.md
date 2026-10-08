@@ -7,7 +7,7 @@ own, started by the session that runs the program.
 
 ## Provides
 
-A dsh bundle, whose `cordis.patch.yml` mounts `fleet-ext-tau/plugin`. It
+A dsh bundle, whose `cordis.patch.yml` mounts `@sleepymug/fleet-ext-tau/plugin`. It
 provides the extension of `tau` to `ctx.fleetExts`, on the tau service,
 `ctx.fleetTau` (docs/fleet-core/tau/index.md):
 
@@ -28,9 +28,9 @@ or less of it, as `examples/relay` does.
   packs the call there, and puts the result there, where the targets say.
 - **The bytes** of the call and the result cross the helper beside the
   JSON (`callStream`, docs/fleet-core/ext/index.md).
-- **The client imports** `fleet-box-runtime/ext/client`,
-  `fleet-box-runtime/ext/tau`, tau's caller's side, and
-  `fleet-box-runtime/tau/layout`, for where the files and args are kept.
+- **The client imports** `@sleepymug/fleet-box-runtime/ext/client`,
+  `@sleepymug/fleet-box-runtime/ext/tau`, tau's caller's side, and
+  `@sleepymug/fleet-box-runtime/tau/layout`, for where the files and args are kept.
 - **A run's history**, beyond tau's spec, is fleet's: `run`'s fourth
   argument, `{ history }`, a path in the box, `process.cwd()`'s if
   relative, has `finish` ask for the run's session's history
@@ -74,7 +74,7 @@ const result = await run('/tau/self/taus/shout', { files: { out: files().report 
 
 ## Built on
 
-- `fleet-box-runtime/ext/client`, `fleet-box-runtime/ext/tau` and
-  `fleet-box-runtime/tau/layout`, in the box, which the client alone imports.
-- `fleet-core/ext/plugin`'s and `fleet-core/tau/plugin`'s types, for
+- `@sleepymug/fleet-box-runtime/ext/client`, `@sleepymug/fleet-box-runtime/ext/tau` and
+  `@sleepymug/fleet-box-runtime/tau/layout`, in the box, which the client alone imports.
+- `@sleepymug/fleet-core/ext/plugin`'s and `@sleepymug/fleet-core/tau/plugin`'s types, for
   `ctx.fleetExts` and `ctx.fleetTau`.

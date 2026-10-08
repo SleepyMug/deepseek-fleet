@@ -1,7 +1,6 @@
 {
-  "name": "fleet-ext-notes",
+  "name": "@sleepymug/fleet-ext-notes",
   "version": "0.0.1",
-  "private": true,
   "description": "An extension of the fleet host: the notes API, a notebook of short notes for each session, kept by its server in dsh",
   "type": "module",
   "exports": {
@@ -16,6 +15,9 @@
     "!lib/**/*.test.*",
     "cordis.patch.yml"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
@@ -29,8 +31,8 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@sleepymug/tau": "workspace:*",
-    "fleet-core": "workspace:*",
-    "fleet-box-runtime": "workspace:*"
+    "@sleepymug/fleet-core": "workspace:*",
+    "@sleepymug/fleet-box-runtime": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4"

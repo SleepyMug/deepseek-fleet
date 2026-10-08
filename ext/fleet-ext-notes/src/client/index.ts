@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { call } from 'fleet-box-runtime/ext/client'
+import { call } from '@sleepymug/fleet-box-runtime/ext/client'
 
 /** A saved note. */
 export interface Note {

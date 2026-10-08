@@ -65,7 +65,7 @@ fleet run [--history <file>] <tau-dir> [<call>]...
   args' strings hold placeholders as tau's docs/spec/placeholders.md has
   them, as in `'start=${site}/index.html'`, where the tau's agent sees the
   file `site`.
-- **Calls and results** (`runs.ts`, exported as `fleet-client/runs`, which
+- **Calls and results** (`runs.ts`, exported as `@sleepymug/fleet-client/runs`, which
   fleet-trace uses too). `start` packs the run's call here, with tau's
   `packCall`: it reads the tau, checks the call and the paths it names
   against it, as a runtime would, and sends the call, which carries the
@@ -96,7 +96,7 @@ fleet run [--history <file>] <tau-dir> [<call>]...
 
 - `@sleepymug/tau`'s `loadTau`, for the tau's files, and
   `@sleepymug/tau/call`'s `packCall` and `applyResult`.
-- `fleet-protocol/tau`, for the wire.
+- `@sleepymug/fleet-protocol/tau`, for the wire.
 - `node:util`'s `parseArgs`, for the command line.
 
 ## How it runs

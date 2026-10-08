@@ -9,7 +9,7 @@
  * request, such as dsh's for a session title, with a word. Until it is told
  * the prompt, which a run's start answers with, it holds every request. It
  * writes each request it gets, whole, to its folder.
- * @module fleet-trace/model
+ * @module @sleepymug/fleet-trace/model
  */
 
 import { writeFileSync } from 'node:fs'

@@ -1,8 +1,7 @@
 {
-  "name": "fleet-signin",
+  "name": "@sleepymug/fleet-signin",
   "version": "0.0.1",
-  "private": true,
-  "description": "One-shot terminal sign-in to a model provider, as a dsh profile of its own: `dsh plugin --profile fleet-signin add <this folder>` once, then `dsh fleet-signin [provider]`; a long-running profile must not select it",
+  "description": "One-shot terminal sign-in to a model provider, as a dsh profile of its own: `dsh plugin --profile fleet-signin add @sleepymug/fleet-signin` once, then `dsh fleet-signin [provider]`; a long-running profile must not select it",
   "type": "module",
   "exports": {
     "./app": {
@@ -15,6 +14,9 @@
     "lib",
     "cordis.patch.yml"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b"

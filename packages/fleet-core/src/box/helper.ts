@@ -6,13 +6,13 @@
  * Whatever runs in the box can impersonate the helper, so every message is
  * checked before it is used, and a helper that breaks the protocol loses its
  * connection. A connection never reconnects.
- * @module fleet-core/box/helper
+ * @module @sleepymug/fleet-core/box/helper
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
-import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from 'fleet-box-runtime/helper/protocol'
+import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'

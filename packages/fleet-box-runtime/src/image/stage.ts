@@ -8,7 +8,7 @@
  * or compiled for the image, so it runs what the host runs; since the
  * package manager chose the platform-specific packages for this machine, the
  * image must be linux on its architecture.
- * @module fleet-box-runtime/image/stage
+ * @module @sleepymug/fleet-box-runtime/image/stage
  */
 
 import { cp, mkdir, readdir, readFile, realpath, stat, symlink } from 'node:fs/promises'

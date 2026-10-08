@@ -12,7 +12,7 @@
  * /tau/node_modules. What the runtime keeps
  * of the run is in /tau/.run.json, and tau's TAU.md, what a tau is, for the
  * agent to read, in /tau/TAU.md.
- * @module fleet-box-runtime/tau/layout
+ * @module @sleepymug/fleet-box-runtime/tau/layout
  */
 
 import { extname, posix } from 'node:path'

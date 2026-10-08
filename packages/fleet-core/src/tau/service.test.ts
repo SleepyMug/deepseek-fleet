@@ -10,8 +10,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import type { CheckedCall } from '@sleepymug/tau'
 import { applyResult, packCall, writeCall, writeResult, type Result } from '@sleepymug/tau/call'
-import { DEFAULT_IMAGE } from 'fleet-box-runtime/layout'
-import { pack, setup } from 'fleet-box-runtime/tau/endpoint'
+import { DEFAULT_IMAGE } from '@sleepymug/fleet-box-runtime/layout'
+import { pack, setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
 import type { Exts } from './apis.ts'
@@ -44,7 +44,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
   }))
   // The client of the extension that implements notes, which make()'s extensions provide.
   await mkdir(join(work, 'client'))
-  await writeFile(join(work, 'client', 'index.js'), 'import { call } from "fleet-box-runtime/ext/client";\nexport function add(text) { return call("notes", "add", [text]); }\n')
+  await writeFile(join(work, 'client', 'index.js'), 'import { call } from "@sleepymug/fleet-box-runtime/ext/client";\nexport function add(text) { return call("notes", "add", [text]); }\n')
   await writeFile(join(work, 'client', 'index.d.ts'), 'export declare function add(text: string): Promise<unknown>;\n')
   await writeFile(join(work, 'notes.md'), 'buy milk\n')
   await mkdir(join(work, 'site'))

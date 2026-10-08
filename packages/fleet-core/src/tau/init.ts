@@ -5,7 +5,7 @@
  * the agent run on the prompt as it is; or, for any other ending, the agent
  * run on the prompt and told, after it, that init failed, with what it
  * wrote (./service.ts).
- * @module fleet-core/tau/init
+ * @module @sleepymug/fleet-core/tau/init
  */
 
 import type { InitEnd } from './runs.ts'

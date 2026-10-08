@@ -3,12 +3,12 @@
  * docs/fleet-core/ext/index.md), as a dsh plugin: it provides the notes API,
  * whose client (./client/index.ts) a tau's programs import as `@api/notes`,
  * and whose server (./notes.ts) keeps each session's notebook here.
- * @module fleet-ext-notes/plugin
+ * @module @sleepymug/fleet-ext-notes/plugin
  */
 
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from 'fleet-core/ext/plugin'
+import type {} from '@sleepymug/fleet-core/ext/plugin'
 import { Notebooks } from './notes.ts'
 
 export const name = 'fleet-ext-notes'

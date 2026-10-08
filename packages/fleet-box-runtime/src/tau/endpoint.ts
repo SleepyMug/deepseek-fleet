@@ -9,7 +9,7 @@
  * the host has it pack the run's result, which the host reads and checks
  * again, since by then the box is the agent's. Each runs as ./main.ts, with
  * `docker exec`, before the agent does, and runs no code of the tau's.
- * @module fleet-box-runtime/tau/endpoint
+ * @module @sleepymug/fleet-box-runtime/tau/endpoint
  */
 
 import { createReadStream, createWriteStream } from 'node:fs'

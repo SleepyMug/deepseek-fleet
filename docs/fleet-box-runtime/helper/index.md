@@ -9,18 +9,18 @@ the host (docs/fleet-core/ext/index.md).
 
 ## Provides
 
-- `fleet-box-runtime/helper/protocol`: the wire between the host and the
+- `@sleepymug/fleet-box-runtime/helper/protocol`: the wire between the host and the
   helper, shared by both ends. It holds `PROTOCOL_VERSION`, the message types,
   and `Methods`, which gives each method's params, result and events.
 - `lib/helper/main.js`: the helper itself. It runs only in the image, at the
-  path `fleet-box-runtime/layout` gives, and is not exported.
-- `fleet-box-runtime/ext/client`: fleet's client runtime, which an extension's
+  path `@sleepymug/fleet-box-runtime/layout` gives, and is not exported.
+- `@sleepymug/fleet-box-runtime/ext/client`: fleet's client runtime, which an extension's
   client imports in the box: `call(api, method, args, signal?)` calls the
   server of the extension that implements `api`, through the call socket;
   `callStream(api, method, args, { body?, signal? })` does too, sending
   `body`, bytes such as an archive, after the call, and gives back the
   result with the bytes the server sends after it, `{ value, body }`.
-- `fleet-box-runtime/ext/tau`: tau's caller's side, `packCall`, `applyResult`
+- `@sleepymug/fleet-box-runtime/ext/tau`: tau's caller's side, `packCall`, `applyResult`
   and `runTau`, from `@sleepymug/tau/call`, for a client in the box, which
   finds only this package and Node's modules; the `tau` API's client
   (docs/fleet-ext-tau/index.md) runs taus with it.
@@ -70,7 +70,7 @@ answers what is left, and exits.
 | `terminal.activity` | `{ terminal }` | `{ idle }` | Whether the terminal is idle: no process of its session is left, or its program, the shell, is the session's only process, holds the foreground and sleeps, as at its prompt. A loop of the shell's builtins that sleeps looks the same. A terminal not there has ended, so it is idle. |
 | `terminal.signal` | `{ terminal, signal }` | the group's id | Signal the foreground process group: `SIGINT`, `SIGTERM`, `SIGKILL`, `SIGTSTP` or `SIGHUP`. |
 | `terminal.end` | `{ terminal }` | `null` | End every process in the terminal's session, background jobs included: SIGHUP and SIGTERM, then SIGKILL after `graceMs`. It answers once none is left. |
-| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>` whose types are the folder `types`, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; and `fleet-box-runtime`, a link to this package, for the clients' runtime. |
+| `apis.link` | `{ modules, apis, packages }` | `null` | Make `modules` the node_modules folder where a tau's code finds its APIs (`cmd/link.ts`): for each API, `{ name, client, types }`, a package `@api/<name>` whose types are the folder `types`, linked as `api`, and whose code re-exports `<client>/index.js`; for each exposed package, `{ name, dir }`, a link to it; and `@sleepymug/fleet-box-runtime`, a link to this package, for the clients' runtime. |
 
 - **Process groups.** A spawned program and what it starts share a process
   group, except what starts a session of its own. `kill` and the helper's

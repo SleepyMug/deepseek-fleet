@@ -6,7 +6,7 @@
  * last turn ended and the last text its agent wrote. One request, one line
  * of JSON, each way. The services' types are written out here as far as
  * they are used, so this module imports nothing of dsh's.
- * @module fleet-trace/driver
+ * @module @sleepymug/fleet-trace/driver
  */
 
 import { randomUUID } from 'node:crypto'

@@ -3,4 +3,4 @@
 # importing @api/notes (docs/fleet-ext-notes/index.md).
 - insert:
     - id: fleet-ext-notes
-      name: fleet-ext-notes/plugin
+      name: '@sleepymug/fleet-ext-notes/plugin'

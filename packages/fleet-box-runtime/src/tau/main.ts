@@ -3,7 +3,7 @@
  * setup`, with the run's call on stdin, which writes what the host needs of
  * the run as JSON to stdout, and `node main.js pack '<{"outcome"}>'`, which
  * writes the run's result to stdout. Why one fails goes to stderr.
- * @module fleet-box-runtime/tau/main
+ * @module @sleepymug/fleet-box-runtime/tau/main
  */
 
 import { Readable } from 'node:stream'

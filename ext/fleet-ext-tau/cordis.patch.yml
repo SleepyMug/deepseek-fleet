@@ -3,4 +3,4 @@
 # importing @api/tau (docs/fleet-ext-tau/index.md).
 - insert:
     - id: fleet-ext-tau
-      name: fleet-ext-tau/plugin
+      name: '@sleepymug/fleet-ext-tau/plugin'

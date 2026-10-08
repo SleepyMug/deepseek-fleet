@@ -7,7 +7,7 @@
  * the model once, with a notice before the step's messages, that its box was
  * set up again and what it did there before is gone. The session's log
  * records the notice, so a projection of it knows which setup was told.
- * @module fleet-core/tau/reset
+ * @module @sleepymug/fleet-core/tau/reset
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -15,7 +15,7 @@ import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { FOLDERS, SELF } from 'fleet-box-runtime/tau/layout'
+import { FOLDERS, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import { z } from 'zod'
 import type {} from './runs-plugin.ts'
 

@@ -7,7 +7,7 @@ import what its tau exposes (docs/fleet-core/tau/index.md).
 
 ## Provides
 
-`fleet-tau-tools` (`fleet-core/tools/tau`), a dsh plugin that fleet-core's
+`fleet-tau-tools` (`@sleepymug/fleet-core/tools/tau`), a dsh plugin that fleet-core's
 `fleet` agent preset mounts. It registers one tool, and a system-prompt
 section, `tool:tau`, which is tau's `TAU.md` as its tau library has it,
 where the session has the tool, since the tool's description says what

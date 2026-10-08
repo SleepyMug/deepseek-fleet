@@ -37,7 +37,7 @@ piped input, it prints no prompt, so a script gets results alone on stdout.
 
 ## Built on
 
-- `Box` (`fleet-core/box`), for every command.
+- `Box` (`@sleepymug/fleet-core/box`), for every command.
 - `node:util`'s `parseArgs`, for the command line.
 - `node:readline`, for the REPL (`repl.ts`).
 

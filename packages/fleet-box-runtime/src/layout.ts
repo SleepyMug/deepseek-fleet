@@ -1,8 +1,14 @@
 /**
  * Where fleet's runtime lies in the image, which the host and the image
  * agree on. Shared by both, so it holds only constants.
- * @module fleet-box-runtime/layout
+ * @module @sleepymug/fleet-box-runtime/layout
  */
+
+/**
+ * This package's name, which the extensions' clients import it by, and so
+ * the name it is linked by where a tau's code finds its APIs.
+ */
+export const PACKAGE_NAME = '@sleepymug/fleet-box-runtime'
 
 /** This package in the image, as it would be packed: its package.json and lib/. */
 export const PACKAGE_ROOT = '/opt/fleet'
@@ -26,5 +32,5 @@ export const CALL_SOCKET = '/run/fleet/calls.sock'
 /** Names the call socket for every process the helper starts, and so for the clients in them. */
 export const SOCKET_VARIABLE = 'FLEET_SOCKET'
 
-/** The tag `pnpm image` builds, and the image a box runs unless told otherwise. */
+/** The tag `fleet-box-image` builds, and the image a box runs unless told otherwise. */
 export const DEFAULT_IMAGE = 'fleet:local'

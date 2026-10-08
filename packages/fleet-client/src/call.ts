@@ -8,7 +8,7 @@
  * extra file, one the tau does not declare. The call is checked against the
  * tau when it is packed, so a name the tau does not declare passes as an
  * arg, for the tau's schema to take or refuse.
- * @module fleet-client/call
+ * @module @sleepymug/fleet-client/call
  */
 
 import type { FileDeclaration, Json, Mode } from '@sleepymug/tau'

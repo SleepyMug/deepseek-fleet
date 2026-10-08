@@ -5,18 +5,18 @@
  * their folder, so that their imports resolve there, and whose code
  * re-exports the client of the extension that implements it, so that every
  * import in a process gets that one module. Each exposed package of the
- * tau's own is linked by its name, and this package as `fleet-box-runtime`,
+ * tau's own is linked by its name, and this package by its own,
  * whose client runtime the extensions' clients import (../../ext/client.ts).
  * Node looks for a package in every folder above the file that imports it,
  * so a program anywhere below the folder holding `modules`, and the tau's
  * own packages, find them, and TypeScript does too.
- * @module fleet-box-runtime/helper/cmd/link
+ * @module @sleepymug/fleet-box-runtime/helper/cmd/link
  */
 
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { PACKAGE_ROOT } from '../../layout.ts'
+import { PACKAGE_NAME, PACKAGE_ROOT } from '../../layout.ts'
 import type { Methods } from '../protocol.ts'
 
 type Params = Methods['apis.link']['params']
@@ -47,7 +47,7 @@ export async function apisLink(params: Params): Promise<null> {
     await writeFile(join(folder, 'index.js'), code.join('\n'))
     await symlink(types, join(folder, 'api'))
   }
-  for (const { name, dir } of [...packages, { name: 'fleet-box-runtime', dir: PACKAGE_ROOT }]) {
+  for (const { name, dir } of [...packages, { name: PACKAGE_NAME, dir: PACKAGE_ROOT }]) {
     const link = join(modules, name)
     await mkdir(dirname(link), { recursive: true })
     await rm(link, { recursive: true, force: true })
@@ -65,9 +65,9 @@ function checked(params: Params): Params {
   }
   const packageName = (name: unknown): boolean => typeof name === 'string'
     && (name.startsWith('@') ? name.slice(1).split('/') : [name]).every(part => NAME.test(part))
-    && name.split('/').length === (name.startsWith('@') ? 2 : 1) && name !== 'fleet-box-runtime' && !name.startsWith(`${API_SCOPE}/`)
+    && name.split('/').length === (name.startsWith('@') ? 2 : 1) && name !== PACKAGE_NAME && !name.startsWith(`${API_SCOPE}/`)
   if (!Array.isArray(packages) || !packages.every(entry => packageName(entry?.name) && absolute(entry?.dir))) {
-    throw new TypeError('apis.link takes packages, a list of { name, dir }, each a package name, not @api/… or fleet-box-runtime, and an absolute path')
+    throw new TypeError(`apis.link takes packages, a list of { name, dir }, each a package name, not @api/… or ${PACKAGE_NAME}, and an absolute path`)
   }
   return { modules, apis, packages }
 }

@@ -2,7 +2,7 @@
  * Building the box image: this package's Dockerfile, with the package
  * staged beside it as it would be packed, with every package it depends on
  * as installed here (./stage.ts). Build the package first.
- * @module fleet-box-runtime/image/build
+ * @module @sleepymug/fleet-box-runtime/image/build
  */
 
 import { execFile, spawn } from 'node:child_process'

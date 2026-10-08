@@ -1,8 +1,10 @@
 {
-  "name": "fleet-box-runtime",
+  "name": "@sleepymug/fleet-box-runtime",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
+  "bin": {
+    "fleet-box-image": "./lib/image/main.js"
+  },
   "exports": {
     "./layout": {
       "types": "./lib/layout.d.ts",
@@ -39,6 +41,9 @@
     "lib",
     "!lib/**/*.test.*"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",

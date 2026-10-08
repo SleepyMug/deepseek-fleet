@@ -13,7 +13,7 @@
  * dsh's, so both fleet-core's world (../world/), which serves a tau's
  * session from its box, and the tau service (./service.ts), which makes the
  * session, build on it.
- * @module fleet-core/tau/runs
+ * @module @sleepymug/fleet-core/tau/runs
  */
 
 import { randomUUID } from 'node:crypto'
@@ -25,10 +25,10 @@ import { Readable, Writable } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
 import { type CheckedCall, loadTau } from '@sleepymug/tau'
 import { checkResult, placeCall, readCall, readResult, writeResult } from '@sleepymug/tau/call'
-import type { Call } from 'fleet-box-runtime/helper/protocol'
-import { HELPER_NODE, TAU_ENTRY } from 'fleet-box-runtime/layout'
-import type { Setup } from 'fleet-box-runtime/tau/endpoint'
-import type { Result, Started, Targets } from 'fleet-protocol/tau'
+import type { Call } from '@sleepymug/fleet-box-runtime/helper/protocol'
+import { HELPER_NODE, TAU_ENTRY } from '@sleepymug/fleet-box-runtime/layout'
+import type { Setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
+import type { Result, Started, Targets } from '@sleepymug/fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
 import { linkApis, type Exts, type Linked } from './apis.ts'
 import type { Caller, Entry, Registry } from './registry.ts'

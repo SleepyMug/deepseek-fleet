@@ -5,7 +5,7 @@
  * the flow's notices to stderr, answers its prompts from stdin, and requests
  * exit. The flow owns the credential write; a running dsh sharing the same
  * Harness home picks the record up without a restart.
- * @module fleet-signin/app
+ * @module @sleepymug/fleet-signin/app
  */
 
 import { createInterface } from 'node:readline'

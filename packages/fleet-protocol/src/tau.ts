@@ -7,7 +7,7 @@
  * its line, each an archive of tau's docs/spec/serialization.md; a `finish`
  * that asks for it has the run's session's history in its line. Shared by
  * both ends, so it holds only types, constants, and where the socket is.
- * @module fleet-protocol/tau
+ * @module @sleepymug/fleet-protocol/tau
  */
 
 import { join } from 'node:path'

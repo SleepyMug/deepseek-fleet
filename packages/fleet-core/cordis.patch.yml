@@ -121,7 +121,7 @@
           # (docs/fleet-core/tools/index.md). A tau's session runs taus with
           # its tau API instead.
           - id: tool-tau
-            name: fleet-core/tools/tau
+            name: '@sleepymug/fleet-core/tools/tau'
 
           # Not model tools: automatic compaction, /compact, and old tool-result pruning.
           - id: compaction
@@ -164,7 +164,7 @@
 # bundles, such as ext/fleet-ext-notes.
 - insert:
     - id: fleet-exts
-      name: fleet-core/ext/plugin
+      name: '@sleepymug/fleet-core/ext/plugin'
 
 # `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, in the
 # registry $DSH_HOME/fleet/taus/, each run's APIs linked to the extensions
@@ -172,7 +172,7 @@
 # dsh's session controller on the world.
 - insert:
     - id: fleet-tau-runs
-      name: fleet-core/tau/runs-plugin
+      name: '@sleepymug/fleet-core/tau/runs-plugin'
       config:
         dshHome: !!js dshHomePath()
         # A box nothing uses, no turn, terminal, process or file call, is
@@ -190,12 +190,12 @@
 # that a tau's session's model is told of into its box.
 - insert:
     - id: fleet-fs
-      name: fleet-core/world/fs
+      name: '@sleepymug/fleet-core/world/fs'
       config:
         dshHome: !!js dshHomePath()
 
     - id: fleet-subprocess
-      name: fleet-core/world/subprocess
+      name: '@sleepymug/fleet-core/world/subprocess'
 
 # ═══ fleet-tau ═══
 
@@ -203,7 +203,7 @@
     # The socket `fleet` talks to, $DSH_HOME/fleet/tau.sock, which makes a
     # run's session through dsh's session controller.
     - id: fleet-tau
-      name: fleet-core/tau/plugin
+      name: '@sleepymug/fleet-core/tau/plugin'
       config:
         dshHome: !!js dshHomePath()
 
@@ -228,12 +228,12 @@
           # Where the model works, its box and the run's folders, in place of
           # dsh's sections about the host, which are false in a box.
           - id: tau-prompt
-            name: fleet-core/tau/prompt
+            name: '@sleepymug/fleet-core/tau/prompt'
 
           # The box ready before each step, set up again from the run's call
           # if it is gone, as after an archive, which the model is told once.
           - id: tau-reset
-            name: fleet-core/tau/reset
+            name: '@sleepymug/fleet-core/tau/reset'
 
           # bash, foreground only: nothing it starts outlives its call. A
           # command past its timeout is killed rather than moved to the

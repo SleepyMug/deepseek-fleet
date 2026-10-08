@@ -13,7 +13,7 @@
  * could not send them all. A connection that closes first cancels its call. Which session the call is for, whether it may make it,
  * and whether its arguments fit is the host's to decide; the helper checks
  * only the call's shape.
- * @module fleet-box-runtime/helper/cmd/calls
+ * @module @sleepymug/fleet-box-runtime/helper/cmd/calls
  */
 
 import { chmod, mkdir, rm } from 'node:fs/promises'

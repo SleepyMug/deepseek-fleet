@@ -3,14 +3,14 @@
  * needs, and how far it went, one JSON file per session in a folder of its
  * own. The service writes an entry once the session's box is set up, so an
  * entry means a box ready to start, and before the dsh session is made.
- * @module fleet-core/tau/registry
+ * @module @sleepymug/fleet-core/tau/registry
  */
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { CheckedCall } from '@sleepymug/tau'
-import { FOLDERS, MODULES } from 'fleet-box-runtime/tau/layout'
-import type { Result, Targets } from 'fleet-protocol/tau'
+import { FOLDERS, MODULES } from '@sleepymug/fleet-box-runtime/tau/layout'
+import type { Result, Targets } from '@sleepymug/fleet-protocol/tau'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u

@@ -2,7 +2,7 @@
  * A box: one Docker container, and fleet's helper in it while it runs
  * (docs/fleet-core/box/index.md). The container stays until it is removed,
  * through any number of starts and stops.
- * @module fleet-core/box
+ * @module @sleepymug/fleet-core/box
  */
 
 import { execFile, spawn } from 'node:child_process'
@@ -11,8 +11,8 @@ import { stat } from 'node:fs/promises'
 import { posix, resolve } from 'node:path'
 import { Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from 'fleet-box-runtime/layout'
-import type { EventOf, Method, Methods } from 'fleet-box-runtime/helper/protocol'
+import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from '@sleepymug/fleet-box-runtime/layout'
+import type { EventOf, Method, Methods } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { Helper, type CallHandler } from './helper.ts'
 
 export { HelperError, METHODS, STREAMED, streamed, type CallHandler, type Streamed } from './helper.ts'

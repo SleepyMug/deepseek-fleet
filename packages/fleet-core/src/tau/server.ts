@@ -8,7 +8,7 @@
  * owner can open the socket, which is its authentication, as the dsh home's
  * own files are. One service serves a socket: another finds it answering
  * and does not start.
- * @module fleet-core/tau/server
+ * @module @sleepymug/fleet-core/tau/server
  */
 
 import { chmod, mkdir, unlink } from 'node:fs/promises'
@@ -16,7 +16,7 @@ import { createConnection, createServer, type Socket } from 'node:net'
 import { dirname, isAbsolute } from 'node:path'
 import { PassThrough, type Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { PROTOCOL_VERSION, type Request, type Response } from 'fleet-protocol/tau'
+import { PROTOCOL_VERSION, type Request, type Response } from '@sleepymug/fleet-protocol/tau'
 import { HOST } from './runs.ts'
 import type { TauService } from './service.ts'
 

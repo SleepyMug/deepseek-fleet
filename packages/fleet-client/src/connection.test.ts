@@ -4,7 +4,7 @@ import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { PROTOCOL_VERSION } from 'fleet-protocol/tau'
+import { PROTOCOL_VERSION } from '@sleepymug/fleet-protocol/tau'
 import { ConnectionLost, NoService, ask, defaultSocket, exchange, request } from './connection.ts'
 
 test('the socket is in the dsh home, as dsh finds it', () => {

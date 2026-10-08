@@ -4,13 +4,13 @@
  * and cancel and delete them, through the tau service in the fleet host
  * (`dsh --profile fleet`), on its socket (./connection.ts); a run's call is
  * packed, and its result put at the caller's paths, here (./runs.ts).
- * @module fleet-client/cli
+ * @module @sleepymug/fleet-client/cli
  */
 
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 import { loadTau } from '@sleepymug/tau'
-import type { Result, RunStatus, Started } from 'fleet-protocol/tau'
+import type { Result, RunStatus, Started } from '@sleepymug/fleet-protocol/tau'
 import { ConnectionLost, NoService, ask, defaultSocket } from './connection.ts'
 import { finishRun, startRun } from './runs.ts'
 import { MODE_OPTIONS, type ModedFiles, UsageError, parseCall } from './call.ts'

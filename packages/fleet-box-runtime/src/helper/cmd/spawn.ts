@@ -4,7 +4,7 @@
  * group holds it and whatever it starts, except what starts a session of its
  * own; `kill` ends that group, and so does the helper's exit. Whatever
  * escapes it dies when the box stops.
- * @module fleet-box-runtime/helper/cmd/spawn
+ * @module @sleepymug/fleet-box-runtime/helper/cmd/spawn
  */
 
 import { spawn as start } from 'node:child_process'

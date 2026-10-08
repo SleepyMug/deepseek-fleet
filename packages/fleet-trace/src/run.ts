@@ -10,7 +10,7 @@
  * in the output folder: every request, and the last of the scenario's
  * conversation rendered (./render.ts); and how it ended, and the caller's
  * folder after it.
- * @module fleet-trace/run
+ * @module @sleepymug/fleet-trace/run
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
@@ -21,9 +21,9 @@ import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { ask as askService, type Body } from 'fleet-client/connection'
-import { finishRun, startRun } from 'fleet-client/runs'
-import { socketPath, type Answers } from 'fleet-protocol/tau'
+import { ask as askService, type Body } from '@sleepymug/fleet-client/connection'
+import { finishRun, startRun } from '@sleepymug/fleet-client/runs'
+import { socketPath, type Answers } from '@sleepymug/fleet-protocol/tau'
 import type { Request, Settled } from './driver.ts'
 import { ScriptedModel, type Script, type Step } from './model.ts'
 import { render } from './render.ts'
@@ -133,13 +133,13 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
 async function profile(home: string, port: number): Promise<void> {
   const dir = join(home, 'profiles', 'fleet')
   mkdirSync(dir, { recursive: true })
-  const exts = readdirSync(join(CHECKOUT, 'ext')).filter(name => existsSync(join(CHECKOUT, 'ext', name, 'package.json')))
-  const packages: Record<string, string> = { 'fleet-core': join(CHECKOUT, 'packages', 'fleet-core') }
-  for (const name of exts) packages[name] = join(CHECKOUT, 'ext', name)
+  const exts = readdirSync(join(CHECKOUT, 'ext')).map(name => join(CHECKOUT, 'ext', name)).filter(path => existsSync(join(path, 'package.json')))
+  const packages = Object.fromEntries([join(CHECKOUT, 'packages', 'fleet-core'), ...exts].map(path => [packageName(path), path]))
+  const trace = join(CHECKOUT, 'packages', 'fleet-trace')
   const manifest = {
     name: 'dsh-profile-fleet',
     private: true,
-    dependencies: Object.fromEntries([...Object.entries(packages), ['fleet-trace', join(CHECKOUT, 'packages', 'fleet-trace')]].map(([name, path]) => [name, `link:${path}`])),
+    dependencies: Object.fromEntries([...Object.entries(packages), [packageName(trace), trace]].map(([name, path]) => [name, `link:${path}`])),
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...Object.keys(packages)] } },
   }
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
@@ -158,11 +158,16 @@ async function profile(home: string, port: number): Promise<void> {
     '        models: [{ id: mock-model, name: Mock, contextWindow: 200000, input: [text, image] }]',
     '- insert:',
     '    - id: fleet-trace-driver',
-    '      name: fleet-trace/driver',
+    '      name: "@sleepymug/fleet-trace/driver"',
     `      config: { socket: ${JSON.stringify(driverSocket(home))} }`,
     '',
   ].join('\n'))
   await promisify(execFile)('pnpm', ['exec', 'dsh', 'plugin', '--profile', 'fleet', 'install'], { cwd: CHECKOUT, env: { ...process.env, DSH_HOME: home } })
+}
+
+/** The name in the package.json of the package at `path`. */
+function packageName(path: string): string {
+  return (JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')) as { name: string }).name
 }
 
 /** The workspace's dsh, in a process group of its own, so that stopping it stops pnpm and dsh both. */

@@ -3,7 +3,7 @@
  * `fleet-trace <scenario.json> [out]`: run a scenario on a scratch fleet
  * host (./run.ts), and write what the model was sent to `out`, by default
  * /tmp/fleet-trace/<scenario's name>.
- * @module fleet-trace/cli
+ * @module @sleepymug/fleet-trace/cli
  */
 
 import { basename, extname, join, resolve } from 'node:path'

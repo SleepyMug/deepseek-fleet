@@ -9,13 +9,13 @@
  * the session's registry entry has it; and
  * leaves out the sections dsh writes for a person at the host, which are
  * false in a box, and the runtime context on the host's sandbox policy.
- * @module fleet-core/tau/prompt
+ * @module @sleepymug/fleet-core/tau/prompt
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { AssembledSection } from '@deepseek-ai/dsh-system-prompt'
-import { FOLDERS, PRIMER, SELF } from 'fleet-box-runtime/tau/layout'
+import { FOLDERS, PRIMER, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import type { Entry } from './registry.ts'
 import type {} from './runs-plugin.ts'
 

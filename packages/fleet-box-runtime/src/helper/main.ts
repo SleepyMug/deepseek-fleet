@@ -4,7 +4,7 @@
  * (./protocol.ts) until its stdin ends; then it ends the processes, terminals
  * and watches it started, and exits. It also relays the calls of the
  * extensions' clients in the box to the host (./cmd/calls.ts).
- * @module fleet-box-runtime/helper/main
+ * @module @sleepymug/fleet-box-runtime/helper/main
  */
 
 import { createInterface } from 'node:readline'

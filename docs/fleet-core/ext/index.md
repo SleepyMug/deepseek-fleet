@@ -15,12 +15,12 @@ client of the extension that implements it (docs/fleet-core/tau/index.md).
 
 ## Provides
 
-`fleet-exts` (`fleet-core/ext/plugin`), a dsh plugin that fleet-core's
+`fleet-exts` (`@sleepymug/fleet-core/ext/plugin`), a dsh plugin that fleet-core's
 `cordis.patch.yml` mounts. It provides `ctx.fleetExts`, which holds the
 extensions provided:
 
 ```ts
-import type {} from 'fleet-core/ext/plugin'   // for ctx.fleetExts
+import type {} from '@sleepymug/fleet-core/ext/plugin'   // for ctx.fleetExts
 
 export const inject = ['fleetExts']
 export function apply(ctx: Context) {
@@ -45,7 +45,7 @@ export function apply(ctx: Context) {
   same package, and adding an API means installing a dsh plugin, without
   rebuilding the image. The client must be self-contained: it imports only
   its own files, Node's modules, and fleet's client runtime,
-  `fleet-box-runtime/ext/client`, which the box finds in its link tree. A
+  `@sleepymug/fleet-box-runtime/ext/client`, which the box finds in its link tree. A
   client that needs a package bundles it.
 - **The client is the implementation the API is checked against.** A run
   checks each API with tau's `checkImplementation` against the client's
@@ -68,7 +68,7 @@ export function apply(ctx: Context) {
   `body` gives the method `body`, an async iterable of the bytes, in its
   context; a method that answers with a `Streamed`,
   `{ [Symbol.for('fleet.streamed')]: true, value, body }`, or
-  `streamed(value, body)` from `fleet-core/box`, sends `value` as its
+  `streamed(value, body)` from `@sleepymug/fleet-core/box`, sends `value` as its
   result and `body` after it, which the client reads as `callStream`'s
   `body`. A body that fails on the way reaches the client cut short.
 - **A caller that goes away** aborts the method's signal: the client's own

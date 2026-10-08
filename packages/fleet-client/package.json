@@ -1,7 +1,6 @@
 {
-  "name": "fleet-client",
+  "name": "@sleepymug/fleet-client",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "bin": {
     "fleet": "./lib/cli.js"
@@ -21,6 +20,9 @@
     "lib",
     "!lib/**/*.test.*"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
@@ -28,6 +30,6 @@
   },
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
-    "fleet-protocol": "workspace:*"
+    "@sleepymug/fleet-protocol": "workspace:*"
   }
 }

@@ -4,7 +4,7 @@
  * scoped context the caller reached the service through, as dsh's terminal
  * controller reaches `ctx.subprocess` through `agent.ctx`. A call that is no
  * session's work, such as the file viewer's, is for none.
- * @module fleet-core/world/caller
+ * @module @sleepymug/fleet-core/world/caller
  */
 
 import type { Context } from '@deepseek-ai/cordis'

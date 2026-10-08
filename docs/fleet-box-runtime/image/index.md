@@ -4,22 +4,23 @@ Builds the box image: a Node base image with fleet's runtime on top.
 
 ## Provides
 
-- `buildImage({ docker?, tag? })` (`fleet-box-runtime/image/build`), which
-  builds the image and tags it `fleet:local` by default. `pnpm image [tag]` at
-  the workspace root builds the workspace first, then runs it.
-- `fleet-box-runtime/layout`, where things lie in the image, which the host
+- `buildImage({ docker?, tag? })` (`@sleepymug/fleet-box-runtime/image/build`), which
+  builds the image and tags it `fleet:local` by default, and the command
+  `fleet-box-image [<tag>]`, which runs it. `pnpm image [tag]` at the
+  workspace root builds the workspace first, then runs the command.
+- `@sleepymug/fleet-box-runtime/layout`, where things lie in the image, which the host
   and the image agree on: the package at `/opt/fleet`, the helper's Node and
   entry, the tau runtime's entry, and the default tag. It holds constants
   only.
 - The tau runtime, the runtime's side of a tau's run in its box, on tau's
   library, which the image holds as a dependency of this package, and which
-  owns where a run has its things in its box (`fleet-box-runtime/tau/layout`):
+  owns where a run has its things in its box (`@sleepymug/fleet-box-runtime/tau/layout`):
   the host runs `node /opt/fleet/lib/tau/main.js setup`, with the run's
   call on stdin, which sets the box up and reports, as JSON, the prompt,
   the files and where things are; and `… pack '{"outcome"}'`, which
   writes the run's result on stdout, packed from what the agent left at its
   `out` and `inout` files, or a failure, when that does not fit the tau
-  (docs/fleet-core/tau/index.md). `fleet-box-runtime/tau/endpoint` exports
+  (docs/fleet-core/tau/index.md). `@sleepymug/fleet-box-runtime/tau/endpoint` exports
   both, each with the root the box's paths are under, for tests.
 
 ## Design
@@ -54,5 +55,10 @@ Builds the box image: a Node base image with fleet's runtime on top.
 Run `pnpm image` after changing anything that goes into the image. A box
 whose image is older than the host's protocol refuses to start, and says to
 rebuild.
+
+The command builds from the package it is in, as installed, so it runs from
+the install the host runs: in a profile installed from npm, one that lists
+this package beside fleet-core, `dsh plugin --profile fleet exec
+fleet-box-image` (docs/install.md).
 
 Not yet: a build is tagged without checking its helper first.

@@ -13,7 +13,7 @@
  * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
  * through which a tau's session starts runs from its box, and for
  * `tau_run` (../tools/tau.ts), with which another session starts them.
- * @module fleet-core/tau/plugin
+ * @module @sleepymug/fleet-core/tau/plugin
  */
 
 import { isAbsolute } from 'node:path'
@@ -23,7 +23,7 @@ import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
-import { socketPath } from 'fleet-protocol/tau'
+import { socketPath } from '@sleepymug/fleet-protocol/tau'
 import { summarize } from './outcome.ts'
 import { print } from './runs-plugin.ts'
 import { listen } from './server.ts'

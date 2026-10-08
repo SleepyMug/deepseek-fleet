@@ -5,7 +5,7 @@
  * which the client calls. An extension is a dsh plugin of its own, which
  * provides itself as long as it is loaded. This holds only what is
  * provided; the runs of taus link it, and relay the calls (../tau/).
- * @module fleet-core/ext/exts
+ * @module @sleepymug/fleet-core/ext/exts
  */
 
 import { isAbsolute } from 'node:path'
@@ -39,7 +39,7 @@ export interface Ext {
    * declarations beside it, which the API is checked against. It is copied
    * into each box whose tau declares the API, so it is self-contained: it
    * imports only its own files, Node's modules, and fleet's client runtime,
-   * `fleet-box-runtime/ext/client`.
+   * `@sleepymug/fleet-box-runtime/ext/client`.
    */
   client: string
   /** Its server's methods, by name; none for a client that works in the box alone. */

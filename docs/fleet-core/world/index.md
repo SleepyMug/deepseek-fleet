@@ -16,8 +16,8 @@ a tau's session does not look; they stay inline instead.
 
 | Row | Module | Service |
 |---|---|---|
-| `fleet-fs` | `fleet-core/world/fs` | `ctx.fs`, a `FileSystem` |
-| `fleet-subprocess` | `fleet-core/world/subprocess` | `ctx.subprocess`, a `SubprocessRuntime` |
+| `fleet-fs` | `@sleepymug/fleet-core/world/fs` | `ctx.fs`, a `FileSystem` |
+| `fleet-subprocess` | `@sleepymug/fleet-core/world/subprocess` | `ctx.subprocess`, a `SubprocessRuntime` |
 
 ## Design
 

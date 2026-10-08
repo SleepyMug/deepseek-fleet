@@ -27,7 +27,7 @@
  * store is at its place under /fleet/attachments in its box, which the runs
  * copy it to as it is asked for; there the store's files never change. Any
  * other host file is not in its world.
- * @module fleet-core/world/fs
+ * @module @sleepymug/fleet-core/world/fs
  */
 
 import { randomUUID } from 'node:crypto'
@@ -42,7 +42,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
-import type { Methods, Target } from 'fleet-box-runtime/helper/protocol'
+import type { Methods, Target } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { RunBox, TauRuns } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'

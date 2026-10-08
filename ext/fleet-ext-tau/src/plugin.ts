@@ -5,13 +5,13 @@
  * programs import as `@api/tau`, and whose server (./tau.ts) starts, finishes
  * and cancels the runs a tau's session starts from its box, on the tau
  * service, `ctx.fleetTau`.
- * @module fleet-ext-tau/plugin
+ * @module @sleepymug/fleet-ext-tau/plugin
  */
 
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from 'fleet-core/ext/plugin'
-import type {} from 'fleet-core/tau/plugin'
+import type {} from '@sleepymug/fleet-core/ext/plugin'
+import type {} from '@sleepymug/fleet-core/tau/plugin'
 import { methods } from './tau.ts'
 
 export const name = 'fleet-ext-tau'

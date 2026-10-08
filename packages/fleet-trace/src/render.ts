@@ -2,7 +2,7 @@
  * What the model was sent, as files to read: of one request, the system
  * prompt as it is, each tool as the model gets it, and the conversation,
  * each call with its arguments and each result as sent.
- * @module fleet-trace/render
+ * @module @sleepymug/fleet-trace/render
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'

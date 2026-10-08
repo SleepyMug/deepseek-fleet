@@ -6,7 +6,7 @@ in it through any number of starts and stops.
 
 ## Provides
 
-`Box`, from `fleet-core/box`:
+`Box`, from `@sleepymug/fleet-core/box`:
 
 | Verb | What it does | Using |
 |---|---|---|
@@ -73,13 +73,13 @@ It also exports:
 ## Built on
 
 - The Docker CLI, through `execFile`.
-- `fleet-box-runtime/layout`, for where the helper is in the image.
-- `fleet-box-runtime/helper/protocol`, for the wire.
+- `@sleepymug/fleet-box-runtime/layout`, for where the helper is in the image.
+- `@sleepymug/fleet-box-runtime/helper/protocol`, for the wire.
 
 ## How it runs
 
 ```ts
-import { Box, exec } from 'fleet-core/box'
+import { Box, exec } from '@sleepymug/fleet-core/box'
 
 const box = await Box.create()             // image fleet:local, a fresh name
 await box.copyIn('./input', '/data')

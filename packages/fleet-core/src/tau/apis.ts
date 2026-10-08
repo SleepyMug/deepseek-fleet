@@ -4,7 +4,7 @@
  * it (../ext/), and a tau with an API no extension implements, or whose
  * client does not fit it, is refused before anything is made. What the tau
  * exposes, of its APIs and of its own packages, is what its programs import.
- * @module fleet-core/tau/apis
+ * @module @sleepymug/fleet-core/tau/apis
  */
 
 import { join } from 'node:path'

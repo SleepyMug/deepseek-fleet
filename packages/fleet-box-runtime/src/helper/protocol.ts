@@ -10,7 +10,7 @@
  * helper exits when its stdin ends, and ends the
  * processes it started first. Shared by both ends, so it holds only types
  * and constants.
- * @module fleet-box-runtime/helper/protocol
+ * @module @sleepymug/fleet-box-runtime/helper/protocol
  */
 
 /** Wire version; the host refuses a helper that answers `hello` with another. */

@@ -169,18 +169,18 @@ importers:
       '@deepseek-ai/dsh':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(6e0f7ad692ae71b7a2d03c063df4b11d)
+      '@sleepymug/fleet-client':
+        specifier: workspace:*
+        version: link:packages/fleet-client
+      '@sleepymug/fleet-core':
+        specifier: workspace:*
+        version: link:packages/fleet-core
+      '@sleepymug/fleet-trace':
+        specifier: workspace:*
+        version: link:packages/fleet-trace
       '@types/node':
         specifier: 26.6.2
         version: 26.6.2
-      fleet-client:
-        specifier: workspace:*
-        version: link:packages/fleet-client
-      fleet-core:
-        specifier: workspace:*
-        version: link:packages/fleet-core
-      fleet-trace:
-        specifier: workspace:*
-        version: link:packages/fleet-trace
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -202,30 +202,30 @@ importers:
       '@deepseek-ai/cordis':
         specifier: 4.0.4
         version: 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
+      '@sleepymug/fleet-box-runtime':
+        specifier: workspace:*
+        version: link:../../packages/fleet-box-runtime
+      '@sleepymug/fleet-core':
+        specifier: workspace:*
+        version: link:../../packages/fleet-core
       '@sleepymug/tau':
         specifier: workspace:*
         version: link:../../../agent_fleet_project/tau
-      fleet-box-runtime:
-        specifier: workspace:*
-        version: link:../../packages/fleet-box-runtime
-      fleet-core:
-        specifier: workspace:*
-        version: link:../../packages/fleet-core
 
   ext/fleet-ext-tau:
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.4
         version: 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
+      '@sleepymug/fleet-box-runtime':
+        specifier: workspace:*
+        version: link:../../packages/fleet-box-runtime
+      '@sleepymug/fleet-core':
+        specifier: workspace:*
+        version: link:../../packages/fleet-core
       '@sleepymug/tau':
         specifier: workspace:*
         version: link:../../../agent_fleet_project/tau
-      fleet-box-runtime:
-        specifier: workspace:*
-        version: link:../../packages/fleet-box-runtime
-      fleet-core:
-        specifier: workspace:*
-        version: link:../../packages/fleet-core
 
   packages/fleet-box-runtime:
     dependencies:
@@ -247,24 +247,24 @@ importers:
 
   packages/fleet-client:
     dependencies:
+      '@sleepymug/fleet-protocol':
+        specifier: workspace:*
+        version: link:../fleet-protocol
       '@sleepymug/tau':
         specifier: 0.1.0
         version: link:../../../agent_fleet_project/tau
-      fleet-protocol:
-        specifier: workspace:*
-        version: link:../fleet-protocol
 
   packages/fleet-core:
     dependencies:
+      '@sleepymug/fleet-box-runtime':
+        specifier: workspace:*
+        version: link:../fleet-box-runtime
+      '@sleepymug/fleet-protocol':
+        specifier: workspace:*
+        version: link:../fleet-protocol
       '@sleepymug/tau':
         specifier: 0.1.0
         version: link:../../../agent_fleet_project/tau
-      fleet-box-runtime:
-        specifier: workspace:*
-        version: link:../fleet-box-runtime
-      fleet-protocol:
-        specifier: workspace:*
-        version: link:../fleet-protocol
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -343,10 +343,10 @@ importers:
 
   packages/fleet-trace:
     dependencies:
-      fleet-client:
+      '@sleepymug/fleet-client':
         specifier: workspace:*
         version: link:../fleet-client
-      fleet-protocol:
+      '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
 

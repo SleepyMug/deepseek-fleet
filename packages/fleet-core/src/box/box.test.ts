@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { DEFAULT_IMAGE } from 'fleet-box-runtime/layout'
+import { DEFAULT_IMAGE } from '@sleepymug/fleet-box-runtime/layout'
 import { Box, exec as inBox } from './box.ts'
 
 const exec = promisify(execFile)

@@ -1,7 +1,6 @@
 {
-  "name": "fleet-core",
+  "name": "@sleepymug/fleet-core",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "bin": {
     "fleet-box": "./lib/box/cli/main.js"
@@ -50,6 +49,9 @@
     "!lib/**/*.test.*",
     "cordis.patch.yml"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
@@ -62,8 +64,8 @@
   },
   "dependencies": {
     "@sleepymug/tau": "0.1.0",
-    "fleet-box-runtime": "workspace:*",
-    "fleet-protocol": "workspace:*",
+    "@sleepymug/fleet-box-runtime": "workspace:*",
+    "@sleepymug/fleet-protocol": "workspace:*",
     "zod": "4.6.5"
   },
   "peerDependencies": {

@@ -1,13 +1,13 @@
 /**
  * fleet's client runtime, which an extension's client imports in the box, as
- * `fleet-box-runtime/ext/client`, to call its server on the host
+ * `@sleepymug/fleet-box-runtime/ext/client`, to call its server on the host
  * (docs/fleet-core/ext/index.md): through the helper's call socket, which
  * every process the helper starts finds at $FLEET_SOCKET
  * (../helper/cmd/calls.ts). What crosses is JSON: a client turns other
  * values, such as dates, into JSON and back, as the API it implements
  * declares them; bytes, such as an archive, go after the call, and come
  * after its answer, with {@link callStream}.
- * @module fleet-box-runtime/ext/client
+ * @module @sleepymug/fleet-box-runtime/ext/client
  */
 
 import { once } from 'node:events'

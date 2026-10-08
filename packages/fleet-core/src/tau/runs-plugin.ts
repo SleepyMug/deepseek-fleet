@@ -8,7 +8,7 @@
  * boxes are Docker's; and it prints what it does on dsh's stderr. A box
  * nothing occupies is stopped after `idleStopMs`. As it unloads, when dsh
  * exits, it stops the boxes it started.
- * @module fleet-core/tau/runs-plugin
+ * @module @sleepymug/fleet-core/tau/runs-plugin
  */
 
 import { isAbsolute, join } from 'node:path'

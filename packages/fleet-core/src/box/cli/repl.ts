@@ -4,12 +4,12 @@
  * one line of JSON; a line that starts with a dot is one of the REPL's own
  * commands. Results go to the output, errors to the error stream, so piped
  * input gives clean output.
- * @module fleet-core/box/cli/repl
+ * @module @sleepymug/fleet-core/box/cli/repl
  */
 
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
-import type { Method } from 'fleet-box-runtime/helper/protocol'
+import type { Method } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { METHODS, type Box } from '../box.ts'
 
 /** What one line asks for. */

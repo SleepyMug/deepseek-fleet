@@ -2,7 +2,7 @@
  * The client's end of the tau service's socket (fleet-protocol/tau): one
  * request per connection, with what follows it, and its answer, with what
  * follows that.
- * @module fleet-client/connection
+ * @module @sleepymug/fleet-client/connection
  */
 
 import { once } from 'node:events'
@@ -10,7 +10,7 @@ import { createConnection, type Socket } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { PassThrough } from 'node:stream'
-import { PROTOCOL_VERSION, socketPath, type Answers, type Request, type Response } from 'fleet-protocol/tau'
+import { PROTOCOL_VERSION, socketPath, type Answers, type Request, type Response } from '@sleepymug/fleet-protocol/tau'
 
 /** A request without its protocol version, which {@link request} adds. */
 export type Body = WithoutProtocol<Request>

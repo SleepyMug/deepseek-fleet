@@ -6,7 +6,7 @@ end imports the other.
 
 ## Provides
 
-`fleet-protocol/tau`:
+`@sleepymug/fleet-protocol/tau`:
 - `PROTOCOL_VERSION`, which the service checks in every request;
 - `socketPath(dshHome)`, where the service listens: `<dshHome>/fleet/tau.sock`;
 - the types `Request`, `Response`, `Answers`, `Started`, `Finished`,

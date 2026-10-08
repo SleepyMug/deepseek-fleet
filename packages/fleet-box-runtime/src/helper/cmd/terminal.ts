@@ -10,7 +10,7 @@
  * the kernel can tell, though a loop of the shell's builtins that sleeps
  * looks the same. node-pty is loaded when the first terminal starts, so a
  * box without it fails only terminals.
- * @module fleet-box-runtime/helper/cmd/terminal
+ * @module @sleepymug/fleet-box-runtime/helper/cmd/terminal
  */
 
 import { readdir, readFile } from 'node:fs/promises'

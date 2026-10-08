@@ -4,13 +4,13 @@
  * paths here, where the targets the service gives back with it say (tau's
  * docs/spec/library.md), as is its session's history, if asked for. The
  * service never reads or writes them.
- * @module fleet-client/runs
+ * @module @sleepymug/fleet-client/runs
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { applyResult, packCall } from '@sleepymug/tau/call'
-import type { Result, Started } from 'fleet-protocol/tau'
+import type { Result, Started } from '@sleepymug/fleet-protocol/tau'
 import { ask, receive } from './connection.ts'
 
 /**

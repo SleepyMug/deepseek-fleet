@@ -8,7 +8,7 @@
  * of it left, or its shell alone at its prompt, so dsh's terminal
  * controller reclaims one nobody has open after a while, which ends its
  * hold on the box (./subprocess.ts).
- * @module fleet-core/world/terminal
+ * @module @sleepymug/fleet-core/world/terminal
  */
 
 import { randomUUID } from 'node:crypto'

@@ -3,7 +3,7 @@
  * shell, and answer how it ended and all it wrote to stdout and stderr. An
  * exit other than 0, or a signal, is an answer, not a failure; a program that
  * cannot run at all, such as one that is not there, is a failure.
- * @module fleet-box-runtime/helper/cmd/exec
+ * @module @sleepymug/fleet-box-runtime/helper/cmd/exec
  */
 
 import { execFile } from 'node:child_process'

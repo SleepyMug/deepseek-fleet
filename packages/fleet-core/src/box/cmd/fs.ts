@@ -5,10 +5,10 @@
  * answer in the helper's name, so a target must name an absolute path, and
  * every field must be what dsh's file system types say, before it reaches
  * dsh.
- * @module fleet-core/box/cmd/fs
+ * @module @sleepymug/fleet-core/box/cmd/fs
  */
 
-import type { DirEntry, EditOutcome, EventOf, Info, PathInfo, Target, WriteOutcome } from 'fleet-box-runtime/helper/protocol'
+import type { DirEntry, EditOutcome, EventOf, Info, PathInfo, Target, WriteOutcome } from '@sleepymug/fleet-box-runtime/helper/protocol'
 
 export function isTarget(value: unknown): value is Target {
   return isRecord(value) && isAbsolutePath(value.targetKey) && typeof value.displayPath === 'string'

@@ -7,7 +7,7 @@ server keeps in dsh's process for as long as dsh runs.
 
 ## Provides
 
-A dsh bundle, whose `cordis.patch.yml` mounts `fleet-ext-notes/plugin`. It
+A dsh bundle, whose `cordis.patch.yml` mounts `@sleepymug/fleet-ext-notes/plugin`. It
 provides the extension of `notes` to `ctx.fleetExts`:
 
 | Half | Module | |
@@ -41,5 +41,5 @@ console.log((await byTag('shop')).map(note => note.text))   // [ 'buy milk' ]
 
 ## Built on
 
-- `fleet-box-runtime/ext/client`, in the box, which the client alone imports.
-- `fleet-core/ext/plugin`'s types, for `ctx.fleetExts`.
+- `@sleepymug/fleet-box-runtime/ext/client`, in the box, which the client alone imports.
+- `@sleepymug/fleet-core/ext/plugin`'s types, for `ctx.fleetExts`.

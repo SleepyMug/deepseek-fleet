@@ -18,7 +18,7 @@
  * in its box too (./terminal.ts), with the image's bash.
  *
  * Not served for a box: raw pipes and the control channel.
- * @module fleet-core/world/subprocess
+ * @module @sleepymug/fleet-core/world/subprocess
  */
 
 import { randomUUID } from 'node:crypto'
@@ -30,7 +30,7 @@ import type {
 } from '@deepseek-ai/dsh-subprocess'
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
-import { EXECUTABLE_NOT_FOUND } from 'fleet-box-runtime/helper/protocol'
+import { EXECUTABLE_NOT_FOUND } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { Occupant, RunBox, TauRuns } from '../tau/runs.ts'
 import type {} from '../tau/runs-plugin.ts'

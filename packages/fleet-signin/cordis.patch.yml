@@ -4,7 +4,7 @@
 # dsh, so a long-running profile must not select this bundle.
 - insert:
     - id: fleet-signin
-      name: fleet-signin/app
+      name: '@sleepymug/fleet-signin/app'
 
 - id: hmr
   disabled: true

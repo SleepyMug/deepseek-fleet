@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_IMAGE } from 'fleet-box-runtime/layout'
+import { DEFAULT_IMAGE } from '@sleepymug/fleet-box-runtime/layout'
 
 const MAIN = fileURLToPath(new URL('./main.js', import.meta.url))
 

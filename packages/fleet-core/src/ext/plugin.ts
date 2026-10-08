@@ -3,7 +3,7 @@
  * dsh plugin that provides them as `ctx.fleetExts`. It needs nothing, so the
  * runs of taus, which link them, build on it, and so does each extension's
  * own plugin, which imports this module's types for `ctx.fleetExts`.
- * @module fleet-core/ext/plugin
+ * @module @sleepymug/fleet-core/ext/plugin
  */
 
 import type { Context } from '@deepseek-ai/cordis'

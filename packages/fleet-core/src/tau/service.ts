@@ -13,10 +13,10 @@
  * only the runs it started, alike; a run's end deletes those it started and
  * did not finish, and its deletion all it started. The service reaches dsh's sessions only through
  * {@link Sessions}.
- * @module fleet-core/tau/service
+ * @module @sleepymug/fleet-core/tau/service
  */
 
-import type { Finished, Result, RunStatus, Started } from 'fleet-protocol/tau'
+import type { Finished, Result, RunStatus, Started } from '@sleepymug/fleet-protocol/tau'
 import { fellBack, nextOf } from './init.ts'
 import { resultOf, type Outcome } from './outcome.ts'
 import type { Caller, Entry } from './registry.ts'

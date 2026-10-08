@@ -4,7 +4,7 @@
  * folders in and folders out of them, from a shell, to show and debug a box and its helper. `start` starts a box and enters a REPL
  * that sends methods to its helper (./repl.ts), and stops the box when the
  * REPL is left.
- * @module fleet-core/box/cli/main
+ * @module @sleepymug/fleet-core/box/cli/main
  */
 
 import { parseArgs } from 'node:util'

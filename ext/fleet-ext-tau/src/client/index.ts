@@ -7,9 +7,9 @@
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
-import { call, callStream } from 'fleet-box-runtime/ext/client'
-import { runTau, type Runtime } from 'fleet-box-runtime/ext/tau'
-import { RUN } from 'fleet-box-runtime/tau/layout'
+import { call, callStream } from '@sleepymug/fleet-box-runtime/ext/client'
+import { runTau, type Runtime } from '@sleepymug/fleet-box-runtime/ext/tau'
+import { RUN } from '@sleepymug/fleet-box-runtime/tau/layout'
 
 /** A JSON value. */
 export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json }

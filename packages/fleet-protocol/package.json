@@ -1,7 +1,6 @@
 {
-  "name": "fleet-protocol",
+  "name": "@sleepymug/fleet-protocol",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "exports": {
     "./tau": {
@@ -14,6 +13,9 @@
     "lib",
     "!lib/**/*.test.*"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b"

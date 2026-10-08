@@ -6,13 +6,13 @@
  * files in its box, which its client puts the result at, and its
  * session's history, if asked for. Its methods take
  * what the box sends, so they check it.
- * @module fleet-ext-tau/tau
+ * @module @sleepymug/fleet-ext-tau/tau
  */
 
 import { posix } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ExtMethod } from 'fleet-core/ext/plugin'
-import type {} from 'fleet-core/tau/plugin'
+import type { ExtMethod } from '@sleepymug/fleet-core/ext/plugin'
+import type {} from '@sleepymug/fleet-core/tau/plugin'
 
 /** What the server asks of the tau service. */
 export type Service = Pick<Context['fleetTau'], 'start' | 'finish' | 'cancel'>

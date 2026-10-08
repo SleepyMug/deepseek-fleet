@@ -3,10 +3,10 @@
  * the check of its answer, which the helper connection registers
  * (../helper.ts), and `exec`, which runs a program in a started box and fails
  * unless it exits with 0.
- * @module fleet-core/box/cmd/exec
+ * @module @sleepymug/fleet-core/box/cmd/exec
  */
 
-import type { Methods } from 'fleet-box-runtime/helper/protocol'
+import type { Methods } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import type { Box } from '../box.ts'
 
 type Result = Methods['exec']['result']

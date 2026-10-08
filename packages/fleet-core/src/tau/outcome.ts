@@ -3,10 +3,10 @@
  * the end of its last turn, and the last text its agent wrote. The events'
  * types are written out here as far as they are read, so this module imports
  * nothing of dsh's.
- * @module fleet-core/tau/outcome
+ * @module @sleepymug/fleet-core/tau/outcome
  */
 
-import type { Result } from 'fleet-protocol/tau'
+import type { Result } from '@sleepymug/fleet-protocol/tau'
 
 /** An event of a session's log, as far as an outcome reads it. */
 export type LoggedEvent =

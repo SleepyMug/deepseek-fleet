@@ -4,7 +4,7 @@ import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { PROTOCOL_VERSION } from 'fleet-protocol/tau'
+import { PROTOCOL_VERSION } from '@sleepymug/fleet-protocol/tau'
 import type { Caller } from './registry.ts'
 import { listen, type Operations } from './server.ts'
 

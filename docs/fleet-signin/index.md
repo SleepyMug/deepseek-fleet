@@ -6,7 +6,7 @@ with, such as `llm-pi-ai/openai-codex` for a ChatGPT subscription, and exits.
 
 ## Provides
 
-`fleet-signin/app`, which the package's `cordis.patch.yml` mounts after
+`@sleepymug/fleet-signin/app`, which the package's `cordis.patch.yml` mounts after
 dsh-base:
 
 ```
@@ -51,7 +51,7 @@ Once, after `pnpm build`, make the profile:
 pnpm exec dsh plugin --profile fleet-signin add link:<checkout>/packages/fleet-signin
 ```
 
-which lists `@deepseek-ai/dsh-base` and `fleet-signin` in its bundles. Then:
+which lists `@deepseek-ai/dsh-base` and `@sleepymug/fleet-signin` in its bundles. Then:
 
 ```
 $ pnpm exec dsh fleet-signin

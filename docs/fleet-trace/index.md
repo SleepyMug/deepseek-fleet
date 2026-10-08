@@ -103,7 +103,7 @@ told so after the prompt, defines the term.
 
 ## Built on
 
-- `fleet-client/connection`, `fleet-client/runs` and `fleet-protocol/tau`,
+- `@sleepymug/fleet-client/connection`, `@sleepymug/fleet-client/runs` and `@sleepymug/fleet-protocol/tau`,
   for the tau service.
 - dsh's workspace registry, session controller and agents, for the
   driver, whose types it writes out, so it imports nothing of dsh's.

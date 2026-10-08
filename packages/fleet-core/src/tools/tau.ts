@@ -7,7 +7,7 @@
  * result put at its paths, once the run ends, and its session's history,
  * if asked for; the tool waits for it, so nothing outlives the call. A system-prompt section, where the session has
  * the tool, is tau's TAU.md: what a tau is, and what a run of one promises.
- * @module fleet-core/tools/tau
+ * @module @sleepymug/fleet-core/tools/tau
  */
 
 import { readFileSync } from 'node:fs'

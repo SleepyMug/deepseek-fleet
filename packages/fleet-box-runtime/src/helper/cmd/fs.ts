@@ -5,7 +5,7 @@
  * in the box as they do on a local machine. A target is the local one's:
  * its key is the canonical path in the box. A failure keeps the `FsError`
  * code, which the host gives back to dsh.
- * @module fleet-box-runtime/helper/cmd/fs
+ * @module @sleepymug/fleet-box-runtime/helper/cmd/fs
  */
 
 import { Context } from '@deepseek-ai/cordis'

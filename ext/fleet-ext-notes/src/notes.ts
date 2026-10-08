@@ -2,10 +2,10 @@
  * The server of the notes API: each session's notebook, kept in dsh's
  * process for as long as it runs. Its methods take what the client in the
  * box sends, so they check it.
- * @module fleet-ext-notes/notes
+ * @module @sleepymug/fleet-ext-notes/notes
  */
 
-import type { ExtMethod } from 'fleet-core/ext/plugin'
+import type { ExtMethod } from '@sleepymug/fleet-core/ext/plugin'
 
 interface Note {
   id: number

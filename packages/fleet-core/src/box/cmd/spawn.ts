@@ -2,10 +2,10 @@
  * The host's side of the helper's processes
  * (fleet-box-runtime/helper/cmd/spawn): the checks of its answers and events,
  * which the helper connection registers (../helper.ts).
- * @module fleet-core/box/cmd/spawn
+ * @module @sleepymug/fleet-core/box/cmd/spawn
  */
 
-import type { EventOf, Methods } from 'fleet-box-runtime/helper/protocol'
+import type { EventOf, Methods } from '@sleepymug/fleet-box-runtime/helper/protocol'
 
 export function isSpawnResult(value: unknown): value is Methods['spawn']['result'] {
   if (typeof value !== 'object' || value === null) return false

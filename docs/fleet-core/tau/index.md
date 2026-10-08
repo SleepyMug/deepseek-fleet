@@ -21,12 +21,12 @@ declares is linked to the client of the extension that implements it
 
 Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
-- `fleet-tau-runs` (`fleet-core/tau/runs-plugin`): the runs of taus and
+- `fleet-tau-runs` (`@sleepymug/fleet-core/tau/runs-plugin`): the runs of taus and
   their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It builds on the
   extensions provided, `ctx.fleetExts`, and uses nothing of dsh's.
-- `fleet-tau` (`fleet-core/tau/plugin`): the tau service (`service.ts`). It
+- `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
-  registry and its agents, and serves `fleet-protocol/tau` on
+  registry and its agents, and serves `@sleepymug/fleet-protocol/tau` on
   `$DSH_HOME/fleet/tau.sock`, for `fleet` (fleet-client):
 
 | Op | What it does |
@@ -52,8 +52,8 @@ to the sessions' two ways in:
   directory, which it names as `fleet` names its folder.
 
 The patch also declares `tau`, the agent preset a tau's session has: a
-persona, the tau's prompt plugin (`fleet-core/tau/prompt`), the box's
-reset notice (`fleet-core/tau/reset`), bash in the foreground only, read/write/edit, the tau's skills,
+persona, the tau's prompt plugin (`@sleepymug/fleet-core/tau/prompt`), the box's
+reset notice (`@sleepymug/fleet-core/tau/reset`), bash in the foreground only, read/write/edit, the tau's skills,
 and compaction. What its rows register
 reaches only the sessions of that preset: dsh mounts them once, in the
 preset's scope, which each of its sessions' agents has as its parent.
@@ -401,10 +401,10 @@ preset's scope, which each of its sessions' agents has as its parent.
   `loadExposed`; and `@sleepymug/tau/call`: `readCall`, `placeCall`,
   `readResult`, `checkResult`, `writeResult`.
 - `ctx.fleetExts` (fleet-core/ext).
-- `Box` and `exec` (`fleet-core/box`), with `Box.pipe` for the archives
+- `Box` and `exec` (`@sleepymug/fleet-core/box`), with `Box.pipe` for the archives
   the box's runtime reads and writes, and fleet-box-runtime's tau runtime, in
   the image.
-- `fleet-protocol/tau`, for the wire.
+- `@sleepymug/fleet-protocol/tau`, for the wire.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,
   `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-agent-preset`, `dsh-tool-bash`, `dsh-tool-fs`,
@@ -417,8 +417,8 @@ The fleet profile lists fleet-core after dsh's base and web bundles, in
 
 ```json
 {
-  "dependencies": { "fleet-core": "link:<checkout>/packages/fleet-core" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "fleet-core"] } }
+  "dependencies": { "@sleepymug/fleet-core": "link:<checkout>/packages/fleet-core" },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@sleepymug/fleet-core"] } }
 }
 ```
 
@@ -427,7 +427,8 @@ makes it so; each extension is a bundle listed after fleet-core, added the
 same way, such as `link:<checkout>/ext/fleet-ext-notes`. fleet-core's patch
 is the profile's layer as well: no sandbox,
 nothing that waits on a person, and one agent preset, `fleet`, for the web
-UI's sessions, whose tools work on the host.
+UI's sessions, whose tools work on the host. docs/install.md installs it
+all from npm instead.
 
 After `pnpm build` and `pnpm image`, `pnpm exec dsh --profile fleet`, with
 the dsh the workspace pins, starts the service with the web host, and
