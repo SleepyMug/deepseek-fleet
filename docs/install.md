@@ -18,6 +18,10 @@ On linux, with Docker and pnpm on the PATH:
    npm install --global @deepseek-ai/dsh@0.2.0-rc.2
    ```
 
+   With pnpm, `pnpm add --global @deepseek-ai/dsh@0.2.0-rc.2`, and then
+   `pnpm approve-builds --global` for dsh's native dependencies, such as
+   node-pty, which pnpm installs without building until they are approved.
+
 2. fleet-core, after dsh's base and web bundles, which `web` lists; then
    each extension, after fleet-core. dsh makes the `web` profile from its
    template if it has none yet:
@@ -85,7 +89,9 @@ npm pack @sleepymug/tau-api-notes && tar -xzf sleepymug-tau-api-notes-*.tgz --st
 
 tau is a submodule, `tau/`, at the commit this checkout builds on; the
 workspace takes in its library, with its `tau` command, and its contracts
-(pnpm-workspace.yaml). The workspace pins dsh, run as `pnpm exec dsh`.
+(pnpm-workspace.yaml). dsh is a dsh installed globally, as from npm
+above, at the version fleet's packages name as their peer; or the
+workspace's own, which it pins, run as `pnpm exec dsh` in place of `dsh`.
 
 1. Clone with the submodule, or fetch it in a clone made without:
 
@@ -107,17 +113,24 @@ workspace takes in its library, with its `tau` command, and its contracts
    `pnpm build` builds the workspace alone. Build the image again after
    each change to fleet-box-runtime.
 
-3. Link the checkout's bundles into a profile, fleet-core first:
+3. Link the checkout's bundles into a profile, fleet-core first, from the
+   checkout's root:
 
    ```
-   pnpm exec dsh plugin --profile web add link:$PWD/packages/fleet-core
-   pnpm exec dsh plugin --profile web add link:$PWD/ext/fleet-ext-tau link:$PWD/ext/fleet-ext-notes
+   dsh plugin --profile web add ./packages/fleet-core ./ext/fleet-ext-tau ./ext/fleet-ext-notes
    ```
+
+   The profile links each package, so a build of the checkout is what dsh
+   loads when it starts next. Each package declares the dsh packages whose
+   instances it shares with dsh as its peers, and as its dev dependencies,
+   so a linked checkout loads dsh's own, the installed dsh's, and keeps
+   the workspace's for its builds and tests (dsh's
+   docs/user/develop/basic/publish.md).
 
 4. Run the host, and the commands from the checkout:
 
    ```
-   pnpm exec dsh web
+   dsh web
    alias tau="node $PWD/tau/dist/cli/main.js"
    alias fleet="node $PWD/packages/fleet-client/lib/cli.js"
    ```
