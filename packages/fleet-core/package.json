@@ -10,6 +10,10 @@
       "types": "./lib/box/box.d.ts",
       "default": "./lib/box/box.js"
     },
+    "./ext/define": {
+      "types": "./lib/ext/define.d.ts",
+      "default": "./lib/ext/define.js"
+    },
     "./ext/plugin": {
       "types": "./lib/ext/plugin.d.ts",
       "default": "./lib/ext/plugin.js"

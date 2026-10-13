@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { CLIENT, VERSION } from './plugin.ts'
+import { EXT } from './plugin.ts'
 import { Notebooks } from './notes.ts'
 
 const signal = new AbortController().signal
@@ -39,7 +39,7 @@ test('what the box sends is checked', async (t) => {
 })
 
 test('the client implements the contract at the version this package depends on, and imports only its own files and fleet\'s client runtime', async () => {
-  assert.equal(VERSION, JSON.parse(await readFile(new URL('../node_modules/@sleepymug/tau-api-notes/package.json', import.meta.url), 'utf8')).version)
-  const code = await readFile(join(CLIENT, 'index.js'), 'utf8')
+  assert.equal(EXT.version, JSON.parse(await readFile(new URL('../node_modules/@sleepymug/tau-api-notes/package.json', import.meta.url), 'utf8')).version)
+  const code = await readFile(join(EXT.client, 'index.js'), 'utf8')
   assert.deepEqual([...code.matchAll(/from ['"]([^'"]+)['"]/gu)].map(match => match[1]), ['@sleepymug/fleet-box-runtime/ext/client', './contract.js'])
 })

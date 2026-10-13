@@ -35,6 +35,28 @@ export function apply(ctx: Context) {
 }
 ```
 
+An extension's plugin does that with `@sleepymug/fleet-core/ext/define`, as
+both of fleet's do:
+
+```ts
+import { defineExt, type Implements, provideExt } from '@sleepymug/fleet-core/ext/define'
+import type * as Contract from '@sleepymug/tau-api-notes'
+import type * as Client from './client/index.ts'
+
+export const EXT = defineExt(import.meta.url, '@sleepymug/tau-api-notes')
+export type Implemented = Implements<typeof Contract, typeof Client>
+export function apply(ctx: Context) {
+  provideExt(ctx, { ...EXT, methods: { addNote: (args, { sessionId, signal }) => … } })
+}
+```
+
+- `defineExt(url, contract)` gives the contract, the version the
+  extension's package depends on, read from the contract's package, and
+  the client's folder, built in `client/` beside the plugin's module, `url`.
+- `Implements<Contract, Client>` is the client's module if it implements
+  the contract, which TypeScript checks as the package is built.
+- `provideExt(ctx, ext)` provides it for as long as the plugin is loaded.
+
 - `provide(ext)` provides an extension until the function it returns is
   called, as the plugin's effect does when the plugin unloads. A second
   extension of the same contract is refused.
@@ -57,7 +79,7 @@ export function apply(ctx: Context) {
   declarations. An extension depends on the contract's package at the
   version it implements, types its client by it, so that TypeScript checks
   the client as the package is built, and provides that version, read from
-  the package, as `ext/fleet-ext-notes` does.
+  the package, as `defineExt` does.
 - **A call** goes from the client to the box's helper over its call socket
   (docs/fleet-box-runtime/helper/index.md), and from the helper to the host as
   a `call`. The runs of taus serve it (`tau/calls.ts`): it must name, by

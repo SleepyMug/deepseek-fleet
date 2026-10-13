@@ -7,29 +7,23 @@
  * @module @sleepymug/fleet-ext-notes/plugin
  */
 
-import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
+import { defineExt, type Implements, provideExt } from '@sleepymug/fleet-core/ext/define'
 import { fleetPaths } from '@sleepymug/fleet-core/paths'
-import type {} from '@sleepymug/fleet-core/services'
 import type * as Contract from '@sleepymug/tau-api-notes'
 import { CONTRACT } from './client/contract.ts'
 import type * as Client from './client/index.ts'
 import { Notebooks } from './notes.ts'
 
 /** The client implements the contract, as TypeScript checks while this package is built. */
-export type Implemented = Implements<typeof Client>
-type Implements<T extends typeof Contract> = T
+export type Implemented = Implements<typeof Contract, typeof Client>
 
 export const name = 'fleet-ext-notes'
 export const inject = ['fleetExts']
 
-/** The client's folder, as built: index.js, with its declarations beside it. */
-export const CLIENT = fileURLToPath(new URL('./client/', import.meta.url))
-
-/** The version of the contract the client implements: the one this package depends on, and is built against. */
-export const VERSION = (createRequire(import.meta.url)(`${CONTRACT}/package.json`) as { version: string }).version
+/** The contract, at the version this package depends on, and is built against, and the client's folder, as built. */
+export const EXT = defineExt(import.meta.url, CONTRACT)
 
 export interface Config {
   /** The dsh home, absolute, where the notebooks are kept, in fleet/notes/. */
@@ -38,5 +32,5 @@ export interface Config {
 
 export function apply(ctx: Context, config: Config): void {
   const notebooks = new Notebooks(join(fleetPaths(config?.dshHome, name).fleet, 'notes'))
-  ctx.effect(() => ctx.fleetExts.provide({ contract: CONTRACT, version: VERSION, client: CLIENT, methods: notebooks.methods }), 'fleet-ext-notes')
+  provideExt(ctx, { ...EXT, methods: notebooks.methods })
 }
