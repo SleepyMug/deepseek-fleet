@@ -8,18 +8,12 @@
  * @module @sleepymug/fleet-core/tau/init
  */
 
+import { initDecision } from '@sleepymug/tau/backend'
 import type { InitEnd } from './runs.ts'
 
-/** Init did the run: the agent does not run. */
-export const TAU_SKIP = 0
-/** The agent runs on the prompt, as it would without init. */
-export const TAU_RUN = 100
-/** Init failed, as any other ending says too: the agent runs, told so. */
-export const TAU_FALLBACK = 101
-
-/** What an init's end has the run do. */
-export function nextOf({ code }: InitEnd): 'skip' | 'run' | 'fall back' {
-  return code === TAU_SKIP ? 'skip' : code === TAU_RUN ? 'run' : 'fall back'
+/** What an init's end has the run do, as tau's backend SDK says: an end without a code falls back. */
+export function nextOf({ code }: InitEnd): 'skip' | 'run' | 'fallback' {
+  return initDecision(code ?? undefined)
 }
 
 /** The prompt of a run whose init failed: the tau's own, then that init failed, and what it wrote. */

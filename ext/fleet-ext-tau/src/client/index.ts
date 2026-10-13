@@ -1,15 +1,15 @@
 /**
  * The client of @sleepymug/tau-api, the tau API: this run's files and args,
  * which the box's runtime kept, and runs of other taus, each in a box of its
- * own, which its server starts on the fleet host as this session's.
+ * own, with tau's client and its fleet adaptor, whose requests its server
+ * passes to the tau service on the fleet host as this session's.
  * @module @sleepymug/fleet-ext-tau/client
  */
 
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { basename, dirname, resolve } from 'node:path'
-import { call, callStream } from '@sleepymug/fleet-box-runtime/ext/client'
-import { runTau, type Runtime } from '@sleepymug/fleet-box-runtime/ext/tau'
+import { dirname, resolve } from 'node:path'
+import { createClient, createFleetAdaptor, relayTransport, type FleetTransport } from '@sleepymug/fleet-box-runtime/ext/tau'
 import { RUN } from '@sleepymug/fleet-box-runtime/tau/layout'
 import type { Call, Json, Result } from '@sleepymug/tau-api'
 import { CONTRACT } from './contract.ts'
@@ -50,42 +50,34 @@ export function args(): { readonly [name: string]: Json } {
   return read().args
 }
 
-/**
- * The fleet host, as tau's library runs a tau on a runtime: each run in a
- * box of its own, as this session's, its result put back at this box's
- * paths, where the targets say, and its session's history at `history`, if
- * given, before.
- */
-function host(history: string | undefined): Runtime {
-  return {
-    async start(packed) {
-      const { value } = await callStream(CONTRACT, 'start', [{ title: basename(packed.tauDir), targets: packed.targets }], { body: packed.archive })
-      return (value as { sessionId: string }).sessionId
-    },
-    async finish(id, signal) {
-      const args = history === undefined ? [id] : [id, { history: true }]
-      const { value, body } = await callStream(CONTRACT, 'finish', args, signal === undefined ? {} : { signal })
-      const finished = value as { targets: { [name: string]: string }; history?: unknown[] }
-      if (history !== undefined) {
-        await mkdir(dirname(resolve(history)), { recursive: true })
-        await writeFile(history, (finished.history ?? []).map(event => `${JSON.stringify(event)}\n`).join(''))
-      }
-      return { result: body, targets: finished.targets }
-    },
-    async cancel(id) {
-      await call(CONTRACT, 'cancel', [id])
-    },
-  }
-}
+/** The tau service on the fleet host, through this API's server, which says there whose session the requests are. */
+const service: FleetTransport = relayTransport(CONTRACT, 'exchange')
 
 /**
  * Run the tau at `agent`, a directory, with `call`. `agent` and the paths of the call's files may
- * be relative to `process.cwd()`. Resolves once the run ends; aborting `signal` stops it, and the
- * run fails. `options` are fleet's, beyond tau's spec.
+ * be relative to `process.cwd()`. Resolves once the run ends, its outputs put at the call's paths,
+ * and the run released; aborting `signal` releases it, and the run fails. `options` are fleet's,
+ * beyond tau's spec.
  * @throws when the run cannot start, such as when `agent` is not a tau, or the call does not fit it.
  */
-export function run(agent: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
-  return runTau(host(options.history), agent, call, process.cwd(), signal)
+export async function run(agent: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
+  // Its project is this session's own, which the service gives it.
+  const client = createClient({ adaptors: { fleet: createFleetAdaptor({ transport: service }) } })
+  const { history } = options
+  if (history === undefined) return await client.run(agent, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
+  const started = await client.start(agent, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
+  try {
+    const result = await client.finish(started, signal === undefined ? {} : { signal })
+    const { value } = await service.exchange({ op: 'history', id: started.slice('fleet:'.length) }, undefined, signal)
+    await mkdir(dirname(resolve(history)), { recursive: true })
+    await writeFile(history, (value as unknown[]).map(event => `${JSON.stringify(event)}\n`).join(''))
+    return result
+  } catch (error) {
+    if (signal?.aborted !== true) throw error
+    return { ok: false, text: '', failure: 'the run was stopped' }
+  } finally {
+    await client.release(started).catch(() => {})
+  }
 }
 
 /** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */

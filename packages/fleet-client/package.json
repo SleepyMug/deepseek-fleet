@@ -6,14 +6,6 @@
     "fleet": "./lib/cli.js"
   },
   "exports": {
-    "./connection": {
-      "types": "./lib/connection.d.ts",
-      "default": "./lib/connection.js"
-    },
-    "./runs": {
-      "types": "./lib/runs.d.ts",
-      "default": "./lib/runs.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [

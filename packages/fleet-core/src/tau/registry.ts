@@ -8,16 +8,17 @@
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import type { CheckedCall } from '@sleepymug/tau'
+import type { Envelope } from '@sleepymug/tau/core'
 import { FOLDERS, MODULES } from '@sleepymug/fleet-box-runtime/tau/layout'
-import type { Result, Targets } from '@sleepymug/fleet-protocol/tau'
+import type { Result } from '@sleepymug/fleet-protocol/tau'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 
 /**
- * Who started a run: `fleet`, on the host; or a session: a tau's, from its
- * box, or another, with `tau_run` (../tools/tau.ts).
+ * Who started a run: the host's `tau` command, on the fleet service's
+ * socket; or a session: a tau's, from its box, or another, with `tau_run`
+ * (../tools/tau.ts).
  */
 export type Caller = { kind: 'host' } | { kind: 'session'; sessionId: string }
 
@@ -53,9 +54,7 @@ export interface Entry {
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
   resetAt?: string
   /** Each file of the run, by name, as the call has it, checked against the tau: its mode, its kind, and its base name. */
-  files: CheckedCall['files']
-  /** Where the caller has each `out` and `inout` file, which `finish` gives back. */
-  targets: Targets
+  files: Envelope['files']
   /** The agent's working directory in the box, as the box's runtime reported it. */
   cwd: string
   /** Where the tau's code finds its APIs in the box, as the box's runtime reported it. */

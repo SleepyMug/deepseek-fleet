@@ -1,13 +1,15 @@
 /**
  * fleet-tau-tools, `tau_run`, as a dsh plugin that fleet-core's
  * cordis.patch.yml mounts for every session (docs/fleet-core/tools/index.md):
- * a session that works on the host runs a tau as `fleet run` does, on the
- * tau service, `ctx.fleetTau`, as the run's caller. Its call is packed here,
- * from the session's files, relative paths its working directory's, and the
- * run's result put at its paths, once the run ends, and its session's
- * history, if asked for; the tool waits for it, so nothing outlives the
- * call. A system-prompt section, where the session has the tool, is tau's
- * TAU.md: what a tau is, and what a run of one promises.
+ * a session that works on the host runs a tau as `tau run --adaptor fleet`
+ * does, with tau's client and its fleet adaptor, on the tau service,
+ * `ctx.fleetTau`, in this process, as the run's caller. Its call is packed
+ * here, from the session's files, relative paths its working directory's,
+ * and the run's result put at its paths, once the run ends, and its
+ * session's history, if asked for; then the run is released. The tool waits
+ * for it, so nothing outlives the call. A system-prompt section, where the
+ * session has the tool, is tau's TAU.md: what a tau is, and what a run of
+ * one promises.
  *
  * What it writes, the session's sandbox lets it write, as dsh's sandbox
  * policy has it for the session, before the run starts and again as its
@@ -29,7 +31,8 @@ import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { applyResult, packCall } from '@sleepymug/tau/call'
+import { createClient } from '@sleepymug/tau'
+import { createFleetAdaptor, fleetLoopback } from '@sleepymug/tau/adaptors'
 import type { Caller } from '../tau/registry.ts'
 import type {} from '../tau/plugin.ts'
 import type {} from '../tau/runs-plugin.ts'
@@ -52,8 +55,8 @@ export function apply(ctx: Context): void {
       + 'each with its mode, in, out or inout, and its args, as a JSON Schema. An agent of its own does the task in a container of its own, '
       + 'with copies of what it is given, and what it leaves at its out and inout files is put at your paths once it ends. '
       + 'Read tau.json first. Waits until the run ends, and returns { sessionId, ok, text, failure? }: the run\'s session, '
-      + 'whether it succeeded, its agent\'s final text, and why it failed, if it did. Cancelling the call cancels the run. '
-      + 'Several calls run at once.',
+      + 'whether it succeeded, its agent\'s final text, and why it failed, if it did. Once the run ends, or the call is cancelled, '
+      + 'the run is released: its session archived, and its container removed. Several calls run at once.',
     parameters: {
       tau: { type: 'string', required: true, description: 'The TAU\'s folder; a relative path is your working directory\'s.' },
       files: {
@@ -96,26 +99,29 @@ export function apply(ctx: Context): void {
       if (session === undefined || cwd === undefined) throw new Error('tau_run works only in a session with a working directory')
       if (ctx.fleetTauRuns.isTau(session.header.id)) throw new Error('a TAU\'s session runs TAUs with its tau API, not tau_run')
       const caller: Caller = { kind: 'session', sessionId: session.header.id }
-      const call = packCall(resolve(cwd, args.tau), { files: args.files ?? {}, args: args.args ?? {} }, cwd)
-      const written = [...Object.values(call.targets), ...args.history === undefined ? [] : [resolve(cwd, args.history)]]
+      const fleet = createFleetAdaptor({ transport: fleetLoopback(ctx.fleetTau.handlerFor(caller)), project: cwd })
+      const client = createClient({ adaptors: { fleet } })
+      const tauDir = resolve(cwd, args.tau)
+      const call = { files: args.files ?? {}, args: args.args ?? {} }
+      const { call: resolved } = client.check(tauDir, call, cwd)
+      const targets = Object.entries(resolved.files).flatMap(([name, { mode }]) => mode === 'in' ? [] : [resolved.paths[name] as string])
+      const written = [...targets, ...args.history === undefined ? [] : [resolve(cwd, args.history)]]
       checkWritable(ctx, session, written)
-      const { sessionId } = await ctx.fleetTau.start(caller, { title: basename(call.tauDir), project: cwd, targets: call.targets }, call.archive)
-      const cancel = (): void => { ctx.fleetTau.cancel(caller, sessionId).catch(() => {}) }
-      exec.signal.addEventListener('abort', cancel, { once: true })
+      const run = await client.start(tauDir, call, { cwd, signal: exec.signal })
+      const sessionId = run.slice('fleet:'.length)
       try {
-        if (exec.signal.aborted) cancel()
-        const { targets, archive, history } = await ctx.fleetTau.finish(caller, sessionId, exec.signal, { history: args.history !== undefined })
+        await ctx.fleetTau.untilEnded(caller, sessionId, exec.signal)
         // Its sandbox, or what is at its paths, may have changed while the run ran.
         checkWritable(ctx, session, written)
         if (args.history !== undefined) {
           const at = resolve(cwd, args.history)
           await mkdir(dirname(at), { recursive: true })
-          await writeFile(at, (history ?? []).map(event => `${JSON.stringify(event)}\n`).join(''))
+          await writeFile(at, (await ctx.fleetTau.history(caller, sessionId, exec.signal)).map(event => `${JSON.stringify(event)}\n`).join(''))
         }
-        const { ok, text, failure } = await applyResult(archive, targets)
+        const { ok, text, failure } = await client.finish(run, { signal: exec.signal })
         return { sessionId, ok, text, ...failure === undefined ? {} : { failure } }
       } finally {
-        exec.signal.removeEventListener('abort', cancel)
+        await client.release(run).catch(() => {})
       }
     },
   }))

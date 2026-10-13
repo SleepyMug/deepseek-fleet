@@ -8,15 +8,17 @@ import { pipeline } from 'node:stream/promises'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
-import type { CheckedCall } from '@sleepymug/tau'
-import { applyResult, packCall, writeCall, writeResult, type Result } from '@sleepymug/tau/call'
+import { type CallFile, checkInputs, type Delivery, type Envelope, kindAt, loadTau, type Report } from '@sleepymug/tau/core'
+import { readContents } from '@sleepymug/tau/transfer'
+import { encodeCall, packCall, packResult, unpackResult } from '@sleepymug/tau/wire-tar'
+import type { Result } from '@sleepymug/fleet-protocol/tau'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-box-runtime/layout'
 import { pack, setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
 import type { Exts } from './apis.ts'
 import { Registry, type Caller } from './registry.ts'
-import { HOST, TauRuns, type Boxes, type RunBox } from './runs.ts'
+import { HOST, TauRuns, type Boxes, type RunBox, type Started } from './runs.ts'
 import type { Outcome } from './outcome.ts'
 import { TauService, abortable, type Sessions } from './service.ts'
 
@@ -85,7 +87,7 @@ class FakeBoxes implements Boxes {
   readonly existing = new Set<string>()
   failing: string | undefined
   left: Left = { ...LEFT }
-  tamper: ((outcome: Result, files: CheckedCall['files']) => AsyncIterable<Uint8Array>) | undefined
+  tamper: ((outcome: Result, files: Envelope['files']) => AsyncIterable<Uint8Array>) | undefined
   /** How a process a box spawns, such as a run's init, ends, after writing what it writes: by default at once, with 0, writing nothing. */
   spawn: (params: { argv: string[]; cwd: string }, write: (stream: 'stdout' | 'stderr', text: string) => void) => Promise<{ code: number | null; signal: string | null }> =
     async () => ({ code: 0, signal: null })
@@ -141,12 +143,13 @@ class FakeBoxes implements Boxes {
         record('pipe', `pipe ${String(command)}`)
         const root = this.root(name)
         if (command === 'setup') {
-          const report = await setup(io?.input ?? Readable.from([]), root)
+          const { offered } = JSON.parse(json ?? '') as { offered: Parameters<typeof setup>[1] }
+          const report = await setup(io?.input ?? Readable.from([]), offered, root)
           await pipeline(Readable.from([JSON.stringify(report)]), io?.output ?? process.stdout)
           return
         }
         const { outcome } = JSON.parse(json ?? '') as { outcome: Result }
-        const { files } = JSON.parse(await readFile(join(root, '/tau/.run.json'), 'utf8')) as { files: CheckedCall['files'] }
+        const { files } = JSON.parse(await readFile(join(root, '/tau/.run.json'), 'utf8')) as { files: Envelope['files'] }
         for (const [path, text] of Object.entries(this.left).sort(([a], [b]) => a.localeCompare(b))) {
           const at = join(root, path)
           if (text === null) await mkdir(at, { recursive: true })
@@ -195,31 +198,73 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
   return Object.assign(new TauService(runs, sessions, log), { tauRuns: runs })
 }
 
-/** A call of the tau at `tauDir`, packed in `cwd`, as `fleet` sends it, with what it says of itself. */
-function callOf(tauDir: string, call: unknown, cwd: string): { about: { title: string; project: string; targets: Record<string, string> }; archive: AsyncIterable<Uint8Array> } {
-  const packed = packCall(tauDir, call, cwd)
-  return { about: { title: basename(packed.tauDir), project: cwd, targets: packed.targets }, archive: packed.archive }
+/**
+ * A call of the tau at `tauDir`, packed in `cwd`, as tau's client packs it
+ * for its fleet adaptor, with what the submit says of it, and where the
+ * caller has its outputs.
+ */
+function callOf(tauDir: string, call: unknown, cwd: string): { about: { title: string; project: string }; archive: AsyncIterable<Uint8Array>; delivery: Delivery } {
+  const tau = loadTau(tauDir)
+  const resolved = tau.resolve(call, cwd)
+  checkInputs(resolved)
+  const files: Record<string, CallFile> = {}
+  const inputs: Record<string, string | readonly string[]> = {}
+  const targets: Record<string, string> = {}
+  for (const [name, file] of Object.entries(resolved.files)) {
+    const from = resolved.paths[name] as string | readonly string[]
+    if (file.mode !== 'in') targets[name] = from as string
+    if (file.mode === 'out') {
+      files[name] = file
+      continue
+    }
+    files[name] = { ...file, kind: typeof from === 'string' ? kindAt(from) : 'dir' }
+    inputs[name] = from
+  }
+  return {
+    about: { title: basename(tau.dir), project: cwd },
+    archive: packCall({ envelope: { files, args: resolved.args }, tau: tau.dir, inputs }),
+    delivery: { files, targets },
+  }
 }
 
-/** Start a run of the tau at `tauDir` for `call`, packed in `cwd`, as a caller does. */
-function startIn(service: TauService, caller: Caller, tauDir: string, call: unknown, cwd: string): ReturnType<TauService['start']> {
-  const { about, archive } = callOf(tauDir, call, cwd)
-  return service.start(caller, about, archive)
+/** Where the caller of each run started here has its outputs, by its session. */
+const deliveries = new Map<string, Delivery>()
+
+/** Submit a run of the tau at `tauDir` for `call`, packed in `cwd`, as a caller does. */
+async function startIn(service: TauService, caller: Caller, tauDir: string, call: unknown, cwd: string): Promise<Started> {
+  const { about, archive, delivery } = callOf(tauDir, call, cwd)
+  const started = await service.submit(caller, about, archive)
+  deliveries.set(started.sessionId, delivery)
+  return started
 }
 
 /** Set up a run's box for the tau at `tauDir` for `call`, packed in `cwd`. */
-function create(service: { tauRuns: TauRuns }, tauDir: string, call: unknown, cwd: string): ReturnType<TauRuns['create']> {
-  const { about, archive } = callOf(tauDir, call, cwd)
-  return service.tauRuns.create(archive, about)
+async function create(service: { tauRuns: TauRuns }, tauDir: string, call: unknown, cwd: string): Promise<Started> {
+  const { about, archive, delivery } = callOf(tauDir, call, cwd)
+  const started = await service.tauRuns.create(archive, about)
+  deliveries.set(started.sessionId, delivery)
+  return started
+}
+
+/** How a run ended, as a report has it. */
+function resultOf({ ok, text, failure }: Report): Result {
+  return failure === undefined ? { ok, text } : { ok, text, failure }
+}
+
+/** Put a run's result at its caller's paths, as tau's fleet adaptor does, and give back how it ended. */
+async function deliver(sessionId: string, archive: AsyncIterable<Uint8Array>): Promise<Result> {
+  const delivery = deliveries.get(sessionId)
+  assert.ok(delivery !== undefined, `no caller of ${sessionId}`)
+  return resultOf(await unpackResult(archive, delivery))
 }
 
 /**
  * Finish a run as a caller does: wait for it, put what it gave back where
- * its targets say, and give back how it ended, which the result agrees with.
+ * its caller has its outputs, and give back how it ended, which its status agrees with.
  */
 async function finish(service: TauService, caller: Caller, sessionId: string): Promise<Result> {
-  const { result, targets, archive } = await service.finish(caller, sessionId, new AbortController().signal)
-  assert.deepEqual(await applyResult(archive, targets), result)
+  const result = await deliver(sessionId, await service.finish(caller, sessionId, new AbortController().signal))
+  assert.deepEqual((await service.status(HOST, sessionId)).result, result)
   return result
 }
 
@@ -296,10 +341,10 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
     `create ${created.box}`,
     'start',
     'pipe setup',
-    `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/notes`,
+    `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/@test/notes`,
     `apis.link ${JSON.stringify({
       modules: '/tau/node_modules',
-      apis: [{ name: 'notes', client: '/tau/node_modules/.fleet/notes', types: '/tau/self/api/notes' }],
+      apis: [{ name: 'notes', client: '/tau/node_modules/.fleet/@test/notes', types: '/tau/self/api/notes' }],
       packages: [],
     })}`,
     'stop',
@@ -328,7 +373,6 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
     report: { mode: 'out', kind: 'file', base: 'report.md' },
     pages: { mode: 'out', kind: 'dir', base: 'pages' },
   })
-  assert.deepEqual(entry.targets, { site: join(work, 'site'), report: join(work, 'out', 'report.md'), pages: join(work, 'out', 'pages') })
   assert.equal(entry.cwd, '/tau/workspace')
   assert.equal(entry.modules, '/tau/node_modules')
   assert.match(logged.join('\n'), new RegExp(`created ${created.sessionId} in box ${created.box}`, 'u'))
@@ -345,38 +389,37 @@ async function* once(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
   yield bytes
 }
 
-test('start refuses a call that breaks the spec, carries no tau, or that does not fit the tau, before it makes a box', async (t) => {
+test('submit refuses a call that breaks the spec, or that does not fit the tau, before it makes a box', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const service = make(work, () => {}, new FakeSessions(), boxes)
-  const about = { title: 'tau', project: work, targets: {} }
+  const about = { title: 'tau', project: work }
   const whole = await bytesOf(callOf(tauDir, call, work).archive)
-  await assert.rejects(service.start(HOST, about, once(whole.subarray(0, 1024))), /^Error: the call breaks the spec: /u)
-  await assert.rejects(service.start(HOST, about, packCall(tauDir, call, work, { tau: false }).archive), /^Error: fleet: the call does not carry its tau$/u)
-  const unfit = writeCall({ files: {}, args: { style: 'terse' }, tau: true }, [{ from: tauDir }])
-  await assert.rejects(service.start(HOST, about, unfit), /^Error: the call does not fit the tau:\n {2}no path for notes, site, report, pages$/u)
+  await assert.rejects(service.submit(HOST, about, once(whole.subarray(0, 1024))), /^Error: the call breaks the spec: /u)
+  const unfit = encodeCall({ files: {}, args: { style: 'terse' } }, readContents([{ from: tauDir }]))
+  await assert.rejects(service.submit(HOST, about, unfit), /^Error: fleet: the call does not fit the tau:\n {2}no path for notes, site, report, pages$/u)
   // A tau's problems name it by the run's title.
   await mkdir(join(work, 'empty'))
-  const empty = writeCall({ files: {}, args: {}, tau: true }, [{ from: join(work, 'empty') }])
-  await assert.rejects(service.start(HOST, { ...about, title: 'mine' }, empty), /^Error: the tau mine: not a tau \(no PROMPT\.md\)$/u)
+  const empty = encodeCall({ files: {}, args: {} }, readContents([{ from: join(work, 'empty') }]))
+  await assert.rejects(service.submit(HOST, { ...about, title: 'mine' }, empty), /^Error: fleet: the tau mine: not a tau \(no PROMPT\.md\)$/u)
   // A tau whose links lead out of it is no content of a call.
   await symlink('/etc/passwd', join(tauDir, 'leak.md'))
-  await assert.rejects(service.start(HOST, about, writeCall({ files: {}, args: {}, tau: true }, [{ from: tauDir }])),
+  await assert.rejects(service.submit(HOST, about, encodeCall({ files: {}, args: {} }, readContents([{ from: tauDir }]))),
     /the call breaks the spec: tau\/leak\.md: leads to the absolute path \/etc\/passwd/u)
-  await assert.rejects(service.start(HOST, { ...about, project: 'here' }, once(whole)), /names its project, an absolute path/u)
+  await assert.rejects(service.submit(HOST, { ...about, project: 'here' }, once(whole)), /names its project, an absolute path/u)
   assert.deepEqual(boxes.calls, [])
   assert.deepEqual(await readdir(join(work, 'taus')), [])
 })
 
-test('start refuses a tau with an API whose contract no extension implements, or at no version that serves its copy, before it makes a box', async (t) => {
+test('submit refuses a tau with an API whose contract no extension implements, or at no version that serves its copy, before it makes a box', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const none = make(work, () => {}, new FakeSessions(), boxes, new FleetExts())
-  await assert.rejects(startIn(none, HOST, tauDir, call, work), /the tau tau cannot run here:\n {2}@api\/notes: no extension implements @test\/notes/u)
+  await assert.rejects(startIn(none, HOST, tauDir, call, work), /^Error: fleet: no implementation serves:\n {2}@api\/notes: @test\/notes@1\.2\.0$/u)
   const older = new FleetExts()
   older.provide({ contract: '@test/notes', version: '1.1.0', client: join(work, 'client'), methods: {} })
   await assert.rejects(startIn(make(work, () => {}, new FakeSessions(), boxes, older), HOST, tauDir, call, work),
-    /@api\/notes: the extension of @test\/notes implements 1\.1\.0, which does not serve the tau's 1\.2\.0/u)
+    /^Error: fleet: no implementation serves:\n {2}@api\/notes: @test\/notes@1\.2\.0$/u)
   assert.deepEqual(boxes.calls, [])
 })
 
@@ -420,7 +463,7 @@ test('a run starts its box, makes the dsh session in the caller\'s folder with t
   assert.deepEqual(boxes.calls.slice(-2), ['stop', 'start'])
   assert.deepEqual(sessions.calls, [`create ${sessionId} ${project} tau`, `prompt ${sessionId} ${promptRequestId} ${EXPANDED}`])
   assert.notEqual((await new Registry(join(work, 'taus')).get(sessionId)).promptedAt, undefined)
-  assert.deepEqual({ ...await service.status(HOST, sessionId), createdAt: '' }, { sessionId, title: 'tau', project, state: 'running', createdAt: '' })
+  assert.deepEqual({ ...await service.status(HOST, sessionId), createdAt: '' }, { sessionId, title: 'tau', project, prompt: EXPANDED, state: 'running', createdAt: '' })
 
   const finishing = finish(service, HOST, sessionId)
   sessions.end(sessionId, completed('Done.'))
@@ -439,7 +482,7 @@ test('a run starts its box, makes the dsh session in the caller\'s folder with t
   assert.deepEqual(await finish(later, HOST, sessionId), { ok: true, text: 'Done.' })
 })
 
-test('a run that succeeded gives back what its agent left, packed by its box, with where the caller has its files', async (t) => {
+test('a run that succeeded gives back what its agent left, packed by its box, for its caller to put at its paths', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   await writeFile(join(work, 'site', 'kept.md'), 'kept\n')
   const sessions = new FakeSessions()
@@ -453,12 +496,11 @@ test('a run that succeeded gives back what its agent left, packed by its box, wi
   assert.deepEqual(boxes.calls.filter(call => call.startsWith('pipe')), ['pipe setup', 'pipe pack'])
   assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['call.tar', 'result.tar'])
 
-  // The service puts nothing at the caller's paths; the caller does, where the targets say.
-  const { result, targets, archive } = await service.finish(HOST, sessionId, new AbortController().signal)
-  assert.deepEqual(result, { ok: true, text: 'Done.' })
-  assert.deepEqual(targets, { site: join(work, 'site'), report: join(work, 'out', 'report.md'), pages: join(work, 'out', 'pages') })
+  // The service puts nothing at the caller's paths, which it never learns; the caller's adaptor does.
+  const archive = await service.finish(HOST, sessionId, new AbortController().signal)
   await assert.rejects(readFile(join(work, 'out', 'report.md')), /ENOENT/u)
-  assert.deepEqual(await applyResult(archive, targets), result)
+  const result = await deliver(sessionId, archive)
+  assert.deepEqual(result, { ok: true, text: 'Done.' })
   assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added milk.\n')
   assert.deepEqual(await readdir(join(work, 'out', 'pages')), ['a.md'])
   assert.deepEqual((await readdir(join(work, 'site'))).sort(), ['index.md', 'kept.md', 'milk.md'])
@@ -467,20 +509,17 @@ test('a run that succeeded gives back what its agent left, packed by its box, wi
   assert.deepEqual(await readdir(join(work, 'taus', sessionId)), ['call.tar', 'result.tar'])
 })
 
-test('a finish gives back the run\'s session\'s history when asked for it, failed or not', async (t) => {
+test('a run\'s session\'s history is given back, ended or not, failed or not, to whoever reaches the run', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const sessions = new FakeSessions()
   const service = make(work, () => {}, sessions, new FakeBoxes(work))
   const { sessionId } = await startIn(service, HOST, tauDir, call, work)
-  const finishing = service.finish(HOST, sessionId, new AbortController().signal, { history: true })
+  const signal = new AbortController().signal
+  assert.deepEqual(await service.history(HOST, sessionId, signal), [{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
   sessions.end(sessionId, { end: { kind: 'aborted' }, text: '' })
-  const { result, targets, history, archive } = await finishing
-  assert.deepEqual(await applyResult(archive, targets), result)
-  assert.deepEqual(result, { ok: false, text: '', failure: 'the run was cancelled' })
-  assert.deepEqual(history, [{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
-  const again = await service.finish(HOST, sessionId, new AbortController().signal)
-  assert.deepEqual(await applyResult(again.archive, again.targets), result)
-  assert.equal('history' in again, false)
+  assert.deepEqual(await finish(service, HOST, sessionId), { ok: false, text: '', failure: 'the run was cancelled' })
+  assert.deepEqual(await service.history(HOST, sessionId, signal), [{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
+  await assert.rejects(service.history(from(sessionId), sessionId, signal), /no tau session/u)
 })
 
 test('a run whose agent did not leave what its tau declares fails, and gives back nothing', async (t) => {
@@ -509,13 +548,13 @@ test('a result its box packs that does not fit the run fails the run, since the 
     sessions.end(sessionId, completed('Done.'))
     return await finish(service, HOST, sessionId)
   }
-  boxes.tamper = () => writeResult({ ok: true, text: 'Done.', outputs: {} }, [])
+  boxes.tamper = () => packResult({ ok: true, text: 'Done.', outputs: {} }, {})
   assert.deepEqual(await run(), {
     ok: false,
     text: 'Done.',
-    failure: 'could not get back what the run gave: the result does not fit the run:\n  site: the run succeeded, but gave nothing back for it\n  report: the run succeeded, but gave nothing back for it\n  pages: the run succeeded, but gave nothing back for it',
+    failure: 'could not get back what the run gave: the report does not fit the run:\n  site: the run succeeded, but gave nothing back for it\n  report: the run succeeded, but gave nothing back for it\n  pages: the run succeeded, but gave nothing back for it',
   })
-  boxes.tamper = () => writeResult({ ok: true, text: 'Something else.', outputs: {} }, [])
+  boxes.tamper = () => packResult({ ok: true, text: 'Something else.', outputs: {} }, {})
   assert.equal((await run()).failure, 'could not get back what the run gave: its text is not the agent\'s')
   boxes.tamper = () => once(Buffer.from('not an archive'))
   assert.match((await run()).failure ?? '', /^could not get back what the run gave: the result breaks the spec: /u)
@@ -549,19 +588,6 @@ test('a run ends with why it failed, and is ended, not finished, until a finish 
   assert.deepEqual(await finish(later, HOST, sessionId), failed)
   const [status] = await later.list(HOST)
   assert.equal(status?.state, 'finished')
-})
-
-test('cancelling cancels a run\'s turn while it runs, and not once it ended', async (t) => {
-  const { work, tauDir, call } = await fixture(t)
-  const sessions = new FakeSessions()
-  const service = make(work, () => {}, sessions, new FakeBoxes(work))
-  const { sessionId } = await startIn(service, HOST, tauDir, call, work)
-  sessions.calls.length = 0
-  await service.cancel(HOST, sessionId)
-  sessions.end(sessionId, { end: { kind: 'aborted' }, text: '' })
-  assert.deepEqual(await finish(service, HOST, sessionId), { ok: false, text: '', failure: 'the run was cancelled' })
-  await service.cancel(HOST, sessionId)
-  assert.deepEqual(sessions.calls, [`cancel ${sessionId}`])
 })
 
 test('giving up a finish leaves the run running', async (t) => {
@@ -681,7 +707,7 @@ test('a tau\'s init exiting 100 has the agent run on the prompt as it is, and an
   assert.match(await prompted({ code: null, signal: 'SIGKILL' }, '', ''), /failed: it was killed by SIGKILL\./u)
 })
 
-test('cancelling a run while its init runs ends the init, and the run, failing, without its agent', async (t) => {
+test('releasing a run while its init runs ends the init, and the run, without its agent', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   await withInit(tauDir)
   const sessions = new FakeSessions()
@@ -692,10 +718,11 @@ test('cancelling a run while its init runs ends the init, and the run, failing, 
   const service = make(work, () => {}, sessions, boxes)
   const { sessionId } = await startIn(service, HOST, tauDir, call, work)
   while (spawned(boxes).length === 0) await new Promise(resolve => setImmediate(resolve))
-  await service.cancel(HOST, sessionId)
-  assert.deepEqual(await finish(service, HOST, sessionId), { ok: false, text: '', failure: 'the run was cancelled while its init ran' })
+  await service.release(HOST, sessionId)
   assert.equal(boxes.calls.filter(call => call.startsWith('kill ')).length, 1)
-  assert.equal(sessions.calls.length, 1)
+  assert.deepEqual(sessions.calls.map(call => call.split(' ')[0]), ['create', 'archive'])
+  await assert.rejects(service.status(HOST, sessionId), /no tau session/u)
+  await service.close()
 })
 
 test('a host that stops while a run\'s init runs leaves the run to fail, unprompted, once a service started later watches it', async (t) => {
@@ -738,7 +765,7 @@ test('a service started later watches the runs that had not ended, and fails one
   assert.deepEqual((await later.list(HOST)).map(status => status.sessionId), [running, unprompted])
 })
 
-test('deleting archives the session before it removes the box, and a failed archive keeps both', async (t) => {
+test('releasing archives the session before it removes the box, and a failed archive keeps both', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const sessions = new FakeSessions()
   const boxes = new FakeBoxes(work)
@@ -747,11 +774,11 @@ test('deleting archives the session before it removes the box, and a failed arch
   sessions.calls.length = 0
 
   sessions.failing = 'archive'
-  await assert.rejects(service.delete(HOST, sessionId), /archive failed/u)
+  await assert.rejects(service.release(HOST, sessionId), /archive failed/u)
   assert.ok(boxes.existing.has(box))
   await new Registry(join(work, 'taus')).get(sessionId)
 
-  await service.delete(HOST, sessionId)
+  await service.release(HOST, sessionId)
   assert.ok(!boxes.existing.has(box))
   assert.deepEqual(sessions.calls, [`archive ${sessionId}`, `archive ${sessionId}`])
   // Its agent stops with the archive; nothing is recorded of a run that is gone.
@@ -766,7 +793,7 @@ function from(sessionId: string): Caller {
   return { kind: 'session', sessionId }
 }
 
-test('a tau\'s session starts a run from its box as the host does, in its own project, and another session in the project it names', async (t) => {
+test('a tau\'s session submits a run from its box as the host does, in its own project, and another session in the project it names', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const service = make(work, () => {}, new FakeSessions(), new FakeBoxes(work))
   const { sessionId: parent } = await startIn(service, HOST, tauDir, call, work)
@@ -774,7 +801,7 @@ test('a tau\'s session starts a run from its box as the host does, in its own pr
   t.after(() => rm(elsewhere, { recursive: true, force: true }))
   // What a session names as its project is not its runs'.
   const { about, archive } = callOf(tauDir, call, work)
-  const { sessionId: child, prompt } = await service.start(from(parent), { ...about, project: elsewhere }, archive)
+  const { sessionId: child, prompt } = await service.submit(from(parent), { ...about, project: elsewhere }, archive)
   assert.equal(prompt, EXPANDED)
   const entry = await new Registry(join(work, 'taus')).get(child)
   assert.deepEqual(entry.caller, from(parent))
@@ -785,7 +812,7 @@ test('a tau\'s session starts a run from its box as the host does, in its own pr
   const { sessionId: own } = await startIn(service, from(other), tauDir, call, work)
   assert.equal((await new Registry(join(work, 'taus')).get(own)).project, await realpath(work))
   assert.equal((await service.status(HOST, own)).parent, other)
-  await assert.rejects(service.start(from(other), { title: 'tau', targets: {} }, callOf(tauDir, call, work).archive), /names its project, an absolute path/u)
+  await assert.rejects(service.submit(from(other), { title: 'tau' }, callOf(tauDir, call, work).archive), /names its project, an absolute path/u)
 })
 
 test('a tau\'s session reaches only the runs it started, and the host every run', async (t) => {
@@ -799,14 +826,14 @@ test('a tau\'s session reaches only the runs it started, and the host every run'
   assert.deepEqual((await service.list(HOST)).map(status => status.sessionId), [parent, other, child])
   const signal = new AbortController().signal
   const reaches = [
-    () => service.status(from(other), child), () => service.finish(from(other), child, signal), () => service.cancel(from(other), child),
-    () => service.delete(from(other), child), () => service.status(from(child), parent),
+    () => service.status(from(other), child), () => service.finish(from(other), child, signal), () => service.history(from(other), child, signal),
+    () => service.release(from(other), child), () => service.status(from(child), parent),
   ]
   for (const reach of reaches) await assert.rejects(reach, new RegExp(`no tau session (${child}|${parent})`, 'u'))
   assert.equal((await service.status(from(parent), child)).state, 'running')
 })
 
-test('a run\'s end deletes the runs it started and did not finish, and its deletion every run it started', async (t) => {
+test('a run\'s end releases the runs it started and did not finish, and its release every run it started', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const sessions = new FakeSessions()
   const boxes = new FakeBoxes(work)
@@ -825,7 +852,7 @@ test('a run\'s end deletes the runs it started and did not finish, and its delet
   assert.deepEqual((await service.list(HOST)).map(status => status.sessionId), [parent, finished])
   assert.deepEqual(sessions.calls.sort(), [`archive ${grandchild}`, `archive ${running}`].sort())
 
-  await service.delete(HOST, parent)
+  await service.release(HOST, parent)
   assert.deepEqual(await service.list(HOST), [])
 })
 
@@ -855,7 +882,7 @@ test('a tau session\'s box is started for its files and processes once, and agai
   boxes.calls.length = 0
   await later.tauRuns.boxFor(sessionId)
   assert.deepEqual(boxes.calls, [`open ${box}`, 'start'])
-  await later.delete(HOST, sessionId)
+  await later.release(HOST, sessionId)
   assert.equal(later.tauRuns.isTau(sessionId), false)
   assert.equal(await later.tauRuns.boxFor(sessionId), undefined)
 })
@@ -992,7 +1019,7 @@ test('waiting for a box to be started starts nothing, and fails once the session
   assert.equal((await runs.whenStarted(sessionId, new AbortController().signal)).container, box)
   await runs.stop(sessionId)
   const gone = runs.whenStarted(sessionId, new AbortController().signal)
-  await service.delete(HOST, sessionId)
+  await service.release(HOST, sessionId)
   await assert.rejects(gone, /no tau session/u)
 })
 
@@ -1039,7 +1066,7 @@ test('deleting a session whose box is gone forgets the session', async (t) => {
   boxes.existing.delete(box)
   const service = make(work, () => {}, new FakeSessions(), boxes)
   await assert.rejects(service.tauRuns.start(sessionId), /No such container/u)
-  await service.delete(HOST, sessionId)
+  await service.release(HOST, sessionId)
   await assert.rejects(service.status(HOST, sessionId), /no tau session/u)
 })
 
@@ -1076,8 +1103,7 @@ async function absent(image: string): Promise<string | false> {
 test('a real box places a call\'s files and the tau, and packs what its agent left', { skip: await absent(DEFAULT_IMAGE) }, async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const service = make(work, () => {}, new FakeSessions())
-  const { about, archive } = callOf(tauDir, call, work)
-  const { sessionId, box, prompt } = await service.tauRuns.create(archive, about)
+  const { sessionId, box, prompt } = await create(service, tauDir, call, work)
   try {
     assert.equal(prompt, EXPANDED)
     await service.tauRuns.start(sessionId)
@@ -1122,14 +1148,14 @@ test('a real box places a call\'s files and the tau, and packs what its agent le
     // What the agent leaves is packed in the box, read and checked here, and put at the caller's paths by the caller.
     await exec('rm /tau/out/pages/leak && ln -s a.md /tau/out/pages/latest && echo more >> /tau/workspace/site/index.md')
     assert.deepEqual(await service.tauRuns.pack(sessionId, { ok: true, text: 'Done.' }), { ok: true, text: 'Done.' })
-    assert.deepEqual(await applyResult(await service.tauRuns.result(sessionId), (await new Registry(join(work, 'taus')).get(sessionId)).targets), { ok: true, text: 'Done.' })
+    assert.deepEqual(await deliver(sessionId, await service.tauRuns.result(sessionId)), { ok: true, text: 'Done.' })
     assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Added.\n')
     assert.equal(await readlink(join(work, 'out', 'pages', 'latest')), 'a.md')
     assert.equal(await readFile(join(work, 'site', 'index.md'), 'utf8'), '# Home\nmore\n')
     assert.equal(await readFile(join(work, 'notes.md'), 'utf8'), 'buy milk\n')
     await service.tauRuns.stop(sessionId)
   } finally {
-    await service.delete(HOST, sessionId)
+    await service.release(HOST, sessionId)
   }
   await assert.rejects(run('docker', ['container', 'inspect', box]), /No such container/u)
 })
@@ -1155,7 +1181,7 @@ test('a real box runs a tau\'s init in the agent\'s working directory, and a pro
     assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'added milk\n')
     assert.equal(sessions.calls.length, 1)
   } finally {
-    await service.delete(HOST, sessionId)
+    await service.release(HOST, sessionId)
   }
   await assert.rejects(run('docker', ['container', 'inspect', box]), /No such container/u)
 })

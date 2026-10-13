@@ -10,7 +10,7 @@
  */
 
 import { isAbsolute } from 'node:path'
-import { parseVersion } from '@sleepymug/tau'
+import { parseVersion } from '@sleepymug/tau/core'
 
 export { STREAMED, streamed, type Streamed } from '../box/helper.ts'
 

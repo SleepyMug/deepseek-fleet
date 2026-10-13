@@ -6,57 +6,42 @@ async function* once(text: string): AsyncGenerator<Uint8Array> {
   yield Buffer.from(text)
 }
 
-/** A service that records what it is asked, as whom. */
+async function read(bytes: AsyncIterable<Uint8Array>): Promise<string> {
+  let text = ''
+  for await (const chunk of bytes) text += Buffer.from(chunk).toString()
+  return text
+}
+
+/** A service that records what it is asked, as whom, answering a finish with bytes after it. */
 function fake(calls: string[]): Service {
   return {
-    start: async (caller, about, call) => {
-      let text = ''
-      for await (const chunk of call) text += Buffer.from(chunk).toString()
-      calls.push(`start ${JSON.stringify(caller)} ${JSON.stringify(about)} ${text}`)
-      return { sessionId: 'session-child', box: 'fleet-tau-child', prompt: 'Go.' }
-    },
-    finish: async (caller, sessionId, _signal, options) => {
-      calls.push(`finish ${JSON.stringify(caller)} ${sessionId}${options?.history === true ? ' with history' : ''}`)
-      const history = options?.history === true ? { history: [{ type: 'turn/end' }] } : {}
-      return { result: { ok: true, text: 'Done.' }, targets: { '/out': '/tau/workspace/out.txt' }, ...history, archive: once('the result') }
-    },
-    cancel: async (caller, sessionId) => {
-      calls.push(`cancel ${JSON.stringify(caller)} ${sessionId}`)
+    handlerFor: caller => async (request, body) => {
+      calls.push(`${JSON.stringify(caller)} ${JSON.stringify(request)} ${await read(body)}`)
+      return request.op === 'finish' ? { value: null, body: once('the result') } : { value: { id: 'session-child' } }
     },
   }
 }
 
-test('the server starts, finishes and cancels runs as the calling session\'s, with the call and the result after the JSON', async () => {
+test('the server passes each request to the service as the calling session\'s, with the bytes after it, and after its answer', async () => {
   const calls: string[] = []
   const server = methods(fake(calls))
   const call = { sessionId: 'session-parent', signal: new AbortController().signal }
-  const about = { title: 'shout', targets: { '/out': '/tau/workspace/out.txt' } }
-  assert.deepEqual(await server.start?.([about], { ...call, body: once('the call') }), { sessionId: 'session-child', box: 'fleet-tau-child', prompt: 'Go.' })
-  const finished = await server.finish?.(['session-child'], call) as { value: unknown; body: AsyncIterable<Uint8Array> }
+  assert.deepEqual(await server.exchange?.([{ op: 'submit', title: 'shout' }], { ...call, body: once('the call') }), { id: 'session-child' })
+  const finished = await server.exchange?.([{ op: 'finish', id: 'session-child' }], call) as { value: unknown; body: AsyncIterable<Uint8Array> }
   assert.equal((finished as unknown as Record<symbol, unknown>)[Symbol.for('fleet.streamed')], true)
-  assert.deepEqual(finished.value, { result: { ok: true, text: 'Done.' }, targets: { '/out': '/tau/workspace/out.txt' } })
-  let body = ''
-  for await (const chunk of finished.body) body += Buffer.from(chunk).toString()
-  assert.equal(body, 'the result')
-  const withHistory = await server.finish?.(['session-child', { history: true }], call) as { value: unknown; body: AsyncIterable<Uint8Array> }
-  assert.deepEqual(withHistory.value, { result: { ok: true, text: 'Done.' }, targets: { '/out': '/tau/workspace/out.txt' }, history: [{ type: 'turn/end' }] })
-  for await (const chunk of withHistory.body) assert.ok(chunk)
-  assert.equal(await server.cancel?.(['session-child'], call), null)
+  assert.equal(finished.value, null)
+  assert.equal(await read(finished.body), 'the result')
   const parent = JSON.stringify({ kind: 'session', sessionId: 'session-parent' })
   assert.deepEqual(calls, [
-    `start ${parent} ${JSON.stringify(about)} the call`, `finish ${parent} session-child`, `finish ${parent} session-child with history`, `cancel ${parent} session-child`,
+    `${parent} {"op":"submit","title":"shout"} the call`,
+    `${parent} {"op":"finish","id":"session-child"} `,
   ])
 })
 
-test('the server checks what the box sends', async () => {
+test('the server takes a request, as an object with its op', async () => {
   const server = methods(fake([]))
   const call = { sessionId: 'session-parent', signal: new AbortController().signal }
-  const body = once('the call')
-  await assert.rejects(async () => server.start?.([{ title: 'x', targets: {} }], call), /takes the run's call, after its arguments/u)
-  await assert.rejects(async () => server.start?.(['x'], { ...call, body }), /takes \{ title, targets \}/u)
-  await assert.rejects(async () => server.start?.([{ title: ' ', targets: {} }], { ...call, body }), /takes a title/u)
-  await assert.rejects(async () => server.start?.([{ title: 'x', targets: { '/out': 'out.txt' } }], { ...call, body }), /each an absolute path in the box/u)
-  await assert.rejects(async () => server.finish?.([7], call), /a run's id is a string/u)
-  await assert.rejects(async () => server.finish?.(['x', { history: 'yes' }], call), /takes \{ history\? \}/u)
-  await assert.rejects(async () => server.finish?.(['x', null], call), /takes \{ history\? \}/u)
+  for (const request of [undefined, 'submit', [], { title: 'x' }, { op: 7 }]) {
+    await assert.rejects(async () => server.exchange?.([request], call), /exchange takes a request, \{ op, … \}/u)
+  }
 })

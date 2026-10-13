@@ -1,15 +1,18 @@
 # fleet-core/tau
 
-The tau service. It starts runs of taus, each a box and a dsh session, and
-watches each until its agent is done, then gives back how it ended, with
-what it left at its `out` and `inout` files, and cancels and deletes
-runs. It runs in dsh's process, in the profile fleet-core is installed
-in, such as dsh's `web` (docs/install.md). A run comes as a
-**call** and goes back as a **result**, the archives of tau's
-docs/spec/serialization.md: the caller packs the call from its files, and
-puts the result at its paths, so the service never reads or writes a
-caller's files, and serves a caller on the host and one in a box alike.
-`start` sets up the run's box, mints the session's id and expands its prompt,
+The tau service, the backend of tau's fleet adaptor (tau's
+docs/spec/fleet.md): tau's client, the `tau` command or its SDK, hands it
+runs, and the service runs each as a box and a dsh session, watches it
+until its agent is done, then gives back how it ended, with what it left
+at its `out` and `inout` files, and releases runs. It runs in dsh's
+process, in the profile fleet-core is installed in, such as dsh's `web`
+(docs/install.md). It is built on tau's backend SDK (tau's
+docs/spec/backend.md). A run comes as a **call** and goes back as a
+**result**, the archives of tau's docs/spec/serialization.md: the caller's
+adaptor packs the call from its files, and checks the result and puts it
+at its paths, so the service never learns a caller's paths, and serves a
+caller on the host and one in a box alike. A submit sets up the run's
+box, mints the session's id and expands its prompt,
 then makes the dsh session, in the caller's folder as its workspace, so the
 web UI lists it there, and gives it the prompt, once the tau's init, if it
 has one, asks for the agent. The session's bash and file
@@ -27,30 +30,37 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
   extensions provided, `ctx.fleetExts`, and uses nothing of dsh's.
 - `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
-  registry and its agents, and serves `@sleepymug/fleet-protocol/tau` on
-  `$DSH_HOME/fleet/tau.sock`, for `fleet` (fleet-client):
+  registry and its agents, and serves its requests (`wire.ts`) with tau's
+  `listenFleet` on `$DSH_HOME/fleet/tau.sock`, for the host's `tau
+  --adaptor fleet` and `fleet` (fleet-client): a run's, as tau's fleet
+  adaptor makes them (tau's docs/spec/fleet.md), and the service's own,
+  as `@sleepymug/fleet-protocol/tau` has them:
 
-| Op | What it does |
+| Request | What it does |
 |---|---|
-| `start { title, project, targets }`, then the call | Start a run of the call, which carries the tau: set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch; `targets`, where the caller has each `out` and `inout` file, by its name, are kept for `finish`. Answers `{ sessionId, box, prompt }`. |
+| `submit { title, project? }`, then the call | Start a run of the call, which carries the tau: admit it, set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch. Answers `{ id }`, the session's id. |
+| `finish { id }` | Wait until the run ends, and answer `null`, then send its result, the same each time; the caller's adaptor checks it, and puts what it gave back at the caller's paths. |
+| `release { id }` | Stop the run's init, if it runs, archive the session, which stops its turn, remove its box, running or not, and forget the run, and every run it started. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
-| `status { sessionId }` | Where the run is, `running`, `ended` or `finished`, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
-| `finish { sessionId, history? }` | Wait until the run ends, and answer how it did and the targets, `{ result, targets }`, then send its result, the same each time; the caller puts what it gave back at the targets. With `history: true`, the answer holds the session's history too, `history`. |
-| `cancel { sessionId }` | Cancel the run's init, or its turn, which ends the run; a run that ended is let be. |
-| `delete { sessionId }` | Archive the session, remove its box, running or not, and forget the run, and every run it started. |
+| `status { id }` | Where the run is, `running`, `ended` or `finished`, its prompt, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
+| `history { id }` | The run's session's history, ended or not (below). |
 
-Each of the service's operations takes who calls it, a run's caller:
-`fleet`, on the host, through the socket, which reaches every run; or a
-session, which reaches only the runs it started: any other is as if it were
-not there. Who calls makes no difference to a run's files, which only the
-caller reads and writes. The plugin provides the service as `ctx.fleetTau`
-to the sessions' two ways in:
+Each of the service's operations takes who calls it, a run's caller,
+which the way in says, never the request: the host's `tau`, through the
+socket, which reaches every run; or a session, which reaches only the runs
+it started: any other is as if it were not there. Who calls makes no
+difference to a run's files, which only the caller reads and writes. The
+plugin provides the service as `ctx.fleetTau`, whose `handlerFor(caller)`
+serves the requests as `caller`'s, to the sessions' two ways in, each
+with tau's client and its fleet adaptor:
 
 - a tau's session calls it from its box, through the `tau` API's extension
-  (docs/fleet-ext-tau/index.md), and its runs are in its own project;
+  (docs/fleet-ext-tau/index.md), which relays each request, and its runs
+  are in its own project;
 - another session, such as the web UI's, calls it with `tau_run`
-  (docs/fleet-core/tools/index.md), and its runs are in its working
-  directory, which it names as `fleet` names its folder.
+  (docs/fleet-core/tools/index.md), in this process, and its runs are in
+  its working directory, which it names as the host's `tau` names its
+  folder.
 
 The patch also declares `tau`, the agent preset a tau's session has, last
 in the web UI's list: a persona, the tau's prompt plugin
@@ -84,55 +94,62 @@ the web UI's sessions have them.
 
 ## Design
 
-- **Setting up the box** (`runs.ts`), the first part of `start`, goes in
+- **Setting up the box** (`runs.ts`), the first part of a submit, goes in
   this order:
-  1. It checks the call as it comes, before it keeps anything or makes a
+  1. It admits the call as it comes, before it keeps anything or makes a
      box, writing it to the session's folder,
      `$DSH_HOME/fleet/taus/<session id>/call.tar`, as it reads it: tau's
-     `readCall` checks it whole, as tau's docs/spec/serialization.md has
-     it, and the tau it carries is extracted beside it, a call without one
-     being refused. `loadTau(tau).check(json)` checks the call against
-     `tau.json`: each file's mode and kind, each extra file's name, and the
-     args against the schema, and gives the files the registry keeps; where
-     the box places each file is the box's. Then `apis.ts`
-     links the tau's APIs, as `loadTau` read them, each a copy of a
-     contract, to the extension of its contract, from `ctx.fleetExts`,
-     whose version serves the copy's, as tau's `serves` has it. A tau with
-     an API whose contract no extension implements, or at no version that
-     serves the copy's, is refused. Problems name the tau by the run's
-     title. Here `session-<uuid>` is minted, the form dsh's
-     session ids take, which the dsh session gets.
+     `decodeCall` checks it whole, as tau's docs/spec/serialization.md has
+     it, and the tau it carries, which comes first, is extracted beside it.
+     tau's backend SDK admits the call (`admit`): it checks the envelope
+     against `tau.json`, each file's mode and kind, each extra file's
+     name, and the args against the schema, and finds each API an
+     implementation in the catalog of the extensions provided
+     (`apis.ts`), `ctx.fleetExts`, the extension of its contract whose
+     version serves the copy's, as tau's `serves` has it. A tau with an API
+     whose contract no extension implements, or at no version that serves
+     the copy's, is refused. Where the box places each file is the box's.
+     Problems name the tau by the run's title. Here `session-<uuid>` is
+     minted, the form dsh's session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
-     runtime set it up from the call (fleet-box-runtime's tau runtime, below),
-     which reports the prompt and where things are; copies
-     each API's client in, where the runtime says; has the helper link the
-     APIs and what the tau exposes (`apis.link`); and stops it.
+     runtime set it up from the call (fleet-box-runtime's tau runtime,
+     below), offered the contracts the call was admitted with, which
+     reports the prompt, where things are, and which client each API
+     needs; copies each client in, where the runtime says; has the helper
+     link the APIs and what the tau exposes (`apis.link`); and stops it.
   3. It writes the registry entry, with the files it checked and what the
      runtime reported, and
      removes the tau it read; the call stays until the run is deleted.
 
   A failure removes the box and the session's folder. A tau's session's
-  run is in the session's own project; `fleet`'s in the folder it names,
+  run is in the session's own project; the host's in the folder it names,
   through its symlinks.
-- **The box's runtime** (fleet-box-runtime/tau): the runtime's side of tau's
-  library, in the image, which owns where a run has its things in its box.
-  The host runs it in a run's box with `docker exec` (`Box.pipe`), since
-  the helper's lines of JSON would carry the archives only as text:
-  - `setup` reads the call on its stdin, places the tau, checks the call
-    again (`check`), gives each file its place (./layout.ts), places the
-    content of the `in` and `inout` files there, expands the args, the
-    prompt, and the tau's init, if it has one, with the places (`expand`),
-    makes each `out` folder, keeps the files, their places and the args the
-    agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its tau library
-    has it, at `/tau/TAU.md`, and reports `{ prompt, cwd, modules, self,
-    clients, init? }`: the prompt, the agent's working directory, where the
-    APIs and the clients go, where the tau is, and the init. It runs before the agent, on a
-    call the host checked, and runs no code of the tau's, so the host takes
-    its report as its own.
-  - `pack` writes the result on its stdout, from what the agent left at
-    each `out` and `inout` file's place, checked with `checkOutputs`, or
-    a failure that says why it does not fit. The result is checked on the
-    host after it leaves the box, since the box is the agent's by then.
+- **The box's runtime** (fleet-box-runtime/tau): the box's half of the
+  backend, built on tau's backend SDK, in the image, which owns where a run
+  has its things in its box. The host runs it in a run's box with `docker
+  exec` (`Box.pipe`), since the helper's lines of JSON would carry the
+  archives only as text:
+  - `setup '{"offered": […]}'` reads the call on its stdin with tau's
+    `unpackCall`: it places the tau, admits the call against it, with a
+    catalog of the contracts offered, each one's client at
+    `/tau/node_modules/.fleet/<contract>`, gives each file its place
+    (./layout.ts), places the content of the `in` and `inout` files
+    there, and checks them (`place`); then it expands the args, the prompt,
+    and the tau's init, if it has one, with the places (`expand`), makes
+    each `out` folder and each client's, keeps the files, their places and
+    the args the agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its
+    tau library has it, at `/tau/TAU.md`, and reports `{ prompt, cwd,
+    modules, self, init?, links, packages }`: the prompt, the agent's
+    working directory, where the APIs go, where the tau is, the init, each
+    API with its contract and where its client goes, and the packages of
+    the tau's own it exposes. It runs before the agent, on a call the host
+    admitted, and runs no code of the tau's, so the host takes its report
+    as its own, once it has its shape, linking only clients it offered.
+  - `pack` writes the result on its stdout, as the backend SDK collects
+    it, from what the agent left at each `out` and `inout` file's place,
+    checked with `checkOutputs`, or a failure that says why it does not
+    fit. The result is checked on the host after it leaves the box, since
+    the box is the agent's by then.
 - **Places**, as the box's runtime has them (fleet-box-runtime/tau/layout),
   each under the base name of the caller's path, or, for an `in` given a
   list of paths, the file's name:
@@ -144,11 +161,13 @@ the web UI's sessions have them.
   | an `out` file | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
   | the APIs, `@api/<alias>`, and the packages the tau exposes | `/tau/node_modules` |
-  | the client of each API's extension | `/tau/node_modules/.fleet/<alias>` |
+  | the client of each API's extension | `/tau/node_modules/.fleet/<contract>` |
   | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
 
-  A base name already taken in its folder gets a suffix in its stem:
-  `notes.md`, `notes-1.md`, `notes-2.md`. An `out` file has no content
+  A place keeps its base name, as tau's backend SDK asks: a file whose
+  base name is taken in its folder is in a folder of its own there, named
+  for the file, with a suffix if that is taken too: `/tau/in/notes.md`,
+  then `/tau/in/extra/notes.md` for the file `extra`. An `out` file has no content
   in a call. Its folder is made for a `dir`, and only its parent for a
   `file` or one that may be either, since the agent makes what it leaves.
 
@@ -167,20 +186,20 @@ the web UI's sessions have them.
   caller; the box, the run's title, the project,
   the expanded prompt and the request id it is sent under, the tau's init,
   its expanded command and where it runs in the box, if it has one, each file (its
-  name, mode, kind, base name and place), the targets, the working directory and
+  name, mode, kind and base name), the working directory and
   the APIs' folder in the box, as the runtime reported them, the contracts of the
   APIs the tau holds, each linked, what it exposes, with what each says it is,
   when it was made, when it was given its prompt, when and how its run
   ended, when a `finish` first gave that back, and when the box was last
   set up again, if it was. Beside it, a folder of
   the session's own, `$DSH_HOME/fleet/taus/<session id>/`, holds the call,
-  `call.tar`, and the run's result, `result.tar`, until the session is
-  deleted. An entry is
+  `call.tar`, and the run's result, `result.tar`, until the run is
+  released. An entry is
   written last, so an entry means a box that is set up, and before the dsh
   session is made. A service started later finds its sessions there. Only
   ids of the form the service mints name an entry, since they are file
   names.
-- **Starting the run**, once its box is set up: `start` starts the box,
+- **Starting the run**, once its box is set up: the submit starts the box,
   then, through dsh's workspace registry and session controller:
   1. makes the project a dsh workspace, or finds the one it is;
   2. makes the session with the entry's id, in that workspace, with the
@@ -191,13 +210,13 @@ the web UI's sessions have them.
   3. queues the prompt under the entry's request id;
   4. records in the entry when the session got its prompt.
 
-  For a tau with an init, the start stops after step 2, and the run's
+  For a tau with an init, the submit stops after step 2, and the run's
   watch runs the init first (below), then takes steps 3 and 4 unless the
   init did the run.
 
   A failure on the way archives the session and removes the box and the
   entry, so a run either started or left nothing. A session's operations
-  run one after another, so its start, its end, a finish and a deletion
+  run one after another, so its start, its end, a finish and a release
   keep their order.
 - **The init** of a tau that has one (`init.ts`, tau's docs/spec/init.md)
   runs as its run's watch begins: the helper spawns `sh -c` with the
@@ -206,14 +225,14 @@ the web UI's sessions have them.
   command of the agent's, with `$FLEET_SOCKET`, so a program of the tau's,
   such as `node ${self}/init.mts`, imports what the agent's programs do,
   and its API calls are the session's, nested runs included; it occupies the box until it exits. Its exit says what comes
-  next: 0, `TAU_SKIP`, ends the run without the agent, which the session
+  next, as tau's `initDecision` says: 0, `TAU_SKIP`, ends the run without the agent, which the session
   never gets a prompt for, init's stdout its text, and the run succeeds as
   if the agent had, packing what init left (below); 100, `TAU_RUN`, gives
   the session its prompt as it is; 101, `TAU_FALLBACK`, and any other
   exit, or a signal, gives it the prompt followed by a note that init
   failed, how it ended, and what it wrote to stdout and stderr, each in a
-  fenced block. An init that cannot run at all fails the run. Cancelling
-  the run kills the init's process group and ends the run as cancelled;
+  fenced block. An init that cannot run at all fails the run. Releasing
+  the run kills the init's process group;
   a host that stops meanwhile kills it too, and the run then ends as one
   whose start was cut short before its prompt.
 - **A run ends** at the first time its agent is done with its prompt: the
@@ -236,35 +255,33 @@ the web UI's sessions have them.
   serves the same dsh home, records nothing.
 - **What a run gives back**, once its last turn completed, its box packs
   (`pack`, above) into the session's folder, and the service reads it
-  again, as tau's library does, `readResult`, and checks it against the
-  run's files, `checkResult`: an output for each `out` and `inout`
-  file, of its kind, and the agent's own text. One that
+  again, `decodeResult`, which checks each output's content as it comes,
+  and checks its report against the run's files, `checkReport`: an output
+  for each `out` and `inout` file, of its kind, and the agent's own text. One that
   does not fit fails the run. A run that failed gives nothing back: its
   result, which the host writes, holds how it ended alone.
 - **Finishing** waits for the run's end, which a client that goes away
-  gives up, leaving the run as it is. Then it answers how the run ended and
-  the targets, and sends the result; the first time, it records the finish
-  in the entry. The caller puts what the result holds at the targets, with
-  tau's `applyResult`, as tau's docs/spec/results.md has it, trusting the
-  service as to what goes where. The service answers the same again, so a
-  client that lost its connection, as when dsh restarts, asks again, and a
-  client other than the one that started the run can finish it.
+  gives up, leaving the run as it is. Then it sends the result; the first
+  time, it records the finish in the entry. The caller's adaptor checks
+  the result, as tau's docs/spec/protocol.md asks, and puts what it holds
+  at the caller's paths, which the service never learns. The service
+  sends the same again, so a client that lost its connection, as when dsh
+  restarts, asks again, and a client other than the one that started the
+  run, sharing its run store, can finish it.
 - **A run's history**, for a caller to inspect it, is its session's events,
   oldest first, as dsh's session controller inspects them: the prompt, each
   request's system prompt and tools, each model message, tool call and
-  result, and each turn's end. A `finish` that asks gives it back in its
-  answer, read when it answers, failed run or not. It is dsh's, not
-  tau's spec's, so its form is dsh's session log's, and the caller
-  writes it where it wants it, as with the result.
-- **Cancelling** cancels the session's turn, or its init, while that
-  runs; the run then ends as cancelled, which its watch records.
+  result, and each turn's end, read when asked, ended or not, failed run
+  or not. It is dsh's, not tau's spec's, so its form is dsh's session
+  log's, and the caller writes it where it wants it.
 - **The runs a run started** go with it. Once a run ends, its box is
   stopped, and nothing it started and did not finish can give anything
-  back, so those runs are deleted. Deleting a run deletes every run it
+  back, so those runs are released. Releasing a run releases every run it
   started first, finished or not, and theirs.
-- **Deleting** archives the session, stopping its work, since dsh does not
-  delete sessions; then it removes the box and the session's folder, and
-  forgets the session. A
+- **Releasing** stops the run's init, if it runs, and archives the
+  session, stopping its work, since dsh does not delete sessions; then it
+  removes the box and the session's folder, and forgets the session. It is
+  the only way to stop a run, as tau's protocol has it. A
   session never started is not dsh's, so there is nothing to archive. An
   archive that fails keeps the box and the entry.
 - **An idle box stops.** A session's box runs while anything occupies it:
@@ -352,13 +369,13 @@ the web UI's sessions have them.
   callers, has its box removed once the run has ended, since the box packs
   the run's result as it ends: a stop-and-archive cancels the run's turn,
   and the run ends soon after. Its entry, call and result stay, so its
-  caller can still `finish` it, and only deleting it forgets it. While the
+  caller can still finish it, and only releasing it forgets it. While the
   session is archived, `boxFor` fails, and so does the world's work in the
   box. A session that no longer is archived has no box until its next use.
 - **A box gone is set up again** from the run's call, which the session's
   folder keeps, when `boxFor`, a start for a `pack`, or a copy next needs
-  it: after an unarchive, or a box removed by other means. The tau is read
-  from the call again, and its APIs linked to the extensions provided now,
+  it: after an unarchive, or a box removed by other means. The call is
+  admitted again, its APIs found in the extensions provided now,
   so one no longer provided fails the set-up, and the box is created under
   its name, set up by its runtime, given the clients and linked, as when
   the run started; the entry records the files, the working directory,
@@ -369,20 +386,25 @@ the web UI's sessions have them.
   `boxFor`, so a failure to set it up fails the step rather than a tool
   call. A session that is not a tau's, as one a person gives the preset in
   the web UI, has no box, so each step fails, saying the preset is for the
-  runs `fleet run` and `tau_run` start, before the model is asked
+  runs `tau run --adaptor fleet` and `tau_run` start, before the model is asked
   anything; and its tools reach nothing of the host. When the box was set up again since the agent was last told, a
   notice goes before the step's messages, saying so: a user message with a
   source of its own, `fleet-tau-box`, which the session's log keeps, and
   which a projection of the log folds into the setup it told of.
 - **A box gone** when the session is deleted still lets the session be
   forgotten.
-- **The socket** (`server.ts`) has mode 0600, and its folder is made with
-  mode 0700, so only the owner can open it. That is its authentication, as
-  it is for the dsh home's own files. It takes one request per connection:
-  one line of JSON in, with a `start`'s call after it, up to the end of
-  what the client sends, and one out, with a `finish`'s result after it. A
-  socket a service answers on is not taken over; one left by a service
-  that died is.
+- **The socket**, as tau's `listenFleet` serves it (tau's
+  docs/spec/fleet.md#the-socket), has mode 0600, and its folder is made
+  with mode 0700, so only the owner can open it. That is its
+  authentication, as it is for the dsh home's own files. It takes one
+  request per connection: one line of JSON in, with a submit's call after
+  it, up to the end of what the client sends, and one out, with a finish's
+  result after it. A socket a service answers on is not taken over; one
+  left by a service that died is.
+- **The requests** (`wire.ts`), however they come, go through one
+  handler, `handlerFor(caller)`: tau's `readFleetRunRequest` checks a
+  run's, and the handler the service's own, so what a box sends is
+  checked as what the host does.
 - **Printing.** The service prints what it does, the expanded prompt
   included, on dsh's stderr, after `fleet-tau:`. dsh's logger shows no info.
 - **dsh, through one interface.** The service reaches dsh's sessions only
@@ -407,9 +429,11 @@ the web UI's sessions have them.
 - A call and a result are kept whole, however large, in the session's
   folder; and an `inout` file merges into the caller's folder, so what
   the agent removed there stays.
-- The runs a session that is no tau's started with `tau_run`, and their
-  sessions, stay, without their boxes, when the session is archived; `fleet
-  delete` forgets them.
+- A finish gives back the result its box packed when the run ended; what
+  a person asks the run's session in the web UI later is not collected
+  again, though tau's protocol lets a finish give the latest result.
+- A finish whose connection is lost, as when dsh restarts, fails; the
+  host's `tau finish` asks again when run again.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
 - The `tau` preset is in the web UI's list of presets, and its settings'
@@ -426,14 +450,16 @@ the web UI's sessions have them.
   archived sessions; `agent/pre-step`, `@deepseek-ai/dsh-llm`'s
   `createUserMessage` and `@deepseek-ai/dsh-session-projection`, for the
   notice.
-- `@sleepymug/tau`: `loadTau`, with its `apis` and `exposed`, `check`, `expand`, and
-  `serves`; and `@sleepymug/tau/call`: `readCall`, `placeCall`,
-  `readResult`, `checkResult`, `writeResult`.
+- `@sleepymug/tau`: the backend SDK, `@sleepymug/tau/backend` (`admit`,
+  `initDecision`); the core's `checkReport` and `serves`; `wire-tar`'s
+  `decodeCall`, `decodeResult` and `packResult`; `transfer`'s
+  `extractContent`; and the fleet adaptor's `listenFleet` and
+  `readFleetRunRequest`, `@sleepymug/tau/adaptors`.
 - `ctx.fleetExts` (fleet-core/ext).
 - `Box` and `exec` (`@sleepymug/fleet-core/box`), with `Box.pipe` for the archives
   the box's runtime reads and writes, and fleet-box-runtime's tau runtime, in
   the image.
-- `@sleepymug/fleet-protocol/tau`, for the wire.
+- `@sleepymug/fleet-protocol/tau`, for the service's own requests.
 - dsh's session controller, workspace registry and agents
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,
   `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-permission-presets`,
@@ -464,7 +490,7 @@ all from npm instead.
 
 After `pnpm build` and `pnpm image`, `pnpm exec dsh web`, with
 the dsh the workspace pins, starts the service with the web host, and
-`fleet` talks to it
+`tau --adaptor fleet` and `fleet` talk to it
 (docs/fleet-client/index.md). On dsh's stderr:
 
 ```
@@ -473,5 +499,5 @@ Read /tau/in/notes.md, and add what it says to the pages in /tau/workspace/site 
 terse style. Then write what you changed to /tau/out/report.md.
 fleet-tau: started session-4a65… in /home/me/notes, and gave it its prompt
 fleet-tau: session-4a65… ended
-fleet-tau: deleted session-4a65… and its box fleet-tau-4a65…
+fleet-tau: released session-4a65…, and removed its box fleet-tau-4a65…
 ```

@@ -2,8 +2,9 @@
 
 Fleet is dsh bundles, installed in a dsh profile with dsh's web app, such
 as dsh's own `web` profile, whose sessions stay as dsh has them; a box
-image, built from what that profile installed; and `fleet`, a command of
-its own. Each package is published as `@sleepymug/<name>`, all but
+image, built from what that profile installed; tau's command, `tau`,
+whose fleet adaptor runs taus on the profile's service; and `fleet`, a
+command of its own. Each package is published as `@sleepymug/<name>`, all but
 fleet-trace, which runs on a checkout only (docs/fleet-trace/index.md).
 
 ## From npm
@@ -43,11 +44,12 @@ On linux, with Docker and pnpm on the PATH:
 
    Build it again after each update of the profile.
 
-4. `fleet`, which talks to the profile's service and loads no dsh module
-   (docs/fleet-client/index.md):
+4. tau's command, `tau`, which runs taus through its fleet adaptor on the
+   profile's service (tau's docs/spec/fleet.md), and `fleet`, which shows
+   the runs there; neither loads a dsh module (docs/fleet-client/index.md):
 
    ```
-   npm install --global @sleepymug/fleet-client
+   npm install --global @sleepymug/tau @sleepymug/fleet-client
    ```
 
 5. Signing in to a model provider from a terminal, if wanted, is a profile
@@ -58,18 +60,20 @@ On linux, with Docker and pnpm on the PATH:
    dsh fleet-signin
    ```
 
-Then `dsh web` starts the host, with the web UI, and `fleet run <tau-dir>`
+Then `dsh web` starts the host, with the web UI, and `tau run --adaptor
+fleet <tau-dir> --call <call.json>`, or `tau run` with `TAU_ADAPTOR=fleet`,
 runs a tau. Each session the web UI makes has `tau_run`, which runs one
 too, where its sandbox lets it write (docs/fleet-core/tools/index.md).
 
-Each extension implements a contract of tau's, which it depends on, such as
-`@sleepymug/tau-api-notes`, so a tau that holds a copy of it runs. Making a
-tau that does takes tau's own command, `tau add` (tau's
-docs/spec/development.md):
+Each extension implements a contract, which it depends on, such as
+`@sleepymug/tau-api-notes`, published beside fleet-ext-notes, so a tau that
+holds a copy of it runs. A tau holds a copy of a contract as its package
+is published, its `package.json` and its declarations, in `api/<alias>/`
+(tau's docs/spec/apis.md):
 
 ```
-npm install --global @sleepymug/tau-dev
-cd <tau-dir>; tau add notes @sleepymug/tau-api-notes
+mkdir -p <tau-dir>/api/notes
+npm pack @sleepymug/tau-api-notes && tar -xzf sleepymug-tau-api-notes-*.tgz --strip-components=1 -C <tau-dir>/api/notes
 ```
 
 - The image holds the packages as installed on the host, so the host must
@@ -80,9 +84,10 @@ cd <tau-dir>; tau add notes @sleepymug/tau-api-notes
 ## From a checkout
 
 `pnpm install`, `pnpm build` and `pnpm image` at the root, with tau's
-checkout beside this one, its library, its `tau` command and its contracts
-joining the workspace (pnpm-workspace.yaml). The workspace pins dsh,
-run as `pnpm exec dsh`; each package's "How it runs" links its checkout
-into the profile, as `pnpm exec dsh plugin --profile web add
-link:<checkout>/packages/fleet-core`, and runs `fleet` as
-`node <checkout>/packages/fleet-client/lib/cli.js`.
+checkout beside this one, its library, with its `tau` command, and its
+contracts joining the workspace (pnpm-workspace.yaml); build tau in its
+checkout, `pnpm build` there. The workspace pins dsh, run as `pnpm exec
+dsh`; each package's "How it runs" links its checkout into the profile, as
+`pnpm exec dsh plugin --profile web add link:<checkout>/packages/fleet-core`,
+and runs `fleet` as `node <checkout>/packages/fleet-client/lib/cli.js`,
+and `tau` as `node <tau checkout>/dist/cli/main.js`.

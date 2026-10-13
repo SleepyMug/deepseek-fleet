@@ -1,5 +1,6 @@
 /**
- * fleet-tau, the tau service (./service.ts) on its socket (./server.ts), as
+ * fleet-tau, the tau service (./service.ts) on its socket, as tau's
+ * `listenFleet` serves it to the host's `tau` command (./wire.ts), as
  * a dsh plugin: fleet-core's cordis.patch.yml mounts it in the profile it
  * is installed in. It builds on the runs of taus and their boxes,
  * `ctx.fleetTauRuns` (./runs-plugin.ts), and on dsh's session controller
@@ -12,8 +13,8 @@
  * only their types.
  * Its config names the dsh home, where it serves its socket. It provides the
  * service as `ctx.fleetTau`, for the `tau` API's extension (fleet-ext-tau),
- * through which a tau's session starts runs from its box, and for
- * `tau_run` (../tools/tau.ts), with which another session starts them.
+ * through which a tau's session submits runs from its box, and for
+ * `tau_run` (../tools/tau.ts), with which another session submits them.
  * @module @sleepymug/fleet-core/tau/plugin
  */
 
@@ -25,10 +26,11 @@ import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
+import { listenFleet } from '@sleepymug/tau/adaptors'
 import { socketPath } from '@sleepymug/fleet-protocol/tau'
 import { summarize } from './outcome.ts'
+import { HOST } from './runs.ts'
 import { print } from './runs-plugin.ts'
-import { listen } from './server.ts'
 import { TauService, abortable, type Sessions } from './service.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -60,7 +62,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   const service = new TauService(ctx.fleetTauRuns, sessions(ctx), print)
   // The socket first: a service that does not get it, as when another serves this dsh home, watches no runs.
-  const closeSocket = await listen(socketPath(config.dshHome), service)
+  const closeSocket = await listenFleet(socketPath(config.dshHome), service.handlerFor(HOST))
   const close = async (): Promise<void> => {
     await closeSocket()
     await service.close()
@@ -153,9 +155,6 @@ function sessions(ctx: Context): Sessions {
         mode: 'queue',
         content: [{ type: 'text', text }],
       }, UNCANCELLED)
-    },
-    cancel(sessionId) {
-      ctx.sessionController.cancel({ sessionId: sessionId as SessionId })
     },
     async settled(sessionId, signal) {
       // An accepted prompt has woken the agent already, so idle means it is done with it.

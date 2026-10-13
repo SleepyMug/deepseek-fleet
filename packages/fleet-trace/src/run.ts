@@ -4,8 +4,8 @@
  * extensions, and fleet-trace's driver (./driver.ts), and routes the model
  * to the scripted one (./model.ts); dsh itself, the workspace's, started on
  * a free port; there, a run of the tau, through the tau service's socket, as
- * `fleet run` does it, or a session given a prompt, as the web UI makes one,
- * through the driver's; and, once it has ended, every run deleted, dsh
+ * `tau run --adaptor fleet` does it, or a session given a prompt, as the web
+ * UI makes one, through the driver's; and, once it has ended, every run released, dsh
  * stopped and the temporary folder removed. What the model was sent is left
  * in the output folder: every request, and the last of the scenario's
  * conversation rendered (./render.ts); and how it ended, and the caller's
@@ -21,9 +21,9 @@ import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { ask as askService, type Body } from '@sleepymug/fleet-client/connection'
-import { finishRun, startRun } from '@sleepymug/fleet-client/runs'
-import { socketPath, type Answers } from '@sleepymug/fleet-protocol/tau'
+import { createClient } from '@sleepymug/tau'
+import { createFleetAdaptor, fleetSocket } from '@sleepymug/tau/adaptors'
+import { socketPath, type Answers, type Request as ServiceRequest } from '@sleepymug/fleet-protocol/tau'
 import type { Request, Settled } from './driver.ts'
 import { ScriptedModel, type Script, type Step } from './model.ts'
 import { render } from './render.ts'
@@ -36,7 +36,7 @@ export interface Scenario {
   prompt?: string
   /** The caller's folder: each file by its relative path, with its text. */
   files?: Record<string, string>
-  /** The run's call, its files and args, as `fleet start` sends them; relative paths are the caller's folder's. */
+  /** The run's call, its files and args, as `tau start` takes them; relative paths are the caller's folder's. */
   call?: { files?: Record<string, string | string[] | { path: string | string[] }>; args?: Record<string, unknown> }
   /** The model's tool calls, in order, one per turn. */
   steps: Step[]
@@ -64,7 +64,7 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
   const work = join(scratch, 'work')
   const model = await ScriptedModel.start(scenario.steps, scenario.final, join(out, 'requests'), scenario.runs)
   let dsh: ChildProcess | undefined
-  let deleted = false
+  let released = false
   try {
     await profile(home, model.port)
     dsh = startDsh(home)
@@ -94,9 +94,11 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
       // The folder of each file's path, where an `out` goes.
       const paths = Object.values(call.files ?? {}).flatMap(file => typeof file === 'object' && !Array.isArray(file) ? file.path : file)
       for (const path of paths) mkdirSync(dirname(resolve(work, path)), { recursive: true })
-      const started = await failing('start', startRun(socket, resolve(dirname(scenarioFile), scenario.tau), call, work))
-      model.prompt = started.prompt.trim()
-      const ended = await Promise.race([failing('finish', finishRun(socket, started.sessionId)), exited, interrupted])
+      const client = createClient({ adaptors: { fleet: createFleetAdaptor({ transport: fleetSocket(socket), project: work }) } })
+      const run = await failing('start', client.start(resolve(dirname(scenarioFile), scenario.tau), call, { cwd: work }))
+      model.prompt = (await ask(socket, { op: 'status', id: run.slice('fleet:'.length) })).prompt.trim()
+      // The run is released with the others, once its caller's folder is kept.
+      const ended = await Promise.race([failing('finish', client.finish(run)), exited, interrupted])
       if (!ended.ok) process.stderr.write(`fleet-trace: the run failed: ${String(ended.failure)}\n`)
       result = ended
     } else {
@@ -106,10 +108,10 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     // How it ended, and the caller's folder with what it gave back.
     writeFileSync(join(out, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
     cpSync(work, join(out, 'work'), { recursive: true, verbatimSymlinks: true })
-    await deleteRuns(socket)
-    deleted = true
+    await releaseRuns(socket)
+    released = true
   } finally {
-    if (!deleted && dsh?.exitCode === null) await deleteRuns(socketPath(home)).catch(() => {})
+    if (!released && dsh?.exitCode === null) await releaseRuns(socketPath(home)).catch(() => {})
     if (dsh !== undefined) await stop(dsh)
     await model.close()
     rmSync(scratch, { recursive: true, force: true })
@@ -214,16 +216,18 @@ function drive(socket: string, request: Request): Promise<Settled> {
   })
 }
 
-/** Delete every run, each with the runs it started. */
-async function deleteRuns(socket: string): Promise<void> {
+/** Release every run, each with the runs it started. */
+async function releaseRuns(socket: string): Promise<void> {
   const runs = await ask(socket, { op: 'list' })
   const known = new Set(runs.map(run => run.sessionId))
-  for (const run of runs) if (run.parent === undefined || !known.has(run.parent)) await ask(socket, { op: 'delete', sessionId: run.sessionId })
+  for (const run of runs) {
+    if (run.parent === undefined || !known.has(run.parent)) await failing('release', fleetSocket(socket).exchange({ op: 'release', id: run.sessionId }))
+  }
 }
 
-/** One request to the tau service, whose failure throws. */
-function ask<O extends Body['op']>(socket: string, body: Body & { op: O }): Promise<Answers[O]> {
-  return failing(body.op, askService<O>(socket, body))
+/** One of the tau service's own requests, whose failure throws. */
+async function ask<O extends ServiceRequest['op']>(socket: string, request: ServiceRequest & { op: O }): Promise<Answers[O]> {
+  return (await failing(request.op, fleetSocket(socket).exchange(request))).value as Answers[O]
 }
 
 /** What an op gives, its failure named. */

@@ -1,15 +1,18 @@
 /**
- * The runs of taus, and their boxes (docs/fleet-core/tau/index.md): it
- * checks a run's call, tau's archive of the run's args with the content of
- * its files, and the tau (tau's docs/spec/serialization.md), keeps it, and
- * has a box's runtime set the box up from it (fleet-box-runtime/tau/endpoint),
- * which places everything where the box has things, with the tau's APIs
- * linked to the clients of the extensions that implement them (./apis.ts); keeps which box each session has (./registry.ts); starts,
- * stops and removes the box, runs the tau's init in it (./init.ts), and
- * copies host files into it as they are asked for; keeps the run's result, the archive of what it gave back, which its
- * box packs; and answers the calls the clients in the box make, with the
- * extensions' servers. It never reads or writes a caller's files: the caller
- * packs the call, and puts the result at its paths. It uses nothing of
+ * The runs of taus, and their boxes (docs/fleet-core/tau/index.md), the
+ * backend of tau's fleet adaptor, built on tau's backend SDK: it admits a
+ * run's call, tau's archive of the run's envelope with the content of its
+ * files, and the tau (tau's docs/spec/serialization.md), against the
+ * extensions provided (./apis.ts), keeps it, and has a box's runtime set the
+ * box up from it (fleet-box-runtime/tau/endpoint), which places everything
+ * where the box has things, with the tau's APIs linked to the clients of the
+ * extensions that implement them; keeps which box each session has
+ * (./registry.ts); starts, stops and removes the box, runs the tau's init
+ * in it (./init.ts), and copies host files into it as they are asked for;
+ * keeps the run's result, the archive of what it gave back, which its box
+ * packs, checked; and answers the calls the clients in the box make, with
+ * the extensions' servers. It never learns a caller's paths: the caller's
+ * adaptor packs the call, and puts the result at them. It uses nothing of
  * dsh's, so both fleet-core's world (../world/), which serves a tau's
  * session from its box, and the tau service (./service.ts), which makes the
  * session, build on it.
@@ -20,17 +23,19 @@ import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, open, realpath, rm } from 'node:fs/promises'
-import { join, posix, relative, sep } from 'node:path'
+import { join, posix } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { finished, pipeline } from 'node:stream/promises'
-import { type CheckedCall, loadTau } from '@sleepymug/tau'
-import { checkResult, placeCall, readCall, readResult, writeResult } from '@sleepymug/tau/call'
+import { type Admitted, createBackendSdk } from '@sleepymug/tau/backend'
+import { checkReport, type Envelope } from '@sleepymug/tau/core'
+import { extractContent } from '@sleepymug/tau/transfer'
+import { decodeCall, decodeResult, packResult } from '@sleepymug/tau/wire-tar'
 import type { Call } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HELPER_NODE, TAU_ENTRY } from '@sleepymug/fleet-box-runtime/layout'
-import type { Setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
-import type { Result, Started, Targets } from '@sleepymug/fleet-protocol/tau'
+import type { Offered, Setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
+import type { Result } from '@sleepymug/fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
-import { linkApis, type Exts, type Linked } from './apis.ts'
+import { catalogOf, type Exts } from './apis.ts'
 import type { Caller, Entry, Registry } from './registry.ts'
 
 /** What a run's box is used for. */
@@ -50,14 +55,22 @@ export interface Occupant {
   id: string
 }
 
-/** What a call says of itself, besides the archive. */
+/** What a submit says of its run, besides the call. */
 export interface About {
   /** What names the run, in `list` and dsh's web UI. */
   title: string
   /** The caller's folder, absolute, unless it is a tau's session, whose runs are in its own project. */
   project?: string
-  /** Where the caller has each `out` and `inout` file, which `finish` gives back. */
-  targets: Targets
+}
+
+/** A run set up. */
+export interface Started {
+  /** The session the run is, minted here, which is the run's id. */
+  sessionId: string
+  /** The box's container. */
+  box: string
+  /** The tau's prompt, expanded with where the box has each file. */
+  prompt: string
 }
 
 /** In a session's folder: the run's call; the tau it carries, read from it while the box is set up; and the run's result. */
@@ -65,13 +78,14 @@ const CALL = 'call.tar'
 const TAU = 'self'
 const RESULT = 'result.tar'
 
-/** What the service learns of a call before it makes anything of it. */
+/** What the service learns of a call before it makes anything of it, as it admits it. */
 interface Accepted {
-  /** The tau's root, read from the call, through symlinks. */
-  tauRoot: string
   /** Each file of the call, checked against the tau. */
-  files: CheckedCall['files']
-  linked: Linked
+  files: Envelope['files']
+  /** Each contract the tau's APIs hold a copy of, with the extension that serves it. */
+  links: { contract: string; version: string; client: string }[]
+  /** What the tau exposes to its programs: `@api/<alias>`, or a package of its own, by name, with what it says it is. */
+  exposed: { specifier: string; description?: string }[]
 }
 
 /** How a run's init ended (./init.ts). */
@@ -177,60 +191,85 @@ export class TauRuns {
     }
   }
 
-  /** Check a call as it comes, writing it to the session's folder, and read its tau there. */
+  /** Admit a call as it comes, writing it to the session's folder, and read its tau there. */
   private async accept(call: AsyncIterable<Uint8Array>, folder: string, about: About): Promise<Accepted> {
-    const tauDir = join(folder, TAU)
     try {
-      const read = await readCall(spool(call, join(folder, CALL)))
-      if (read.json.tau === undefined) throw new Error('fleet: the call does not carry its tau')
-      // Every content read, and so the whole call checked, before anything is made of it.
-      await placeCall(read, { tau: tauDir })
-      const tau = loadTau(tauDir)
-      // Where the box places each file is its own; here, only whether the call fits.
-      const { files } = tau.check(read.json)
-      return { tauRoot: await realpath(tau.dir), files, linked: linkApis(tau, this.exts) }
+      return await this.admit(spool(call, join(folder, CALL)), join(folder, TAU))
     } catch (error) {
       // The tau as the caller names it.
-      throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${about.title}`), { cause: error })
+      throw new Error((error as Error).message.replaceAll(join(folder, TAU), `the tau ${about.title}`), { cause: error })
     }
   }
 
-  /** Read a kept call's tau again, in the session's folder, and link its APIs to the extensions provided now. */
+  /** Admit a kept call again, in the session's folder, its APIs linked to the extensions provided now. */
   private async reread(sessionId: string, title: string): Promise<Accepted> {
     const folder = this.registry.folder(sessionId)
-    const tauDir = join(folder, TAU)
     try {
-      const read = await readCall(createReadStream(join(folder, CALL)))
-      await placeCall(read, { tau: tauDir })
-      const tau = loadTau(tauDir)
-      const { files } = tau.check(read.json)
-      return { tauRoot: await realpath(tau.dir), files, linked: linkApis(tau, this.exts) }
+      return await this.admit(createReadStream(join(folder, CALL)), join(folder, TAU))
     } catch (error) {
-      throw new Error((error as Error).message.replaceAll(tauDir, `the tau ${title}`), { cause: error })
+      throw new Error((error as Error).message.replaceAll(join(folder, TAU), `the tau ${title}`), { cause: error })
     }
   }
 
   /**
-   * Have a started box's runtime set it up from the session's call, copy
-   * each API's client in, where the runtime says, and link the APIs and what
-   * the tau exposes.
+   * Admit a call, as tau's backend SDK does, with the extensions provided
+   * as its catalog: its tau, which comes first, read at `tauDir`, the call
+   * checked against it, each API found an extension, and then every content
+   * read, and so the whole call checked, before anything is made of it.
+   * Where the box places each file is its own; here, only whether the call fits.
+   */
+  private async admit(call: AsyncIterable<Uint8Array>, tauDir: string): Promise<Accepted> {
+    const { json, contents } = await decodeCall(call)
+    let admitted: Admitted | undefined
+    for await (const content of contents) {
+      if (content.file !== undefined) {
+        if (admitted === undefined) throw new Error('fleet: the call breaks the spec: its tau does not come first')
+        for await (const _ of content.entries);
+        continue
+      }
+      await extractContent(content, tauDir)
+      try {
+        admitted = createBackendSdk({ implementations: catalogOf(this.exts) }).admit(json, tauDir)
+      } catch (error) {
+        throw new Error(`fleet: ${(error as Error).message}`, { cause: error })
+      }
+    }
+    const { envelope, links, tau } = admitted as Admitted
+    return {
+      files: envelope.files,
+      links: links.map(({ implementation: { contract, version, module } }) => ({ contract, version, client: module })),
+      exposed: tau.exposed.map(({ specifier, description }) => ({ specifier, ...description === undefined ? {} : { description } })),
+    }
+  }
+
+  /**
+   * Have a started box's runtime set it up from the session's call, offered
+   * the contracts the call was admitted with, copy each API's client in,
+   * where the runtime says, and link the APIs and what the tau exposes.
    * @returns what the runtime reported.
    */
-  private async furnish(box: RunBox, sessionId: string, { tauRoot, linked }: Accepted): Promise<Setup> {
+  private async furnish(box: RunBox, sessionId: string, { links }: Accepted): Promise<Setup> {
     const report = new Report()
-    await box.pipe([HELPER_NODE, TAU_ENTRY, 'setup'], { input: createReadStream(join(this.registry.folder(sessionId), CALL)), output: report })
+    const offered: Offered[] = links.map(({ contract, version }) => ({ contract, version }))
+    await box.pipe([HELPER_NODE, TAU_ENTRY, 'setup', JSON.stringify({ offered })], { input: createReadStream(join(this.registry.folder(sessionId), CALL)), output: report })
     const setup = report.setup()
-    for (const api of linked.apis) await box.copyIn(api.client, posix.join(setup.clients, api.alias))
+    const copied = new Set<string>()
+    for (const { contract, client } of setup.links) {
+      const ext = links.find(link => link.contract === contract)
+      if (ext === undefined) throw new Error(`fleet: the box's runtime linked ${contract}, which it was not offered`)
+      if (copied.has(client)) continue
+      copied.add(client)
+      await box.copyIn(ext.client, client)
+    }
     await box.request('apis.link', {
       modules: setup.modules,
-      apis: linked.apis.map(({ alias }) => ({ name: alias, client: posix.join(setup.clients, alias), types: posix.join(setup.self, 'api', alias) })),
-      packages: linked.packages.map(({ name, dir }) => ({ name, dir: posix.join(setup.self, ...relative(tauRoot, dir).split(sep)) })),
+      apis: setup.links.map(({ alias, client }) => ({ name: alias, client, types: posix.join(setup.self, 'api', alias) })),
+      packages: setup.packages,
     })
     return setup
   }
 
   private async setUp(sessionId: string, accepted: Accepted, about: About, project: string, caller: Caller): Promise<Started> {
-    const { linked } = accepted
     const box = await this.docker.create(`fleet-tau-${sessionId.slice('session-'.length)}`)
     let setup: Setup
     try {
@@ -248,11 +287,10 @@ export class TauRuns {
         ...setup.init === undefined ? {} : { init: { command: setup.init, dir: setup.cwd } },
         promptRequestId: randomUUID(),
         files: accepted.files,
-        targets: about.targets,
         cwd: setup.cwd,
         modules: setup.modules,
-        apis: linked.apis.map(api => api.contract),
-        exposed: linked.exposed,
+        apis: accepted.links.map(link => link.contract),
+        exposed: accepted.exposed,
         createdAt: new Date().toISOString(),
       })
     } catch (error) {
@@ -348,16 +386,16 @@ export class TauRuns {
         try {
           const box = await this.running(sessionId)
           await box.pipe([HELPER_NODE, TAU_ENTRY, 'pack', JSON.stringify({ outcome })], { output: createWriteStream(file, { mode: 0o600 }) })
-          const { json, contents } = await readResult(createReadStream(file))
+          const { json, contents } = await decodeResult(createReadStream(file))
           if (json.text !== outcome.text) throw new Error('its text is not the agent\'s')
-          checkResult(json, { files })
+          checkReport(json, files)
           for await (const content of contents) for await (const _ of content.entries);
           return json.failure === undefined ? { ok: json.ok, text: json.text } : { ok: json.ok, text: json.text, failure: json.failure }
         } catch (error) {
           ended = { ok: false, text: outcome.text, failure: `could not get back what the run gave: ${error instanceof Error ? error.message : String(error)}` }
         }
       }
-      await pipeline(Readable.from(writeResult({ ...ended, outputs: {} }, [])), createWriteStream(file, { mode: 0o600 }))
+      await pipeline(Readable.from(packResult({ ...ended, outputs: {} }, {})), createWriteStream(file, { mode: 0o600 }))
       return ended
     })
   }
@@ -712,14 +750,13 @@ export class TauRuns {
       box = await this.docker.create(entry.box)
       await box.start(this.calls(sessionId))
       const setup = await this.furnish(box, sessionId, accepted)
-      const { linked } = accepted
       await this.registry.put({
         ...entry,
         files: accepted.files,
         cwd: setup.cwd,
         modules: setup.modules,
-        apis: linked.apis.map(api => api.contract),
-        exposed: linked.exposed,
+        apis: accepted.links.map(link => link.contract),
+        exposed: accepted.exposed,
         resetAt: new Date().toISOString(),
       })
       this.taus.set(sessionId, { project: entry.project, cwd: setup.cwd })
@@ -784,8 +821,11 @@ class Report extends Writable {
     } catch {
       throw new Error(`fleet: the box's runtime reported something else than JSON: ${text.slice(0, 200)}`)
     }
-    const paths = [setup.cwd, setup.modules, setup.self, setup.clients]
-    if (typeof setup.prompt !== 'string' || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(path => typeof path === 'string' && posix.isAbsolute(path))) {
+    const absolute = (path: unknown): boolean => typeof path === 'string' && posix.isAbsolute(path)
+    const paths = [setup.cwd, setup.modules, setup.self]
+    if (typeof setup.prompt !== 'string' || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(absolute)
+      || !Array.isArray(setup.links) || !setup.links.every(link => typeof link?.alias === 'string' && typeof link.contract === 'string' && absolute(link.client))
+      || !Array.isArray(setup.packages) || !setup.packages.every(entry => typeof entry?.name === 'string' && absolute(entry.dir))) {
       throw new Error('fleet: the box\'s runtime reported no setup')
     }
     return setup as Setup

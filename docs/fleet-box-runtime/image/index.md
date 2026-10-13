@@ -12,12 +12,14 @@ Builds the box image: a Node base image with fleet's runtime on top.
   and the image agree on: the package at `/opt/fleet`, the helper's Node and
   entry, the tau runtime's entry, and the default tag. It holds constants
   only.
-- The tau runtime, the runtime's side of a tau's run in its box, on tau's
-  library, which the image holds as a dependency of this package, and which
-  owns where a run has its things in its box (`@sleepymug/fleet-box-runtime/tau/layout`):
-  the host runs `node /opt/fleet/lib/tau/main.js setup`, with the run's
-  call on stdin, which sets the box up and reports, as JSON, the prompt,
-  the files and where things are; and `… pack '{"outcome"}'`, which
+- The tau runtime, the box's half of a tau's run's backend, on tau's
+  backend SDK, which the image holds as a dependency of this package, and
+  which owns where a run has its things in its box
+  (`@sleepymug/fleet-box-runtime/tau/layout`): the host runs `node
+  /opt/fleet/lib/tau/main.js setup '{"offered"}'`, with the run's call on
+  stdin, which admits it with the contracts offered, sets the box up and
+  reports, as JSON, the prompt, where things are, and which client each API
+  needs; and `… pack '{"outcome"}'`, which
   writes the run's result on stdout, packed from what the agent left at its
   `out` and `inout` files, or a failure, when that does not fit the tau
   (docs/fleet-core/tau/index.md). `@sleepymug/fleet-box-runtime/tau/endpoint` exports

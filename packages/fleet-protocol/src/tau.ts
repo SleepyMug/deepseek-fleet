@@ -1,82 +1,33 @@
 /**
- * The wire between `fleet` (fleet-client) and the tau service in the fleet
- * host (fleet-core/tau): a Unix socket in the dsh home, on which a client
- * sends one request as one line of JSON, and the service answers it with one
- * line of JSON and ends the connection. A `start` sends a run's call after
- * its line, and a `finish` that succeeds answers with the run's result after
- * its line, each an archive of tau's docs/spec/serialization.md; a `finish`
- * that asks for it has the run's session's history in its line. Shared by
- * both ends, so it holds only types, constants, and where the socket is.
+ * The tau service's own requests (fleet-core/tau), beside a run's, which
+ * tau's fleet adaptor makes (tau's docs/spec/fleet.md): on its socket in
+ * the dsh home, or from a box, through the `tau` API's extension, a request
+ * is a JSON object with its `op`, and its answer JSON. Shared by both ends,
+ * so it holds only types, and where the socket is.
  * @module @sleepymug/fleet-protocol/tau
  */
 
 import { join } from 'node:path'
 
-/** Wire version; the service refuses a request with another. */
-export const PROTOCOL_VERSION = 1
-
-/** Where the service listens in a dsh home. */
+/** Where the service listens in a dsh home, as tau's `defaultFleetSocket` finds it. */
 export function socketPath(dshHome: string): string {
   return join(dshHome, 'fleet', 'tau.sock')
 }
 
-/**
- * Where the caller has each `out` and `inout` file of a run: its path,
- * absolute, by the file's name, as tau's `packCall` gives them. The service
- * keeps them, without reading them, and gives them back with the run's
- * result, which the caller puts there.
- */
-export type Targets = { readonly [name: string]: string }
-
-/** Client to service. Paths are absolute. */
+/** What the service is asked besides a run's submit, finish and release. */
 export type Request =
-  | {
-    protocol: number
-    /**
-     * Start a run of the call that follows the line, up to the end of what
-     * the client sends: tau's call archive, which carries the tau.
-     */
-    op: 'start'
-    /** What names the run, in `list` and dsh's web UI: the name of the tau's directory, say. */
-    title: string
-    /** The project identifier: in dsh it is the project's workspace directory. */
-    project: string
-    targets: Targets
-  }
-  | {
-    protocol: number
-    /** Every run, oldest first. */
-    op: 'list'
-  }
-  | {
-    protocol: number
-    /** Wait for a run's end, and give back how it ended. */
-    op: 'finish'
-    sessionId: string
-    /** Give back the run's session's history too, as {@link Finished} has it. */
-    history?: boolean
-  }
-  | {
-    protocol: number
-    /**
-     * Where a run is; cancel its turn; or archive its session, remove its
-     * box and forget it.
-     */
-    op: 'status' | 'cancel' | 'delete'
-    sessionId: string
-  }
+  /** Every run the caller reaches, oldest first. */
+  | { op: 'list' }
+  /** Where a run is, and how it ended, once it did. */
+  | { op: 'status'; id: string }
+  /**
+   * A run's session's history: its events, oldest first, as dsh logs them.
+   * It is dsh's, not tau's, so a caller reads it to inspect the run, not to
+   * rely on its form.
+   */
+  | { op: 'history'; id: string }
 
-/** What `start` answers with. */
-export interface Started {
-  /** The session the run is, minted by the service. */
-  sessionId: string
-  /** The box's container. */
-  box: string
-  /** The tau's prompt, expanded with where the box has each file. */
-  prompt: string
-}
-
-/** How a run ended, as tau's docs/spec/tau-api.md has it. */
+/** How a run ended, as tau's docs/spec/results.md has it. */
 export interface Result {
   /** Whether it succeeded. */
   ok: boolean
@@ -94,6 +45,7 @@ export type RunState = 'running' | 'ended' | 'finished'
 
 /** What `status` answers with, and `list` with for each run. */
 export interface RunStatus {
+  /** The run's id, its session's. */
   sessionId: string
   /** The run that started this one from its box, if one did. */
   parent?: string
@@ -101,6 +53,8 @@ export interface RunStatus {
   title: string
   /** The caller's folder, the dsh workspace the session is in. */
   project: string
+  /** The tau's prompt, expanded with where the box has each file. */
+  prompt: string
   state: RunState
   createdAt: string
   /** When the run ended, once it did. */
@@ -109,32 +63,9 @@ export interface RunStatus {
   result?: Result
 }
 
-/**
- * What `finish` answers with, before the result's archive, which holds what
- * the run gave back for each target.
- */
-export interface Finished {
-  result: Result
-  targets: Targets
-  /**
-   * The run's session's history, when the `finish` asked for it: its
-   * events, oldest first, as dsh logs them. It is dsh's, not tau's, so a
-   * caller reads it to inspect the run, not to rely on its form.
-   */
-  history?: unknown[]
-}
-
 /** What each op answers with. */
 export interface Answers {
-  start: Started
   list: RunStatus[]
   status: RunStatus
-  finish: Finished
-  cancel: null
-  delete: null
+  history: unknown[]
 }
-
-/** Service to client: `value` is what the op answers with ({@link Answers}). */
-export type Response =
-  | { ok: true; value: Answers[keyof Answers] }
-  | { ok: false; error: string }

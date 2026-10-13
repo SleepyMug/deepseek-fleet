@@ -1,0 +1,16 @@
+{
+  "name": "@sleepymug/tau-api-notes",
+  "version": "0.1.0",
+  "description": "A notebook of short notes, each with tags to find them by later, which persist.",
+  "tau": {
+    "contract": true
+  },
+  "type": "module",
+  "types": "./index.d.ts",
+  "files": [
+    "index.d.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -49,7 +49,7 @@ export const NOTICE = `Your box was set up again from your run's call, as it was
   + `${FOLDERS.inout} and ${FOLDERS.out} hold again what they held then, and whatever you changed or installed in the box since is gone.`
 
 /** Why the step of a session that is not a tau's fails, as of one a person gave this preset. */
-export const NOT_A_TAU = 'This session is no run of a TAU, which the `tau` agent preset is for: `fleet run` and tau_run start those. '
+export const NOT_A_TAU = 'This session is no run of a TAU, which the `tau` agent preset is for: `tau run --adaptor fleet` and tau_run start those. '
   + 'Start a session with another preset.'
 
 export function apply(ctx: Context): void {

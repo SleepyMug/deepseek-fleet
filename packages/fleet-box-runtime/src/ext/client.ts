@@ -133,8 +133,9 @@ export function callStream(
         const rest = new PassThrough()
         if (reply.body === true) {
           rest.write(received.subarray(end + 1))
-          // A connection cut short ends the bytes short, which their reader finds.
+          // A connection cut short, as by the signal, ends the bytes short, which their reader finds.
           socket.on('error', () => { rest.end() })
+          socket.once('close', () => { if (!rest.writableEnded) rest.end() })
           socket.pipe(rest)
         } else {
           rest.end()

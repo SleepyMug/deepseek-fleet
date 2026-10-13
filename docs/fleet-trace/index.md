@@ -45,7 +45,7 @@ A scenario is JSON, its paths relative to its file, such as
   host. `scenarios/tau-run.json` has it run a tau of the caller's folder,
   with `tau_run`.
 - `files`: the caller's folder, each file by its path, with its text.
-- `call`: the run's call, its `files` and `args`, as `fleet start` sends
+- `call`: the run's call, its `files` and `args`, as `tau start` takes
   them.
 - `steps`: the model's tool calls, one per turn, in order.
 - `final`: the model's answer after the last step.
@@ -74,8 +74,10 @@ told so after the prompt, defines the term.
   workspace's dsh, on a free port, and the image `fleet:local`, so build
   first: `pnpm build` and `pnpm image`.
 - **The run** is started and finished through the tau service's socket, as
-  `fleet run` does it, with fleet-client's `startRun` and `finishRun`, which
-  pack the call and put the result at the caller's paths, with the caller's
+  `tau start --adaptor fleet` and `tau finish` do it, with tau's client and
+  its fleet adaptor, which pack the call and put the result at the caller's
+  paths, the scripted model told the run's prompt by the service's
+  `status`, with the caller's
   folder made from `files`, and the folder of each file's path in `call`,
   where an `out` goes.
 - **A session** is made through the driver (`driver.ts`), a dsh plugin of

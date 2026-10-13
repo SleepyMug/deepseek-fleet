@@ -187,7 +187,7 @@ loaded: run the workspace's dsh, `pnpm exec dsh`.
 ## How it runs
 
 With fleet-core in the `web` profile's bundles, `pnpm exec dsh web` mounts
-the services. After `fleet start`
+the services. After `tau start --adaptor fleet`
 (docs/fleet-client/index.md), the session's bash and file tools work in its
 box:
 
