@@ -96,16 +96,16 @@ workspace takes in its library, with its `tau` command, and its contracts
 
 2. Install at the root only: `pnpm install` inside `tau/` installs it on
    its own again, from its own lockfile, and the next install at the root
-   switches it back. Then build tau, fleet, and the box image:
+   switches it back. Then build: `pnpm image` builds the workspace, tau
+   first, as a member of it, and then the box image:
 
    ```
    pnpm install
-   (cd tau && pnpm build)
-   pnpm build
    pnpm image
    ```
 
-   Build the image again after each change to fleet-box-runtime.
+   `pnpm build` builds the workspace alone. Build the image again after
+   each change to fleet-box-runtime.
 
 3. Link the checkout's bundles into a profile, fleet-core first:
 
