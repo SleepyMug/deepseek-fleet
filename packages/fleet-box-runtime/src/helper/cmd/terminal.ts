@@ -9,7 +9,8 @@
  * session, in the foreground and asleep, waits at its prompt, as far as
  * the kernel can tell, though a loop of the shell's builtins that sleeps
  * looks the same. node-pty is loaded when the first terminal starts, so a
- * box without it fails only terminals.
+ * box without it fails only terminals. Each helper has its own
+ * {@link Terminals}.
  * @module @sleepymug/fleet-box-runtime/helper/cmd/terminal
  */
 
@@ -18,6 +19,7 @@ import { constants } from 'node:os'
 import { isAbsolute } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { EventOf, Methods } from '../protocol.ts'
+import type { Environment } from './spawn.ts'
 
 type Params<M extends keyof Methods> = Methods[M]['params']
 
@@ -43,114 +45,123 @@ interface Running {
   ending: Promise<void> | undefined
 }
 
-const running = new Map<string, Running>()
-let nodePty: Promise<{ spawn(file: string, args: string[], options: object): Pty }> | undefined
+/** node-pty, as the helper loads it. */
+type NodePty = { spawn(file: string, args: string[], options: object): Pty }
 
-/**
- * Run a program on a terminal of its own, send `started` and then what the
- * terminal writes, and answer once it has exited and its output is sent.
- * @throws when it cannot start, such as for a missing program or folder.
- */
-export async function terminal(
-  params: Params<'terminal'>,
-  output: { send(event: EventOf<'terminal'>): boolean; onDrain(listener: () => void): void },
-): Promise<Methods['terminal']['result']> {
-  const { terminal: id, argv, cwd, env, cols, rows, term, graceMs } = checked(params)
-  if (running.has(id)) throw new Error(`terminal ${id} already exists`)
-  nodePty ??= import('node-pty') as unknown as Promise<{ spawn(file: string, args: string[], options: object): Pty }>
-  const { spawn } = await nodePty
-  const environment: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined) environment[key] = value
-  for (const [key, value] of Object.entries(env)) {
-    if (value === null) Reflect.deleteProperty(environment, key)
-    else environment[key] = value
-  }
-  environment.TERM = term
-  const [program = '', ...args] = argv
-  const pty = spawn(program, args, { name: term, cols, rows, cwd, env: environment })
-  const exited = Promise.withResolvers<{ code: number | null; signal: string | null }>()
-  const record: Running = { pty, graceMs, exited: exited.promise.then(() => {}), ending: undefined }
-  running.set(id, record)
-  output.send({ kind: 'started', pid: pty.pid })
-  pty.onData((data) => {
-    if (!output.send({ kind: 'data', data: Buffer.from(data, 'utf8').toString('base64') })) {
-      pty.pause()
-      output.onDrain(() => { pty.resume() })
+/** The terminals of one helper, which end with it. */
+export class Terminals {
+  private readonly running = new Map<string, Running>()
+  private nodePty: Promise<NodePty> | undefined
+
+  /** @param env - the helper's environment, which each terminal's program starts from, as it is when it starts. */
+  constructor(private readonly env: Environment) {}
+
+  /**
+   * Run a program on a terminal of its own, send `started` and then what the
+   * terminal writes, and answer once it has exited and its output is sent.
+   * @throws when it cannot start, such as for a missing program or folder.
+   */
+  async start(
+    params: Params<'terminal'>,
+    output: { send(event: EventOf<'terminal'>): boolean; onDrain(listener: () => void): void },
+  ): Promise<Methods['terminal']['result']> {
+    const { terminal: id, argv, cwd, env, cols, rows, term, graceMs } = checked(params)
+    if (this.running.has(id)) throw new Error(`terminal ${id} already exists`)
+    this.nodePty ??= import('node-pty') as unknown as Promise<NodePty>
+    const { spawn } = await this.nodePty
+    const environment: Record<string, string> = {}
+    for (const [key, value] of Object.entries(this.env)) if (value !== undefined) environment[key] = value
+    for (const [key, value] of Object.entries(env)) {
+      if (value === null) Reflect.deleteProperty(environment, key)
+      else environment[key] = value
     }
-  })
-  pty.onExit(({ exitCode, signal }) => {
-    exited.resolve(signal !== undefined && signal !== 0 ? { code: null, signal: signalName(signal) } : { code: exitCode, signal: null })
-  })
-  try {
-    return await exited.promise
-  } finally {
-    // What the program left running stays the terminal's until `terminal.end`.
-    void record.exited.then(() => untilEmpty(pty.pid)).then(() => { if (running.get(id) === record) running.delete(id) })
+    environment.TERM = term
+    const [program = '', ...args] = argv
+    const pty = spawn(program, args, { name: term, cols, rows, cwd, env: environment })
+    const exited = Promise.withResolvers<{ code: number | null; signal: string | null }>()
+    const record: Running = { pty, graceMs, exited: exited.promise.then(() => {}), ending: undefined }
+    this.running.set(id, record)
+    output.send({ kind: 'started', pid: pty.pid })
+    pty.onData((data) => {
+      if (!output.send({ kind: 'data', data: Buffer.from(data, 'utf8').toString('base64') })) {
+        pty.pause()
+        output.onDrain(() => { pty.resume() })
+      }
+    })
+    pty.onExit(({ exitCode, signal }) => {
+      exited.resolve(signal !== undefined && signal !== 0 ? { code: null, signal: signalName(signal) } : { code: exitCode, signal: null })
+    })
+    try {
+      return await exited.promise
+    } finally {
+      // What the program left running stays the terminal's until `terminal.end`.
+      void record.exited.then(() => untilEmpty(pty.pid)).then(() => { if (this.running.get(id) === record) this.running.delete(id) })
+    }
   }
-}
 
-export function terminalWrite({ terminal: id, data }: Params<'terminal.write'>): null {
-  if (typeof data !== 'string') throw new TypeError('data must be a string')
-  find(id).pty.write(data)
-  return null
-}
+  write({ terminal: id, data }: Params<'terminal.write'>): null {
+    if (typeof data !== 'string') throw new TypeError('data must be a string')
+    this.find(id).pty.write(data)
+    return null
+  }
 
-export function terminalResize({ terminal: id, cols, rows }: Params<'terminal.resize'>): null {
-  find(id).pty.resize(size(cols, 'cols'), size(rows, 'rows'))
-  return null
-}
+  resize({ terminal: id, cols, rows }: Params<'terminal.resize'>): null {
+    this.find(id).pty.resize(size(cols, 'cols'), size(rows, 'rows'))
+    return null
+  }
 
-export async function terminalForeground({ terminal: id }: Params<'terminal.foreground'>): Promise<Methods['terminal.foreground']['result']> {
-  const group = await foregroundGroup(find(id).pty.pid)
-  return group === undefined ? null : { processGroupId: group }
-}
+  async foreground({ terminal: id }: Params<'terminal.foreground'>): Promise<Methods['terminal.foreground']['result']> {
+    const group = await foregroundGroup(this.find(id).pty.pid)
+    return group === undefined ? null : { processGroupId: group }
+  }
 
-export async function terminalActivity({ terminal: id }: Params<'terminal.activity'>): Promise<Methods['terminal.activity']['result']> {
-  const record = running.get(text(id, 'terminal'))
-  if (record === undefined) return { idle: true }
-  const session = record.pty.pid
-  const found = await members(session)
-  if (found.length === 0) return { idle: true }
-  // After the program's name: its state, its parent, its group, its session, its terminal and that terminal's foreground group.
-  const [state, , group, , , foreground] = await stat(session) ?? []
-  return { idle: found.length === 1 && found[0] === session && state === 'S' && foreground === group }
-}
-
-export async function terminalSignal({ terminal: id, signal }: Params<'terminal.signal'>): Promise<number> {
-  if (!['SIGINT', 'SIGTERM', 'SIGKILL', 'SIGTSTP', 'SIGHUP'].includes(signal)) throw new TypeError(`${String(signal)} is not a terminal signal`)
-  const group = await foregroundGroup(find(id).pty.pid)
-  if (group === undefined) throw new Error(`terminal ${id} has no foreground process group`)
-  process.kill(-group, signal)
-  return group
-}
-
-/** End every process of a terminal's session, and answer once none is left; a terminal not there has ended. */
-export async function terminalEnd({ terminal: id }: Params<'terminal.end'>): Promise<null> {
-  const record = running.get(text(id, 'terminal'))
-  if (record === undefined) return null
-  record.ending ??= (async () => {
+  async activity({ terminal: id }: Params<'terminal.activity'>): Promise<Methods['terminal.activity']['result']> {
+    const record = this.running.get(text(id, 'terminal'))
+    if (record === undefined) return { idle: true }
     const session = record.pty.pid
-    await signalSession(session, 'SIGHUP')
-    await signalSession(session, 'SIGTERM')
-    const empty = await Promise.race([untilEmpty(session).then(() => true), delay(record.graceMs, false)])
-    if (!empty) await signalSession(session, 'SIGKILL')
-    await untilEmpty(session)
-    await record.exited
-    if (running.get(id) === record) running.delete(id)
-  })()
-  await record.ending
-  return null
-}
+    const found = await members(session)
+    if (found.length === 0) return { idle: true }
+    // After the program's name: its state, its parent, its group, its session, its terminal and that terminal's foreground group.
+    const [state, , group, , , foreground] = await stat(session) ?? []
+    return { idle: found.length === 1 && found[0] === session && state === 'S' && foreground === group }
+  }
 
-/** End every terminal, as the helper exits. */
-export async function endAll(): Promise<void> {
-  await Promise.allSettled([...running.keys()].map(id => terminalEnd({ terminal: id })))
-}
+  async signal({ terminal: id, signal }: Params<'terminal.signal'>): Promise<number> {
+    if (!['SIGINT', 'SIGTERM', 'SIGKILL', 'SIGTSTP', 'SIGHUP'].includes(signal)) throw new TypeError(`${String(signal)} is not a terminal signal`)
+    const group = await foregroundGroup(this.find(id).pty.pid)
+    if (group === undefined) throw new Error(`terminal ${id} has no foreground process group`)
+    process.kill(-group, signal)
+    return group
+  }
 
-function find(id: string): Running {
-  const record = running.get(text(id, 'terminal'))
-  if (record === undefined) throw new Error(`no terminal ${id}`)
-  return record
+  /** End every process of a terminal's session, and answer once none is left; a terminal not there has ended. */
+  async end({ terminal: id }: Params<'terminal.end'>): Promise<null> {
+    const record = this.running.get(text(id, 'terminal'))
+    if (record === undefined) return null
+    record.ending ??= (async () => {
+      const session = record.pty.pid
+      await signalSession(session, 'SIGHUP')
+      await signalSession(session, 'SIGTERM')
+      const empty = await Promise.race([untilEmpty(session).then(() => true), delay(record.graceMs, false)])
+      if (!empty) await signalSession(session, 'SIGKILL')
+      await untilEmpty(session)
+      await record.exited
+      if (this.running.get(id) === record) this.running.delete(id)
+    })()
+    await record.ending
+    return null
+  }
+
+  /** End every terminal, as the helper exits. */
+  async endAll(): Promise<void> {
+    await Promise.allSettled([...this.running.keys()].map(id => this.end({ terminal: id })))
+  }
+
+  private find(id: string): Running {
+    const record = this.running.get(text(id, 'terminal'))
+    if (record === undefined) throw new Error(`no terminal ${id}`)
+    return record
+  }
 }
 
 /** The fields of /proc/<pid>/stat after the program's name, which may hold spaces. */

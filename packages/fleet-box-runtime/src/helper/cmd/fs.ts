@@ -4,7 +4,8 @@
  * in a cordis context of the helper's own, so the model's file tools behave
  * in the box as they do on a local machine. A target is the local one's:
  * its key is the canonical path in the box. A failure keeps the `FsError`
- * code, which the host gives back to dsh.
+ * code, which the host gives back to dsh. Each helper has its own
+ * {@link Files}.
  * @module @sleepymug/fleet-box-runtime/helper/cmd/fs
  */
 
@@ -13,46 +14,112 @@ import type { FileSystem, FsEditRequest, FsTarget, FsTargetKey, FsVersion, FsWri
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { EventOf, Methods, Target } from '../protocol.ts'
 
-type Handler<M extends keyof Methods> = (params: Methods[M]['params']) => Promise<Methods[M]['result']>
+type Params<M extends keyof Methods> = Methods[M]['params']
+type Result<M extends keyof Methods> = Methods[M]['result']
 
-let mounted: Promise<FileSystem> | undefined
-
-/** dsh's local file system, mounted on first use; relative paths without a `cwd` are the helper's folder's. */
-function fs(): Promise<FileSystem> {
-  mounted ??= (async () => {
-    const ctx = new Context()
-    await ctx.plugin(LocalFileSystem, { cwd: process.cwd() })
-    return ctx.fs as FileSystem
-  })()
-  return mounted
+interface Watching {
+  stop: Promise<() => Promise<void>>
+  ended: () => void
 }
 
-export const fsResolve: Handler<'fs.resolve'> = async ({ path, cwd }) =>
-  wire(await (await fs()).resolve(text(path, 'path'), { cwd: optional(cwd, 'cwd') }))
+/** The files of the box as one helper serves them, and its watches, which end with it. */
+export class Files {
+  private mounted: Promise<FileSystem> | undefined
+  /** Watches running, by the host's id. */
+  private readonly watches = new Map<string, Watching>()
 
-export const fsStat: Handler<'fs.stat'> = async ({ target: t }) =>
-  await (await fs()).stat(target(t)) ?? null
+  /** @param cwd - the folder relative paths without a `cwd` are in. */
+  constructor(private readonly cwd: string) {}
 
-export const fsLstat: Handler<'fs.lstat'> = async ({ path, cwd }) =>
-  await (await fs()).lstat(text(path, 'path'), { cwd: optional(cwd, 'cwd') }) ?? null
+  async resolve({ path, cwd }: Params<'fs.resolve'>): Promise<Result<'fs.resolve'>> {
+    return wire(await (await this.fs()).resolve(text(path, 'path'), { cwd: optional(cwd, 'cwd') }))
+  }
 
-export const fsReadText: Handler<'fs.readText'> = async ({ target: t }) =>
-  (await fs()).readText(target(t))
+  async stat({ target: t }: Params<'fs.stat'>): Promise<Result<'fs.stat'>> {
+    return await (await this.fs()).stat(target(t)) ?? null
+  }
 
-export const fsReadBytes: Handler<'fs.readBytes'> = async ({ target: t, maxBytes }) =>
-  base64(await (await fs()).readBytes(target(t), undefined, count(maxBytes, 'maxBytes')))
+  async lstat({ path, cwd }: Params<'fs.lstat'>): Promise<Result<'fs.lstat'>> {
+    return await (await this.fs()).lstat(text(path, 'path'), { cwd: optional(cwd, 'cwd') }) ?? null
+  }
 
-export const fsReadRange: Handler<'fs.readRange'> = async ({ target: t, offset, length }) =>
-  base64(await (await fs()).readByteRange(target(t), { offset: count(offset, 'offset'), length: count(length, 'length') }))
+  async readText({ target: t }: Params<'fs.readText'>): Promise<Result<'fs.readText'>> {
+    return (await this.fs()).readText(target(t))
+  }
 
-export const fsListDir: Handler<'fs.listDir'> = async ({ target: t }) =>
-  (await (await fs()).listDir(target(t))).map(entry => ({ ...entry, target: wire(entry.target) }))
+  async readBytes({ target: t, maxBytes }: Params<'fs.readBytes'>): Promise<Result<'fs.readBytes'>> {
+    return base64(await (await this.fs()).readBytes(target(t), undefined, count(maxBytes, 'maxBytes')))
+  }
 
-export const fsWriteText: Handler<'fs.writeText'> = async ({ target: t, content, expected }) =>
-  (await fs()).writeText(target(t), text(content, 'content'), expected as FsWriteIntent | undefined)
+  async readRange({ target: t, offset, length }: Params<'fs.readRange'>): Promise<Result<'fs.readRange'>> {
+    return base64(await (await this.fs()).readByteRange(target(t), { offset: count(offset, 'offset'), length: count(length, 'length') }))
+  }
 
-export const fsEditText: Handler<'fs.editText'> = async ({ target: t, edit, expected }) =>
-  (await fs()).editText(target(t), edit as FsEditRequest, expected as { version: FsVersion } | undefined)
+  async listDir({ target: t }: Params<'fs.listDir'>): Promise<Result<'fs.listDir'>> {
+    return (await (await this.fs()).listDir(target(t))).map(entry => ({ ...entry, target: wire(entry.target) }))
+  }
+
+  async writeText({ target: t, content, expected }: Params<'fs.writeText'>): Promise<Result<'fs.writeText'>> {
+    return (await this.fs()).writeText(target(t), text(content, 'content'), expected as FsWriteIntent | undefined)
+  }
+
+  async editText({ target: t, edit, expected }: Params<'fs.editText'>): Promise<Result<'fs.editText'>> {
+    return (await this.fs()).editText(target(t), edit as FsEditRequest, expected as { version: FsVersion } | undefined)
+  }
+
+  /** Watch a target until `fs.unwatch`, sending an event each time it may have changed. */
+  async watch({ watch: id, target: t }: Params<'fs.watch'>, emit: (event: EventOf<'fs.watch'>) => boolean): Promise<null> {
+    const watch = text(id, 'watch')
+    if (this.watches.has(watch)) throw new Error(`watch ${watch} already exists`)
+    const controller = new AbortController()
+    const ended = Promise.withResolvers<void>()
+    const stop = (async () => {
+      const dispose = await (await this.fs()).watch(target(t), (error) => { emit({ error: error === undefined ? null : error.message }) }, controller.signal)
+      return async () => {
+        controller.abort()
+        await dispose()
+      }
+    })()
+    this.watches.set(watch, { stop, ended: ended.resolve })
+    try {
+      await stop
+    } catch (error) {
+      this.watches.delete(watch)
+      throw error
+    }
+    await ended.promise
+    return null
+  }
+
+  /** End a watch, whose request then answers. */
+  async unwatch({ watch: id }: Params<'fs.unwatch'>): Promise<null> {
+    const watch = text(id, 'watch')
+    const watching = this.watches.get(watch)
+    if (watching === undefined) return null
+    this.watches.delete(watch)
+    try {
+      await (await watching.stop)()
+    } finally {
+      watching.ended()
+    }
+    return null
+  }
+
+  /** End every watch, as the helper exits. */
+  async unwatchAll(): Promise<void> {
+    await Promise.allSettled([...this.watches.keys()].map(watch => this.unwatch({ watch })))
+  }
+
+  /** dsh's local file system, mounted on first use. */
+  private fs(): Promise<FileSystem> {
+    this.mounted ??= (async () => {
+      const ctx = new Context()
+      await ctx.plugin(LocalFileSystem, { cwd: this.cwd })
+      return ctx.fs as FileSystem
+    })()
+    return this.mounted
+  }
+}
 
 function target(value: unknown): FsTarget {
   const { targetKey, displayPath } = (value ?? {}) as Partial<Target>
@@ -79,58 +146,4 @@ function count(value: unknown, name: string): number {
 
 function base64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64')
-}
-
-interface Watching {
-  stop: Promise<() => Promise<void>>
-  ended: () => void
-}
-
-/** Watches running, by the host's id. */
-const watches = new Map<string, Watching>()
-
-/** Watch a target until `fs.unwatch`, sending an event each time it may have changed. */
-export async function fsWatch(
-  { watch: id, target: t }: Methods['fs.watch']['params'],
-  emit: (event: EventOf<'fs.watch'>) => boolean,
-): Promise<null> {
-  const watch = text(id, 'watch')
-  if (watches.has(watch)) throw new Error(`watch ${watch} already exists`)
-  const controller = new AbortController()
-  const ended = Promise.withResolvers<void>()
-  const stop = (async () => {
-    const dispose = await (await fs()).watch(target(t), (error) => { emit({ error: error === undefined ? null : error.message }) }, controller.signal)
-    return async () => {
-      controller.abort()
-      await dispose()
-    }
-  })()
-  watches.set(watch, { stop, ended: ended.resolve })
-  try {
-    await stop
-  } catch (error) {
-    watches.delete(watch)
-    throw error
-  }
-  await ended.promise
-  return null
-}
-
-/** End a watch, whose request then answers. */
-export async function fsUnwatch({ watch: id }: Methods['fs.unwatch']['params']): Promise<null> {
-  const watch = text(id, 'watch')
-  const watching = watches.get(watch)
-  if (watching === undefined) return null
-  watches.delete(watch)
-  try {
-    await (await watching.stop)()
-  } finally {
-    watching.ended()
-  }
-  return null
-}
-
-/** End every watch, as the helper exits. */
-export async function unwatchAll(): Promise<void> {
-  await Promise.allSettled([...watches.keys()].map(watch => fsUnwatch({ watch })))
 }

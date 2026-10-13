@@ -3,7 +3,8 @@
  * world/subprocess.ts). Each starts in a session of its own, so its process
  * group holds it and whatever it starts, except what starts a session of its
  * own; `kill` ends that group, and so does the helper's exit. Whatever
- * escapes it dies when the box stops.
+ * escapes it dies when the box stops. Each helper has its own
+ * {@link Processes}.
  * @module @sleepymug/fleet-box-runtime/helper/cmd/spawn
  */
 
@@ -37,120 +38,129 @@ interface Running {
   gone: Promise<void>
 }
 
-const running = new Map<string, Running>()
-/** Output streams being forwarded, paused together while the host is behind. */
-const streams = new Set<Readable>()
-let paused = false
-let draining = false
+/** The environment the helper runs in, as each process starts from it. */
+export type Environment = Readonly<Record<string, string | undefined>>
 
-/**
- * Run a program in a session of its own, send what it writes, and answer
- * once it has exited and its output has ended, or its grace period has passed
- * since, when something it started keeps the output open.
- * @throws when it cannot start, such as for a missing program or folder.
- */
-export async function spawn(params: Params, output: Output): Promise<Result> {
-  const { process: id, argv, cwd, env, stdin, graceMs } = checked(params)
-  if (running.has(id)) throw new Error(`process ${id} already exists`)
-  if (!draining) {
-    draining = true
-    output.onDrain(() => {
-      paused = false
-      for (const stream of streams) stream.resume()
+/** The processes of one helper, which end with it. */
+export class Processes {
+  private readonly running = new Map<string, Running>()
+  /** Output streams being forwarded, paused together while the host is behind. */
+  private readonly streams = new Set<Readable>()
+  private paused = false
+  private draining = false
+
+  /** @param env - the helper's environment, which each process starts from, as it is when it starts. */
+  constructor(private readonly env: Environment) {}
+
+  /**
+   * Run a program in a session of its own, send what it writes, and answer
+   * once it has exited and its output has ended, or its grace period has passed
+   * since, when something it started keeps the output open.
+   * @throws when it cannot start, such as for a missing program or folder.
+   */
+  async spawn(params: Params, output: Output): Promise<Result> {
+    const { process: id, argv, cwd, env, stdin, graceMs } = checked(params)
+    if (this.running.has(id)) throw new Error(`process ${id} already exists`)
+    if (!this.draining) {
+      this.draining = true
+      output.onDrain(() => {
+        this.paused = false
+        for (const stream of this.streams) stream.resume()
+      })
+    }
+    const environment: Record<string, string> = {}
+    for (const [key, value] of Object.entries(this.env)) if (value !== undefined) environment[key] = value
+    for (const [key, value] of Object.entries(env)) {
+      if (value === null) Reflect.deleteProperty(environment, key)
+      else environment[key] = value
+    }
+    const [program = '', ...args] = argv
+    const child = start(program, args, { cwd, env: environment, detached: true, stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'] })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once('spawn', resolve)
+        child.once('error', reject)
+      })
+    } catch (error) {
+      // Node names the program when the folder is what is missing.
+      const folder = await stat(cwd).then(info => info.isDirectory(), () => false)
+      throw folder ? error : new Error(`the working folder ${cwd} does not exist in the box`)
+    }
+    // Later errors, such as signalling a process that has exited, change nothing.
+    child.on('error', () => {})
+    const group = child.pid as number
+    const exited = Promise.withResolvers<{ code: number | null; signal: NodeJS.Signals | null }>()
+    child.once('exit', (code, signal) => { exited.resolve({ code, signal }) })
+    const record: Running = {
+      group, graceMs, terminating: false,
+      gone: exited.promise.then(() => untilEmpty(group)).finally(() => { this.running.delete(id) }),
+    }
+    this.running.set(id, record)
+    if (stdin !== null) {
+      child.stdin?.on('error', () => {})
+      child.stdin?.end(stdin)
+    }
+    const outputs = [this.forward(child.stdout as Readable, 'stdout', output), this.forward(child.stderr as Readable, 'stderr', output)]
+    const { code, signal } = await exited.promise
+    const drained = await Promise.race([Promise.all(outputs.map(([, closed]) => closed)).then(() => true), delay(graceMs, false)])
+    if (!drained) for (const [stream] of outputs) stream.destroy()
+    return { code, signal }
+  }
+
+  /** Start ending a process's group: SIGTERM, then SIGKILL after its grace period; nothing once it is gone. */
+  kill({ process: id }: Methods['kill']['params']): null {
+    const record = this.running.get(text(id, 'process'))
+    if (record === undefined || record.terminating) return null
+    record.terminating = true
+    signalGroup(record.group, 'SIGTERM')
+    void Promise.race([record.gone.then(() => true), delay(record.graceMs, false)]).then((gone) => {
+      if (!gone) signalGroup(record.group, 'SIGKILL')
     })
+    return null
   }
-  const environment: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined) environment[key] = value
-  for (const [key, value] of Object.entries(env)) {
-    if (value === null) Reflect.deleteProperty(environment, key)
-    else environment[key] = value
-  }
-  const [program = '', ...args] = argv
-  const child = start(program, args, { cwd, env: environment, detached: true, stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'] })
-  try {
-    await new Promise<void>((resolve, reject) => {
-      child.once('spawn', resolve)
-      child.once('error', reject)
-    })
-  } catch (error) {
-    // Node names the program when the folder is what is missing.
-    const folder = await stat(cwd).then(info => info.isDirectory(), () => false)
-    throw folder ? error : new Error(`the working folder ${cwd} does not exist in the box`)
-  }
-  // Later errors, such as signalling a process that has exited, change nothing.
-  child.on('error', () => {})
-  const group = child.pid as number
-  const exited = Promise.withResolvers<{ code: number | null; signal: NodeJS.Signals | null }>()
-  child.once('exit', (code, signal) => { exited.resolve({ code, signal }) })
-  const record: Running = {
-    group, graceMs, terminating: false,
-    gone: exited.promise.then(() => untilEmpty(group)).finally(() => { running.delete(id) }),
-  }
-  running.set(id, record)
-  if (stdin !== null) {
-    child.stdin?.on('error', () => {})
-    child.stdin?.end(stdin)
-  }
-  const outputs = [forward(child.stdout as Readable, 'stdout', output), forward(child.stderr as Readable, 'stderr', output)]
-  const { code, signal } = await exited.promise
-  const drained = await Promise.race([Promise.all(outputs.map(([, closed]) => closed)).then(() => true), delay(graceMs, false)])
-  if (!drained) for (const [stream] of outputs) stream.destroy()
-  return { code, signal }
-}
 
-/** Start ending a process's group: SIGTERM, then SIGKILL after its grace period; nothing once it is gone. */
-export function kill({ process: id }: Methods['kill']['params']): null {
-  const record = running.get(text(id, 'process'))
-  if (record === undefined || record.terminating) return null
-  record.terminating = true
-  signalGroup(record.group, 'SIGTERM')
-  void Promise.race([record.gone.then(() => true), delay(record.graceMs, false)]).then((gone) => {
-    if (!gone) signalGroup(record.group, 'SIGKILL')
-  })
-  return null
-}
+  /** End every process group, as the helper exits: SIGTERM, then SIGKILL after the longest grace period. */
+  async killAll(): Promise<void> {
+    const records = [...this.running.values()]
+    for (const record of records) signalGroup(record.group, 'SIGTERM')
+    await Promise.race([Promise.all(records.map(record => record.gone)), delay(Math.max(0, ...records.map(record => record.graceMs)))])
+    for (const record of records) signalGroup(record.group, 'SIGKILL')
+  }
 
-/** End every process group, as the helper exits: SIGTERM, then SIGKILL after the longest grace period. */
-export async function killAll(): Promise<void> {
-  const records = [...running.values()]
-  for (const record of records) signalGroup(record.group, 'SIGTERM')
-  await Promise.race([Promise.all(records.map(record => record.gone)), delay(Math.max(0, ...records.map(record => record.graceMs)))])
-  for (const record of records) signalGroup(record.group, 'SIGKILL')
-}
-
-/** Where a program is: an absolute path that is an executable file, or a bare name on the PATH. */
-export async function which({ command, env }: Methods['which']['params']): Promise<string> {
-  const name = text(command, 'command')
-  if (name === '') throw new TypeError('the command is empty')
-  if (name.includes('/')) {
-    if (!isAbsolute(name)) throw new TypeError(`${name} is a relative path; give an absolute path or a bare name`)
-    if (await isExecutable(name)) return name
+  /** Where a program is: an absolute path that is an executable file, or a bare name on the PATH. */
+  async which({ command, env }: Methods['which']['params']): Promise<string> {
+    const name = text(command, 'command')
+    if (name === '') throw new TypeError('the command is empty')
+    if (name.includes('/')) {
+      if (!isAbsolute(name)) throw new TypeError(`${name} is a relative path; give an absolute path or a bare name`)
+      if (await isExecutable(name)) return name
+      throw notFound(name)
+    }
+    for (const folder of (env?.PATH ?? this.env.PATH ?? '').split(':')) {
+      if (!isAbsolute(folder)) continue
+      const candidate = join(folder, name)
+      if (await isExecutable(candidate)) return candidate
+    }
     throw notFound(name)
   }
-  for (const folder of (env?.PATH ?? process.env.PATH ?? '').split(':')) {
-    if (!isAbsolute(folder)) continue
-    const candidate = join(folder, name)
-    if (await isExecutable(candidate)) return candidate
-  }
-  throw notFound(name)
-}
 
-/** Send a stream's bytes as they come, pausing every stream while the host is behind. */
-function forward(stream: Readable, name: 'stdout' | 'stderr', output: Output): [Readable, Promise<void>] {
-  streams.add(stream)
-  if (paused) stream.pause()
-  stream.on('data', (chunk: Buffer) => {
-    if (output.send({ stream: name, data: chunk.toString('base64') }) || paused) return
-    paused = true
-    for (const each of streams) each.pause()
-  })
-  const closed = new Promise<void>((resolve) => {
-    stream.once('close', () => {
-      streams.delete(stream)
-      resolve()
+  /** Send a stream's bytes as they come, pausing every stream while the host is behind. */
+  private forward(stream: Readable, name: 'stdout' | 'stderr', output: Output): [Readable, Promise<void>] {
+    this.streams.add(stream)
+    if (this.paused) stream.pause()
+    stream.on('data', (chunk: Buffer) => {
+      if (output.send({ stream: name, data: chunk.toString('base64') }) || this.paused) return
+      this.paused = true
+      for (const each of this.streams) each.pause()
     })
-  })
-  return [stream, closed]
+    const closed = new Promise<void>((resolve) => {
+      stream.once('close', () => {
+        this.streams.delete(stream)
+        resolve()
+      })
+    })
+    return [stream, closed]
+  }
 }
 
 function checked(params: Params): Params {

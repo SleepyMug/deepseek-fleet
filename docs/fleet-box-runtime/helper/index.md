@@ -13,7 +13,9 @@ the host (docs/fleet-core/ext/index.md).
   helper, shared by both ends. It holds `PROTOCOL_VERSION`, the message types,
   and `Methods`, which gives each method's params, result and events.
 - `lib/helper/main.js`: the helper itself. It runs only in the image, at the
-  path `@sleepymug/fleet-box-runtime/layout` gives, and is not exported.
+  path `@sleepymug/fleet-box-runtime/layout` gives, and is not exported. It
+  serves the host (`serve.ts`) on its stdin and stdout, in the box's
+  environment and working folder.
 - `@sleepymug/fleet-box-runtime/ext/client`: fleet's client runtime, which an extension's
   client imports in the box: `call(api, method, args, signal?)` calls the
   server of the extension that implements `api`, through the call socket;
@@ -92,15 +94,23 @@ answers what is left, and exits.
   bytes to send ends, cancels the call. The helper checks only the call's shape: which
   session it is for, and whether it may make it, is the host's. Without the
   socket, only calls fail.
+- **A helper is what it is given.** `serve({ input, output, env, cwd, log })`
+  puts one together: its processes (`cmd/spawn.ts`, `Processes`), its
+  terminals (`cmd/terminal.ts`, `Terminals`) and its files and watches
+  (`cmd/fs.ts`, `Files`), each an object of its own, which keep what they
+  started, and end it as the helper does; the environment every process
+  starts from, and in which it names the call socket; and the folder
+  relative paths are in. Nothing reads the process's own, but `main.ts`,
+  so a test serves a helper in its own process.
 - **Back pressure.** While the host has not taken what the helper wrote,
   the helper stops reading every program's output, and goes on once the
   host catches up.
 
 A new method needs three things:
 - an entry in `Methods`;
-- a handler in `main.ts`, or, for a command beyond the handshake, in a
-  module of its own in `helper/cmd/`, as `exec` has, which `main.ts`
-  registers;
+- a handler in `serve.ts`, or, for a command beyond the handshake, in a
+  module of its own in `helper/cmd/`, as `exec` has, or a method of one of
+  its objects, which `serve.ts` registers;
 - a check of its result, and of its events if it sends any, on the host,
   in fleet-core's `box/cmd/` beside what the host calls it with, which
   `box/helper.ts` registers.

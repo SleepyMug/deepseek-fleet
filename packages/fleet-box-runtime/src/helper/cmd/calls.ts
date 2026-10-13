@@ -35,9 +35,10 @@ export class CallSocket {
    * Listen at $FLEET_SOCKET, or {@link CALL_SOCKET}, which then becomes
    * $FLEET_SOCKET, for the processes the helper starts.
    * @param send - sends a message to the host.
+   * @param env - the helper's environment, which the processes it starts start from.
    */
-  static async listen(send: (message: HelperMessage) => void): Promise<CallSocket> {
-    const path = process.env[SOCKET_VARIABLE] || CALL_SOCKET
+  static async listen(send: (message: HelperMessage) => void, env: Record<string, string | undefined>): Promise<CallSocket> {
+    const path = env[SOCKET_VARIABLE] || CALL_SOCKET
     await mkdir(dirname(path), { recursive: true })
     // One left by a helper before this one, which was ended with the box's last start.
     await rm(path, { force: true })
@@ -54,7 +55,7 @@ export class CallSocket {
     })
     // Whoever runs in the box may call; the box is the session's.
     await chmod(path, 0o666)
-    process.env[SOCKET_VARIABLE] = path
+    env[SOCKET_VARIABLE] = path
     return socket
   }
 
