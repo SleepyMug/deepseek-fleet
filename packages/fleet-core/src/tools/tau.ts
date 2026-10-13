@@ -34,8 +34,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createClient } from '@sleepymug/tau'
 import { createFleetAdaptor, fleetLoopback } from '@sleepymug/tau/adaptors'
 import type { Caller } from '../tau/registry.ts'
-import type {} from '../tau/plugin.ts'
-import type {} from '../tau/runs-plugin.ts'
+import type {} from '../services.ts'
 
 export const name = 'fleet-tau-tools'
 export const inject = ['tools', 'systemPrompt', 'fleetTau', 'fleetTauRuns']

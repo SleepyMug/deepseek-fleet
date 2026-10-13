@@ -9,6 +9,7 @@
 
 import { parseArgs } from 'node:util'
 import { Box } from '../box.ts'
+import { messageOf } from '../../util/error.ts'
 import { repl } from './repl.ts'
 
 const USAGE = `Usage: fleet-box <command>
@@ -53,7 +54,7 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
       try {
         await (await Box.open(name)).remove()
       } catch (error) {
-        process.stderr.write(`${message(error)}\n`)
+        process.stderr.write(`${messageOf(error)}\n`)
         failed = true
       }
     }
@@ -120,10 +121,6 @@ try {
   await main(process.argv.slice(2))
 } catch (error) {
   const usage = error instanceof UsageError || (error as { code?: unknown }).code?.toString().startsWith('ERR_PARSE_ARGS') === true
-  process.stderr.write(`fleet-box: ${message(error)}${usage ? '\nRun `fleet-box --help` for the commands.' : ''}\n`)
+  process.stderr.write(`fleet-box: ${messageOf(error)}${usage ? '\nRun `fleet-box --help` for the commands.' : ''}\n`)
   process.exitCode = usage ? 2 : 1
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

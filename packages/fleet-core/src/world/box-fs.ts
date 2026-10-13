@@ -33,7 +33,8 @@ import type {
 import type { Methods, Target } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { RunBox, TauRuns } from '../tau/runs.ts'
-import type {} from '../tau/runs-plugin.ts'
+import type {} from '../services.ts'
+import { messageOf } from '../util/error.ts'
 import { callerSession } from './caller.ts'
 
 /** How a box's target key begins; the session and the path in its box follow. */
@@ -211,7 +212,7 @@ export class BoxFileSystem extends FileSystem {
         }
       }
     }
-    follow().catch((error: unknown) => { if (!ended.aborted) changed(new FsError(message(error), 'FS_IO_ERROR', { cause: error })) })
+    follow().catch((error: unknown) => { if (!ended.aborted) changed(new FsError(messageOf(error), 'FS_IO_ERROR', { cause: error })) })
     const stop = async (): Promise<void> => {
       if (ending.signal.aborted) return
       ending.abort()
@@ -268,7 +269,7 @@ export class BoxFileSystem extends FileSystem {
     try {
       held = await this.self.fleetTauRuns.hold(session, { kind: 'file', id: randomUUID() })
     } catch (error) {
-      throw new FsError(`the box of ${session} cannot be started: ${message(error)}`, 'FS_IO_ERROR', { cause: error })
+      throw new FsError(`the box of ${session} cannot be started: ${messageOf(error)}`, 'FS_IO_ERROR', { cause: error })
     }
     if (held === undefined) throw new FsError(`${session} is not a tau's session, so it has no box`, 'FS_NOT_FOUND')
     try {
@@ -277,7 +278,7 @@ export class BoxFileSystem extends FileSystem {
       if (error instanceof HelperError && error.code !== undefined && FS_ERROR_CODES.has(error.code)) {
         throw new FsError(error.message, error.code as FsErrorCode, { cause: error })
       }
-      throw new FsError(message(error), 'FS_IO_ERROR', { cause: error })
+      throw new FsError(messageOf(error), 'FS_IO_ERROR', { cause: error })
     } finally {
       held.release()
     }
@@ -307,10 +308,6 @@ function inBox(target: FsTarget): InBox | undefined {
 /** A path as a target, to read the box it names, if any. */
 function keyed(path: string): FsTarget {
   return { targetKey: FsTargetKey(path), displayPath: path }
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 export default BoxFileSystem

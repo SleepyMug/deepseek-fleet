@@ -22,7 +22,7 @@ client of the extension that implements its contract
 extensions provided:
 
 ```ts
-import type {} from '@sleepymug/fleet-core/ext/plugin'   // for ctx.fleetExts
+import type {} from '@sleepymug/fleet-core/services'   // for ctx.fleetExts
 
 export const inject = ['fleetExts']
 export function apply(ctx: Context) {

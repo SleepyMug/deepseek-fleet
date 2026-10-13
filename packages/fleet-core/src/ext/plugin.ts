@@ -7,15 +7,10 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '../services.ts'
 import { FleetExts } from './exts.ts'
 
 export type { CallContext, Ext, ExtMethod, FleetExts } from './exts.ts'
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    fleetExts: FleetExts
-  }
-}
 
 export const name = 'fleet-exts'
 

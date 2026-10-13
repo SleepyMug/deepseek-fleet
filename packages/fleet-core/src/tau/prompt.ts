@@ -22,7 +22,7 @@ import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { AssembledSection } from '@deepseek-ai/dsh-system-prompt'
 import { FOLDERS, PRIMER, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import type { Entry } from './registry.ts'
-import type {} from './runs-plugin.ts'
+import type {} from '../services.ts'
 
 export const name = 'fleet-tau-prompt'
 export const inject = ['systemPrompt', 'fleetTauRuns']

@@ -19,6 +19,10 @@
 
 import type { FleetHandler } from '@sleepymug/tau/adaptors'
 import type { Result, RunStatus } from '@sleepymug/fleet-protocol/tau'
+import type { Platform } from '../platform.ts'
+import { abortable } from '../util/abort.ts'
+import { messageOf } from '../util/error.ts'
+import { KeyedQueue } from '../util/queue.ts'
 import { fellBack, nextOf } from './init.ts'
 import { resultOf, type Outcome } from './outcome.ts'
 import type { Caller, Entry } from './registry.ts'
@@ -46,9 +50,16 @@ export interface Sessions {
   history(sessionId: string, signal: AbortSignal): Promise<unknown[]>
 }
 
+/** What the service is built on. */
+export interface TauServiceDeps {
+  runs: TauRuns
+  sessions: Sessions
+  platform: Platform
+}
+
 export class TauService {
-  /** Each session's last operation, which its next one waits for. */
-  private readonly queues = new Map<string, Promise<void>>()
+  /** Each session's operations, one after another, so that a run's start, end, finish and release keep their order. */
+  private readonly queue = new KeyedQueue<string>()
   /** Each run watched until it ends, by its session. */
   private readonly watches = new Map<string, Promise<void>>()
   /** What stops each run whose init runs, or whose prompt follows its init, by its session. */
@@ -58,11 +69,15 @@ export class TauService {
   /** dsh's archived sessions, as {@link followArchive} was last told. */
   private archivedSessions: ReadonlySet<string> = new Set()
 
-  constructor(
-    private readonly runs: TauRuns,
-    private readonly sessions: Sessions,
-    private readonly log: (message: string) => void,
-  ) {}
+  private readonly runs: TauRuns
+  private readonly sessions: Sessions
+  private readonly log: (message: string) => void
+
+  constructor({ runs, sessions, platform }: TauServiceDeps) {
+    this.runs = runs
+    this.sessions = sessions
+    this.log = platform.log
+  }
 
   /**
    * The service's requests, as tau's fleet adaptor and fleet-protocol have
@@ -107,7 +122,7 @@ export class TauService {
       await this.serial(sessionId, async () => {
         await this.sessions.archive(sessionId)
         await this.runs.remove(sessionId)
-      }).catch((undoing: unknown) => { this.log(`could not undo the start of ${sessionId}: ${message(undoing)}`) })
+      }).catch((undoing: unknown) => { this.log(`could not undo the start of ${sessionId}: ${messageOf(undoing)}`) })
       throw error
     }
     this.log(`started ${sessionId} in ${String(project)}, ${init ? 'to run its init' : 'and gave it its prompt'}`)
@@ -188,7 +203,7 @@ export class TauService {
     const children = (await this.runs.list()).filter(entry => entry.caller?.kind === 'session' && entry.caller.sessionId === parent && which(entry))
     for (const child of children) {
       await this.release(HOST, child.sessionId).catch((error: unknown) => {
-        this.log(`could not release ${child.sessionId}, which ${parent} started: ${message(error)}`)
+        this.log(`could not release ${child.sessionId}, which ${parent} started: ${messageOf(error)}`)
       })
     }
   }
@@ -223,7 +238,7 @@ export class TauService {
         if (entry.ended === undefined) await this.watch(sessionId)
         if (this.archivedSessions === archived) await this.runs.archive(sessionId)
       } catch (error) {
-        this.log(`could not remove the box of ${sessionId}, which is archived: ${message(error)}`)
+        this.log(`could not remove the box of ${sessionId}, which is archived: ${messageOf(error)}`)
       }
     }))
   }
@@ -244,7 +259,7 @@ export class TauService {
     const known = this.watches.get(sessionId)
     if (known !== undefined) return known
     const watching = this.untilEnd(sessionId, init).catch((error: unknown) => {
-      if (!this.closing.signal.aborted && this.runs.isTau(sessionId)) this.log(`could not record how ${sessionId} ended: ${message(error)}`)
+      if (!this.closing.signal.aborted && this.runs.isTau(sessionId)) this.log(`could not record how ${sessionId} ended: ${messageOf(error)}`)
     }).finally(() => {
       if (this.watches.get(sessionId) === watching) this.watches.delete(sessionId)
     })
@@ -267,7 +282,7 @@ export class TauService {
         result = resultOf(await this.sessions.settled(sessionId, this.closing.signal))
       } catch (error) {
         if (this.closing.signal.aborted) throw error
-        result = { ok: false, text: '', failure: `could not read how the run ended: ${message(error)}` }
+        result = { ok: false, text: '', failure: `could not read how the run ended: ${messageOf(error)}` }
       }
     }
     await this.serial(sessionId, async () => {
@@ -277,7 +292,7 @@ export class TauService {
       await this.runs.ended(sessionId, result)
       this.log(`${sessionId} ended${result.ok ? '' : `, failing: ${String(result.failure)}`}`)
       // At once, unless something else uses the box, such as a user's terminal: then once it no longer does.
-      await this.runs.stopWhenVacant(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${message(error)}`) })
+      await this.runs.stopWhenVacant(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${messageOf(error)}`) })
     })
     // What it started and did not finish cannot give back anything now: its box is its caller's.
     await this.releaseChildren(sessionId, entry => entry.finishedAt === undefined)
@@ -299,7 +314,7 @@ export class TauService {
         end = await this.runs.init(sessionId, AbortSignal.any([cancel.signal, this.closing.signal]))
       } catch (error) {
         if (this.closing.signal.aborted) throw error
-        return cancel.signal.aborted ? cancelled : { ok: false, text: '', failure: `could not run the tau's init: ${message(error)}` }
+        return cancel.signal.aborted ? cancelled : { ok: false, text: '', failure: `could not run the tau's init: ${messageOf(error)}` }
       }
       this.closing.signal.throwIfAborted()
       const next = nextOf(end)
@@ -320,13 +335,8 @@ export class TauService {
     }
   }
 
-  /** Run a session's operations one after another, so that a run's start, end, finish and release keep their order. */
   private serial<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
-    const next = (this.queues.get(sessionId) ?? Promise.resolve()).then(operation)
-    const settled = next.then(() => {}, () => {})
-    this.queues.set(sessionId, settled)
-    void settled.then(() => { if (this.queues.get(sessionId) === settled) this.queues.delete(sessionId) })
-    return next
+    return this.queue.run(sessionId, operation)
   }
 }
 
@@ -348,18 +358,4 @@ function statusOf(entry: Entry): RunStatus {
 /** Whether a caller reaches a run: the host every run, a session those it started. */
 function reaches(caller: Caller, entry: Entry): boolean {
   return caller.kind === 'host' || (entry.caller?.kind === 'session' && entry.caller.sessionId === caller.sessionId)
-}
-
-/** Stop waiting for a promise when the signal aborts; what it waits for goes on. */
-export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(signal.reason)
-  return new Promise((resolve, reject) => {
-    const abort = (): void => { reject(signal.reason) }
-    signal.addEventListener('abort', abort, { once: true })
-    promise.then(resolve, reject).finally(() => { signal.removeEventListener('abort', abort) })
-  })
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

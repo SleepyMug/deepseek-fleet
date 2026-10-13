@@ -16,11 +16,13 @@ import { DEFAULT_IMAGE } from '@sleepymug/fleet-box-runtime/layout'
 import { pack, setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
+import { systemPlatform } from '../platform.ts'
+import { abortable } from '../util/abort.ts'
 import type { Exts } from './apis.ts'
 import { Registry, type Caller } from './registry.ts'
 import { HOST, TauRuns, type Boxes, type RunBox, type Started } from './runs.ts'
 import type { Outcome } from './outcome.ts'
-import { TauService, abortable, type Sessions } from './service.ts'
+import { TauService, type Sessions } from './service.ts'
 
 const run = promisify(execFile)
 
@@ -194,8 +196,9 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
     })
     provided = own
   }
-  const runs = new TauRuns(new Registry(join(work, 'taus')), provided, log, boxes, idleStopMs)
-  return Object.assign(new TauService(runs, sessions, log), { tauRuns: runs })
+  const platform = systemPlatform(log)
+  const runs = new TauRuns({ registry: new Registry(join(work, 'taus')), exts: provided, platform, ...boxes === undefined ? {} : { boxes }, ...idleStopMs === undefined ? {} : { idleStopMs } })
+  return Object.assign(new TauService({ runs, sessions, platform }), { tauRuns: runs })
 }
 
 /**

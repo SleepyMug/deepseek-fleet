@@ -14,7 +14,7 @@ import { SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import { LocalSpillStore } from '@deepseek-ai/dsh-spill-local'
 import type { Config } from '@deepseek-ai/dsh-spill-local'
-import type {} from '../tau/runs-plugin.ts'
+import type {} from '../services.ts'
 
 export type { Config }
 

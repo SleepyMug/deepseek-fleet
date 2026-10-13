@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { ExtMethod } from '@sleepymug/fleet-core/ext/plugin'
-import type {} from '@sleepymug/fleet-core/tau/plugin'
+import type {} from '@sleepymug/fleet-core/services'
 
 /** What the server asks of the tau service. */
 export type Service = Pick<Context['fleetTau'], 'handlerFor'>

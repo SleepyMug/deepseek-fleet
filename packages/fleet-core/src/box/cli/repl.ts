@@ -11,6 +11,7 @@ import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import type { Method } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { METHODS, type Box } from '../box.ts'
+import { messageOf } from '../../util/error.ts'
 
 /** What one line asks for. */
 export type Line =
@@ -84,7 +85,7 @@ export async function repl(box: Pick<Box, 'request'>, options: ReplOptions): Pro
           const value = await box.request(line.method as Method, line.params as never)
           output.write(`${JSON.stringify(value)}\n`)
         } catch (error) {
-          errors.write(`error: ${message(error)}\n`)
+          errors.write(`error: ${messageOf(error)}\n`)
         }
     }
   }
@@ -96,7 +97,7 @@ export async function repl(box: Pick<Box, 'request'>, options: ReplOptions): Pro
       try {
         line = parseLine(text)
       } catch (error) {
-        errors.write(`error: ${message(error)}\n`)
+        errors.write(`error: ${messageOf(error)}\n`)
         prompt()
         continue
       }
@@ -141,8 +142,4 @@ function complete(line: string): [string[], string] {
   const words = [...METHODS, ...Object.keys(COMMANDS)]
   const hits = words.filter(word => word.startsWith(line))
   return [hits.length > 0 ? hits : words, line]
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

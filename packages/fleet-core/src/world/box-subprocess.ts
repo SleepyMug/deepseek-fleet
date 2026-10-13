@@ -36,7 +36,7 @@ import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
 import { EXECUTABLE_NOT_FOUND } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
 import type { Occupant, RunBox, TauRuns } from '../tau/runs.ts'
-import type {} from '../tau/runs-plugin.ts'
+import type {} from '../services.ts'
 import { callerSession } from './caller.ts'
 import { BoxTerminal } from './terminal.ts'
 

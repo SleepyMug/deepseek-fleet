@@ -406,7 +406,8 @@ the web UI's sessions have them.
   run's, and the handler the service's own, so what a box sends is
   checked as what the host does.
 - **Printing.** The service prints what it does, the expanded prompt
-  included, on dsh's stderr, after `fleet-tau:`. dsh's logger shows no info.
+  included, through its platform's `log` (docs/fleet-core/index.md): on
+  dsh's stderr, after `fleet-tau:`. dsh's logger shows no info.
 - **dsh, through one interface.** The service reaches dsh's sessions only
   through `Sessions` (`service.ts`), which the plugin implements with
   `ctx.sessionController` and `ctx.workspaceRegistry`, as the web client's

@@ -18,7 +18,6 @@
  * @module @sleepymug/fleet-core/tau/plugin
  */
 
-import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -27,17 +26,14 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { listenFleet } from '@sleepymug/tau/adaptors'
-import { socketPath } from '@sleepymug/fleet-protocol/tau'
+import { fleetPaths } from '../paths.ts'
+import { systemPlatform } from '../platform.ts'
+import type {} from '../services.ts'
+import { abortable } from '../util/abort.ts'
+import { messageOf } from '../util/error.ts'
 import { summarize } from './outcome.ts'
 import { HOST } from './runs.ts'
-import { print } from './runs-plugin.ts'
-import { TauService, abortable, type Sessions } from './service.ts'
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    fleetTau: TauService
-  }
-}
+import { TauService, type Sessions } from './service.ts'
 
 export const name = 'fleet-tau'
 export const inject = ['fleetTauRuns', 'sessionController', 'workspaceRegistry', 'agents']
@@ -57,12 +53,11 @@ export interface Config {
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  if (typeof config?.dshHome !== 'string' || !isAbsolute(config.dshHome)) {
-    throw new Error('fleet-tau: its config names dshHome, the dsh home, an absolute path')
-  }
-  const service = new TauService(ctx.fleetTauRuns, sessions(ctx), print)
+  const paths = fleetPaths(config?.dshHome, name)
+  const platform = systemPlatform()
+  const service = new TauService({ runs: ctx.fleetTauRuns, sessions: sessions(ctx, platform.log), platform })
   // The socket first: a service that does not get it, as when another serves this dsh home, watches no runs.
-  const closeSocket = await listenFleet(socketPath(config.dshHome), service.handlerFor(HOST))
+  const closeSocket = await listenFleet(paths.socket, service.handlerFor(HOST))
   const close = async (): Promise<void> => {
     await closeSocket()
     await service.close()
@@ -71,7 +66,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     await service.load()
     ctx.effect(() => close, 'fleet-tau socket')
     ctx.provide('fleetTau', service)
-    followArchive(ctx, service)
+    followArchive(ctx, service, platform.log)
     followTurns(ctx)
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
@@ -86,11 +81,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
  * rewrites the workspace registry's state, and the write carries the whole
  * new list; the registry's own getter lags until the write returns.
  */
-function followArchive(ctx: Context, service: TauService): void {
+function followArchive(ctx: Context, service: TauService, log: (message: string) => void): void {
   let archived = new Set<string>(ctx.workspaceRegistry.archivedSessionIds)
   const follow = (): void => {
     service.followArchive(archived).catch((error: unknown) => {
-      print(`could not follow the archived sessions: ${error instanceof Error ? error.message : String(error)}`)
+      log(`could not follow the archived sessions: ${messageOf(error)}`)
     })
   }
   ctx.on('domain/changed', (change: DomainChanged) => {
@@ -134,7 +129,7 @@ function followTurns(ctx: Context): void {
 }
 
 /** dsh's sessions, as the service uses them. */
-function sessions(ctx: Context): Sessions {
+function sessions(ctx: Context, log: (message: string) => void): Sessions {
   return {
     async create(sessionId, project, title) {
       // The same folder's workspace each time, which the session controller attaches the session to.
@@ -145,7 +140,7 @@ function sessions(ctx: Context): Sessions {
       if (agent !== undefined) ctx.get('permissionPresets')?.set(agent.session, FULL_ACCESS)
       // A title only helps people find the session in the web UI; the session goes on without it.
       await ctx.sessionController.rename({ sessionId: sessionId as SessionId, title }).catch((error: unknown) => {
-        print(`could not title ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
+        log(`could not title ${sessionId}: ${messageOf(error)}`)
       })
     },
     async prompt(sessionId, requestId, text) {

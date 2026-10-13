@@ -23,7 +23,7 @@
  * @module @sleepymug/fleet-core/world/fs
  */
 
-import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
+import { isAbsolute, posix, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
@@ -33,6 +33,7 @@ import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
+import { fleetPaths } from '../paths.ts'
 import { BoxFileSystem, KEY_PREFIX } from './box-fs.ts'
 
 /** The folder of a tau's session the file viewer shows: the tau's folders in its box. */
@@ -57,10 +58,7 @@ export class FleetFileSystem extends BoxFileSystem {
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
-    if (typeof config?.dshHome !== 'string' || !isAbsolute(config.dshHome)) {
-      throw new Error('fleet-fs: its config names dshHome, the dsh home, an absolute path')
-    }
-    this.store = join(resolve(config.dshHome), 'attachments')
+    this.store = fleetPaths(config?.dshHome, 'fleet-fs').attachments
     // Mounted where only this service sees it, so that it does not stand in for this one.
     const isolated = ctx.isolate('fs')
     this.localReady = (async () => {

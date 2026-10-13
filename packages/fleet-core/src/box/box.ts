@@ -13,6 +13,7 @@ import { Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from '@sleepymug/fleet-box-runtime/layout'
 import type { EventOf, Method, Methods } from '@sleepymug/fleet-box-runtime/helper/protocol'
+import { Queue } from '../util/queue.ts'
 import { Helper, type CallHandler } from './helper.ts'
 
 export { HelperError, METHODS, STREAMED, streamed, type CallHandler, type Streamed } from './helper.ts'
@@ -47,8 +48,8 @@ export interface BoxInfo {
 export class Box {
   /** The helper while the box is started. */
   private helper: Helper | undefined
-  /** The last verb in progress; each verb waits for the one before it. */
-  private queue: Promise<unknown> = Promise.resolve()
+  /** The verbs, each of which waits for the one before it. */
+  private readonly verbs = new Queue()
 
   private constructor(
     /** The container's name. */
@@ -195,9 +196,7 @@ export class Box {
   }
 
   private serial(verb: () => Promise<void>): Promise<void> {
-    const done = this.queue.then(verb)
-    this.queue = done.catch(() => {})
-    return done
+    return this.verbs.run(verb)
   }
 }
 

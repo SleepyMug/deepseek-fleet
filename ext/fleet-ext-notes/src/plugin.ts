@@ -8,10 +8,11 @@
  */
 
 import { createRequire } from 'node:module'
-import { isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@sleepymug/fleet-core/ext/plugin'
+import { fleetPaths } from '@sleepymug/fleet-core/paths'
+import type {} from '@sleepymug/fleet-core/services'
 import type * as Contract from '@sleepymug/tau-api-notes'
 import { CONTRACT } from './client/contract.ts'
 import type * as Client from './client/index.ts'
@@ -36,9 +37,6 @@ export interface Config {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  if (typeof config?.dshHome !== 'string' || !isAbsolute(config.dshHome)) {
-    throw new Error('fleet-ext-notes: its config names dshHome, the dsh home, an absolute path')
-  }
-  const notebooks = new Notebooks(join(config.dshHome, 'fleet', 'notes'))
+  const notebooks = new Notebooks(join(fleetPaths(config?.dshHome, name).fleet, 'notes'))
   ctx.effect(() => ctx.fleetExts.provide({ contract: CONTRACT, version: VERSION, client: CLIENT, methods: notebooks.methods }), 'fleet-ext-notes')
 }

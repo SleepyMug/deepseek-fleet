@@ -13,7 +13,7 @@ import { extractContent } from '@sleepymug/tau/transfer'
 import { decodeCall, packResult } from '@sleepymug/tau/wire-tar'
 import type { About, Started } from '../tau/runs.ts'
 import type { Caller } from '../tau/registry.ts'
-import { abortable } from '../tau/service.ts'
+import { abortable } from '../util/abort.ts'
 import { serveFor } from '../tau/wire.ts'
 import { apply } from './tau.ts'
 

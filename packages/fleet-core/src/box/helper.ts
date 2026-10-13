@@ -13,6 +13,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 import { PROTOCOL_VERSION, type Call, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from '@sleepymug/fleet-box-runtime/helper/protocol'
+import { messageOf } from '../util/error.ts'
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isNull, isPath, isSpawnEvent, isSpawnResult } from './cmd/spawn.ts'
@@ -262,7 +263,7 @@ export class Helper {
         // What is not JSON fails here, not in the box.
         JSON.stringify(reply)
       } catch (error) {
-        reply = { type: 'call-error', id, message: error instanceof Error ? error.message : String(error) }
+        reply = { type: 'call-error', id, message: messageOf(error) }
         after = undefined
       }
       const live = (): boolean => !controller.signal.aborted && this.failure === undefined

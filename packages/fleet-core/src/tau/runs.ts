@@ -19,7 +19,6 @@
  * @module @sleepymug/fleet-core/tau/runs
  */
 
-import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, open, realpath, rm } from 'node:fs/promises'
@@ -35,6 +34,9 @@ import { HELPER_NODE, TAU_ENTRY } from '@sleepymug/fleet-box-runtime/layout'
 import type { Offered, Setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
 import type { Result } from '@sleepymug/fleet-protocol/tau'
 import { Box, exec } from '../box/box.ts'
+import type { Platform } from '../platform.ts'
+import { messageOf } from '../util/error.ts'
+import { KeyedQueue } from '../util/queue.ts'
 import { catalogOf, type Exts } from './apis.ts'
 import type { Caller, Entry, Registry } from './registry.ts'
 
@@ -117,13 +119,25 @@ const dockerBoxes: Boxes = {
   exists: async name => (await Box.list()).some(box => box.name === name),
 }
 
+/** What the runs are built on. */
+export interface TauRunsDeps {
+  registry: Registry
+  /** The extensions provided, which link a run's APIs and answer its clients' calls. */
+  exts: Exts
+  platform: Platform
+  /** Docker's, by default. */
+  boxes?: Boxes
+  /** How long a box nothing occupies runs before it is stopped; 60 s by default. */
+  idleStopMs?: number
+}
+
 export class TauRuns {
   /** The box of each session used, opened once, so that its verbs run in order. */
   private readonly boxes = new Map<string, Promise<RunBox>>()
   /** The sessions whose box was started here, which {@link close} stops. */
   private readonly started = new Set<string>()
-  /** Each session's last operation on its box, which its next one waits for. */
-  private readonly queues = new Map<string, Promise<void>>()
+  /** Each session's operations on its box, one after another. */
+  private readonly queue = new KeyedQueue<string>()
   /**
    * The sessions with a registry entry, each with its project and its
    * working directory in its box, as {@link load} found them and as they
@@ -136,21 +150,28 @@ export class TauRuns {
   private readonly archived = new Set<string>()
   /** What occupies each session's box, which is not stopped for being idle while anything does. */
   private readonly occupants = new Map<string, Map<symbol, Occupant>>()
-  /** Each session's pending stop of its idle box, which every vacancy arms again. */
-  private readonly idle = new Map<string, NodeJS.Timeout>()
+  /** What cancels each session's pending stop of its idle box, which every vacancy arms again. */
+  private readonly idle = new Map<string, () => void>()
   /** The sessions whose box stops as soon as nothing occupies it, as after their run ended. */
   private readonly soon = new Set<string>()
   /** What waits for each session's box to be started, to wake as it is. */
   private readonly waiters = new Map<string, Set<() => void>>()
 
-  constructor(
-    private readonly registry: Registry,
-    private readonly exts: Exts,
-    private readonly log: (message: string) => void,
-    private readonly docker: Boxes = dockerBoxes,
-    /** How long a box nothing occupies runs before it is stopped. */
-    private readonly idleStopMs = 60_000,
-  ) {}
+  private readonly registry: Registry
+  private readonly exts: Exts
+  private readonly platform: Platform
+  private readonly log: (message: string) => void
+  private readonly docker: Boxes
+  private readonly idleStopMs: number
+
+  constructor({ registry, exts, platform, boxes = dockerBoxes, idleStopMs = 60_000 }: TauRunsDeps) {
+    this.registry = registry
+    this.exts = exts
+    this.platform = platform
+    this.log = platform.log
+    this.docker = boxes
+    this.idleStopMs = idleStopMs
+  }
 
   /** Find the sessions the registry has, before anyone asks which sessions are a tau's. */
   async load(): Promise<void> {
@@ -176,7 +197,7 @@ export class TauRuns {
    * @param caller - `fleet`, on the host, or a session: a tau's, from its box, whose runs are in its project, or another, with `tau_run`.
    */
   async create(call: AsyncIterable<Uint8Array>, about: About, caller: Caller = HOST): Promise<Started> {
-    const sessionId = `session-${randomUUID()}`
+    const sessionId = `session-${this.platform.newId()}`
     const project = await this.projectFor(caller, about)
     const folder = this.registry.folder(sessionId)
     await mkdir(folder, { recursive: true, mode: 0o700 })
@@ -285,13 +306,13 @@ export class TauRuns {
         project,
         prompt: setup.prompt,
         ...setup.init === undefined ? {} : { init: { command: setup.init, dir: setup.cwd } },
-        promptRequestId: randomUUID(),
+        promptRequestId: this.platform.newId(),
         files: accepted.files,
         cwd: setup.cwd,
         modules: setup.modules,
         apis: accepted.links.map(link => link.contract),
         exposed: accepted.exposed,
-        createdAt: new Date().toISOString(),
+        createdAt: this.platform.now().toISOString(),
       })
     } catch (error) {
       this.taus.delete(sessionId)
@@ -335,7 +356,7 @@ export class TauRuns {
   async init(sessionId: string, signal: AbortSignal): Promise<InitEnd> {
     const { init } = await this.registry.get(sessionId)
     if (init === undefined) throw new Error(`fleet: the tau of ${sessionId} has no init`)
-    const process = randomUUID()
+    const process = this.platform.newId()
     const held = await this.hold(sessionId, { kind: 'process', id: process })
     if (held === undefined) throw new Error(`fleet: no tau session ${sessionId}`)
     const { box, release } = held
@@ -357,12 +378,12 @@ export class TauRuns {
 
   /** Record that a session was given its prompt. */
   async prompted(sessionId: string): Promise<void> {
-    await this.registry.put({ ...await this.registry.get(sessionId), promptedAt: new Date().toISOString() })
+    await this.registry.put({ ...await this.registry.get(sessionId), promptedAt: this.platform.now().toISOString() })
   }
 
   /** Record that a session's run ended, and how. */
   async ended(sessionId: string, result: Result): Promise<void> {
-    await this.registry.put({ ...await this.registry.get(sessionId), ended: { at: new Date().toISOString(), result } })
+    await this.registry.put({ ...await this.registry.get(sessionId), ended: { at: this.platform.now().toISOString(), result } })
   }
 
   /**
@@ -392,7 +413,7 @@ export class TauRuns {
           for await (const content of contents) for await (const _ of content.entries);
           return json.failure === undefined ? { ok: json.ok, text: json.text } : { ok: json.ok, text: json.text, failure: json.failure }
         } catch (error) {
-          ended = { ok: false, text: outcome.text, failure: `could not get back what the run gave: ${error instanceof Error ? error.message : String(error)}` }
+          ended = { ok: false, text: outcome.text, failure: `could not get back what the run gave: ${messageOf(error)}` }
         }
       }
       await pipeline(Readable.from(packResult({ ...ended, outputs: {} }, {})), createWriteStream(file, { mode: 0o600 }))
@@ -411,7 +432,7 @@ export class TauRuns {
 
   /** Record that a `finish` first gave back how a session's run ended; its result stays, for the next. */
   async finished(sessionId: string): Promise<void> {
-    await this.registry.put({ ...await this.registry.get(sessionId), finishedAt: new Date().toISOString() })
+    await this.registry.put({ ...await this.registry.get(sessionId), finishedAt: this.platform.now().toISOString() })
   }
 
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */
@@ -559,7 +580,7 @@ export class TauRuns {
     copies.set(to, copying)
     copying.catch((error: unknown) => {
       if (this.copies.get(sessionId)?.get(to) === copying) this.copies.get(sessionId)?.delete(to)
-      this.log(`could not copy ${from} into the box of ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
+      this.log(`could not copy ${from} into the box of ${sessionId}: ${messageOf(error)}`)
     })
   }
 
@@ -642,7 +663,7 @@ export class TauRuns {
 
   /** Stop the boxes started here. */
   async close(): Promise<void> {
-    for (const timer of this.idle.values()) clearTimeout(timer)
+    for (const cancel of this.idle.values()) cancel()
     this.idle.clear()
     const started = [...this.started]
     this.started.clear()
@@ -650,7 +671,7 @@ export class TauRuns {
       try {
         await (await this.box(sessionId)).stop()
       } catch (error) {
-        this.log(`could not stop the box of ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
+        this.log(`could not stop the box of ${sessionId}: ${messageOf(error)}`)
       }
     }))
   }
@@ -672,13 +693,8 @@ export class TauRuns {
     }
   }
 
-  /** Run a session's operations on its box one after another. */
   private serial<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
-    const next = (this.queues.get(sessionId) ?? Promise.resolve()).then(operation)
-    const settled = next.then(() => {}, () => {})
-    this.queues.set(sessionId, settled)
-    void settled.then(() => { if (this.queues.get(sessionId) === settled) this.queues.delete(sessionId) })
-    return next
+    return this.queue.run(sessionId, operation)
   }
 
   /**
@@ -701,14 +717,13 @@ export class TauRuns {
   private vacated(sessionId: string): void {
     if (this.occupied(sessionId).length > 0) return
     this.disarm(sessionId)
-    const timer = setTimeout(() => {
-      if (this.idle.get(sessionId) === timer) this.idle.delete(sessionId)
+    const cancel = this.platform.after(this.soon.has(sessionId) ? 0 : this.idleStopMs, () => {
+      if (this.idle.get(sessionId) === cancel) this.idle.delete(sessionId)
       this.serial(sessionId, () => this.stopVacant(sessionId, false)).catch((error: unknown) => {
-        this.log(`could not stop the idle box of ${sessionId}: ${error instanceof Error ? error.message : String(error)}`)
+        this.log(`could not stop the idle box of ${sessionId}: ${messageOf(error)}`)
       })
-    }, this.soon.has(sessionId) ? 0 : this.idleStopMs)
-    timer.unref()
-    this.idle.set(sessionId, timer)
+    })
+    this.idle.set(sessionId, cancel)
   }
 
   /**
@@ -726,7 +741,7 @@ export class TauRuns {
 
   /** Cancel a session's pending idle stop. */
   private disarm(sessionId: string): void {
-    clearTimeout(this.idle.get(sessionId))
+    this.idle.get(sessionId)?.()
     this.idle.delete(sessionId)
   }
 
@@ -757,7 +772,7 @@ export class TauRuns {
         modules: setup.modules,
         apis: accepted.links.map(link => link.contract),
         exposed: accepted.exposed,
-        resetAt: new Date().toISOString(),
+        resetAt: this.platform.now().toISOString(),
       })
       this.taus.set(sessionId, { project: entry.project, cwd: setup.cwd })
       this.boxes.set(sessionId, Promise.resolve(box))
@@ -767,7 +782,7 @@ export class TauRuns {
       return box
     } catch (error) {
       await box?.remove().catch(() => {})
-      throw new Error(`fleet: could not set up the box of ${sessionId} again: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+      throw new Error(`fleet: could not set up the box of ${sessionId} again: ${messageOf(error)}`, { cause: error })
     } finally {
       await rm(join(this.registry.folder(sessionId), TAU), { recursive: true, force: true })
     }

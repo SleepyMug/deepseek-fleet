@@ -14,6 +14,14 @@
       "types": "./lib/ext/plugin.d.ts",
       "default": "./lib/ext/plugin.js"
     },
+    "./paths": {
+      "types": "./lib/paths.d.ts",
+      "default": "./lib/paths.js"
+    },
+    "./services": {
+      "types": "./lib/services.d.ts",
+      "default": "./lib/services.js"
+    },
     "./tau/plugin": {
       "types": "./lib/tau/plugin.d.ts",
       "default": "./lib/tau/plugin.js"

@@ -19,7 +19,7 @@ import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { FOLDERS, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import { z } from 'zod'
-import type {} from './runs-plugin.ts'
+import type {} from '../services.ts'
 
 const KIND = 'fleet-tau-box'
 

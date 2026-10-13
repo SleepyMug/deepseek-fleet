@@ -47,4 +47,5 @@ console.log((await byTag('shop')).map(note => note.text))   // [ 'buy milk' ]
 ## Built on
 
 - `@sleepymug/fleet-box-runtime/ext/client`, in the box, which the client alone imports.
-- `@sleepymug/fleet-core/ext/plugin`'s types, for `ctx.fleetExts`.
+- `@sleepymug/fleet-core/services`, for `ctx.fleetExts`, and
+  `@sleepymug/fleet-core/paths`, for the dsh home's `fleet/notes/`.

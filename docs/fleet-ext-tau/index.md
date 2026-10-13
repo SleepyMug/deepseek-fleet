@@ -83,5 +83,4 @@ const result = await run('/tau/self/taus/shout', { files: { out: files().report 
 
 - `@sleepymug/fleet-box-runtime/ext/client`, `@sleepymug/fleet-box-runtime/ext/tau` and
   `@sleepymug/fleet-box-runtime/tau/layout`, in the box, which the client alone imports.
-- `@sleepymug/fleet-core/ext/plugin`'s and `@sleepymug/fleet-core/tau/plugin`'s types, for
-  `ctx.fleetExts` and `ctx.fleetTau`.
+- `@sleepymug/fleet-core/services`, for `ctx.fleetExts` and `ctx.fleetTau`.
