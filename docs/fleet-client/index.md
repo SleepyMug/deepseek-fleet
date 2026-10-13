@@ -70,7 +70,7 @@ With `pnpm exec dsh web` running, after `pnpm build` and
 
 ```
 $ alias fleet='node <checkout>/packages/fleet-client/lib/cli.js'
-$ alias tau='node <checkout>/../agent_fleet_project/tau/dist/cli/main.js'
+$ alias tau='node <checkout>/tau/dist/cli/main.js'
 $ echo '{"files": {"notes": "notes.md", "site": "site", "report": "out/report.md"}, "args": {"style": "terse"}}' > call.json
 $ tau start --adaptor fleet <checkout>/examples/demo --call call.json
 fleet:session-4458…

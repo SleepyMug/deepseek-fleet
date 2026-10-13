@@ -4,13 +4,13 @@ packages:
   # and the contract an extension provides, when it is not tau's, a package of its own.
   - ext/*
   - ext/*/contract
-  # tau is developed in a checkout of its own beside this one, and joins
-  # this workspace from there. Install only here: `pnpm install` inside it
-  # installs it on its own again, from its own lockfile, and the next install
-  # here switches it back.
-  - ../agent_fleet_project/tau
+  # tau, a repository of its own, a submodule here, at the commit this one
+  # builds on. Install only here: `pnpm install` inside it installs it on
+  # its own again, from its own lockfile, and the next install here
+  # switches it back.
+  - tau
   # Its contracts, the tau API, which an extension implements.
-  - ../agent_fleet_project/tau/contracts/*
+  - tau/contracts/*
 # A dependency on a member's version, such as fleet-core's on tau 0.1.0,
 # links the member, so the members' manifests stay as they are.
 linkWorkspacePackages: true

@@ -83,11 +83,46 @@ npm pack @sleepymug/tau-api-notes && tar -xzf sleepymug-tau-api-notes-*.tgz --st
 
 ## From a checkout
 
-`pnpm install`, `pnpm build` and `pnpm image` at the root, with tau's
-checkout beside this one, its library, with its `tau` command, and its
-contracts joining the workspace (pnpm-workspace.yaml); build tau in its
-checkout, `pnpm build` there. The workspace pins dsh, run as `pnpm exec
-dsh`; each package's "How it runs" links its checkout into the profile, as
-`pnpm exec dsh plugin --profile web add link:<checkout>/packages/fleet-core`,
-and runs `fleet` as `node <checkout>/packages/fleet-client/lib/cli.js`,
-and `tau` as `node <tau checkout>/dist/cli/main.js`.
+tau is a submodule, `tau/`, at the commit this checkout builds on; the
+workspace takes in its library, with its `tau` command, and its contracts
+(pnpm-workspace.yaml). The workspace pins dsh, run as `pnpm exec dsh`.
+
+1. Clone with the submodule, or fetch it in a clone made without:
+
+   ```
+   git clone --recursive git@github.com:SleepyMug/deepseek-fleet.git
+   git submodule update --init
+   ```
+
+2. Install at the root only: `pnpm install` inside `tau/` installs it on
+   its own again, from its own lockfile, and the next install at the root
+   switches it back. Then build tau, fleet, and the box image:
+
+   ```
+   pnpm install
+   (cd tau && pnpm build)
+   pnpm build
+   pnpm image
+   ```
+
+   Build the image again after each change to fleet-box-runtime.
+
+3. Link the checkout's bundles into a profile, fleet-core first:
+
+   ```
+   pnpm exec dsh plugin --profile web add link:$PWD/packages/fleet-core
+   pnpm exec dsh plugin --profile web add link:$PWD/ext/fleet-ext-tau link:$PWD/ext/fleet-ext-notes
+   ```
+
+4. Run the host, and the commands from the checkout:
+
+   ```
+   pnpm exec dsh web
+   alias tau="node $PWD/tau/dist/cli/main.js"
+   alias fleet="node $PWD/packages/fleet-client/lib/cli.js"
+   ```
+
+A change to tau is a commit in `tau/`, pushed to its own repository, and
+then a commit here with the submodule at it, so each commit here names the
+tau it builds on. `git submodule update --remote tau` moves it to tau's
+`main`.
