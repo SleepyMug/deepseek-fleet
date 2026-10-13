@@ -135,7 +135,8 @@ boxes:
   backend, built on tau's backend SDK, in the image, which owns where a run
   has its things in its box. The host runs it in a run's box with `docker
   exec` (`Box.pipe`), since the helper's lines of JSON would carry the
-  archives only as text:
+  archives only as text, each command as fleet-box-runtime/tau/protocol
+  makes and reads it:
   - `setup '{"offered": […]}'` reads the call on its stdin with tau's
     `unpackCall`: it places the tau, admits the call against it, with a
     catalog of the contracts offered, each one's client at

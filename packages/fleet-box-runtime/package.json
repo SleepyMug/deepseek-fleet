@@ -26,6 +26,10 @@
       "types": "./lib/tau/endpoint.d.ts",
       "default": "./lib/tau/endpoint.js"
     },
+    "./tau/protocol": {
+      "types": "./lib/tau/protocol.d.ts",
+      "default": "./lib/tau/protocol.js"
+    },
     "./tau/layout": {
       "types": "./lib/tau/layout.d.ts",
       "default": "./lib/tau/layout.js"

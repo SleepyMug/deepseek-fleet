@@ -14,6 +14,7 @@ import { encodeCall, packCall, packResult, unpackResult } from '@sleepymug/tau/w
 import type { Result } from '@sleepymug/fleet-protocol/tau'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-box-runtime/layout'
 import { pack, setup } from '@sleepymug/fleet-box-runtime/tau/endpoint'
+import { readTauCommand } from '@sleepymug/fleet-box-runtime/tau/protocol'
 import type { CallHandler } from '../box/helper.ts'
 import { FleetExts } from '../ext/exts.ts'
 import { systemPlatform } from '../platform.ts'
@@ -142,16 +143,15 @@ class FakeBoxes implements Boxes {
       },
       copyIn: async (from, to) => { record('copyIn', `copyIn ${from} ${to}`) },
       pipe: async (argv, io) => {
-        const [, , command, json] = argv
-        record('pipe', `pipe ${String(command)}`)
+        const command = readTauCommand(argv.slice(2))
+        record('pipe', `pipe ${command.command}`)
         const root = this.root(name)
-        if (command === 'setup') {
-          const { offered } = JSON.parse(json ?? '') as { offered: Parameters<typeof setup>[1] }
-          const report = await setup(io?.input ?? Readable.from([]), offered, root)
+        if (command.command === 'setup') {
+          const report = await setup(io?.input ?? Readable.from([]), command.offered, root)
           await pipeline(Readable.from([JSON.stringify(report)]), io?.output ?? process.stdout)
           return
         }
-        const { outcome } = JSON.parse(json ?? '') as { outcome: Result }
+        const { outcome } = command
         const { files } = JSON.parse(await readFile(join(root, '/tau/.run.json'), 'utf8')) as { files: Envelope['files'] }
         for (const [path, text] of Object.entries(this.left).sort(([a], [b]) => a.localeCompare(b))) {
           const at = join(root, path)

@@ -11,7 +11,7 @@
  * API needs. Once the run ended, the host has it pack the run's result,
  * which the host reads and checks again, since by then the box is the
  * agent's. Each runs as ./main.ts, with `docker exec`, before the agent
- * does, and runs no code of the tau's.
+ * does, and runs no code of the tau's, as ./protocol.ts has the commands.
  * @module @sleepymug/fleet-box-runtime/tau/endpoint
  */
 
@@ -22,30 +22,7 @@ import { type Admitted, catalogOf, createBackendSdk } from '@sleepymug/tau/backe
 import { checkOutputs, type Envelope, type Json, kindAt, type Outcome, type Output } from '@sleepymug/tau/core'
 import { packResult, unpackCall } from '@sleepymug/tau/wire-tar'
 import { FOLDERS, MODULES, PRIMER, RUN, SELF, clientOf, placer } from './layout.ts'
-
-/** A contract the host has a client of, at the version the client implements. */
-export interface Offered {
-  contract: string
-  version: string
-}
-
-/** What the host learns of a run from setting up its box: where things are in the box, all absolute. */
-export interface Setup {
-  /** The tau's prompt, expanded with where the box has each file. */
-  prompt: string
-  /** The agent's working directory. */
-  cwd: string
-  /** The node_modules folder where the tau's code finds its APIs, and what it exposes. */
-  modules: string
-  /** The tau's own directory. */
-  self: string
-  /** The tau's init, its command, its placeholders expanded; none for a tau without one. */
-  init?: string
-  /** Each API of the tau, by its alias: its contract, and where its client goes. */
-  links: { alias: string; contract: string; client: string }[]
-  /** The packages of the tau's own that it exposes, each by name, with its folder. */
-  packages: { name: string; dir: string }[]
-}
+import type { Offered, Setup } from './protocol.ts'
 
 /** What the runtime keeps of a run in its box: each file, where the box has each, and the args, expanded. */
 interface Kept {

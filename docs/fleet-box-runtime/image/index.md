@@ -24,6 +24,12 @@ Builds the box image: a Node base image with fleet's runtime on top.
   `out` and `inout` files, or a failure, when that does not fit the tau
   (docs/fleet-core/tau/index.md). `@sleepymug/fleet-box-runtime/tau/endpoint` exports
   both, each with the root the box's paths are under, for tests.
+  `@sleepymug/fleet-box-runtime/tau/protocol` is how the host and the
+  runtime talk, which both import: each command's line (`tauArgv`), as the
+  runtime reads it back (`readTauCommand`); `requestSetup` and
+  `requestPack`, which run a command through the host's `Box.pipe`; and
+  `readSetup`, which takes the runtime's report once it has the shape of
+  a `Setup`.
 
 ## Design
 
