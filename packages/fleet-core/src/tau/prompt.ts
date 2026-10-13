@@ -21,8 +21,9 @@ import type {} from '@deepseek-ai/dsh-agent'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { AssembledSection } from '@deepseek-ai/dsh-system-prompt'
 import { FOLDERS, PRIMER, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
-import type { Entry } from './registry.ts'
 import type {} from '../services.ts'
+import type { TauBoxes } from './ports.ts'
+import type { Entry } from './registry.ts'
 
 export const name = 'fleet-tau-prompt'
 export const inject = ['systemPrompt', 'fleetTauRuns']
@@ -68,11 +69,12 @@ export function apply(ctx: Context): void {
     order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX') + 1,
     text: WHERE,
   })
+  const runs: TauBoxes = ctx.fleetTauRuns
   // Prepended, so it sees the assembly once every other listener has had it.
   ctx.on('system-prompt/assemble', async (_assembly, { agent }, next) => {
     const assembly = await next()
     const sessionId = agent?.session.header.id
-    const text = sessionId === undefined || !ctx.fleetTauRuns.isTau(sessionId) ? '' : programs(await ctx.fleetTauRuns.entry(sessionId))
+    const text = sessionId === undefined || !runs.isTau(sessionId) ? '' : programs(await runs.entry(sessionId))
     // After where the model works; the tau's descriptions are its author's, not prompt variables.
     const added: AssembledSection[] = text === '' ? [] : [{ name: 'fleet:tau-programs', text, interpolate: false }]
     const sections = assembly.sections.filter(section => !HOST_SECTIONS.has(section.name))

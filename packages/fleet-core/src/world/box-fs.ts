@@ -32,7 +32,7 @@ import type {
 } from '@deepseek-ai/dsh-fs'
 import type { Methods, Target } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
-import type { RunBox, TauRuns } from '../tau/runs.ts'
+import type { Held, RunBox, TauBoxes } from '../tau/ports.ts'
 import type {} from '../services.ts'
 import { messageOf } from '../util/error.ts'
 import { callerSession } from './caller.ts'
@@ -58,10 +58,13 @@ export class BoxFileSystem extends FileSystem {
 
   /** The service's own context; `this.ctx` is the context each call reaches it through. */
   protected readonly self: Context
+  /** Which sessions are a tau's, and their boxes. */
+  protected readonly runs: TauBoxes
 
   constructor(ctx: Context) {
     super(ctx)
     this.self = ctx
+    this.runs = ctx.fleetTauRuns
   }
 
   /** What serves a call that is no box's: nothing here; fleet-fs gives the host's. */
@@ -187,7 +190,7 @@ export class BoxFileSystem extends FileSystem {
   override async watch(target: FsTarget, changed: (error?: Error) => void, signal: AbortSignal): Promise<() => Promise<void>> {
     const box = inBox(target)
     if (box === undefined) return (await this.host()).watch(target, changed, signal)
-    const runs = this.self.fleetTauRuns
+    const runs = this.runs
     const ending = new AbortController()
     const ended = AbortSignal.any([signal, ending.signal])
     let attached: { running: RunBox; watch: string } | undefined
@@ -229,7 +232,7 @@ export class BoxFileSystem extends FileSystem {
   /** The session the call is for, if it is a tau's. */
   protected tauCaller(): string | undefined {
     const caller = callerSession(this.self, this.ctx)
-    return caller !== undefined && this.self.fleetTauRuns.isTau(caller) ? caller : undefined
+    return caller !== undefined && this.runs.isTau(caller) ? caller : undefined
   }
 
   /**
@@ -247,7 +250,7 @@ export class BoxFileSystem extends FileSystem {
     const session = named?.session ?? own
     if (session === undefined) return undefined
     // A path in the session's project, where dsh runs its work, is in /tau/workspace in the box.
-    const plain = (value: string): string => inBox(keyed(value))?.path ?? this.self.fleetTauRuns.boxPath(session, value)
+    const plain = (value: string): string => inBox(keyed(value))?.path ?? this.runs.boxPath(session, value)
     return { session, params: { path: plain(path), ...cwd === undefined ? {} : { cwd: plain(cwd) } } }
   }
 
@@ -265,9 +268,9 @@ export class BoxFileSystem extends FileSystem {
 
   /** Ask a session's box, which the call occupies while it runs; the failures become `FsError`s. */
   private async ask<M extends FsMethod>(session: string, method: M, params: Methods[M]['params']): Promise<Methods[M]['result']> {
-    let held: Awaited<ReturnType<TauRuns['hold']>>
+    let held: Held | undefined
     try {
-      held = await this.self.fleetTauRuns.hold(session, { kind: 'file', id: randomUUID() })
+      held = await this.runs.hold(session, { kind: 'file', id: randomUUID() })
     } catch (error) {
       throw new FsError(`the box of ${session} cannot be started: ${messageOf(error)}`, 'FS_IO_ERROR', { cause: error })
     }

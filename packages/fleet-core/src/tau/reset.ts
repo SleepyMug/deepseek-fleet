@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import { FOLDERS, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import { z } from 'zod'
 import type {} from '../services.ts'
+import type { TauBoxes } from './ports.ts'
 
 const KIND = 'fleet-tau-box'
 
@@ -61,14 +62,15 @@ export function apply(ctx: Context): void {
     apply: (state, event) => event.type === 'user/message' && event.data.source.kind === KIND ? { noticed: event.data.source.resetAt } : state,
   })
 
+  const runs: TauBoxes = ctx.fleetTauRuns
   ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     // dsh skips a step with nothing to send; a notice must not turn it into a model call.
     if (decision.kind === 'reject' || signal.aborted || decision.messages.length === 0) return decision
     const sessionId = agent.session.header.id
-    if (!ctx.fleetTauRuns.isTau(sessionId)) throw new Error(NOT_A_TAU)
-    await ctx.fleetTauRuns.boxFor(sessionId)
-    const { resetAt } = await ctx.fleetTauRuns.entry(sessionId)
+    if (!runs.isTau(sessionId)) throw new Error(NOT_A_TAU)
+    await runs.boxFor(sessionId)
+    const { resetAt } = await runs.entry(sessionId)
     if (resetAt === undefined || ctx.sessionProjections.stateOf(agent.session, 'fleetTauBox')?.noticed === resetAt) return decision
     const notice = createUserMessage({
       content: [{ type: 'text', text: NOTICE }],

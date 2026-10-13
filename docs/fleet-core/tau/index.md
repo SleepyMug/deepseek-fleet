@@ -27,7 +27,11 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 - `fleet-tau-runs` (`@sleepymug/fleet-core/tau/runs-plugin`): the runs of taus and
   their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It builds on the
-  extensions provided, `ctx.fleetExts`, and uses nothing of dsh's.
+  extensions provided, `ctx.fleetExts`, and uses nothing of dsh's. The
+  runs put together what a run needs: its admission (`admission.ts`), its
+  box's setup by the box's runtime (`box-setup.ts`), the registry
+  (`registry.ts`), each session's box (`session-box.ts`), and the calls of
+  its clients (`calls.ts`).
 - `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
   registry and its agents, and serves its requests (`wire.ts`) with tau's
@@ -74,8 +78,11 @@ of that preset: dsh mounts them once, in the preset's scope, which each of
 its sessions' agents has as its parent. Every other preset is dsh's, as
 the web UI's sessions have them.
 
-`ctx.fleetTauRuns` gives fleet-core's world
-(docs/fleet-core/world/index.md) what it needs:
+`ctx.fleetTauRuns` is typed by what each that builds on it uses
+(`ports.ts`): the service, `RunLifecycle`, the runs' lifecycle; and
+fleet-core's world (docs/fleet-core/world/index.md), the `tau` preset's
+plugins and `tau_run`, `TauBoxes`, which sessions are a tau's and their
+boxes:
 
 - `isTau(sessionId)`, at once, whether a session is a tau's;
 - `boxPath(sessionId, path)`, at once, where a path of a tau's session's
@@ -96,11 +103,12 @@ the web UI's sessions have them.
 
 - **Setting up the box** (`runs.ts`), the first part of a submit, goes in
   this order:
-  1. It admits the call as it comes, before it keeps anything or makes a
-     box, writing it to the session's folder,
+  1. It admits the call as it comes (`admission.ts`), before it keeps
+     anything or makes a box, writing it to the session's folder,
      `$DSH_HOME/fleet/taus/<session id>/call.tar`, as it reads it: tau's
      `decodeCall` checks it whole, as tau's docs/spec/serialization.md has
-     it, and the tau it carries, which comes first, is extracted beside it.
+     it, and the tau it carries, which comes first, is extracted beside it,
+     and removed once the call is admitted, or refused.
      tau's backend SDK admits the call (`admit`): it checks the envelope
      against `tau.json`, each file's mode and kind, each extra file's
      name, and the args against the schema, and finds each API an
@@ -112,14 +120,13 @@ the web UI's sessions have them.
      Problems name the tau by the run's title. Here `session-<uuid>` is
      minted, the form dsh's session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
-     runtime set it up from the call (fleet-box-runtime's tau runtime,
-     below), offered the contracts the call was admitted with, which
+     runtime set it up from the call (`box-setup.ts`; fleet-box-runtime's
+     tau runtime, below), offered the contracts the call was admitted with, which
      reports the prompt, where things are, and which client each API
      needs; copies each client in, where the runtime says; has the helper
      link the APIs and what the tau exposes (`apis.link`); and stops it.
   3. It writes the registry entry, with the files it checked and what the
-     runtime reported, and
-     removes the tau it read; the call stays until the run is deleted.
+     runtime reported; the call stays until the run is released.
 
   A failure removes the box and the session's folder. A tau's session's
   run is in the session's own project; the host's in the folder it names,
@@ -357,6 +364,15 @@ the web UI's sessions have them.
   box does not have; the runs' `boxPath` puts that folder, and any path in
   it, in the working directory instead, for every process, terminal and file call the
   world serves from the box.
+- **Each session's box** (`session-box.ts`) is one object, which keeps
+  all that is the box's: its container, opened once; its operations, one
+  after another, so that a start, a stop, a copy, a pack and a release keep
+  their order; whether it was started here; what occupies it, and the
+  pending stop of a box nothing occupies; what waits for it to start; the
+  host files copied in; and whether it is archived. It is given its
+  container's name, Docker's boxes, the platform, its idle time, what
+  answers its clients' calls, and what sets it up again from the run's
+  call, which the runs do.
 - **Which sessions are a tau's.** The runs read the registry's entries when
   the plugin loads, each session's project with its id, and keep them as
   sessions are created and deleted, so that

@@ -17,7 +17,7 @@ import type {
   SubprocessOutcome, SubprocessTerminalActivity, SubprocessTerminalForeground, SubprocessTerminalHandle, SubprocessTerminalSignal,
   SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
-import type { RunBox } from '../tau/runs.ts'
+import type { RunBox } from '../tau/ports.ts'
 
 export class BoxTerminal implements SubprocessTerminalHandle {
   /** Changes with input, and with the activity reported, so an idle time is counted from either. */

@@ -9,7 +9,7 @@
  */
 
 import { initDecision } from '@sleepymug/tau/backend'
-import type { InitEnd } from './runs.ts'
+import type { InitEnd } from './ports.ts'
 
 /** What an init's end has the run do, as tau's backend SDK says: an end without a code falls back. */
 export function nextOf({ code }: InitEnd): 'skip' | 'run' | 'fallback' {

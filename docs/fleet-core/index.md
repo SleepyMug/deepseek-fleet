@@ -15,6 +15,11 @@ together; each part's page is what it does.
   `new TauRuns({ registry, exts, platform, boxes })`, and reaches nothing
   else: no other service of dsh's context, and nothing of the process but
   through its `Platform`. A test gives each its own.
+- **Each is given an interface.** A part is typed by what it uses of
+  another, not by its class: the runs of taus are, on dsh's context, the
+  service's `RunLifecycle` and the world's `TauBoxes` (`tau/ports.ts`), and
+  the service reaches dsh's sessions through its `Sessions`. A test gives a
+  fake of it.
 - **The platform** (`platform.ts`) is what the runs and the service take
   of the process: `log`, where they say what they do, `now`, `newId` and
   `after`, a timer that keeps nothing alive. `systemPlatform()` is the
@@ -33,8 +38,11 @@ together; each part's page is what it does.
   attachment store, `attachments/`.
 - **Shared helpers** are in `util/`: `Queue` and `KeyedQueue`, which run
   operations one after another, for each key, such as a session;
-  `abortable`, which stops waiting for a promise when a signal aborts; and
-  `messageOf`, what a thrown value says.
+  `abortable`, which stops waiting for a promise when a signal aborts;
+  `messageOf`, what a thrown value says; and `spool`, bytes written to a
+  file as they are read. A test's platform is `manualPlatform()`
+  (`platform.test.util.ts`), whose time moves, and timers run, as the test
+  advances it.
 
 ## Provides
 

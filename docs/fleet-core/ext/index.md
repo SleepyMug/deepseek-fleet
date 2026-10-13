@@ -60,7 +60,7 @@ export function apply(ctx: Context) {
   the package, as `ext/fleet-ext-notes` does.
 - **A call** goes from the client to the box's helper over its call socket
   (docs/fleet-box-runtime/helper/index.md), and from the helper to the host as
-  a `call`. The runs of taus serve it (`tau/runs.ts`): it must name, by
+  a `call`. The runs of taus serve it (`tau/calls.ts`): it must name, by
   its contract, an API the session's tau holds, whatever alias the tau
   gives it, and a method its server has. A call that
   passes goes to that method with the session and a signal.

@@ -15,19 +15,21 @@ import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import { LocalSpillStore } from '@deepseek-ai/dsh-spill-local'
 import type { Config } from '@deepseek-ai/dsh-spill-local'
 import type {} from '../services.ts'
+import type { TauBoxes } from '../tau/ports.ts'
 
 export type { Config }
 
 export class FleetSpillStore extends SpillStore {
   static inject = ['fleetTauRuns']
 
-  private readonly self: Context
+  /** Which sessions are a tau's. */
+  private readonly runs: Pick<TauBoxes, 'isTau'>
   /** dsh's local store, for every session that is not a tau's. */
   private readonly local: Promise<SpillStore>
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
-    this.self = ctx
+    this.runs = ctx.fleetTauRuns
     // Mounted where only this service sees it, so that it does not stand in for this one.
     const isolated = ctx.isolate('spillStore')
     this.local = (async () => {
@@ -38,7 +40,7 @@ export class FleetSpillStore extends SpillStore {
 
   async saveText(input: SaveTextSpill): Promise<SpillRef> {
     const session = input.owner.sessionId
-    if (this.self.fleetTauRuns.isTau(session)) throw new Error(`${session} is a tau's session, whose files are its box's, so it has no spill files`)
+    if (this.runs.isTau(session)) throw new Error(`${session} is a tau's session, whose files are its box's, so it has no spill files`)
     return (await this.local).saveText(input)
   }
 }

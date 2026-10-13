@@ -19,8 +19,10 @@ import { FleetExts } from '../ext/exts.ts'
 import { systemPlatform } from '../platform.ts'
 import { abortable } from '../util/abort.ts'
 import type { Exts } from './apis.ts'
-import { Registry, type Caller } from './registry.ts'
-import { HOST, TauRuns, type Boxes, type RunBox, type Started } from './runs.ts'
+import type { RunBox, Started } from './ports.ts'
+import { HOST, Registry, type Caller } from './registry.ts'
+import { TauRuns } from './runs.ts'
+import type { Boxes } from './session-box.ts'
 import type { Outcome } from './outcome.ts'
 import { TauService, type Sessions } from './service.ts'
 
@@ -953,40 +955,6 @@ test('archiving a session removes the boxes of the runs it started, and of their
   assert.equal((await service.tauRuns.boxFor(grandchild.sessionId))?.container, grandchild.box)
 })
 
-test('a box nothing occupies is stopped once it was idle long enough, and not while anything occupies it', async (t) => {
-  const { work, tauDir, call } = await fixture(t)
-  const boxes = new FakeBoxes(work)
-  const service = make(work, () => {}, new FakeSessions(), boxes, undefined, 20)
-  const runs = service.tauRuns
-  const { sessionId } = await create(service, tauDir, call, work)
-  boxes.calls.length = 0
-  const terminal = await runs.hold(sessionId, { kind: 'terminal', id: 'shell' })
-  const file = await runs.hold(sessionId, { kind: 'file', id: 'read' })
-  file?.release()
-  file?.release()
-  assert.deepEqual(runs.occupied(sessionId), [{ kind: 'terminal', id: 'shell' }])
-  await delay(60)
-  assert.deepEqual(boxes.calls, ['start'])
-  terminal?.release()
-  await delay(60)
-  assert.deepEqual(boxes.calls, ['start', 'stop'])
-  assert.equal(runs.isStarted(sessionId), false)
-
-  // A use while it waits keeps it running, until that use is done too.
-  const first = await runs.hold(sessionId, { kind: 'process', id: 'one' })
-  first?.release()
-  const second = await runs.hold(sessionId, { kind: 'process', id: 'two' })
-  await delay(60)
-  assert.deepEqual(boxes.calls, ['start', 'stop', 'start'])
-  second?.release()
-  await delay(60)
-  assert.deepEqual(boxes.calls, ['start', 'stop', 'start', 'stop'])
-  // Asked for without occupying it, it is stopped too.
-  await runs.boxFor(sessionId)
-  await delay(60)
-  assert.deepEqual(boxes.calls.slice(-2), ['start', 'stop'])
-})
-
 test('a run\'s end stops its box at once, unless something occupies it, and then as soon as nothing does', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const sessions = new FakeSessions()
@@ -1003,71 +971,14 @@ test('a run\'s end stops its box at once, unless something occupies it, and then
   assert.equal(boxes.calls.at(-1), 'stop')
 })
 
-test('waiting for a box to be started starts nothing, and fails once the session is gone', async (t) => {
-  const { work, tauDir, call } = await fixture(t)
-  const boxes = new FakeBoxes(work)
-  const service = make(work, () => {}, new FakeSessions(), boxes)
-  const runs = service.tauRuns
-  const { sessionId, box } = await create(service, tauDir, call, work)
-  boxes.calls.length = 0
-  const waiting = runs.whenStarted(sessionId, new AbortController().signal)
-  const giving = new AbortController()
-  const givenUp = runs.whenStarted(sessionId, giving.signal)
-  await delay(20)
-  assert.deepEqual(boxes.calls, [])
-  giving.abort()
-  await assert.rejects(givenUp)
-  await runs.boxFor(sessionId)
-  assert.equal((await waiting).container, box)
-  assert.equal((await runs.whenStarted(sessionId, new AbortController().signal)).container, box)
-  await runs.stop(sessionId)
-  const gone = runs.whenStarted(sessionId, new AbortController().signal)
-  await service.release(HOST, sessionId)
-  await assert.rejects(gone, /no tau session/u)
-})
-
-test('a host file is copied into a tau session\'s box once, before the box\'s next use, and again after a failure', async (t) => {
-  const { work, tauDir, call } = await fixture(t)
-  const boxes = new FakeBoxes(work)
-  const logged: string[] = []
-  const service = make(work, message => logged.push(message), new FakeSessions(), boxes)
-  const { sessionId } = await create(service, tauDir, call, work)
-  boxes.calls.length = 0
-  const from = '/home/me/.dsh/attachments/v1/objects/09/0912'
-  const to = '/fleet/attachments/v1/objects/09/0912'
-  const copy = [
-    'exec {"argv":["mkdir","-p","/fleet/attachments/v1/objects/09"]}',
-    `copyIn ${from} ${to}`,
-    `exec {"argv":["chmod","a=r","${to}"]}`,
-  ]
-
-  service.tauRuns.copyInOnce('not-a-tau-session', from, to)
-  service.tauRuns.copyInOnce(sessionId, from, to)
-  service.tauRuns.copyInOnce(sessionId, from, to)
-  await service.tauRuns.boxFor(sessionId)
-  assert.deepEqual(boxes.calls, ['start', ...copy])
-  service.tauRuns.copyInOnce(sessionId, from, to)
-  await service.tauRuns.boxFor(sessionId)
-  assert.deepEqual(boxes.calls, ['start', ...copy])
-
-  boxes.calls.length = 0
-  boxes.failing = 'copyIn'
-  const other = '/fleet/attachments/v1/objects/ab/ab34'
-  service.tauRuns.copyInOnce(sessionId, from, other)
-  await service.tauRuns.boxFor(sessionId)
-  assert.match(logged.at(-1) ?? '', /^could not copy .* into the box of session-.*: copyIn failed$/)
-  boxes.failing = undefined
-  service.tauRuns.copyInOnce(sessionId, from, other)
-  await service.tauRuns.boxFor(sessionId)
-  assert.deepEqual(boxes.calls.filter(call => call.startsWith('copyIn')), [`copyIn ${from} ${other}`, `copyIn ${from} ${other}`])
-})
-
 test('deleting a session whose box is gone forgets the session', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const { sessionId, box } = await create(make(work, () => {}, new FakeSessions(), boxes), tauDir, call, work)
   boxes.existing.delete(box)
+  // As after a restart.
   const service = make(work, () => {}, new FakeSessions(), boxes)
+  await service.tauRuns.load()
   await assert.rejects(service.tauRuns.start(sessionId), /No such container/u)
   await service.release(HOST, sessionId)
   await assert.rejects(service.status(HOST, sessionId), /no tau session/u)

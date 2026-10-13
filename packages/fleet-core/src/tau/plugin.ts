@@ -32,7 +32,8 @@ import type {} from '../services.ts'
 import { abortable } from '../util/abort.ts'
 import { messageOf } from '../util/error.ts'
 import { summarize } from './outcome.ts'
-import { HOST } from './runs.ts'
+import type { TauBoxes } from './ports.ts'
+import { HOST } from './registry.ts'
 import { TauService, type Sessions } from './service.ts'
 
 export const name = 'fleet-tau'
@@ -67,7 +68,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ctx.effect(() => close, 'fleet-tau socket')
     ctx.provide('fleetTau', service)
     followArchive(ctx, service, platform.log)
-    followTurns(ctx)
+    followTurns(ctx, ctx.fleetTauRuns)
   } catch (error) {
     // Unloaded while it started, so nothing else would close the socket.
     await close()
@@ -106,7 +107,7 @@ function followArchive(ctx: Context, service: TauService, log: (message: string)
  * which it does as it is woken, before its first step reaches the box, until
  * it leaves it, or goes.
  */
-function followTurns(ctx: Context): void {
+function followTurns(ctx: Context, runs: Pick<TauBoxes, 'isTau' | 'occupy'>): void {
   const turns = new Map<string, () => void>()
   const settle = (agentId: string): void => {
     turns.get(agentId)?.()
@@ -118,8 +119,8 @@ function followTurns(ctx: Context): void {
       return
     }
     const sessionId = agent.session.header.id
-    if (turns.has(agent.id) || !ctx.fleetTauRuns.isTau(sessionId)) return
-    turns.set(agent.id, ctx.fleetTauRuns.occupy(sessionId, { kind: 'turn', id: agent.id }))
+    if (turns.has(agent.id) || !runs.isTau(sessionId)) return
+    turns.set(agent.id, runs.occupy(sessionId, { kind: 'turn', id: agent.id }))
   })
   ctx.on('agent/disposed', ({ agent }) => { settle(agent.id) })
   ctx.effect(() => () => {

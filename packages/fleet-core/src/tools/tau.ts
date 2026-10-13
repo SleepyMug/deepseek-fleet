@@ -33,6 +33,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createClient } from '@sleepymug/tau'
 import { createFleetAdaptor, fleetLoopback } from '@sleepymug/tau/adaptors'
+import type { TauBoxes } from '../tau/ports.ts'
 import type { Caller } from '../tau/registry.ts'
 import type {} from '../services.ts'
 
@@ -40,6 +41,7 @@ export const name = 'fleet-tau-tools'
 export const inject = ['tools', 'systemPrompt', 'fleetTau', 'fleetTauRuns']
 
 export function apply(ctx: Context): void {
+  const runs: Pick<TauBoxes, 'isTau'> = ctx.fleetTauRuns
   const primer = readFileSync(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), 'utf8')
   ctx.systemPrompt.section({
     name: 'tool:tau',
@@ -96,7 +98,7 @@ export function apply(ctx: Context): void {
       const session = exec.agent?.session
       const cwd = session?.header.cwd
       if (session === undefined || cwd === undefined) throw new Error('tau_run works only in a session with a working directory')
-      if (ctx.fleetTauRuns.isTau(session.header.id)) throw new Error('a TAU\'s session runs TAUs with its tau API, not tau_run')
+      if (runs.isTau(session.header.id)) throw new Error('a TAU\'s session runs TAUs with its tau API, not tau_run')
       const caller: Caller = { kind: 'session', sessionId: session.header.id }
       const fleet = createFleetAdaptor({ transport: fleetLoopback(ctx.fleetTau.handlerFor(caller)), project: cwd })
       const client = createClient({ adaptors: { fleet } })

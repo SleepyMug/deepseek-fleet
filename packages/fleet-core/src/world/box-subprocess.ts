@@ -35,7 +35,7 @@ import type {
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
 import { EXECUTABLE_NOT_FOUND } from '@sleepymug/fleet-box-runtime/helper/protocol'
 import { HelperError } from '../box/helper.ts'
-import type { Occupant, RunBox, TauRuns } from '../tau/runs.ts'
+import type { Held, Occupant, RunBox, TauBoxes } from '../tau/ports.ts'
 import type {} from '../services.ts'
 import { callerSession } from './caller.ts'
 import { BoxTerminal } from './terminal.ts'
@@ -45,6 +45,8 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
 
   /** The service's own context; `this.ctx` is the context each call reaches it through. */
   protected readonly self: Context
+  /** Which sessions are a tau's, and their boxes. */
+  protected readonly runs: TauBoxes
   /** A box's processes still running, which this service ends as it unloads. */
   private readonly live = new Set<BoxProcess>()
   /** A box's terminals still open, which this service ends as it unloads. */
@@ -53,6 +55,7 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
   constructor(ctx: Context) {
     super(ctx)
     this.self = ctx
+    this.runs = ctx.fleetTauRuns
     ctx.effect(() => async () => {
       const live = [...this.live]
       for (const process of live) process.terminate()
@@ -73,7 +76,7 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
   override async resolveExecutable(command: string, env?: Readonly<Record<string, string>>, signal?: AbortSignal): Promise<string> {
     const session = this.boxSession()
     if (session === undefined) return (await this.host()).resolveExecutable(command, env, signal)
-    const { box, release } = await holdBox(this.self.fleetTauRuns, session, { kind: 'call', id: randomUUID() })
+    const { box, release } = await holdBox(this.runs, session, { kind: 'call', id: randomUUID() })
     try {
       return await box.request('which', { command, env: env === undefined ? null : { ...env } })
     } catch (error) {
@@ -98,8 +101,8 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
     if (spec.stdio.control !== undefined) throw new Error('fleet: a box has no control channel')
     if (spec.stdio.stdin === 'pipe') throw new Error('fleet: a box takes stdin only as data; \'pipe\' is not served')
     // dsh runs the session's work in its project, which is /tau/workspace in the box.
-    const inBox = { ...spec, cwd: this.self.fleetTauRuns.boxPath(session, spec.cwd) }
-    const process = new BoxProcess(this.self.fleetTauRuns, session, inBox, collected(spec.stdio.stdout, 'stdout'), collected(spec.stdio.stderr, 'stderr'))
+    const inBox = { ...spec, cwd: this.runs.boxPath(session, spec.cwd) }
+    const process = new BoxProcess(this.runs, session, inBox, collected(spec.stdio.stdout, 'stdout'), collected(spec.stdio.stderr, 'stderr'))
     this.live.add(process)
     void process.done.finally(() => { this.live.delete(process) }).catch(() => {})
     return process
@@ -109,10 +112,10 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
     const session = this.boxSession()
     if (session === undefined) return (await this.host()).spawnTerminal(spec)
     // The user's terminal occupies the box until it ends.
-    const { box, release } = await holdBox(this.self.fleetTauRuns, session, { kind: 'terminal', id: randomUUID() })
+    const { box, release } = await holdBox(this.runs, session, { kind: 'terminal', id: randomUUID() })
     let terminal: BoxTerminal
     try {
-      terminal = await BoxTerminal.start(box, { ...spec, cwd: this.self.fleetTauRuns.boxPath(session, spec.cwd) })
+      terminal = await BoxTerminal.start(box, { ...spec, cwd: this.runs.boxPath(session, spec.cwd) })
     } catch (error) {
       release()
       throw error
@@ -128,7 +131,7 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
   /** The session the call is for, if it is a tau's, whose box serves it. */
   private boxSession(): string | undefined {
     const session = callerSession(this.self, this.ctx)
-    return session !== undefined && this.self.fleetTauRuns.isTau(session) ? session : undefined
+    return session !== undefined && this.runs.isTau(session) ? session : undefined
   }
 }
 
@@ -142,7 +145,7 @@ function collected(mode: SubprocessOutputMode, name: string): SubprocessCollect 
 }
 
 /** A session's started box, which `occupant` occupies until the release. */
-async function holdBox(runs: TauRuns, session: string, occupant: Occupant): Promise<{ box: RunBox; release: () => void }> {
+async function holdBox(runs: TauBoxes, session: string, occupant: Occupant): Promise<Held> {
   const held = await runs.hold(session, occupant)
   if (held === undefined) throw new Error(`fleet: ${session} is not a tau's session, so it has no box`)
   return held
@@ -162,7 +165,7 @@ class BoxProcess implements SubprocessHandle {
   private readonly started: Promise<RunBox | undefined>
   private terminated = false
 
-  constructor(runs: TauRuns, session: string, spec: SubprocessSpawnSpec, stdout: SubprocessCollect, stderr: SubprocessCollect) {
+  constructor(runs: TauBoxes, session: string, spec: SubprocessSpawnSpec, stdout: SubprocessCollect, stderr: SubprocessCollect) {
     const out = new OutputCollector(stdout.maxBytes, 'stdout', undefined)
     const err = new OutputCollector(stderr.maxBytes, 'stderr', undefined)
     this.collected = { stdout: out, stderr: err }

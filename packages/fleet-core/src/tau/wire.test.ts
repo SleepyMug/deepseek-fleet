@@ -5,8 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { fleetLoopback, fleetSocket, listenFleet } from '@sleepymug/tau/adaptors'
 import type { RunStatus } from '@sleepymug/fleet-protocol/tau'
-import type { Caller } from './registry.ts'
-import { HOST } from './runs.ts'
+import { HOST, type Caller } from './registry.ts'
 import { serveFor, type Operations } from './wire.ts'
 
 async function* once(text: string): AsyncGenerator<Uint8Array> {

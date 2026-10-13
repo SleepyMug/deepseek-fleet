@@ -25,8 +25,8 @@ import { messageOf } from '../util/error.ts'
 import { KeyedQueue } from '../util/queue.ts'
 import { fellBack, nextOf } from './init.ts'
 import { resultOf, type Outcome } from './outcome.ts'
-import type { Caller, Entry } from './registry.ts'
-import { HOST, type About, type Started, type TauRuns } from './runs.ts'
+import type { About, RunLifecycle, Started } from './ports.ts'
+import { HOST, type Caller, type Entry } from './registry.ts'
 import { serveFor } from './wire.ts'
 
 /** What the service does with dsh's sessions (./plugin.ts). */
@@ -52,7 +52,7 @@ export interface Sessions {
 
 /** What the service is built on. */
 export interface TauServiceDeps {
-  runs: TauRuns
+  runs: RunLifecycle
   sessions: Sessions
   platform: Platform
 }
@@ -69,7 +69,7 @@ export class TauService {
   /** dsh's archived sessions, as {@link followArchive} was last told. */
   private archivedSessions: ReadonlySet<string> = new Set()
 
-  private readonly runs: TauRuns
+  private readonly runs: RunLifecycle
   private readonly sessions: Sessions
   private readonly log: (message: string) => void
 
@@ -212,7 +212,7 @@ export class TauService {
    * Follow dsh's archived sessions: a run whose session is archived, or was
    * started, however indirectly, by one that is, has its box removed once
    * the run ended, keeping its entry and result; one no longer archived has
-   * a box again on its next use, set up from its call ({@link TauRuns.archive}).
+   * a box again on its next use, set up from its call (./runs.ts).
    * @param archived - every archived session, as dsh has them now.
    */
   async followArchive(archived: ReadonlySet<string>): Promise<void> {

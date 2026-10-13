@@ -99,13 +99,13 @@ export class FleetFileSystem extends BoxFileSystem {
     const stored = relative(this.store, resolve(hostPath))
     if (stored === '' || stored === '..' || stored.startsWith(`..${sep}`) || isAbsolute(stored)) return undefined
     const place = posix.join(ATTACHMENTS, ...stored.split(sep))
-    this.self.fleetTauRuns.copyInOnce(caller, resolve(hostPath), place)
+    this.runs.copyInOnce(caller, resolve(hostPath), place)
     return place
   }
 
   /** dsh's `workspaceFileScope`: a tau's session's folder in its box, and any other's as dsh gives it. */
   private async fileScope(ctx: Context, sessionId: string): Promise<WorkspaceFileScope | undefined> {
-    if (this.self.fleetTauRuns.isTau(sessionId)) return { sessionId, workspaceRoot: `${KEY_PREFIX}${sessionId}${VIEWED}` } as WorkspaceFileScope
+    if (this.runs.isTau(sessionId)) return { sessionId, workspaceRoot: `${KEY_PREFIX}${sessionId}${VIEWED}` } as WorkspaceFileScope
     // What the file viewer's service gives without this lookup configured.
     const id = sessionId as SessionId
     const header = ctx.get('sessions')?.get(id)?.header ?? (await ctx.get('sessionPersistence')?.stat(id))?.header

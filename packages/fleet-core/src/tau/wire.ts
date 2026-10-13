@@ -2,8 +2,8 @@
  * The tau service's requests (./service.ts), as tau's fleet adaptor makes a
  * run's, submit, finish and release (tau's docs/spec/fleet.md), and as
  * fleet-protocol has the service's own, list, status and history, served
- * for a caller, whom each way in names, never the request: the socket
- * (./server.ts), for the host; the `tau` API's extension (fleet-ext-tau),
+ * for a caller, whom each way in names, never the request: the socket,
+ * which tau's `listenFleet` serves (./plugin.ts), for the host; the `tau` API's extension (fleet-ext-tau),
  * for a tau's session, from its box; and `tau_run` (../tools/tau.ts), for
  * another session, in this process. What a caller sends is checked here.
  * @module @sleepymug/fleet-core/tau/wire
