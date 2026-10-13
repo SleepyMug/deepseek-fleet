@@ -68,8 +68,8 @@ with tau's client and its fleet adaptor:
 
 The patch also declares `tau`, the agent preset a tau's session has, last
 in the web UI's list: a persona, the tau's prompt plugin
-(`@sleepymug/fleet-core/tau/prompt`), the box's reset notice
-(`@sleepymug/fleet-core/tau/reset`), the tools as they are, whatever the
+(`@sleepymug/fleet-core/preset/prompt`), the box's reset notice
+(`@sleepymug/fleet-core/preset/reset`), the tools as they are, whatever the
 host presents; in its `box` group, its world, the box's file system and
 subprocess runtime (docs/fleet-core/world/index.md), and over them dsh's
 local bash, bash in the foreground only, read/write/edit, the tau's
@@ -244,7 +244,7 @@ boxes:
   whose start was cut short before its prompt.
 - **A run ends** at the first time its agent is done with its prompt: the
   service waits for the agent's `whenIdle()`, then reads the session's log
-  with the session controller's `inspect` (`outcome.ts`). The run succeeded
+  with the session controller's `inspect` (`dsh/outcome.ts`). The run succeeded
   if its last turn completed, and left what its tau declares (below); its
   text is the last its agent wrote. Any other end is a failure, which says
   why: what it did not leave, naming each place in the box; a result its
@@ -322,7 +322,7 @@ boxes:
   and a signal that aborts when the caller goes away. A box started to set
   up a run answers no calls.
 - **The system prompt** of a tau's session is dsh's, shaped by
-  `prompt.ts` in the preset: after the persona, a section says where the
+  `preset/prompt.ts`: after the persona, a section says where the
   model works, its box, that its working directory is `/tau/workspace`,
   and that `/tau/TAU.md` says what a tau is, and what a run of one
   promises; after it, for a tau that exposes something, a section,
@@ -397,7 +397,7 @@ boxes:
   the run started; the entry records the files, the working directory,
   the APIs and what the tau exposes as they are now, and when. The box is
   then as it was when the run began: what the agent did in it is gone.
-- **The agent is told** (`reset.ts`, in the preset). Before each step of a
+- **The agent is told** (`preset/reset.ts`). Before each step of a
   tau's session that sends messages, the plugin has the box ready, through
   `boxFor`, so a failure to set it up fails the step rather than a tool
   call. A session that is not a tau's, as one a person gives the preset in
@@ -425,10 +425,14 @@ boxes:
   included, through its platform's `log` (docs/fleet-core/index.md): on
   dsh's stderr, after `fleet-tau:`. dsh's logger shows no info.
 - **dsh, through one interface.** The service reaches dsh's sessions only
-  through `Sessions` (`service.ts`), which the plugin implements with
-  `ctx.sessionController` and `ctx.workspaceRegistry`, as the web client's
-  own calls go, so the web UI follows the session live. The plugin imports
-  only their types; its config gives it the dsh home, as `dshHomePath()` in
+  through `Sessions` (`service.ts`), which `dsh/sessions.ts` implements
+  with `ctx.sessionController` and `ctx.workspaceRegistry`, as the web
+  client's own calls go, so the web UI follows the session live, and which
+  reads how a session ended from its log as a run's result
+  (`dsh/outcome.ts`), so the service knows nothing of dsh's turns. The
+  plugin follows the archived sessions (`dsh/archive.ts`) and the agents'
+  turns (`dsh/turns.ts`) through dsh's events. Each imports only dsh's
+  types; the plugin's config gives it the dsh home, as `dshHomePath()` in
   the patch.
 - **Two plugins, in the order they need each other.** dsh's session
   controller needs `ctx.fs`, the world's, which needs the runs. So the runs

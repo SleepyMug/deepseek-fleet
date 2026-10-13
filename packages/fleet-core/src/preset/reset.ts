@@ -2,14 +2,14 @@
  * fleet-tau-reset, as a dsh plugin that fleet-core's `tau` agent preset
  * mounts: before each step of a tau's session that sends messages, it has
  * the session's box ready, set up again from the run's call if it is gone,
- * as after the session was archived and unarchived (./runs.ts), so that a
+ * as after the session was archived and unarchived (../tau/runs.ts), so that a
  * failure to set it up fails the step rather than a tool call; and it tells
  * the model once, with a notice before the step's messages, that its box was
  * set up again and what it did there before is gone. The session's log
  * records the notice, so a projection of it knows which setup was told. A
  * session that is not a tau's, as one a person gives the preset in the web
  * UI, has no box, so each of its steps fails, saying why.
- * @module @sleepymug/fleet-core/tau/reset
+ * @module @sleepymug/fleet-core/preset/reset
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import { FOLDERS, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import { z } from 'zod'
 import type {} from '../services.ts'
-import type { TauBoxes } from './ports.ts'
+import type { TauBoxes } from '../tau/ports.ts'
 
 const KIND = 'fleet-tau-box'
 

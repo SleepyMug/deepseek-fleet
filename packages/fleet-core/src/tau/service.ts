@@ -6,7 +6,7 @@
  * its workspace, which it gives the prompt, once the tau's init, if it has
  * one, asks for the agent (./init.ts); watches the run until its agent is
  * done, or its init did the run, has its box pack what it gave back, and
- * records how it ended (./outcome.ts); gives back its result, for the
+ * records how it ended; gives back its result, for the
  * caller's adaptor to check and put at the caller's paths; and releases the
  * run, removing its box. It never learns a caller's paths, so it serves the
  * host's `tau` command, which reaches every run, and a session, a tau's from
@@ -24,12 +24,11 @@ import { abortable } from '../util/abort.ts'
 import { messageOf } from '../util/error.ts'
 import { KeyedQueue } from '../util/queue.ts'
 import { fellBack, nextOf } from './init.ts'
-import { resultOf, type Outcome } from './outcome.ts'
 import type { About, RunLifecycle, Started } from './ports.ts'
 import { HOST, type Caller, type Entry } from './registry.ts'
 import { serveFor } from './wire.ts'
 
-/** What the service does with dsh's sessions (./plugin.ts). */
+/** What the service does with dsh's sessions (../dsh/sessions.ts). */
 export interface Sessions {
   /**
    * Make a session with this id, in the dsh workspace of the folder, with
@@ -42,10 +41,12 @@ export interface Sessions {
   archive(sessionId: string): Promise<void>
   /**
    * Wait until a session's agent is done with what it was given, if it is
-   * at work here, and read how the session ended.
+   * at work here, and read how the session ended, as a run's result: it
+   * succeeded if the agent finished its last turn, with the last text it
+   * wrote, and why not otherwise.
    * @param signal - gives up the wait.
    */
-  settled(sessionId: string, signal: AbortSignal): Promise<Outcome>
+  settled(sessionId: string, signal: AbortSignal): Promise<Result>
   /** A session's events, oldest first, as dsh logs them. */
   history(sessionId: string, signal: AbortSignal): Promise<unknown[]>
 }
@@ -279,7 +280,7 @@ export class TauService {
       result = { ok: false, text: '', failure: 'the fleet host stopped before the run got its prompt' }
     } else {
       try {
-        result = resultOf(await this.sessions.settled(sessionId, this.closing.signal))
+        result = await this.sessions.settled(sessionId, this.closing.signal)
       } catch (error) {
         if (this.closing.signal.aborted) throw error
         result = { ok: false, text: '', failure: `could not read how the run ended: ${messageOf(error)}` }

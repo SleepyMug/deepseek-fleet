@@ -25,6 +25,14 @@ together; each part's page is what it does.
   `after`, a timer that keeps nothing alive. `systemPlatform()` is the
   process's own, which logs on dsh's stderr after `fleet-tau:`, since dsh's
   logger shows no info.
+- **dsh is reached at the edges.** The tau service, the runs and the
+  boxes (`tau/`, `box/`, `ext/`) import nothing of dsh's, but cordis's
+  `Context`, in the plugins that put them together. What
+  speaks dsh is in its own folders: `dsh/`, the adapters that give the tau
+  service dsh's sessions, archive and agents' turns; `world/`, the file
+  system, subprocess runtime and spill store dsh's sessions work through;
+  `preset/`, the plugins of the `tau` agent preset, its system prompt and
+  its box's reset notice; and `tools/`, `tau_run`.
 - **The plugins put the parts together.** Each dsh plugin checks its
   config, builds its parts on the services it injects, and provides them;
   `services.ts` declares every service fleet-core provides on dsh's

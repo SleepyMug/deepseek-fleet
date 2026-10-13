@@ -99,7 +99,7 @@
 # nothing else, and bash over that, unconfined, since the box is the
 # session's own; its programs, which bash runs with `node`, run there too.
 # A session that is not a tau's, as one a person gives this preset, reaches
-# nothing through them, and its steps fail (src/tau/reset.ts).
+# nothing through them, and its steps fail (src/preset/reset.ts).
 - insert:
     - id: preset-tau
       name: '@deepseek-ai/dsh-agent-preset'
@@ -116,12 +116,12 @@
           # dsh's sections about the host, which are false in a box; and none
           # of the host's tools, which every session has, such as tau_run.
           - id: tau-prompt
-            name: '@sleepymug/fleet-core/tau/prompt'
+            name: '@sleepymug/fleet-core/preset/prompt'
 
           # The box ready before each step, set up again from the run's call
           # if it is gone, as after an archive, which the model is told once.
           - id: tau-reset
-            name: '@sleepymug/fleet-core/tau/reset'
+            name: '@sleepymug/fleet-core/preset/reset'
 
           # The tools as they are, whatever the host presents (dsh's
           # DSH_TOOLS_MODE): a program the model writes runs in the box, with

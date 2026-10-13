@@ -26,13 +26,13 @@
       "types": "./lib/tau/plugin.d.ts",
       "default": "./lib/tau/plugin.js"
     },
-    "./tau/reset": {
-      "types": "./lib/tau/reset.d.ts",
-      "default": "./lib/tau/reset.js"
+    "./preset/reset": {
+      "types": "./lib/preset/reset.d.ts",
+      "default": "./lib/preset/reset.js"
     },
-    "./tau/prompt": {
-      "types": "./lib/tau/prompt.d.ts",
-      "default": "./lib/tau/prompt.js"
+    "./preset/prompt": {
+      "types": "./lib/preset/prompt.d.ts",
+      "default": "./lib/preset/prompt.js"
     },
     "./tau/runs-plugin": {
       "types": "./lib/tau/runs-plugin.d.ts",

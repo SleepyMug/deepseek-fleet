@@ -6,8 +6,8 @@ import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { AssembleContext } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime, defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import * as TauPrompt from './prompt.ts'
-import type { Entry } from './registry.ts'
-import type { TauRuns } from './runs.ts'
+import type { Entry } from '../tau/registry.ts'
+import type { TauRuns } from '../tau/runs.ts'
 
 const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 

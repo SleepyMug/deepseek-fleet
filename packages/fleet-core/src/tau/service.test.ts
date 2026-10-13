@@ -23,7 +23,6 @@ import type { RunBox, Started } from './ports.ts'
 import { HOST, Registry, type Caller } from './registry.ts'
 import { TauRuns } from './runs.ts'
 import type { Boxes } from './session-box.ts'
-import type { Outcome } from './outcome.ts'
 import { TauService, type Sessions } from './service.ts'
 
 const run = promisify(execFile)
@@ -274,8 +273,8 @@ async function finish(service: TauService, caller: Caller, sessionId: string): P
 }
 
 /** How a run's agent ended, as dsh's log has it, for a turn that completed with this text. */
-function completed(text: string): Outcome {
-  return { end: { kind: 'completed' }, text }
+function completed(text: string): Result {
+  return { ok: true, text }
 }
 
 /**
@@ -286,7 +285,7 @@ function completed(text: string): Outcome {
 class FakeSessions implements Sessions {
   readonly calls: string[] = []
   failing: string | undefined
-  private readonly ends = new Map<string, PromiseWithResolvers<Outcome>>()
+  private readonly ends = new Map<string, PromiseWithResolvers<Result>>()
 
   create(sessionId: string, project: string, title: string): Promise<void> {
     return this.record('create', `create ${sessionId} ${project} ${title}`)
@@ -296,15 +295,11 @@ class FakeSessions implements Sessions {
     return this.record('prompt', `prompt ${sessionId} ${requestId} ${text}`)
   }
 
-  cancel(sessionId: string): void {
-    this.calls.push(`cancel ${sessionId}`)
-  }
-
   archive(sessionId: string): Promise<void> {
     return this.record('archive', `archive ${sessionId}`)
   }
 
-  settled(sessionId: string, signal: AbortSignal): Promise<Outcome> {
+  settled(sessionId: string, signal: AbortSignal): Promise<Result> {
     return abortable(this.ending(sessionId).promise, signal)
   }
 
@@ -313,11 +308,11 @@ class FakeSessions implements Sessions {
   }
 
   /** End a session's agent's work, as it ended. */
-  end(sessionId: string, outcome: Outcome): void {
-    this.ending(sessionId).resolve(outcome)
+  end(sessionId: string, result: Result): void {
+    this.ending(sessionId).resolve(result)
   }
 
-  private ending(sessionId: string): PromiseWithResolvers<Outcome> {
+  private ending(sessionId: string): PromiseWithResolvers<Result> {
     let ending = this.ends.get(sessionId)
     if (ending === undefined) this.ends.set(sessionId, ending = Promise.withResolvers())
     return ending
@@ -521,7 +516,7 @@ test('a run\'s session\'s history is given back, ended or not, failed or not, to
   const { sessionId } = await startIn(service, HOST, tauDir, call, work)
   const signal = new AbortController().signal
   assert.deepEqual(await service.history(HOST, sessionId, signal), [{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
-  sessions.end(sessionId, { end: { kind: 'aborted' }, text: '' })
+  sessions.end(sessionId, { ok: false, text: '', failure: 'the run was cancelled' })
   assert.deepEqual(await finish(service, HOST, sessionId), { ok: false, text: '', failure: 'the run was cancelled' })
   assert.deepEqual(await service.history(HOST, sessionId, signal), [{ type: 'user/message', sessionId }, { type: 'turn/end', sessionId }])
   await assert.rejects(service.history(from(sessionId), sessionId, signal), /no tau session/u)
@@ -572,7 +567,7 @@ test('what a run that failed left is not packed, nor given back', async (t) => {
   const boxes = new FakeBoxes(work)
   const service = make(work, () => {}, sessions, boxes)
   const { sessionId } = await startIn(service, HOST, tauDir, call, work)
-  sessions.end(sessionId, { end: { kind: 'aborted', reason: { kind: 'user' } }, text: '' })
+  sessions.end(sessionId, { ok: false, text: '', failure: 'the run was cancelled' })
   assert.equal((await finish(service, HOST, sessionId)).ok, false)
   assert.deepEqual(boxes.calls.filter(call => call === 'pipe pack'), [])
   assert.deepEqual(await readdir(join(work, 'out')), [])
@@ -583,7 +578,7 @@ test('a run ends with why it failed, and is ended, not finished, until a finish 
   const sessions = new FakeSessions()
   const service = make(work, () => {}, sessions, new FakeBoxes(work))
   const { sessionId } = await startIn(service, HOST, tauDir, call, work)
-  sessions.end(sessionId, { end: { kind: 'error', error: { message: 'rate limited' } }, text: 'Half' })
+  sessions.end(sessionId, { ok: false, text: 'Half', failure: 'the run failed: rate limited' })
   await service.close()
   const later = make(work, () => {}, sessions, new FakeBoxes(work))
   // As fleet-tau-runs loads them, before the service.
@@ -760,7 +755,7 @@ test('a service started later watches the runs that had not ended, and fails one
 
   // dsh closes a turn a stop cut short as interrupted.
   const sessions = new FakeSessions()
-  sessions.end(running, { end: { kind: 'interrupted' }, text: '' })
+  sessions.end(running, { ok: false, text: '', failure: 'the fleet host stopped during the run' })
   const later = make(work, () => {}, sessions, new FakeBoxes(work))
   // As fleet-tau-runs loads them, before the service.
   await later.tauRuns.load()

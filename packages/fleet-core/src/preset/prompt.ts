@@ -13,7 +13,7 @@
  * tau_run (../tools/tau.ts), since they work on the host: a tau's session
  * has its preset's tools alone, which work in its box, and runs taus with
  * its tau API.
- * @module @sleepymug/fleet-core/tau/prompt
+ * @module @sleepymug/fleet-core/preset/prompt
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -22,8 +22,8 @@ import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { AssembledSection } from '@deepseek-ai/dsh-system-prompt'
 import { FOLDERS, PRIMER, SELF } from '@sleepymug/fleet-box-runtime/tau/layout'
 import type {} from '../services.ts'
-import type { TauBoxes } from './ports.ts'
-import type { Entry } from './registry.ts'
+import type { TauBoxes } from '../tau/ports.ts'
+import type { Entry } from '../tau/registry.ts'
 
 export const name = 'fleet-tau-prompt'
 export const inject = ['systemPrompt', 'fleetTauRuns']
