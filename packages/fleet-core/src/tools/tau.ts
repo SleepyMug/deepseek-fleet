@@ -59,7 +59,7 @@ export function apply(ctx: Context): void {
       + 'whether it succeeded, its agent\'s final text, and why it failed, if it did. Once the run ends, or the call is cancelled, '
       + 'the run is released: its session archived, and its container removed. Several calls run at once.',
     parameters: {
-      tau: { type: 'string', required: true, description: 'The TAU\'s folder; a relative path is your working directory\'s.' },
+      tau: { type: 'string', required: true, description: 'The TAU\'s folder representing the agent definition.' },
       files: {
         type: 'json',
         description: 'A path for each file tau.json declares, by name; for an in file, a list of paths gives a folder holding each. '
