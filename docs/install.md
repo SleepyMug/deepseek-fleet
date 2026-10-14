@@ -26,15 +26,11 @@ On linux, with Docker and pnpm on the PATH:
    its template if it has none yet:
 
    ```
-   dsh plugin --profile web add --allow-build=node-pty --allow-build=koffi @sleepymug/fleet-core @sleepymug/fleet-box-runtime
+   dsh plugin --profile web add @sleepymug/fleet-core @sleepymug/fleet-box-runtime
    dsh plugin --profile web add @sleepymug/fleet-ext-tau @sleepymug/fleet-ext-notes
    ```
 
-   The first approves the native builds fleet-box-runtime needs. Without
-   them pnpm fails the add after installing, and dsh, which turns on the
-   bundles of the packages an add brings only when it succeeds, never turns
-   them on: remove the packages with `dsh plugin --profile web remove`,
-   and add them again. dsh says once that fleet-box-runtime is no bundle.
+   dsh says once that fleet-box-runtime is no bundle.
 
    A profile of its own works the same, made from dsh's web template
    first: `dsh --profile <name> --from-default-profile web --dump-config >

@@ -45,7 +45,10 @@ Builds the box image: a Node base image with fleet's runtime on top.
     it gets on the host, and nothing else.
   - A peer that is not installed is the one dsh gives the package: a dsh
     profile leaves dsh's own packages to dsh, which resolves them from its
-    install. That install is the `dsh` on the PATH's, npm's link to its
+    install. This package has those it runs in the box, node-pty with
+    them, as its peers, and as its dev dependencies for the workspace, so
+    a profile holds no copies of its own, and the host and the box run the
+    same, dsh's. That install is the `dsh` on the PATH's, npm's link to its
     bin or pnpm's shim, which names it, and each name is the first found
     in its dependencies and peers, breadth first, as dsh collects them
     (`dsh.ts`). dsh is looked for only once a peer is missing, so a
