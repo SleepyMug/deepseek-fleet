@@ -7,6 +7,7 @@ import { type Pipe, readSetup, readTauCommand, requestPack, requestSetup, type S
 const SETUP: Setup = {
   prompt: 'Read /tau/in/notes.md.\n',
   cwd: '/tau/workspace',
+  places: { notes: '/tau/in/notes.md' },
   modules: '/tau/node_modules',
   self: '/tau/self',
   links: [{ alias: 'notes', contract: '@test/notes', client: '/tau/node_modules/.fleet/@test/notes' }],
@@ -55,7 +56,7 @@ test('a pack has the runtime write the result to where it is asked', async () =>
 
 test('a report that is not a setup is refused', () => {
   assert.deepEqual(readSetup(JSON.stringify({ ...SETUP, init: 'node /tau/self/init.mts' })).init, 'node /tau/self/init.mts')
-  for (const broken of [{ ...SETUP, prompt: 1 }, { ...SETUP, init: 2 }, { ...SETUP, links: [{ alias: 'notes' }] }, { ...SETUP, packages: [{ name: 'x', dir: 'x' }] }]) {
+  for (const broken of [{ ...SETUP, prompt: 1 }, { ...SETUP, init: 2 }, { ...SETUP, links: [{ alias: 'notes' }] }, { ...SETUP, places: undefined }, { ...SETUP, places: { notes: 'notes.md' } }, { ...SETUP, packages: [{ name: 'x', dir: 'x' }] }]) {
     assert.throws(() => readSetup(JSON.stringify(broken)), /reported no setup/u)
   }
 })

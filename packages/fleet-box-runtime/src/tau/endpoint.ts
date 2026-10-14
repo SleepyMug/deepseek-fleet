@@ -5,10 +5,10 @@
  * with tau's backend SDK, it places the tau, admits the call against it,
  * linking each API to the client of a contract the host offers, places the
  * content of the files, checks them, expands the args and the prompt with
- * where it placed each, keeps what it needs of the run, puts tau's TAU.md,
- * as the runtime's tau library has it, beside them, and reports to the host
- * what the host needs: the prompt, where things are, and which client each
- * API needs. Once the run ended, the host has it pack the run's result,
+ * where it placed each, keeps what it needs of the run, puts tau's TAU.md
+ * and TAU_DEV.md, as the runtime's tau library has them, beside them, and
+ * reports to the host what the host needs: the prompt, where things are,
+ * each file included, and which client each API needs. Once the run ended, the host has it pack the run's result,
  * which the host reads and checks again, since by then the box is the
  * agent's. Each runs as ./main.ts, with `docker exec`, before the agent
  * does, and runs no code of the tau's, as ./protocol.ts has the commands.
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 import { type Admitted, catalogOf, createBackendSdk } from '@sleepymug/tau/backend'
 import { checkOutputs, type Envelope, type Json, kindAt, type Outcome, type Output } from '@sleepymug/tau/core'
 import { packResult, unpackCall } from '@sleepymug/tau/wire-tar'
-import { FOLDERS, MODULES, PRIMER, RUN, SELF, clientOf, placer } from './layout.ts'
+import { DEV_PRIMER, FOLDERS, MODULES, PRIMER, RUN, SELF, clientOf, placer } from './layout.ts'
 import type { Offered, Setup } from './protocol.ts'
 
 /** What the runtime keeps of a run in its box: each file, where the box has each, and the args, expanded. */
@@ -35,7 +35,7 @@ interface Kept {
  * Set a box up for a run of a call: make its folders, place the tau the
  * call carries, admit the call, place the content of each file, make each
  * `out` file's folder for a directory, and the folder each API's client
- * goes in, and put TAU.md there.
+ * goes in, and put TAU.md and TAU_DEV.md there.
  * @param offered - the contracts whose clients the host has, for the tau's APIs.
  * @param root - where the box's paths are, the box's root unless a test has them elsewhere.
  */
@@ -63,9 +63,11 @@ export async function setup(call: AsyncIterable<Uint8Array>, offered: readonly O
   const kept: Kept = { files: { ...envelope.files }, places, args: { ...run.args } }
   await writeFile(at(RUN), `${JSON.stringify(kept)}\n`)
   await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), at(PRIMER))
+  await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU_DEV.md')), at(DEV_PRIMER))
   return {
     prompt: run.prompt,
     cwd: FOLDERS.inout,
+    places,
     modules: MODULES,
     self: SELF,
     ...run.init === undefined ? {} : { init: run.init },

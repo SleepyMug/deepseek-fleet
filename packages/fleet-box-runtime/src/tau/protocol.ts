@@ -30,6 +30,8 @@ export interface Setup {
   prompt: string
   /** The agent's working directory. */
   cwd: string
+  /** Where each file is, by name, extra files included. */
+  places: { [name: string]: string }
   /** The node_modules folder where the tau's code finds its APIs, and what it exposes. */
   modules: string
   /** The tau's own directory. */
@@ -94,6 +96,7 @@ export function readSetup(text: string): Setup {
   const absolute = (path: unknown): boolean => typeof path === 'string' && posix.isAbsolute(path)
   const paths = [setup.cwd, setup.modules, setup.self]
   if (typeof setup.prompt !== 'string' || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(absolute)
+    || typeof setup.places !== 'object' || setup.places === null || Array.isArray(setup.places) || !Object.values(setup.places).every(absolute)
     || !Array.isArray(setup.links) || !setup.links.every(link => typeof link?.alias === 'string' && typeof link.contract === 'string' && absolute(link.client))
     || !Array.isArray(setup.packages) || !setup.packages.every(entry => typeof entry?.name === 'string' && absolute(entry.dir))) {
     throw new Error('fleet: the box\'s runtime reported no setup')

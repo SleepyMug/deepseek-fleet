@@ -7,7 +7,8 @@
  * included. It reports the terminal idle when the helper finds no process
  * of it left, or its shell alone at its prompt, so dsh's terminal
  * controller reclaims one nobody has open after a while, which ends its
- * hold on the box (./subprocess.ts).
+ * hold on the box (./subprocess.ts). Its environment, as a process's in a
+ * box, leaves out dsh's own variables, which tell of the host.
  * @module @sleepymug/fleet-core/world/terminal
  */
 
@@ -18,6 +19,11 @@ import type {
   SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import type { RunBox } from '../tau/ports.ts'
+
+/** The environment a process in a box is given of what dsh gives it: all but dsh's own variables, `DSH_*`, which tell of the host. */
+export function boxEnv(env: Readonly<Record<string, string | null | undefined>> | undefined): Record<string, string | null> {
+  return Object.fromEntries(Object.entries(env ?? {}).filter(([key]) => !key.startsWith('DSH_')).map(([key, value]) => [key, value ?? null]))
+}
 
 export class BoxTerminal implements SubprocessTerminalHandle {
   /** Changes with input, and with the activity reported, so an idle time is counted from either. */
@@ -43,8 +49,7 @@ export class BoxTerminal implements SubprocessTerminalHandle {
    */
   static async start(box: RunBox, spec: SubprocessTerminalSpawnSpec): Promise<BoxTerminal> {
     spec.signal?.throwIfAborted()
-    const env: Record<string, string | null> = {}
-    for (const [key, value] of Object.entries(spec.env ?? {})) env[key] = value
+    const env = boxEnv(spec.env)
     const started = Promise.withResolvers<number>()
     const output = new PassThrough()
     const id = randomUUID()

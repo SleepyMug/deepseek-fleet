@@ -18,12 +18,14 @@ import { messageOf } from '../util/error.ts'
 
 /** What the host learns of a call before it makes anything of it, as it admits it. */
 export interface Accepted {
-  /** Each file of the call, checked against the tau. */
-  files: Envelope['files']
+  /** Each file of the call, checked against the tau, with what `tau.json` says it is, for a file it declares. */
+  files: { [name: string]: Envelope['files'][string] & { description?: string } }
   /** Each contract the tau's APIs hold a copy of, with the extension that serves it, by its client's folder. */
   links: { contract: string; version: string; client: string }[]
   /** What the tau exposes to its programs: `@api/<alias>`, or a package of its own, by name, with what it says it is. */
   exposed: { specifier: string; description?: string }[]
+  /** The names of the tau's skills. */
+  skills: string[]
 }
 
 export interface AdmitOptions {
@@ -65,8 +67,12 @@ async function read(call: AsyncIterable<Uint8Array>, tauDir: string, catalog: Im
   if (admitted === undefined) throw new Error('fleet: the call breaks the spec: it carries no tau')
   const { envelope, links, tau } = admitted
   return {
-    files: envelope.files,
+    files: Object.fromEntries(Object.entries(envelope.files).map(([name, file]) => {
+      const description = tau.files[name]?.description
+      return [name, description === undefined ? file : { ...file, description }]
+    })),
     links: links.map(({ implementation: { contract, version, module } }) => ({ contract, version, client: module })),
     exposed: tau.exposed.map(({ specifier, description }) => ({ specifier, ...description === undefined ? {} : { description } })),
+    skills: tau.skills.map(skill => skill.name),
   }
 }

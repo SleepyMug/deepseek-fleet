@@ -13,8 +13,8 @@
  * programs from the tau's own directory, `cd /tau/self; node -`, so that
  * they resolve as the tau's own code does: its node_modules first, then
  * /tau/node_modules. What the runtime keeps
- * of the run is in /tau/.run.json, and tau's TAU.md, what a tau is, for the
- * agent to read, in /tau/TAU.md.
+ * of the run is in /tau/.run.json; and tau's TAU.md, what a tau is, and
+ * TAU_DEV.md, how to make one, for the agent to read, in /tau.
  * @module @sleepymug/fleet-box-runtime/tau/layout
  */
 
@@ -43,6 +43,9 @@ export const RUN = '/tau/.run.json'
 
 /** tau's TAU.md, what a tau is, and what a run of one promises, for the agent to read. */
 export const PRIMER = '/tau/TAU.md'
+
+/** tau's TAU_DEV.md, how to make a tau, for the agent to read. */
+export const DEV_PRIMER = '/tau/TAU_DEV.md'
 
 /** Where the box has each file of one run, by its name, asked for each in turn. */
 export function placer(): (name: string, file: Pick<CallFile, 'mode' | 'base'>) => string {

@@ -125,7 +125,10 @@ added.
   docs/fleet-core/tau/index.md), as is a terminal's, and a file call's path
   or `cwd` in the project. It serves what dsh's bash asks: stdin
   ignored or given as data, and stdout and stderr collected into dsh's own
-  in-memory tails (`OutputCollector`) as the helper sends them. Terminating
+  in-memory tails (`OutputCollector`) as the helper sends them. Its
+  environment, and a terminal's, is what dsh gives it, but dsh's own
+  variables, `DSH_*`, which tell of the host, such as the dsh home and the
+  web UI's URL, and are false in a box. Terminating
   it, or aborting its signal, ends its group, and so does this service's
   unloading. `resolveExecutable` asks the box's helper (`which`).
 - **Terminals** (`terminal.ts`). dsh's terminal controller reaches

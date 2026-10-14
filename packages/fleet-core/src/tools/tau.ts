@@ -7,9 +7,10 @@
  * here, from the session's files, relative paths its working directory's,
  * and the run's result put at its paths, once the run ends, and its
  * session's history, if asked for; then the run is released. The tool waits
- * for it, so nothing outlives the call. A system-prompt section, where the
- * session has the tool, is tau's TAU.md: what a tau is, and what a run of
- * one promises.
+ * for it, so nothing outlives the call. tau's primers are skills of every
+ * session (./primers.ts): `tau`, its TAU.md, what a tau takes and what a
+ * run of one promises, and `tau-dev`, its TAU_DEV.md, how to make one; a
+ * system-prompt section, where the session has the tool, points to them.
  *
  * What it writes, the session's sandbox lets it write, as dsh's sandbox
  * policy has it for the session, before the run starts and again as its
@@ -21,14 +22,14 @@
  * @module @sleepymug/fleet-core/tools/tau
  */
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { realpathSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type { Session } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createClient } from '@sleepymug/tau'
@@ -36,47 +37,59 @@ import { createFleetAdaptor, fleetLoopback } from '@sleepymug/tau/adaptors'
 import type { TauBoxes } from '../tau/ports.ts'
 import type { Caller } from '../tau/registry.ts'
 import type {} from '../services.ts'
+import { PRIMERS, pathOf, textOf } from './primers.ts'
 
 export const name = 'fleet-tau-tools'
-export const inject = ['tools', 'systemPrompt', 'fleetTau', 'fleetTauRuns']
+export const inject = ['tools', 'systemPrompt', 'skills', 'fleetTau', 'fleetTauRuns']
+
+/** What the system prompt says of TAUs, where the session has tau_run. */
+export const SECTION = 'You can run TAUs, agents packaged as directories, each in a container of its own, with tau_run. '
+  + 'Load the `tau` skill before you run one, and the `tau-dev` skill before you make or change one.'
 
 export function apply(ctx: Context): void {
   const runs: Pick<TauBoxes, 'isTau'> = ctx.fleetTauRuns
-  const primer = readFileSync(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), 'utf8')
+  for (const primer of PRIMERS) {
+    ctx.skills.register({ name: primer.name, description: primer.description, source: 'bundled', path: pathOf(primer), content: textOf(primer) })
+  }
   ctx.systemPrompt.section({
     name: 'tool:tau',
     order: ctx.systemPrompt.getSectionOrder('TOOL_SUBAGENT') + 50,
-    interpolate: false,
-    text: ({ scope }) => ctx.tools.get('tau_run', scope) === undefined ? '' : primer,
+    text: ({ scope }) => ctx.tools.get('tau_run', scope) === undefined ? '' : SECTION,
   })
 
   ctx.tools.register(defineTool({
     name: 'tau_run',
-    description: 'Run a TAU: a folder with a PROMPT.md, the task, and a tau.json, which declares the files it takes, by name, '
-      + 'each with its mode, in, out or inout, and its args, as a JSON Schema. An agent of its own does the task in a container of its own, '
-      + 'with copies of what it is given, and what it leaves at its out and inout files is put at your paths once it ends. '
-      + 'Read tau.json first. Waits until the run ends, and returns { sessionId, ok, text, failure? }: the run\'s session, '
-      + 'whether it succeeded, its agent\'s final text, and why it failed, if it did. Once the run ends, or the call is cancelled, '
-      + 'the run is released: its session archived, and its container removed. Several calls run at once.',
+    description: 'Run a TAU, as its caller, with a call: its files and its args (the `tau` skill). Its agent does the task in a container '
+      + 'of its own, with copies of the files you give, and cannot ask you anything; a run may take minutes. Waits until the run ends, '
+      + 'and returns { sessionId, ok, text, failure? }: its archived session, which you cannot continue, whether it succeeded, '
+      + 'its agent\'s final text, and why it failed. If it succeeded, what its agent left at each out and inout file is put at your path: '
+      + 'a file replaces one there, and a directory merges into one there, so what the agent removed from it stays. '
+      + 'A failed run changes none of your paths, whatever its text says, but what its API calls did stands. '
+      + 'Calls in one message run at once: give each its own out and inout paths.',
     parameters: {
-      tau: { type: 'string', required: true, description: 'The TAU\'s folder representing the agent definition.' },
+      tau: {
+        type: 'string',
+        required: true,
+        description: 'The TAU\'s directory, relative to your working directory. Read its PROMPT.md and its tau.json, if it has one, '
+          + 'first: they say what it does with which files and args.',
+      },
       files: {
         type: 'json',
-        description: 'A path for each file tau.json declares, by name; for an in file, a list of paths gives a folder holding each. '
-          + 'A file tau.json does not declare, an extra file, which the args name, is given with its mode, '
-          + 'as { "mode": "in", "path": "notes.md" }, or "out" or "inout", and optionally "kind", "file" or "dir". '
-          + 'Relative paths are your working directory\'s. None for a TAU that takes no files.',
+        description: 'The call\'s files: for each file tau.json declares, by its name, a path of yours, relative to your working directory '
+          + 'or absolute. An in file may be given a list of paths, which its agent sees as one directory. An out file\'s directory must exist. '
+          + 'An extra file, one tau.json does not declare, for the args to name, is given with its mode: { "mode": "in", "path": "notes.md" }, '
+          + '"out" or "inout", with "kind", "file" or "dir", if it must be one. None for a TAU that takes no files.',
       },
       args: {
         type: 'json',
-        description: 'The args, a JSON object that fits the schema tau.json declares, its strings with placeholders as TAU has them, '
-          + 'as in "${site}/index.html", where the TAU\'s agent sees the file site. None for a TAU that takes no args.',
+        description: 'The call\'s args: a JSON object that fits the JSON Schema of tau.json\'s args. Its agent sees none of your paths, '
+          + 'so a string names a file only by its placeholder, the file\'s name in ${}, which becomes where its agent sees it, '
+          + 'as in "${site}/index.html"; and ${ meant as text is written $${. None for a TAU that takes no args.',
       },
       history: {
         type: 'string',
         description: 'Where to write the run\'s session history, to see what its agent did: one JSON event per line, '
-          + 'the prompts, tools, messages, tool calls and results, written whether the run succeeded or not. '
-          + 'A relative path is your working directory\'s. None writes no history.',
+          + 'written whether the run succeeded or not. A relative path is your working directory\'s. None writes no history.',
       },
     },
     output: {

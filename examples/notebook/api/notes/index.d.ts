@@ -1,10 +1,9 @@
 /**
  * A notebook of short notes, each with tags to find them by later.
  *
- * Notes persist: once `addNote` resolves, the note is kept, and `byTag` finds it, for every program
- * that uses the same notebook, in this run and in later ones. Which notebook a run's programs use
- * is the implementation's. An implementation for testing, a mock, may discard notes, but only once
- * no live reference reaches them.
+ * Once `addNote` resolves, the note is kept, and `byTag` finds it, for every program that uses the
+ * same notebook. Which notebook a run's programs use, and so whether a later run finds its notes,
+ * is the implementation's.
  *
  * @packageDocumentation
  */

@@ -54,18 +54,18 @@ export function args(): { readonly [name: string]: Json } {
 const service: FleetTransport = relayTransport(CONTRACT, 'exchange')
 
 /**
- * Run the tau at `agent`, a directory, with `call`. `agent` and the paths of the call's files may
- * be relative to `process.cwd()`. Resolves once the run ends, its outputs put at the call's paths,
+ * Run the tau at `tau`, a directory, with `call`. `tau` and the paths of the call's files may be
+ * relative to `process.cwd()`. Resolves once the run ends, its outputs put at the call's paths,
  * and the run released; aborting `signal` releases it, and the run fails. `options` are fleet's,
  * beyond tau's spec.
- * @throws when the run cannot start, such as when `agent` is not a tau, or the call does not fit it.
+ * @throws when the run cannot start, such as when `tau` is not a tau, or the call does not fit it.
  */
-export async function run(agent: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
+export async function run(tau: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
   // Its project is this session's own, which the service gives it.
   const client = createClient({ adaptors: { fleet: createFleetAdaptor({ transport: service }) } })
   const { history } = options
-  if (history === undefined) return await client.run(agent, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
-  const started = await client.start(agent, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
+  if (history === undefined) return await client.run(tau, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
+  const started = await client.start(tau, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
   try {
     const result = await client.finish(started, signal === undefined ? {} : { signal })
     const { value } = await service.exchange({ op: 'history', id: started.slice('fleet:'.length) }, undefined, signal)

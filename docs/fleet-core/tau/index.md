@@ -72,8 +72,9 @@ in the web UI's list: a persona, the tau's prompt plugin
 (`@sleepymug/fleet-core/preset/reset`), the tools as they are, whatever the
 host presents; in its `box` group, its world, the box's file system and
 subprocess runtime (docs/fleet-core/world/index.md), and over them dsh's
-local bash, bash in the foreground only, read/write/edit, the tau's
-skills; and compaction. What its rows register reaches only the sessions
+local bash, bash in the foreground only, whose commands run until they
+end, unless the model gives one a timeout, since a program that runs taus
+waits for each, read/write/edit, the tau's skills; and compaction. What its rows register reaches only the sessions
 of that preset: dsh mounts them once, in the preset's scope, which each of
 its sessions' agents has as its parent. Every other preset is dsh's, as
 the web UI's sessions have them.
@@ -145,10 +146,11 @@ boxes:
     there, and checks them (`place`); then it expands the args, the prompt,
     and the tau's init, if it has one, with the places (`expand`), makes
     each `out` folder and each client's, keeps the files, their places and
-    the args the agent sees in `/tau/.run.json`, puts tau's `TAU.md`, as its
-    tau library has it, at `/tau/TAU.md`, and reports `{ prompt, cwd,
-    modules, self, init?, links, packages }`: the prompt, the agent's
-    working directory, where the APIs go, where the tau is, the init, each
+    the args the agent sees in `/tau/.run.json`, puts tau's `TAU.md` and
+    `TAU_DEV.md`, as its tau library has them, in `/tau`, and reports
+    `{ prompt, cwd, places, modules, self, init?, links, packages }`: the
+    prompt, the agent's working directory, each file's place, where the
+    APIs go, where the tau is, the init, each
     API with its contract and where its client goes, and the packages of
     the tau's own it exposes. It runs before the agent, on a call the host
     admitted, and runs no code of the tau's, so the host takes its report
@@ -170,7 +172,8 @@ boxes:
   | the tau's own directory, `${self}` | `/tau/self` |
   | the APIs, `@api/<alias>`, and the packages the tau exposes | `/tau/node_modules` |
   | the client of each API's extension | `/tau/node_modules/.fleet/<contract>` |
-  | tau's `TAU.md`, what a tau is, for the agent to read | `/tau/TAU.md` |
+  | tau's `TAU.md`, what a tau takes and what a run of one promises, for the agent to read | `/tau/TAU.md` |
+  | tau's `TAU_DEV.md`, how to make a tau, for the agent to read | `/tau/TAU_DEV.md` |
 
   A place keeps its base name, as tau's backend SDK asks: a file whose
   base name is taken in its folder is in a folder of its own there, named
@@ -182,7 +185,8 @@ boxes:
   Node looks for a package in every folder above the file that imports it,
   so code anywhere below `/tau`, the tau's own packages included, finds
   `/tau/node_modules`, and TypeScript does too. The agent runs its programs
-  from the tau's own directory, `cd /tau/self; node -`, Node reading the
+  from the tau's own directory, with bash's `node -` and `workdir`
+  `/tau/self`, Node reading the
   program from stdin and resolving its imports from its working directory,
   so a program resolves as the tau's code does: the tau's `node_modules`
   first, every package of its own whether exposed or not, then
@@ -194,10 +198,11 @@ boxes:
   caller; the box, the run's title, the project,
   the expanded prompt and the request id it is sent under, the tau's init,
   its expanded command and where it runs in the box, if it has one, each file (its
-  name, mode, kind and base name), the working directory and
+  name, mode, kind and base name, what `tau.json` says it is, and its
+  place, as the runtime reported it), the working directory and
   the APIs' folder in the box, as the runtime reported them, the contracts of the
   APIs the tau holds, each linked, what it exposes, with what each says it is,
-  when it was made, when it was given its prompt, when and how its run
+  the names of its skills, when it was made, when it was given its prompt, when and how its run
   ended, when a `finish` first gave that back, and when the box was last
   set up again, if it was. Beside it, a folder of
   the session's own, `$DSH_HOME/fleet/taus/<session id>/`, holds the call,
@@ -323,24 +328,43 @@ boxes:
   and a signal that aborts when the caller goes away. A box started to set
   up a run answers no calls.
 - **The system prompt** of a tau's session is dsh's, shaped by
-  `preset/prompt.ts`: after the persona, a section says where the
-  model works, its box, that its working directory is `/tau/workspace`,
-  and that `/tau/TAU.md` says what a tau is, and what a run of one
-  promises; after it, for a tau that exposes something, a section,
-  `fleet:tau-programs`, says to run programs with `node` from the tau's
-  directory, `cd /tau/self; node - <<'EOF'`, and that they import, resolving
-  from `/tau/self`, what it lists: each exposed API or package, with what it
-  says it is, from the session's registry entry, whose declarations the
-  model reads in its folder; and the assembly leaves out dsh's sections about the host,
-  which are false in a box: the harness's checkout (`harness:source`), the
-  web GUI at its URL (`app:web-surface`), the web UI's file cards and links
-  (`ui:deliverable-file-references`), and `@` mentions as host paths
-  (`context:file-reference`). It removes them by name from the assembled
-  prompt (the `system-prompt/assemble` waterfall), since the last is
+  `preset/prompt.ts`. After the persona, which says the model runs a tau
+  whose prompt is its task, a section, `fleet:tau-where`, says where the
+  model works: its box, as root, with the network, and what it has; its
+  working directory, `/tau/workspace`; and the tau's own directory,
+  `/tau/self`, which it reads but does not change. It says how the run
+  ends: no one answers the model, its last message is the run's text, and
+  its caller gets that, its `out` and `inout` files and what its API calls
+  did, and nothing else it writes. And it says where tau's `TAU.md` and
+  `TAU_DEV.md` are. From the session's registry entry, after it: a
+  section, `fleet:tau-files`, lists the run's files, each with its mode, its
+  kind, its place and what `tau.json` says it is, and says what each mode
+  asks, that the run fails unless the agent leaves each `out` and `inout`,
+  and that a directory merges into the caller's; and, for a tau that
+  exposes something, a section, `fleet:tau-programs`, says to run programs
+  with bash's `node -`, `workdir` `/tau/self`, with absolute paths, and
+  lists what they import: each exposed API or package, with where it is
+  declared and what it says it is. The tau's descriptions are not
+  interpolated, as dsh's prompt variables would be.
+
+  The assembly (the `system-prompt/assemble` waterfall) leaves out by name
+  dsh's sections about the host, which are false in a box: the harness's
+  identity (`harness:identity`), which the persona says in its place, its
+  checkout (`harness:source`), the web GUI at its URL (`app:web-surface`),
+  the web UI's file cards and links (`ui:deliverable-file-references`),
+  and `@` mentions as host paths (`context:file-reference`), the last
   registered in each agent's own scope, which a section of the preset's
-  cannot shadow. It also leaves out the runtime context on the sandbox
-  policy (`sandbox:policy`), the host's file policy, full access, which is
-  not the box's. The web UI's own sessions keep dsh's whole prompt.
+  cannot shadow. It leaves out the runtime contexts on the sandbox policy
+  (`sandbox:policy`), the host's file policy, and the approval policy
+  (`approval:policy`), which asks not to widen a sandbox the box does not
+  have. It says once, in `tool:write`'s place, what write's and edit's
+  sections each say, that a file is read before it is changed. It gives
+  bash a description of its own, in place of dsh's, whose file sandbox,
+  `$DSH_*` variables and spill files are the host's: a fresh shell in
+  `/tau/workspace`, a command that runs until it ends, unless given
+  `timeoutMs`, and long output written to a file. And it drops the `skill`
+  tool for a tau without skills. The web UI's own sessions keep dsh's
+  whole prompt.
 - **Its tools are its preset's.** Each tool registered at the top, for
   every session, such as `tau_run`, works on the host, so the prompt plugin
   hides each from the preset's agents (`ctx.tools.restrict`, in the
@@ -351,6 +375,12 @@ boxes:
   `run_code` would under dsh's `DSH_TOOLS_MODE`. The web UI's Permissions
   selector changes nothing for a tau's session: its tools have no sandbox
   but its box.
+- **tau's primers are no skills in a box.** Every session on the host has
+  `TAU.md` and `TAU_DEV.md` as the skills `tau` and `tau-dev`
+  (docs/fleet-core/tools/index.md), which the prompt plugin shadows in the
+  preset's layer of dsh's skill registry with skills of the same names the
+  model cannot load, so a tau's session lists neither, and reads the files
+  in its box.
 - **The tau's skills** are dsh's: the preset mounts dsh's file-system skill
   provider with one root, `/tau/self/skills`, each skill a folder in it
   with a `SKILL.md`, and none of dsh's project, user or bundled roots, and
@@ -405,7 +435,8 @@ boxes:
   the web UI, has no box, so each step fails, saying the preset is for the
   runs `tau run --adaptor fleet` and `tau_run` start, before the model is asked
   anything; and its tools reach nothing of the host. When the box was set up again since the agent was last told, a
-  notice goes before the step's messages, saying so: a user message with a
+  notice goes before the step's messages, saying so, and that what the
+  agent's API calls did stands, so it does not make them again: a user message with a
   source of its own, `fleet-tau-box`, which the session's log keeps, and
   which a projection of the log folds into the setup it told of.
 - **A box gone** when the session is deleted still lets the session be
@@ -450,7 +481,10 @@ boxes:
 
 - A call and a result are kept whole, however large, in the session's
   folder; and an `inout` file merges into the caller's folder, so what
-  the agent removed there stays.
+  the agent removed there stays, which the agent and the caller are told.
+- A bash command in a box has no timeout of its own: one that waits for
+  input, or serves, holds the run until it is cancelled, through dsh. A
+  later design of limits may bound it.
 - A finish gives back the result its box packed when the run ended; what
   a person asks the run's session in the web UI later is not collected
   again, though tau's protocol lets a finish give the latest result.

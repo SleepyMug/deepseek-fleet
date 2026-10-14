@@ -46,8 +46,10 @@ export const name = 'fleet-tau-reset'
 export const inject = ['fleetTauRuns', 'sessionProjections']
 
 /** What the model is told of a box set up again. */
-export const NOTICE = `Your box was set up again from your run's call, as it was when your run began: ${SELF}, ${FOLDERS.in}, `
-  + `${FOLDERS.inout} and ${FOLDERS.out} hold again what they held then, and whatever you changed or installed in the box since is gone.`
+export const NOTICE = `Your container was set up again, as it was when your run began, before any init: ${SELF}, ${FOLDERS.in}, `
+  + `${FOLDERS.inout} and ${FOLDERS.out} hold again what they held then, and whatever else you changed or installed there is gone. `
+  + 'What your API calls did stands, so do not make them again.'
+
 
 /** Why the step of a session that is not a tau's fails, as of one a person gave this preset. */
 export const NOT_A_TAU = 'This session is no run of a TAU, which the `tau` agent preset is for: `tau run --adaptor fleet` and tau_run start those. '

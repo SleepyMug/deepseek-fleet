@@ -367,11 +367,12 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
   assert.equal(entry.promptedAt, undefined)
   assert.deepEqual(entry.apis, ['@test/notes'])
   assert.deepEqual(entry.exposed, [{ specifier: '@api/notes', description: 'Notes.' }])
+  assert.deepEqual(entry.skills, [])
   assert.deepEqual(entry.files, {
-    notes: { mode: 'in', kind: 'file', base: 'notes.md' },
-    site: { mode: 'inout', kind: 'dir', base: 'site' },
-    report: { mode: 'out', kind: 'file', base: 'report.md' },
-    pages: { mode: 'out', kind: 'dir', base: 'pages' },
+    notes: { mode: 'in', kind: 'file', base: 'notes.md', description: 'What to add.', place: '/tau/in/notes.md' },
+    site: { mode: 'inout', kind: 'dir', base: 'site', description: 'The pages.', place: '/tau/workspace/site' },
+    report: { mode: 'out', kind: 'file', base: 'report.md', description: 'What changed.', place: '/tau/out/report.md' },
+    pages: { mode: 'out', kind: 'dir', base: 'pages', description: 'New pages.', place: '/tau/out/pages' },
   })
   assert.equal(entry.cwd, '/tau/workspace')
   assert.equal(entry.modules, '/tau/node_modules')
@@ -688,7 +689,7 @@ test('a tau\'s init exiting 100 has the agent run on the prompt as it is, and an
     '',
     '---',
     '',
-    'This TAU\'s init, `node /tau/self/init.mts`, ran before you, and failed: it exited with 101. Do the task yourself; what init left at the files is still there.',
+    'This TAU\'s init, `node /tau/self/init.mts`, ran before you, and failed: it exited with 101. Do the task yourself, without it; what it left at your files\' places is still there.',
     '',
     'Its stdout:',
     '',
@@ -1018,7 +1019,7 @@ test('a real box places a call\'s files and the tau, and packs what its agent le
     await service.tauRuns.start(sessionId)
     const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
-      '/tau/.run.json', '/tau/TAU.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/api/notes/package.json', '/tau/self/tau.json',
+      '/tau/.run.json', '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/api/notes/package.json', '/tau/self/tau.json',
       '/tau/workspace/site/index.md',
     ])
     // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.

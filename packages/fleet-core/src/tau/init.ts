@@ -24,8 +24,8 @@ export function fellBack(prompt: string, command: string, end: InitEnd): string 
     '',
     '---',
     '',
-    `This TAU's init, ${code(command, 1)}, ran before you, and failed: it ${how}. Do the task yourself; `
-      + 'what init left at the files is still there.',
+    `This TAU's init, ${code(command, 1)}, ran before you, and failed: it ${how}. Do the task yourself, without it; `
+      + 'what it left at your files\' places is still there.',
     '',
     `Its stdout:${written(end.stdout)}`,
     '',

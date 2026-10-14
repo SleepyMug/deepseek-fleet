@@ -66,8 +66,12 @@ export interface Entry {
   finishedAt?: string
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
   resetAt?: string
-  /** Each file of the run, by name, as the call has it, checked against the tau: its mode, its kind, and its base name. */
-  files: Envelope['files']
+  /**
+   * Each file of the run, by name, as the call has it, checked against the tau: its mode, its
+   * kind, and its base name; what `tau.json` says it is, for a file it declares; and where the
+   * box has it, as the box's runtime reported it, which an entry written before it did lacks.
+   */
+  files: { [name: string]: Envelope['files'][string] & { description?: string; place?: string } }
   /** The agent's working directory in the box, as the box's runtime reported it. */
   cwd: string
   /** Where the tau's code finds its APIs in the box, as the box's runtime reported it. */
@@ -76,6 +80,8 @@ export interface Entry {
   apis: readonly string[]
   /** What the tau exposes to its programs: `@api/<alias>`, or a package of its own, by name, with what it says it is. */
   exposed: readonly { specifier: string; description?: string }[]
+  /** The names of the tau's skills; none for an entry written before they were kept. */
+  skills?: readonly string[]
   createdAt: string
 }
 

@@ -1,5 +1,5 @@
 /**
- * This run's files and args, runs of other taus, and init's exit codes.
+ * This run's files and args, runs of other TAUs, and init's exit codes.
  *
  * @packageDocumentation
  */
@@ -8,8 +8,8 @@
 export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json };
 
 /**
- * A file of a call given with its mode: one the tau does not declare, which the call gives the
- * agent beside those it declares, or one it does.
+ * A file of a call given with its mode: needed for an extra file, one the TAU does not declare,
+ * and allowed for one it does.
  */
 export interface CallFile {
 	readonly mode: "in" | "out" | "inout";
@@ -19,7 +19,7 @@ export interface CallFile {
 	readonly kind?: "file" | "dir";
 }
 
-/** A call of a tau (docs/spec/calls.md): a path for each of its files, extra files, and its args. */
+/** A call of a TAU: a path for each of its files, extra files, and its args. */
 export interface Call {
 	/** A path for each file, by name, or, for an `in` file, a list of paths, or the file with its mode. */
 	readonly files?: { readonly [name: string]: string | readonly string[] | CallFile };
@@ -31,7 +31,7 @@ export interface Call {
 export interface Result {
 	/** Whether it succeeded. */
 	readonly ok: boolean;
-	/** The agent's final text; empty when it gave none. */
+	/** The agent's final text, or init's; empty when it gave none. */
 	readonly text: string;
 	/** Why it failed, when it did. */
 	readonly failure?: string;
@@ -47,12 +47,16 @@ export declare function files(): { readonly [name: string]: string };
 export declare function args(): { readonly [name: string]: Json };
 
 /**
- * Run the tau at `agent`, a directory, with `call`. `agent` and the paths of the call's files may
- * be relative to `process.cwd()`. Resolves once the run ends; aborting `signal` stops it, and the
- * run fails.
- * @throws when the run cannot start, such as when `agent` is not a tau, or the call does not fit it.
+ * Run the TAU at `tau`, a directory, with `call`, as its caller: its agent does the task, in a run
+ * of its own, which may take minutes. `tau` and the call's paths are yours, such as your files'
+ * places; a relative one is `process.cwd()`'s. An `out` file's directory must exist. Its agent sees
+ * none of your paths: an arg names a file by its placeholder, as in `"${site}/index.html"`, and a
+ * `${` meant as text takes one `$` more, `$${`. Resolves once the run ends: if it
+ * succeeded, what its agent left at each `out` and `inout` file is at your path. Aborting `signal`
+ * stops it, and the run fails.
+ * @throws when the run cannot start, such as when `tau` is not a TAU, or the call does not fit it.
  */
-export declare function run(agent: string, call: Call, signal?: AbortSignal): Promise<Result>;
+export declare function run(tau: string, call: Call, signal?: AbortSignal): Promise<Result>;
 
 /** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */
 export declare const TAU_SKIP: 0;

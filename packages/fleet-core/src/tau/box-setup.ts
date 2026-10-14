@@ -21,6 +21,7 @@ import type { Result } from '@sleepymug/fleet-protocol/tau'
 import { messageOf } from '../util/error.ts'
 import type { Accepted } from './admission.ts'
 import type { RunBox } from './ports.ts'
+import type { Entry } from './registry.ts'
 
 /**
  * Have a started box's runtime set it up from the run's call, offered the
@@ -46,6 +47,15 @@ export async function furnish(box: RunBox, call: string, { links }: Accepted): P
     packages: setup.packages,
   })
   return setup
+}
+
+/** Each file of a run, as it was admitted, with where its box has it, as the box's runtime reported. */
+export function placed({ files }: Accepted, { places }: Setup): Entry['files'] {
+  return Object.fromEntries(Object.entries(files).map(([name, file]) => {
+    const place = places[name]
+    if (place === undefined) throw new Error(`fleet: the box's runtime placed no file ${name}`)
+    return [name, { ...file, place }]
+  }))
 }
 
 /**

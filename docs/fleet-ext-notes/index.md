@@ -3,9 +3,11 @@
 An extension of the fleet host (docs/fleet-core/ext/index.md), and the
 example of one: the contract `@sleepymug/tau-api-notes`, which it
 publishes beside it, a notebook of
-short notes, each with tags to find them by later, which persist. Each
-session has a notebook of its own, which its server keeps in the dsh home,
-as `fleet/notes/<session>.json`, so its notes outlast dsh's process.
+short notes, each with tags to find them by later. Each session has a
+notebook of its own, which its server keeps in the dsh home, as
+`fleet/notes/<session>.json`, so its notes outlast dsh's process, but a
+later run, a session of its own, does not find them, as the contract
+leaves to the implementation.
 
 ## Provides
 

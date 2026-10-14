@@ -110,9 +110,9 @@ export function apply(ctx: Context) {
   turns other values, such as dates, into JSON and back, as its API
   declares them.
 - **The model reaches the APIs** with programs it runs with bash's `node`
-  from the tau's directory, `cd /tau/self; node -`, which find them in
-  `/tau/node_modules`; its prompt lists what its tau exposes
-  (docs/fleet-core/tau/index.md).
+  from the tau's directory, `node -` with `workdir` `/tau/self`, which find
+  them in `/tau/node_modules`; its prompt lists what its tau exposes, each
+  with where it is declared (docs/fleet-core/tau/index.md).
 
 ## Not yet
 

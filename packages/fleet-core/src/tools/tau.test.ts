@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
+import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Envelope } from '@sleepymug/tau/core'
@@ -15,7 +16,7 @@ import type { About, Started } from '../tau/ports.ts'
 import type { Caller } from '../tau/registry.ts'
 import { abortable } from '../util/abort.ts'
 import { serveFor } from '../tau/wire.ts'
-import { apply } from './tau.ts'
+import { SECTION, apply } from './tau.ts'
 
 const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 const RUN = 'session-11111111-1111-4111-8111-111111111111'
@@ -113,7 +114,7 @@ function toolOn(tau: FakeTau, policy?: FakePolicy): ToolDefinition {
   const systemPrompt = { section: () => {}, getSectionOrder: () => 0 }
   const fleetTauRuns = { isTau: (sessionId: string) => sessionId === TAU_SESSION }
   apply({
-    tools: { register: (registered: ToolDefinition) => { tool = registered } }, systemPrompt, fleetTau: tau, fleetTauRuns,
+    tools: { register: (registered: ToolDefinition) => { tool = registered } }, systemPrompt, skills: { register: () => () => {} }, fleetTau: tau, fleetTauRuns,
     get: (name: string) => name === 'sandboxPolicy' ? policy : undefined,
   } as unknown as Context)
   assert.ok(tool !== undefined)
@@ -230,16 +231,21 @@ test('cancelling tau_run releases the run, and puts nothing at the session\'s pa
   await assert.rejects(readFile(join(work, 'out', 'report.md')), /ENOENT/u)
 })
 
-test('a session with tau_run has tau\'s TAU.md in its prompt, and one without it does not', async () => {
+test('tau\'s primers are skills, TAU.md as tau and TAU_DEV.md as tau-dev, which the prompt of a session with tau_run points to', async () => {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
+  await ctx.plugin(SkillRegistry, {})
   const registered = new Map<string, ToolDefinition>()
   let enabled = true
   const tools = { register: (tool: ToolDefinition) => { registered.set(tool.name, tool) }, get: (name: string) => enabled ? registered.get(name) : undefined }
-  apply({ tools, systemPrompt: ctx.systemPrompt, fleetTau: {}, fleetTauRuns: {} } as unknown as Context)
-  const primer = await readFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), 'utf8')
-  assert.match(primer, /^# TAU \(Transportable Agent Unit\)/u)
-  assert.equal((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:tau')?.text, primer)
+  apply({ tools, systemPrompt: ctx.systemPrompt, skills: ctx.skills, fleetTau: {}, fleetTauRuns: {} } as unknown as Context)
+  for (const [name, file] of [['tau', 'TAU.md'], ['tau-dev', 'TAU_DEV.md']] as const) {
+    const skill = await ctx.skills.get(name)
+    assert.equal(skill?.content, await readFile(fileURLToPath(import.meta.resolve(`@sleepymug/tau/${file}`)), 'utf8'))
+    assert.ok(skill.invocation.modelInvocable)
+  }
+  assert.equal((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:tau')?.text, SECTION)
+  assert.match(SECTION, /`tau` skill .* `tau-dev` skill/u)
   enabled = false
   assert.equal((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:tau')?.text ?? '', '')
 })

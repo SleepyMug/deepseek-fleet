@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/tau-api",
   "version": "0.1.0",
-  "description": "The tau API: this run's files and args, runs of other taus, and init's exit codes.",
+  "description": "This run's files and args, and runs of other TAUs.",
   "tau": {
     "contract": true
   },

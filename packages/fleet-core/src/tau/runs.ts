@@ -26,7 +26,7 @@ import { messageOf } from '../util/error.ts'
 import { spool } from '../util/stream.ts'
 import { admit, type Accepted } from './admission.ts'
 import { catalogOf, type Exts } from './apis.ts'
-import { furnish, packIn } from './box-setup.ts'
+import { furnish, packIn, placed } from './box-setup.ts'
 import { callsOf } from './calls.ts'
 import type { About, Held, InitEnd, Occupant, RunBox, RunLifecycle, Started, TauBoxes } from './ports.ts'
 import { HOST, type Caller, type Entry, type Registry } from './registry.ts'
@@ -124,11 +124,12 @@ export class TauRuns implements TauBoxes, RunLifecycle {
         prompt: setup.prompt,
         ...setup.init === undefined ? {} : { init: { command: setup.init, dir: setup.cwd } },
         promptRequestId: this.platform.newId(),
-        files: accepted.files,
+        files: placed(accepted, setup),
         cwd: setup.cwd,
         modules: setup.modules,
         apis: accepted.links.map(link => link.contract),
         exposed: accepted.exposed,
+        skills: accepted.skills,
         createdAt: this.platform.now().toISOString(),
       })
     } catch (error) {
@@ -157,11 +158,12 @@ export class TauRuns implements TauBoxes, RunLifecycle {
       const setup = await furnish(box, files.call, accepted)
       await this.registry.put({
         ...entry,
-        files: accepted.files,
+        files: placed(accepted, setup),
         cwd: setup.cwd,
         modules: setup.modules,
         apis: accepted.links.map(link => link.contract),
         exposed: accepted.exposed,
+        skills: accepted.skills,
         resetAt: this.platform.now().toISOString(),
       })
       const run = this.runs.get(sessionId)

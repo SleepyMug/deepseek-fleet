@@ -11,7 +11,10 @@
  * stdin ignored or given as data, stdout and stderr collected. Collected
  * output has no spill file, since a spill would sit on the host, where the
  * session's file tools do not look. Terminating it, or aborting its signal,
- * ends its group: SIGTERM, then SIGKILL after its grace period.
+ * ends its group: SIGTERM, then SIGKILL after its grace period. Its
+ * environment is what dsh gives it, but dsh's own variables, `DSH_*`, which
+ * tell of the host, such as its dsh home and its web UI's URL, and are
+ * false in a box.
  *
  * A terminal a tau's session opens, such as the web UI's sidebar terminal,
  * which dsh's terminal controller reaches through the session's agent, runs
@@ -38,7 +41,7 @@ import { HelperError } from '../box/helper.ts'
 import type { Held, Occupant, RunBox, TauBoxes } from '../tau/ports.ts'
 import type {} from '../services.ts'
 import { callerSession } from './caller.ts'
-import { BoxTerminal } from './terminal.ts'
+import { BoxTerminal, boxEnv } from './terminal.ts'
 
 export class BoxSubprocessRuntime extends SubprocessRuntime {
   static inject = ['fleetTauRuns', 'agents']
@@ -169,8 +172,7 @@ class BoxProcess implements SubprocessHandle {
     const out = new OutputCollector(stdout.maxBytes, 'stdout', undefined)
     const err = new OutputCollector(stderr.maxBytes, 'stderr', undefined)
     this.collected = { stdout: out, stderr: err }
-    const env: Record<string, string | null> = {}
-    for (const [key, value] of Object.entries(spec.env ?? {})) env[key] = value ?? null
+    const env = boxEnv(spec.env)
     const stdin = spec.stdio.stdin
     // The process occupies its box until it exits.
     const held = holdBox(runs, session, { kind: 'process', id: this.id })

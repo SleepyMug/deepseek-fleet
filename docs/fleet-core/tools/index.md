@@ -10,10 +10,12 @@ programs with bash's `node`, which import what its tau exposes
 
 `fleet-tau-tools` (`@sleepymug/fleet-core/tools/tau`), a dsh plugin that
 fleet-core's `cordis.patch.yml` mounts at the top, not in an agent preset,
-so every agent has what it registers, whatever its preset: one tool, and
-a system-prompt section, `tool:tau`, which is tau's `TAU.md` as its tau
-library has it, where the session has the tool, since the tool's
-description says what `tau_run` does, not what a tau is:
+so every agent has what it registers, whatever its preset: one tool; tau's
+primers, as its tau library has them, as two dsh skills (`primers.ts`):
+`tau`, its `TAU.md`, what a tau takes and what a run of one promises, and
+`tau-dev`, its `TAU_DEV.md`, how to make one; and a system-prompt section,
+`tool:tau`, where the session has the tool, which says it runs taus, and
+to load `tau` before running one and `tau-dev` before making one:
 
 | Tool | Takes | Gives |
 |---|---|---|
@@ -40,8 +42,24 @@ description says what `tau_run` does, not what a tau is:
   a list of paths, and each extra file, one the tau does not declare, with
   its mode, `{ mode, path, kind? }`; and `args`, JSON that fits the tau's
   schema, whose strings hold placeholders as tau's
-  docs/spec/placeholders.md has them, which the tool's description leaves
-  to TAU.md, the primer it adds to the system prompt.
+  docs/spec/placeholders.md has them.
+- **Its description says what a call is in `TAU.md`'s terms**, and what
+  fleet does that `TAU.md` leaves to a runtime: the run's agent is in a
+  container of its own, with copies of the files, and cannot ask anything;
+  its session is archived; a file it gave back replaces one at the path,
+  and a directory merges into one there, so what the agent removed from it
+  stays; a failed run changes none of the paths, though its API calls
+  stand; and calls in one message run at once, so each needs its own `out`
+  and `inout` paths. Its parameters say what the `tau` skill does of the
+  call's parts: the tau's directory, whose `PROMPT.md` and `tau.json` to
+  read first; each file's path, an `out`'s folder existing; and that an
+  arg names a file only by its placeholder, the agent seeing none of the
+  session's paths.
+- **tau's primers are skills**, which a session loads when it needs them,
+  rather than a section of every prompt: the runtime skills `tau` and
+  `tau-dev`, registered at the top, in dsh's skill registry, each the
+  file's text. A tau's session does not list them: the `tau` preset
+  shadows them, and its box has the files (docs/fleet-core/tau/index.md).
 - **Its history,** if `history` names a path, the session's working
   directory's if relative, is the run's session's history, as the
   service gives it (docs/fleet-core/tau/index.md): dsh's events, one JSON object per

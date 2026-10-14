@@ -110,11 +110,13 @@
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
-              prefix: You are an agent powered by the {{model}} model, running a TAU; its prompt is your task.
+              prefix: 'You are an agent powered by the {{model}} model, running a TAU, an agent packaged as a directory: its prompt, the first user message, is your task.'
 
-          # Where the model works, its box and the run's folders, in place of
-          # dsh's sections about the host, which are false in a box; and none
-          # of the host's tools, which every session has, such as tau_run.
+          # Where the model works, its box and the run's files, how its run
+          # ends, and what it runs programs with, in place of dsh's sections
+          # about the host, which are false in a box; none of the host's
+          # tools, which every session has, such as tau_run; and none of the
+          # skills of tau's primers, which the box has as files.
           - id: tau-prompt
             name: '@sleepymug/fleet-core/preset/prompt'
 
@@ -146,15 +148,20 @@
                 name: '@sleepymug/fleet-core/world/box-subprocess'
 
               # The `ctx.shell` of the tools below, which runs bash through
-              # the box's subprocess runtime above.
+              # the box's subprocess runtime above. A command runs until it
+              # ends, as long as Node can wait, unless the model gives it a
+              # timeout: a program that runs taus waits for each, and a run is
+              # cancelled through dsh, which a later design of limits may
+              # bound.
               - id: bash-local
                 name: '@deepseek-ai/dsh-bash-local'
                 config:
-                  timeoutMs: 60000
+                  timeoutMs: 2147483647
+                  maxTimeoutMs: 2147483647
 
-              # bash, foreground only: nothing it starts outlives its call. A
-              # command past its timeout is killed rather than moved to the
-              # background.
+              # bash, foreground only: a call waits for its command. A command
+              # past its timeout is killed rather than moved to the background;
+              # what it started in the background of its own keeps running.
               - id: tool-bash
                 name: '@deepseek-ai/dsh-tool-bash'
                 config:
