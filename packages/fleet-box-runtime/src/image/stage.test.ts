@@ -75,6 +75,35 @@ test('each package is copied once, linked to exactly the instances it resolved w
   })
 })
 
+test('a peer that is not installed is the one dsh gives, which is asked for only then, and once', async () => {
+  // A dsh profile's layout: fs, installed, leaves its peers llm and brand to dsh.
+  await withTree({
+    'app/package.json': { name: 'app', version: '0.0.0', files: ['lib'], dependencies: { fs: '1', other: '1' } },
+    'app/lib/main.js': '',
+    'app/node_modules/fs/package.json': { name: 'fs', version: '1.0.0', peerDependencies: { llm: '1', brand: '1' } },
+    'app/node_modules/other/package.json': { name: 'other', version: '1.0.0', peerDependencies: { brand: '1' } },
+    'dsh/node_modules/llm/package.json': { name: 'llm', version: '1.0.0', dependencies: { util: '1' } },
+    'dsh/node_modules/util/package.json': { name: 'util', version: '1.0.0' },
+    'dsh/node_modules/brand/package.json': { name: 'brand', version: '1.0.0' },
+  }, async (root) => {
+    let asked = 0
+    const dsh = (): Promise<Map<string, string>> => {
+      asked++
+      return Promise.resolve(new Map(['llm', 'brand'].map(name => [name, join(root, 'dsh/node_modules', name)])))
+    }
+    const target = join(root, 'staged')
+    await stagePackage(join(root, 'app'), target, process.arch, dsh)
+    assert.equal(asked, 1)
+    const fs = createRequire(join(target, 'lib/main.js')).resolve('fs/package.json')
+    assert.equal(versionFrom(fs, 'llm'), '1.0.0')
+    assert.equal(versionFrom(fs, 'brand'), '1.0.0')
+    assert.equal(versionFrom(createRequire(fs).resolve('llm/package.json'), 'util'), '1.0.0', 'what dsh\'s package depends on is staged with it')
+
+    await stagePackage(join(root, 'dsh/node_modules/llm'), join(root, 'staged-llm'), process.arch, dsh)
+    assert.equal(asked, 1, 'dsh is not asked while every peer is installed')
+  })
+})
+
 test('a source tree is copied as pnpm packs it, less what its files exclude', async () => {
   await withTree({
     'app/package.json': { name: 'app', version: '0.0.0', files: ['lib', '!lib/**/*.test.*'], main: 'main.js', bin: { app: 'bin/app.js' } },
@@ -98,11 +127,13 @@ test('a source tree is copied as pnpm packs it, less what its files exclude', as
 })
 
 test('what cannot be copied faithfully is refused', async () => {
-  const refused = (manifest: object, extra: Record<string, string | object>, arch: string, message: RegExp): Promise<void> => withTree(
+  const refused = (manifest: object, extra: Record<string, string | object>, arch: string, message: RegExp, dsh?: Map<string, string>): Promise<void> => withTree(
     { 'app/package.json': { name: 'app', version: '0.0.0', files: ['lib'], ...manifest }, 'app/lib/main.js': '', ...extra },
-    root => assert.rejects(stagePackage(join(root, 'app'), join(root, 'staged'), arch), message),
+    root => assert.rejects(stagePackage(join(root, 'app'), join(root, 'staged'), arch, () => Promise.resolve(dsh)), message),
   )
-  await refused({ dependencies: { gone: '1' } }, {}, process.arch, /depends on gone, which is not installed/u)
+  await refused({ dependencies: { gone: '1' } }, {}, process.arch, /depends on gone, which is not installed where it can find it$/u, new Map([['gone', '/']]))
+  await refused({ peerDependencies: { gone: '1' } }, {}, process.arch, /depends on gone, which is not installed where it can find it, and no dsh on the PATH gives it/u)
+  await refused({ peerDependencies: { gone: '1' } }, {}, process.arch, /depends on gone, which is not installed where it can find it, nor does the dsh on the PATH give it/u, new Map())
   await refused({ files: undefined }, {}, process.arch, /without "files"/u)
   await refused({ files: ['lib/*.js'] }, {}, process.arch, /is a pattern/u)
   await refused({ files: ['dist'] }, {}, process.arch, /dist, listed in its "files", does not exist; build the package first/u)

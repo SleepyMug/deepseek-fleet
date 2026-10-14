@@ -1,10 +1,10 @@
 # Installing fleet
 
-Fleet is dsh bundles, installed in a dsh profile with dsh's web app, such
-as dsh's own `web` profile, whose sessions stay as dsh has them; a box
-image, built from what that profile installed; tau's command, `tau`,
-whose fleet adaptor runs taus on the profile's service; and `fleet`, a
-command of its own. Each package is published as `@sleepymug/<name>`, all but
+Fleet is dsh bundles in a dsh profile with dsh's web app, such as dsh's
+own `web` profile, whose sessions stay as dsh has them; a box image built
+from what that profile installed; tau's command, `tau`, whose fleet
+adaptor runs taus on the profile's service; and `fleet`, a command of its
+own. Each package is published as `@sleepymug/<name>`, all but
 fleet-trace, which runs on a checkout only (docs/fleet-trace/index.md).
 
 ## From npm
@@ -18,35 +18,36 @@ On linux, with Docker and pnpm on the PATH:
    npm install --global @deepseek-ai/dsh@0.2.0-rc.2
    ```
 
-   With pnpm, `pnpm add --global @deepseek-ai/dsh@0.2.0-rc.2`, and then
-   `pnpm approve-builds --global` for dsh's native dependencies, such as
-   node-pty, which pnpm installs without building until they are approved.
+   With pnpm, `pnpm add --global @deepseek-ai/dsh@0.2.0-rc.2`, then
+   `pnpm approve-builds --global` for dsh's native dependencies.
 
-2. fleet-core, after dsh's base and web bundles, which `web` lists; then
-   each extension, after fleet-core. dsh makes the `web` profile from its
-   template if it has none yet:
+2. fleet-core, with fleet-box-runtime, whose command builds the image;
+   then each extension, after fleet-core. dsh makes the `web` profile from
+   its template if it has none yet:
 
    ```
-   dsh plugin --profile web add @sleepymug/fleet-core
+   dsh plugin --profile web add --allow-build=node-pty --allow-build=koffi @sleepymug/fleet-core @sleepymug/fleet-box-runtime
    dsh plugin --profile web add @sleepymug/fleet-ext-tau @sleepymug/fleet-ext-notes
    ```
+
+   The first approves the native builds fleet-box-runtime needs. Without
+   them pnpm fails the add after installing, and dsh, which turns on the
+   bundles of the packages an add brings only when it succeeds, never turns
+   them on: remove the packages with `dsh plugin --profile web remove`,
+   and add them again. dsh says once that fleet-box-runtime is no bundle.
 
    A profile of its own works the same, made from dsh's web template
    first: `dsh --profile <name> --from-default-profile web --dump-config >
    /dev/null`.
 
-3. The box image, built by the profile's own fleet-box-runtime, which the
-   host runs in each box (docs/fleet-box-runtime/image/index.md). Listing
-   it in the profile, beside fleet-core, gives the profile its command;
-   it is no bundle, which dsh says once. Each package is published at the
-   version of the others, so the two are one install:
+3. The box image, from what the profile installed, with the packages it
+   leaves to dsh from the install of the `dsh` on the PATH
+   (docs/fleet-box-runtime/image/index.md). Build it again after each
+   update of the profile or of dsh:
 
    ```
-   dsh plugin --profile web add @sleepymug/fleet-box-runtime
    dsh plugin --profile web exec fleet-box-image
    ```
-
-   Build it again after each update of the profile.
 
 4. tau's command, `tau`, which runs taus through its fleet adaptor on the
    profile's service (tau's docs/spec/fleet.md), and `fleet`, which shows
@@ -69,11 +70,10 @@ fleet <tau-dir> --call <call.json>`, or `tau run` with `TAU_ADAPTOR=fleet`,
 runs a tau. Each session the web UI makes has `tau_run`, which runs one
 too, where its sandbox lets it write (docs/fleet-core/tools/index.md).
 
-Each extension implements a contract, which it depends on, such as
-`@sleepymug/tau-api-notes`, published beside fleet-ext-notes, so a tau that
-holds a copy of it runs. A tau holds a copy of a contract as its package
-is published, its `package.json` and its declarations, in `api/<alias>/`
-(tau's docs/spec/apis.md):
+A tau that uses an extension's API holds a copy of its contract, the
+package the extension depends on, such as `@sleepymug/tau-api-notes` for
+fleet-ext-notes, as published, in `api/<alias>/` (tau's
+docs/spec/apis.md):
 
 ```
 mkdir -p <tau-dir>/api/notes
@@ -89,8 +89,7 @@ npm pack @sleepymug/tau-api-notes && tar -xzf sleepymug-tau-api-notes-*.tgz --st
 
 tau is a submodule, `tau/`, at the commit this checkout builds on; the
 workspace takes in its library, with its `tau` command, and its contracts
-(pnpm-workspace.yaml). dsh is a dsh installed globally, as from npm
-above, at the version fleet's packages name as their peer; or the
+(pnpm-workspace.yaml). dsh is one installed globally, as above, or the
 workspace's own, which it pins, run as `pnpm exec dsh` in place of `dsh`.
 
 1. Clone with the submodule, or fetch it in a clone made without:
@@ -100,18 +99,15 @@ workspace's own, which it pins, run as `pnpm exec dsh` in place of `dsh`.
    git submodule update --init
    ```
 
-2. Install at the root only: `pnpm install` inside `tau/` installs it on
-   its own again, from its own lockfile, and the next install at the root
-   switches it back. Then build: `pnpm image` builds the workspace, tau
-   first, as a member of it, and then the box image:
+2. Install at the root only, since an install inside `tau/` installs it
+   on its own until the next one at the root. `pnpm image` builds the
+   workspace, tau first, then the box image; `pnpm build` the workspace
+   alone. Build the image again after each change to fleet-box-runtime:
 
    ```
    pnpm install
    pnpm image
    ```
-
-   `pnpm build` builds the workspace alone. Build the image again after
-   each change to fleet-box-runtime.
 
 3. Link the checkout's bundles into a profile, fleet-core first, from the
    checkout's root:
@@ -120,12 +116,10 @@ workspace's own, which it pins, run as `pnpm exec dsh` in place of `dsh`.
    dsh plugin --profile web add ./packages/fleet-core ./ext/fleet-ext-tau ./ext/fleet-ext-notes
    ```
 
-   The profile links each package, so a build of the checkout is what dsh
-   loads when it starts next. Each package declares the dsh packages whose
-   instances it shares with dsh as its peers, and as its dev dependencies,
-   so a linked checkout loads dsh's own, the installed dsh's, and keeps
-   the workspace's for its builds and tests (dsh's
-   docs/user/develop/basic/publish.md).
+   dsh then loads the checkout's latest build each time it starts. A
+   linked package loads the dsh packages it declares as peers from the
+   installed dsh, and keeps the workspace's, its dev dependencies, for its
+   builds and tests (dsh's docs/user/develop/basic/publish.md).
 
 4. Run the host, and the commands from the checkout:
 

@@ -1,7 +1,8 @@
 /**
  * Building the box image: this package's Dockerfile, with the package
  * staged beside it as it would be packed, with every package it depends on
- * as installed here (./stage.ts). Build the package first.
+ * as installed here, and the peers it leaves to dsh as the dsh on the PATH
+ * gives them (./stage.ts). Build the package first.
  * @module @sleepymug/fleet-box-runtime/image/build
  */
 
@@ -12,6 +13,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from '../layout.ts'
+import { dshPackages } from './dsh.ts'
 import { stagePackage } from './stage.ts'
 
 /** This package's folder. */
@@ -38,7 +40,7 @@ export async function buildImage(options: BuildOptions = {}): Promise<void> {
     // The image runs on the Docker server's architecture, which the staged packages must be installed for.
     const arch = await output(docker, ['version', '--format', '{{.Server.Arch}}'])
     await cp(join(PACKAGE_DIR, 'Dockerfile'), join(context, 'Dockerfile'))
-    await stagePackage(PACKAGE_DIR, join(context, 'fleet'), NODE_ARCH[arch] ?? arch)
+    await stagePackage(PACKAGE_DIR, join(context, 'fleet'), NODE_ARCH[arch] ?? arch, () => dshPackages())
     // A provenance attestation records when it was built, which gives an unchanged build a new id.
     await run(docker, ['build', '--provenance=false', '--tag', tag, context])
   } finally {

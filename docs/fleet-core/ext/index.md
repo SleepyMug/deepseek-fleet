@@ -72,6 +72,9 @@ export function apply(ctx: Context) {
   its own files, Node's modules, and fleet's client runtime,
   `@sleepymug/fleet-box-runtime/ext/client`, which the box finds in its link tree. A
   client that needs a package bundles it.
+- **fleet-core and fleet-box-runtime are an extension's peers**: its
+  plugin imports fleet-core on the host, and its client fleet-box-runtime
+  in the box, each the one the profile installs, which the box links.
 - **An extension says which contract it implements, and at which
   version.** A run links each API to the extension of its contract whose
   version serves the tau's copy, as tau's `serves` has it, and is refused

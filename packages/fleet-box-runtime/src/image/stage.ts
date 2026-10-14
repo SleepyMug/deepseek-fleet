@@ -4,10 +4,12 @@
  * from the package that depends on it, as installed on this machine by
  * whatever laid them out (this workspace, pnpm or npm). The copy takes
  * pnpm's layout, which holds several versions of a name without hoisting,
- * and in which a package reaches only what it declares. Nothing is installed
- * or compiled for the image, so it runs what the host runs; since the
- * package manager chose the platform-specific packages for this machine, the
- * image must be linux on its architecture.
+ * and in which a package reaches only what it declares. A peer that is not
+ * installed, as a dsh profile leaves dsh's own packages to dsh, is the one
+ * dsh gives the package instead (./dsh.ts). Nothing is installed or compiled
+ * for the image, so it runs what the host runs; since the package manager
+ * chose the platform-specific packages for this machine, the image must be
+ * linux on its architecture.
  * @module @sleepymug/fleet-box-runtime/image/stage
  */
 
@@ -40,29 +42,35 @@ interface Installed {
   dependencies: Map<string, Installed>
 }
 
+/** The packages dsh gives a profile, by name, at their real paths; none without a dsh. */
+export type DshPackages = () => Promise<ReadonlyMap<string, string> | undefined>
+
 /**
  * Copy the package at `root` to `target`, and every package it depends on,
  * as installed, to `target`/node_modules.
  * @param arch - the image's architecture, in Node's naming.
+ * @param dsh - asked once a peer is not installed; by default, none.
  */
-export async function stagePackage(root: string, target: string, arch: string): Promise<void> {
+export async function stagePackage(root: string, target: string, arch: string, dsh: DshPackages = () => Promise.resolve(undefined)): Promise<void> {
   if (process.platform !== 'linux' || process.arch !== arch) {
     throw new Error(`fleet: the packages are installed for ${process.platform}-${process.arch}, and the image is linux-${arch}: build it on linux-${arch}`)
   }
-  await layOut(await installedClosure(await realpath(root), arch), target)
+  await layOut(await installedClosure(await realpath(root), arch, dsh), target)
 }
 
 /**
  * The package at `root`, then everything its dependencies resolve to,
  * breadth first. Each dependency is looked up the way Node looks it up from
  * the depending package's real folder, so it is the instance that package
- * gets where it is installed, whatever the layout. As a package manager
- * would for the image's platform, an optional dependency that is missing or
- * not for that platform is left out.
+ * gets where it is installed, whatever the layout; a peer not installed
+ * there, the one dsh has. As a package manager would for the image's
+ * platform, an optional dependency that is missing or not for that platform
+ * is left out.
  */
-async function installedClosure(root: string, arch: string): Promise<Installed[]> {
+async function installedClosure(root: string, arch: string, dsh: DshPackages): Promise<Installed[]> {
   const packages: Installed[] = []
   const byDir = new Map<string, Installed>()
+  let fromDsh: ReturnType<DshPackages> | undefined
   const load = async (dir: string, optional: boolean): Promise<Installed | undefined> => {
     const known = byDir.get(dir)
     if (known !== undefined) return known
@@ -85,8 +93,15 @@ async function installedClosure(root: string, arch: string): Promise<Installed[]
     const names = new Set([...Object.keys(dependencies ?? {}), ...Object.keys(optionalDependencies ?? {}), ...Object.keys(peerDependencies ?? {})])
     for (const name of names) {
       const optional = optionalDependencies?.[name] !== undefined || peerDependenciesMeta?.[name]?.optional === true
-      const dir = await locate(pkg.dir, name)
-      if (dir === undefined && !optional) throw new Error(`fleet: ${pkg.name}@${pkg.version} depends on ${name}, which is not installed where it can find it`)
+      let dir = await locate(pkg.dir, name)
+      if (dir === undefined && !optional) {
+        const missing = `fleet: ${pkg.name}@${pkg.version} depends on ${name}, which is not installed where it can find it`
+        if (dependencies?.[name] !== undefined) throw new Error(missing)
+        const given = await (fromDsh ??= dsh())
+        if (given === undefined) throw new Error(`${missing}, and no dsh on the PATH gives it`)
+        dir = given.get(name)
+        if (dir === undefined) throw new Error(`${missing}, nor does the dsh on the PATH give it`)
+      }
       const dependency = dir === undefined ? undefined : await load(dir, optional)
       if (dependency !== undefined) pkg.dependencies.set(name, dependency)
     }
@@ -95,7 +110,7 @@ async function installedClosure(root: string, arch: string): Promise<Installed[]
 }
 
 /** Where Node finds package `name` from `dir`: the first `node_modules/<name>` walking up, as a real path. */
-async function locate(dir: string, name: string): Promise<string | undefined> {
+export async function locate(dir: string, name: string): Promise<string | undefined> {
   for (let at = dir; ; at = dirname(at)) {
     if (basename(at) !== 'node_modules') {
       const candidate = join(at, 'node_modules', name)

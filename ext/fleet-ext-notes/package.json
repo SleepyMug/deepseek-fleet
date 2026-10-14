@@ -37,6 +37,8 @@
     "@sleepymug/fleet-box-runtime": "workspace:*"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.4"
+    "@deepseek-ai/cordis": "4.0.4",
+    "@sleepymug/fleet-core": "workspace:*",
+    "@sleepymug/fleet-box-runtime": "workspace:*"
   }
 }

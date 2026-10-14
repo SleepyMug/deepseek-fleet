@@ -43,6 +43,13 @@ Builds the box image: a Node base image with fleet's runtime on top.
     dependency once under `node_modules/.store/<name>@<version>`, and links
     for what each package declares. So every package gets the same instances
     it gets on the host, and nothing else.
+  - A peer that is not installed is the one dsh gives the package: a dsh
+    profile leaves dsh's own packages to dsh, which resolves them from its
+    install. That install is the `dsh` on the PATH's, npm's link to its
+    bin or pnpm's shim, which names it, and each name is the first found
+    in its dependencies and peers, breadth first, as dsh collects them
+    (`dsh.ts`). dsh is looked for only once a peer is missing, so a
+    checkout, whose workspace installs dsh, needs none.
   - The host's package manager chose platform-specific packages for the
     host, so the image must be linux on the host's architecture. Optional
     dependencies for other platforms are left out.
@@ -67,6 +74,7 @@ rebuild.
 The command builds from the package it is in, as installed, so it runs from
 the install the host runs: in a profile installed from npm, one that lists
 this package beside fleet-core, `dsh plugin --profile web exec
-fleet-box-image` (docs/install.md).
+fleet-box-image`, with the `dsh` that runs the host on the PATH
+(docs/install.md).
 
 Not yet: a build is tagged without checking its helper first.
