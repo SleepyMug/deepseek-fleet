@@ -23,7 +23,7 @@ declares is linked to the client of the extension that implements it
 
 ## Provides
 
-Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
+Three dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 - `fleet-tau-runs` (`@sleepymug/fleet-core/tau/runs-plugin`): the runs of taus and
   their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It builds on the
@@ -32,6 +32,30 @@ Two dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
   box's setup by the box's runtime (`box-setup.ts`), the registry
   (`registry.ts`), each session's box (`session-box.ts`), and the calls of
   its clients (`calls.ts`).
+- `fleet-tau-model` (`@sleepymug/fleet-core/tau/model-plugin`): the model
+  every tau's session runs on (`model.ts`), as `ctx.fleetTauModel`, which
+  the `tau` preset applies (below). Its config is the model's fields
+  alone, each unset by default, to follow dsh's default model, which a
+  person picks in the web UI:
+
+  | Field | What it is |
+  |---|---|
+  | `provider`, `model` | The route, together, as dsh's model picker names them: a provider of dsh's and its id of a model. |
+  | `reasoningEffort` | The reasoning effort, as the provider names it; unset, the route's own, or, without a route, dsh's default's. |
+
+  A profile sets them with a row of its own, which replaces the row's
+  whole config, so it states nothing else:
+
+  ```yaml
+  - id: fleet-tau-model
+    config: { provider: openai-codex, model: gpt-6-astra, reasoningEffort: high }
+  ```
+
+  Each field is volatile, so a change, in the profile's patch or through
+  dsh's settings, reaches each session's next request, and mounts nothing
+  again. A provider without its model, or a model without its provider,
+  fails the plugin as it loads, or, changed later, each request of a
+  tau's session.
 - `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
   registry and its agents, and serves its requests (`wire.ts`) with tau's
@@ -69,7 +93,8 @@ with tau's client and its fleet adaptor:
 The patch also declares `tau`, the agent preset a tau's session has, last
 in the web UI's list: a persona, the tau's prompt plugin
 (`@sleepymug/fleet-core/preset/prompt`), the box's reset notice
-(`@sleepymug/fleet-core/preset/reset`), the tools as they are, whatever the
+(`@sleepymug/fleet-core/preset/reset`), the model
+(`@sleepymug/fleet-core/preset/model`), the tools as they are, whatever the
 host presents; in its `box` group, its world, the box's file system and
 subprocess runtime (docs/fleet-core/world/index.md), and over them dsh's
 local bash, bash in the foreground only, whose commands run until they
@@ -365,6 +390,20 @@ boxes:
   `timeoutMs`, and long output written to a file. And it drops the `skill`
   tool for a tau without skills. The web UI's own sessions keep dsh's
   whole prompt.
+- **The model** of a tau's session (`preset/model.ts`) is
+  `ctx.fleetTauModel`'s, read as each step's system prompt is assembled:
+  the step's request goes to its route, with its effort, or with none, the
+  route's own, as dsh's default's effort is not the route's; or, without a
+  route, to dsh's default, with its effort, if it has one. The prompt names
+  the model it goes to, as the persona's `{{model}}`, and the request goes
+  where the prompt said, so a change waits for the next step. dsh's session
+  controller gives every session dsh's default, through the same two
+  waterfalls, `system-prompt/assemble` and `agent/request`, with listeners
+  it registers in the agent's scope before dsh mounts the preset; the
+  preset's are prepended, so they wrap the controller's and have the last
+  word. The session's log keeps the request's header as they made it,
+  which the controller follows after the first request, so it tells the
+  model of no switch. The web UI's own sessions keep dsh's default.
 - **Its tools are its preset's.** Each tool registered at the top, for
   every session, such as `tau_run`, works on the host, so the prompt plugin
   hides each from the preset's agents (`ctx.tools.restrict`, in the
@@ -492,6 +531,13 @@ boxes:
   host's `tau finish` asks again when run again.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
+- A model a person picks in a tau's session in the web UI does not take
+  its requests while `fleet-tau-model` names a route, and dsh, which
+  waits for a request to the model picked, tells the model of a switch at
+  each step; it still becomes dsh's default, as a pick in any session
+  does. Each session has `fleet-tau-model`'s model, none a model of its
+  own, and the web UI has no page for its fields, which dsh's settings
+  serve.
 - The `tau` preset is in the web UI's list of presets, and its settings'
   default, since dsh has no hidden preset; a session given it fails each
   step.
@@ -520,6 +566,9 @@ boxes:
   (`@deepseek-ai/dsh-api-session-controller`, `@deepseek-ai/dsh-workspace`,
   `@deepseek-ai/dsh-agent`), and `@deepseek-ai/dsh-permission-presets`,
   for a session's full access.
+- dsh's `agent/request` (`@deepseek-ai/dsh-agent`) and
+  `system-prompt/assemble` (`@deepseek-ai/dsh-system-prompt`) for the
+  model, and `@deepseek-ai/schemastery` for its volatile config.
 - `@deepseek-ai/dsh-agent-preset`, `dsh-agent-tool-presentation`,
   `dsh-bash-local`, `dsh-tool-bash`, `dsh-tool-fs`, `dsh-skill-filesystem`
   and `dsh-tool-skill` for the `tau` preset, and `@deepseek-ai/dsh-tools`

@@ -76,6 +76,19 @@
 # ═══ fleet-tau, and tau_run ═══
 
 - insert:
+    # `ctx.fleetTauModel`: the model every tau's session runs on, which the
+    # `tau` preset's tau-model applies to each request: `provider` and
+    # `model` together, as dsh's model picker names them, and
+    # `reasoningEffort`, each unset to follow dsh's default model, which a
+    # person picks in the web UI. A profile sets them with a row of its own,
+    # whose config replaces this one's whole, such as
+    #   - id: fleet-tau-model
+    #     config: { provider: openai-codex, model: gpt-6-astra, reasoningEffort: high }
+    # and a change, there or through dsh's settings, reaches each session's
+    # next request.
+    - id: fleet-tau-model
+      name: '@sleepymug/fleet-core/tau/model-plugin'
+
     # The socket `fleet` talks to, $DSH_HOME/fleet/tau.sock, which makes a
     # run's session through dsh's session controller.
     - id: fleet-tau
@@ -124,6 +137,11 @@
           # if it is gone, as after an archive, which the model is told once.
           - id: tau-reset
             name: '@sleepymug/fleet-core/preset/reset'
+
+          # Each request on the model fleet-tau-model's config names, and
+          # the system prompt naming it, in place of dsh's default.
+          - id: tau-model
+            name: '@sleepymug/fleet-core/preset/model'
 
           # The tools as they are, whatever the host presents (dsh's
           # DSH_TOOLS_MODE): a program the model writes runs in the box, with

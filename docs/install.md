@@ -66,6 +66,16 @@ fleet <tau-dir> --call <call.json>`, or `tau run` with `TAU_ADAPTOR=fleet`,
 runs a tau. Each session the web UI makes has `tau_run`, which runs one
 too, where its sandbox lets it write (docs/fleet-core/tools/index.md).
 
+A tau's session runs on dsh's default model, which the web UI's model
+picker sets, unless the profile names one for every tau's session, in its
+`cordis.patch.yml`, `~/.dsh/profiles/web/cordis.patch.yml` for the `web`
+profile (docs/fleet-core/tau/index.md):
+
+```yaml
+- id: fleet-tau-model
+  config: { provider: openai-codex, model: gpt-6-astra, reasoningEffort: high }
+```
+
 A tau that uses an extension's API holds a copy of its contract, the
 package the extension depends on, such as `@sleepymug/tau-api-notes` for
 fleet-ext-notes, as published, in `api/<alias>/` (tau's

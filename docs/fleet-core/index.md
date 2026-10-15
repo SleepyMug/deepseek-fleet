@@ -36,8 +36,8 @@ together; each part's page is what it does.
 - **The plugins put the parts together.** Each dsh plugin checks its
   config, builds its parts on the services it injects, and provides them;
   `services.ts` declares every service fleet-core provides on dsh's
-  context, `ctx.fleetExts`, `ctx.fleetTauRuns` and `ctx.fleetTau`, which a
-  plugin that uses one declares with
+  context, `ctx.fleetExts`, `ctx.fleetTauRuns`, `ctx.fleetTauModel` and
+  `ctx.fleetTau`, which a plugin that uses one declares with
   `import type {} from '@sleepymug/fleet-core/services'`.
 - **One dsh home.** A plugin's config names the dsh home, and `paths.ts`
   gives every place in it: the registry of the runs, `fleet/taus/`; the

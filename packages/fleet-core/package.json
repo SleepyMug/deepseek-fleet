@@ -38,6 +38,14 @@
       "types": "./lib/preset/prompt.d.ts",
       "default": "./lib/preset/prompt.js"
     },
+    "./preset/model": {
+      "types": "./lib/preset/model.d.ts",
+      "default": "./lib/preset/model.js"
+    },
+    "./tau/model-plugin": {
+      "types": "./lib/tau/model-plugin.d.ts",
+      "default": "./lib/tau/model-plugin.js"
+    },
     "./tau/runs-plugin": {
       "types": "./lib/tau/runs-plugin.d.ts",
       "default": "./lib/tau/runs-plugin.js"
@@ -116,7 +124,8 @@
     "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-workspace": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-workspace": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -142,6 +151,7 @@
     "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-workspace": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-workspace": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4"
   }
 }
