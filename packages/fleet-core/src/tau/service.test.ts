@@ -180,7 +180,7 @@ const added: { args: unknown[]; sessionId: string }[] = []
  * `exts` says otherwise, an extension of @test/notes whose client is the
  * fixture's, and whose `add` records its call.
  */
-function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes, exts?: Exts, idleStopMs?: number, keepSessions?: () => boolean): TauService & { tauRuns: TauRuns } {
+function make(work: string, log: (message: string) => void, sessions: Sessions, boxes?: Boxes, exts?: Exts, idleStopMs?: number): TauService & { tauRuns: TauRuns } {
   let provided = exts
   if (provided === undefined) {
     const own = new FleetExts()
@@ -199,7 +199,7 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
   }
   const platform = systemPlatform(log)
   const runs = new TauRuns({ registry: new Registry(join(work, 'taus')), exts: provided, platform, ...boxes === undefined ? {} : { boxes }, ...idleStopMs === undefined ? {} : { idleStopMs } })
-  return Object.assign(new TauService({ runs, sessions, platform, ...keepSessions === undefined ? {} : { keepSessions } }), { tauRuns: runs })
+  return Object.assign(new TauService({ runs, sessions, platform }), { tauRuns: runs })
 }
 
 /**
@@ -297,12 +297,6 @@ class FakeSessions implements Sessions {
 
   archive(sessionId: string): Promise<void> {
     return this.record('archive', `archive ${sessionId}`)
-  }
-
-  /** Stop a session's agent, which ends its work, as the user's stop does. */
-  async stop(sessionId: string): Promise<void> {
-    await this.record('stop', `stop ${sessionId}`)
-    this.end(sessionId, { ok: false, text: '', failure: 'the turn was cancelled' })
   }
 
   settled(sessionId: string, signal: AbortSignal): Promise<Result> {
@@ -793,48 +787,6 @@ test('releasing archives the session before it removes the box, and a failed arc
   await assert.rejects(service.finish(HOST, sessionId, new AbortController().signal), /no tau session/u)
   await service.close()
   assert.deepEqual(await readdir(join(work, 'taus')), [])
-})
-
-test('with keepSessions, a release stops the session\'s work and keeps it, its box and its entry, which no caller reaches since, until the session is archived', async (t) => {
-  const { work, tauDir, call } = await fixture(t)
-  const sessions = new FakeSessions()
-  const boxes = new FakeBoxes(work)
-  let keep = true
-  const service = make(work, () => {}, sessions, boxes, undefined, undefined, () => keep)
-  const registry = new Registry(join(work, 'taus'))
-  const { sessionId: parent, box } = await startIn(service, HOST, tauDir, call, work)
-  const { sessionId: child } = await startIn(service, from(parent), tauDir, call, work)
-  sessions.calls.length = 0
-
-  await service.release(HOST, parent)
-  // The runs it started first, as without it; none is archived.
-  assert.deepEqual(sessions.calls, [`stop ${child}`, `stop ${parent}`])
-  assert.ok(boxes.existing.has(box))
-  assert.notEqual((await registry.get(parent)).releasedAt, undefined)
-  assert.deepEqual(await service.list(HOST), [])
-  const signal = new AbortController().signal
-  for (const reach of [() => service.status(HOST, parent), () => service.finish(HOST, parent, signal), () => service.release(HOST, parent)]) {
-    await assert.rejects(reach, /no tau session/u)
-  }
-  // Its run ends as its stopped agent did, and its box stops, as any run's.
-  while ((await registry.get(parent)).ended === undefined) await delay(5)
-  assert.deepEqual((await registry.get(parent)).ended?.result, { ok: false, text: '', failure: 'the turn was cancelled' })
-  // The session is a tau's still, its box set up for it.
-  assert.equal((await service.tauRuns.boxFor(parent))?.container, box)
-
-  // Archiving the session, as a person does, removes its box, and keeps its entry.
-  await service.followArchive(new Set([parent]))
-  assert.ok(!boxes.existing.has(box))
-  await registry.get(parent)
-
-  // The switch is read at each release.
-  keep = false
-  const { sessionId: other, box: otherBox } = await startIn(service, HOST, tauDir, call, work)
-  sessions.calls.length = 0
-  await service.release(HOST, other)
-  assert.deepEqual(sessions.calls, [`archive ${other}`])
-  assert.ok(!boxes.existing.has(otherBox))
-  await service.close()
 })
 
 /** A tau's session as the caller of the runs it starts from its box. */

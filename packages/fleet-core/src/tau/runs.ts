@@ -261,11 +261,6 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     await this.registry.update(sessionId, { finishedAt: this.platform.now().toISOString() })
   }
 
-  /** Record that a session's run was released, its session and box kept, as its own entry, folder and result are. */
-  async released(sessionId: string): Promise<void> {
-    await this.registry.update(sessionId, { releasedAt: this.platform.now().toISOString() })
-  }
-
   isTau(sessionId: string): boolean {
     return this.runs.has(sessionId)
   }

@@ -61,7 +61,7 @@ export function apply(ctx: Context): void {
     name: 'tau_run',
     description: 'Run a TAU, as its caller, with a call: its files and its args (the `tau` skill). Its agent does the task in a container '
       + 'of its own, with copies of the files you give, and cannot ask you anything; a run may take minutes. Waits until the run ends, '
-      + 'and returns { sessionId, ok, text, failure? }: its session, which you cannot continue, whether it succeeded, '
+      + 'and returns { sessionId, ok, text, failure? }: its archived session, which you cannot continue, whether it succeeded, '
       + 'its agent\'s final text, and why it failed. If it succeeded, what its agent left at each out and inout file is put at your path: '
       + 'a file replaces one there, and a directory merges into one there, so what the agent removed from it stays. '
       + 'A failed run changes none of your paths, whatever its text says, but what its API calls did stands. '

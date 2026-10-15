@@ -96,14 +96,6 @@
       name: '@sleepymug/fleet-core/tau/plugin'
       config:
         dshHome: !!js dshHomePath()
-        # Whether a run's release keeps its session in its workspace, not
-        # archived, with its box, for a person to go on with in the web UI,
-        # until they archive it. A profile turns it on restating the whole
-        # config, since a patch replaces it:
-        #   - id: fleet-tau
-        #     config: { dshHome: !!js dshHomePath(), keepSessions: true }
-        # and a change reaches the next release.
-        keepSessions: false
 
     # tau_run: run a tau, as `fleet run` does, as this session's child
     # (docs/fleet-core/tools/index.md), for every session, whatever its

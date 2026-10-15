@@ -132,8 +132,6 @@ export interface RunLifecycle {
   result(sessionId: string): Promise<AsyncIterable<Uint8Array>>
   /** Record that a `finish` first gave back how a session's run ended. */
   finished(sessionId: string): Promise<void>
-  /** Record that a session's run was released, its session and box kept. */
-  released(sessionId: string): Promise<void>
   /** Stop a session's box as soon as nothing occupies it. */
   stopWhenVacant(sessionId: string): Promise<void>
   /** Remove a session's box while the session is archived, keeping its entry and result. */
