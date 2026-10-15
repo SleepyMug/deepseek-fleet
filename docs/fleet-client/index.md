@@ -41,7 +41,8 @@ tau release fleet:<session id>                           drop it: archive its se
 
 With fleet-tau's `keepSessions` (docs/fleet-core/tau/index.md), a release
 keeps the session, and its box, for a person to go on with in the web UI.
-`$TAU_ADAPTOR=fleet` makes the fleet adaptor the default. `tau` keeps each
+`$TAU_ADAPTOR=fleet`, or `adaptor: fleet` in tau's config file,
+`~/.config/tau/config.yaml`, makes the fleet adaptor the default. `tau` keeps each
 run it started, where its outputs go, in its state folder until it is
 released, so `finish` and `release` work from any folder; interrupting
 `tau run` releases the run (tau's docs/spec/client.md).
@@ -51,7 +52,8 @@ released, so `finish` and `release` work from any folder; interrupting
 - **The socket** is where tau's `defaultFleetSocket` finds it, as `tau`
   does: `$TAU_FLEET_SOCKET`, or `$DSH_HOME/fleet/tau.sock`, or
   `~/.dsh/fleet/tau.sock` when `DSH_HOME` is unset or blank, as dsh finds
-  its home. Each command is one of the service's own requests, `list`,
+  its home; not the socket tau's config file names, which `fleet` does
+  not read. Each command is one of the service's own requests, `list`,
   `status` or `history` (`@sleepymug/fleet-protocol/tau`), on a connection
   of its own, through tau's `fleetSocket`.
 - **Nothing of a run's files** passes through `fleet`: tau's client packs

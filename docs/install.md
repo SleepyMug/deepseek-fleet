@@ -63,7 +63,8 @@ On linux, with Docker and pnpm on the PATH:
 
 Then `dsh web` starts the host, with the web UI, and `tau run --adaptor
 fleet <tau-dir> --call <call.json>`, or `tau run` with `TAU_ADAPTOR=fleet`,
-runs a tau. Each session the web UI makes has `tau_run`, which runs one
+or with `adaptor: fleet` in tau's config file, `~/.config/tau/config.yaml`
+(tau's docs/spec/client.md), runs a tau. Each session the web UI makes has `tau_run`, which runs one
 too, where its sandbox lets it write (docs/fleet-core/tools/index.md).
 
 A tau's session starts on dsh's default model, which the web UI's model
