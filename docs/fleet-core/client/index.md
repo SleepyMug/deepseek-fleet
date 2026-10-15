@@ -2,7 +2,7 @@
 
 fleet-core's browser half: what dsh's web client loads of fleet. It has
 one page, the tau model page, which sets the model every tau's session
-runs on, `fleet-tau-model`'s config (docs/fleet-core/tau/index.md), from
+starts on, `fleet-tau-model`'s config (docs/fleet-core/tau/index.md), from
 the models the chat box's model picker offers.
 
 ## Provides
@@ -27,7 +27,8 @@ row's display metadata), which the row opens:
 Choosing a model makes its effort the model's own. A save writes the
 three fields at once, `provider` and `model` set, or both unset for dsh's
 default, and `reasoningEffort` set or unset, into the profile's patch, as
-dsh's settings write it, and a tau's session's next step runs on them.
+dsh's settings write it, and the next tau's session to start starts on
+them.
 
 ## Design
 
@@ -51,7 +52,7 @@ dsh's settings write it, and a tau's session's next step runs on them.
   which also drops the draft.
 - **What the page offers** (`catalog.ts`) is the catalog's, by provider,
   with what is saved among it whether the catalog has it or not, so the
-  page always shows what a tau's session runs on.
+  page always shows what a tau's session starts on.
 - **The page is there while dsh serves the row** (`configForms.whileServed`),
   so a profile whose fleet-tau-model row is off shows none.
 - **Drop-downs are the browser's own** `<select>`, as dsh's Models page
@@ -72,11 +73,6 @@ dsh's settings write it, and a tau's session's next step runs on them.
   host half, which the browser has not, and have a TypeScript project of
   their own, `tsconfig.client.json`, with the DOM and JSX, whose output in
   `lib/client/` holds their tests and is not published.
-
-## Not yet
-
-- Each tau's session has the one model; a run of its own model, as a call
-  or a session would name it, is to come.
 
 ## Built on
 

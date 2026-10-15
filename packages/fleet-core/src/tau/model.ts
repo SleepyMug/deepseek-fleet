@@ -1,13 +1,13 @@
 /**
- * The model a tau's session runs on, as fleet-tau-model's config names it
+ * The model a tau's session starts on, as fleet-tau-model's config names it
  * for every run (./model-plugin.ts): a route, a provider and its model, and a
  * reasoning effort, each unset to follow dsh's default model, which a person
- * picks in the web UI. The `tau` preset applies it to each request of a
- * tau's session (../preset/model.ts). It knows nothing of dsh's.
+ * picks in the web UI. The `tau` preset gives it to a tau's session's first
+ * request (../preset/model.ts). It knows nothing of dsh's.
  * @module @sleepymug/fleet-core/tau/model
  */
 
-/** The model the service's sessions run on. */
+/** The model the service's sessions start on. */
 export interface TauModel {
   /** The provider and its model; none for dsh's default. */
   route?: { provider: string; model: string }
@@ -15,7 +15,7 @@ export interface TauModel {
   reasoningEffort?: string
 }
 
-/** The model as fleet-tau-model's config has it now, which may change while dsh runs; the `tau` preset reads it for each request. */
+/** The model as fleet-tau-model's config has it now, which may change while dsh runs; the `tau` preset reads it as a session starts. */
 export interface TauModelChoice {
   current(): TauModel
 }

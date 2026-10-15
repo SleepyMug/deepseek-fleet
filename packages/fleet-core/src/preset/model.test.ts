@@ -23,16 +23,31 @@ test('a route takes the request, with its effort, or none, the route\'s own; an 
   assert.equal(requestFor(DEFAULT, {}), DEFAULT)
 })
 
-/** A context with dsh's default applied first, as the session controller does, then the plugin, which reads `model.current`. */
+/** A session's agent: the header of its last request, none before the first, and the model picked in its chat box, if any. */
+function agentOf(session: { header?: LlmCallConfig, picked?: LlmCallConfig } = {}): Agent {
+  return { session: { requestHeader: () => session.header === undefined ? undefined : { config: session.header }, picked: session.picked } } as unknown as Agent
+}
+
+/** The model dsh's session controller gives an agent: the one picked, then its last request's, then dsh's default. */
+function controllerModel(agent: Agent): LlmCallConfig {
+  const session = agent.session as unknown as { requestHeader(): { config: LlmCallConfig } | undefined, picked?: LlmCallConfig }
+  return session.picked ?? session.requestHeader()?.config ?? DEFAULT
+}
+
+/** A context with the session controller's listeners first, then the plugin, which reads `model.current`. */
 async function withModel(model: { current: TauModel }): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
   ctx.systemPrompt.section({ name: 'persona', order: 0, text: 'You are powered by the {{model}} model.' })
-  ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+  ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
     const assembly = await next()
-    return { ...assembly, variables: { ...assembly.variables, provider: DEFAULT.provider, model: DEFAULT.model } }
+    const { provider, model } = controllerModel(context.agent!)
+    return { ...assembly, variables: { ...assembly.variables, provider, model } }
   })
-  ctx.on('agent/request', async (_payload, next) => ({ ...await next(), ...DEFAULT }))
+  ctx.on('agent/request', async ({ agent }, next) => ({ ...await next(), ...controllerModel(agent) }))
+  ctx.provide('sessionProjections', {
+    stateOf: (session: { picked?: LlmCallConfig }) => ({ pending: session.picked ?? null }),
+  })
   ctx.provide('fleetTauModel', { current: () => model.current })
   await ctx.plugin(TauModelPlugin)
   return ctx
@@ -46,27 +61,34 @@ async function step(ctx: Context, agent: Agent): Promise<{ prompt: string, reque
   return { prompt, request }
 }
 
-test('a tau\'s session\'s prompt names the configured model, and its request goes to it, over dsh\'s default', async () => {
-  const ctx = await withModel({ current: { route: { provider: 'mock', model: 'mock-model' }, reasoningEffort: 'low' } })
-  const { prompt, request } = await step(ctx, {} as Agent)
+const TAU_MODEL: TauModel = { route: { provider: 'mock', model: 'mock-model' }, reasoningEffort: 'low' }
+
+test('a tau\'s session starts on the configured model, in place of dsh\'s default, and its prompt names it', async () => {
+  const ctx = await withModel({ current: TAU_MODEL })
+  const { prompt, request } = await step(ctx, agentOf())
   assert.match(prompt, /^You are powered by the mock-model model\.$/mu)
   assert.deepEqual(request, { provider: 'mock', model: 'mock-model', reasoningEffort: 'low', maxTokens: 4096 })
 })
 
-test('without a route, the prompt and the request keep dsh\'s default', async () => {
-  const ctx = await withModel({ current: {} })
-  const { prompt, request } = await step(ctx, {} as Agent)
+test('after its first request, a session keeps the model dsh gives it, its last request\'s or one picked in its chat box', async () => {
+  const ctx = await withModel({ current: TAU_MODEL })
+  // Started on another model, before the setting changed: it stays there.
+  const started = { provider: 'mock', model: 'other-model', reasoningEffort: ReasoningEffortId('high') }
+  assert.deepEqual((await step(ctx, agentOf({ header: started }))).request, started)
+  const picked = { provider: 'codex', model: 'gpt-6-astra' }
+  const { prompt, request } = await step(ctx, agentOf({ header: started, picked }))
   assert.match(prompt, /^You are powered by the gpt-6-astra model\.$/mu)
-  assert.deepEqual(request, DEFAULT)
+  assert.equal(request.model, 'gpt-6-astra')
 })
 
-test('a request goes to the model its prompt was assembled with, and a change reaches the next step', async () => {
-  const model = { current: { route: { provider: 'mock', model: 'first' } } as TauModel }
-  const ctx = await withModel(model)
-  const agent = {} as Agent
-  await ctx.systemPrompt.assemble({ agent } as unknown as AssembleContext)
-  model.current = { route: { provider: 'mock', model: 'second' } }
-  const request = await ctx.waterfall('agent/request', { agent, turn: 1, step: 1, signal: new AbortController().signal }, async () => ({ provider: '', model: '' }))
-  assert.equal(request.model, 'first')
-  assert.equal((await step(ctx, agent)).request.model, 'second')
+test('a model picked before the first request is the session\'s', async () => {
+  const ctx = await withModel({ current: TAU_MODEL })
+  assert.equal((await step(ctx, agentOf({ picked: { provider: 'codex', model: 'gpt-6-astra' } }))).request.model, 'gpt-6-astra')
+})
+
+test('without a route, the prompt and the request keep dsh\'s default', async () => {
+  const ctx = await withModel({ current: {} })
+  const { prompt, request } = await step(ctx, agentOf())
+  assert.match(prompt, /^You are powered by the gpt-6-astra model\.$/mu)
+  assert.deepEqual(request, DEFAULT)
 })

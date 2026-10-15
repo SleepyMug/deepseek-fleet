@@ -50,7 +50,7 @@ export interface Choices {
   readonly groups: readonly ProviderChoices[]
   /** The saved route, if the catalog does not have it. */
   readonly unavailable?: ModelChoice | undefined
-  /** dsh's default model, which a tau's session runs on without a route, and its name, if the catalog has it. */
+  /** dsh's default model, which a tau's session starts on without a route, and its name, if the catalog has it. */
   readonly defaultModel?: { readonly route: Route, readonly name: string } | undefined
 }
 

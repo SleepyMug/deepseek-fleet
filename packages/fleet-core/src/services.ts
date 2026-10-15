@@ -5,7 +5,7 @@
  * - `ctx.fleetTauRuns`: the runs of taus and their boxes (./tau/runs-plugin.ts),
  *   as the world uses them and as the tau service does (./tau/ports.ts).
  * - `ctx.fleetTau`: the tau service (./tau/plugin.ts).
- * - `ctx.fleetTauModel`: the model a tau's session runs on, as its config
+ * - `ctx.fleetTauModel`: the model a tau's session starts on, as its config
  *   has it now (./tau/model-plugin.ts).
  * @module @sleepymug/fleet-core/services
  */

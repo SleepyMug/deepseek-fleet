@@ -76,16 +76,17 @@
 # ═══ fleet-tau, and tau_run ═══
 
 - insert:
-    # `ctx.fleetTauModel`: the model every tau's session runs on, which the
-    # `tau` preset's tau-model applies to each request: `provider` and
+    # `ctx.fleetTauModel`: the model every tau's session starts on, in place
+    # of dsh's default, which the `tau` preset's tau-model gives it, and a
+    # person can switch in its chat box as any session's: `provider` and
     # `model` together, as dsh's model picker names them, and
     # `reasoningEffort`, each unset to follow dsh's default model, which a
     # person picks in the web UI. A profile sets them with a row of its own,
     # whose config replaces this one's whole, such as
     #   - id: fleet-tau-model
     #     config: { provider: openai-codex, model: gpt-6-astra, reasoningEffort: high }
-    # and a change, there or through dsh's settings, reaches each session's
-    # next request.
+    # or the web UI's Tau model page, and a change reaches the next tau's
+    # session to start.
     - id: fleet-tau-model
       name: '@sleepymug/fleet-core/tau/model-plugin'
 
@@ -147,8 +148,8 @@
           - id: tau-reset
             name: '@sleepymug/fleet-core/preset/reset'
 
-          # Each request on the model fleet-tau-model's config names, and
-          # the system prompt naming it, in place of dsh's default.
+          # The session's start on the model fleet-tau-model's config names,
+          # in place of dsh's default, and its system prompt naming it.
           - id: tau-model
             name: '@sleepymug/fleet-core/preset/model'
 

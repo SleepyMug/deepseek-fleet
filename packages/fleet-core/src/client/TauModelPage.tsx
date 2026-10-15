@@ -1,6 +1,6 @@
 /**
  * The tau model page, on the Plugins page's fleet-tau-model row: the model
- * every tau's session runs on, a drop-down of the models the chat box's
+ * every tau's session starts on, a drop-down of the models the chat box's
  * picker offers, by provider, with dsh's default first, and its reasoning
  * efforts, with the model's own first; saved together, as dsh's settings
  * pages save, with the shared settings form.

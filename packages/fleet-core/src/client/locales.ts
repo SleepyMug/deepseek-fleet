@@ -5,8 +5,8 @@ export const NS = 'fleet.tauModel'
 
 /** English copy. */
 export const en = {
-  summary: 'The model every tau\'s session runs on.',
-  hint: 'Every tau\'s session runs on this model from its next step. The web UI\'s own sessions keep the model their model picker chooses.',
+  summary: 'The model every tau\'s session starts on.',
+  hint: 'New tau sessions start on this model, in place of dsh\'s default. Switch one\'s model in its chat box, as any session\'s.',
   modelLabel: 'Model',
   modelDefault: 'dsh\'s default ({name})',
   modelDefaultUnnamed: 'dsh\'s default',
@@ -32,8 +32,8 @@ export type TauModelKey = keyof typeof en
 
 /** Chinese copy. */
 export const zh: Record<TauModelKey, string> = {
-  summary: '所有 tau 会话使用的模型。',
-  hint: '每个 tau 会话从下一步起使用此模型。网页界面自己的会话仍使用其模型选择器所选的模型。',
+  summary: '每个 tau 会话起始使用的模型。',
+  hint: '新的 tau 会话以此模型起始，取代 dsh 的默认模型。可像其他会话一样在其对话框中切换模型。',
   modelLabel: '模型',
   modelDefault: 'dsh 默认（{name}）',
   modelDefaultUnnamed: 'dsh 默认',
