@@ -8,14 +8,16 @@
  * which sessions dsh archives, whose runs have no box (../dsh/archive.ts),
  * and a tau's session's agent occupy its box while it runs
  * (../dsh/turns.ts). Its config names the dsh home, where it serves its
- * socket. It provides the service as `ctx.fleetTau`, for the `tau` API's
+ * socket, and whether a run's release keeps its session, which a change
+ * reaches at the next release, nothing mounted again. It provides the service as `ctx.fleetTau`, for the `tau` API's
  * extension (fleet-ext-tau), through which a tau's session submits runs
  * from its box, and for `tau_run` (../tools/tau.ts), with which another
  * session submits them.
  * @module @sleepymug/fleet-core/tau/plugin
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { listenFleet } from '@sleepymug/tau/adaptors'
 import { followArchived } from '../dsh/archive.ts'
 import { dshSessions } from '../dsh/sessions.ts'
@@ -36,13 +38,29 @@ export const PRESET = 'tau'
 export interface Config {
   /** The dsh home, absolute. */
   dshHome: string
+  /**
+   * Whether a run's release keeps its session in its workspace, with its
+   * box, for a person to go on with, rather than archive it and remove its
+   * box; false by default.
+   */
+  keepSessions: Volatile<boolean>
 }
+
+export const Config = z.object({
+  dshHome: z.string(),
+  keepSessions: z.boolean().default(false).volatile(),
+})
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const paths = fleetPaths(config?.dshHome, name)
   const platform = systemPlatform()
   const runs = ctx.fleetTauRuns
-  const service = new TauService({ runs, sessions: dshSessions(ctx, { preset: PRESET, log: platform.log }), platform })
+  const service = new TauService({
+    runs,
+    sessions: dshSessions(ctx, { preset: PRESET, log: platform.log }),
+    platform,
+    keepSessions: () => config.keepSessions.get(),
+  })
   // The socket first: a service that does not get it, as when another serves this dsh home, watches no runs.
   const closeSocket = await listenFleet(paths.socket, service.handlerFor(HOST))
   const close = async (): Promise<void> => {

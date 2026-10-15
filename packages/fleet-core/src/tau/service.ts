@@ -8,7 +8,8 @@
  * done, or its init did the run, has its box pack what it gave back, and
  * records how it ended; gives back its result, for the
  * caller's adaptor to check and put at the caller's paths; and releases the
- * run, removing its box. It never learns a caller's paths, so it serves the
+ * run, archiving its session and removing its box, or, as its config may
+ * have it, keeping both, the session a person's to go on with. It never learns a caller's paths, so it serves the
  * host's `tau` command, which reaches every run, and a session, a tau's from
  * its box or another with `tau_run`, which reaches only the runs it
  * started, alike; a run's end releases those it started and did not finish,
@@ -39,6 +40,8 @@ export interface Sessions {
   prompt(sessionId: string, requestId: string, text: string): Promise<void>
   /** Archive a session, stopping its work; one never made is let be. */
   archive(sessionId: string): Promise<void>
+  /** Stop a session's work, keeping the session: its turn is cancelled, and what is queued dropped. */
+  stop(sessionId: string): Promise<void>
   /**
    * Wait until a session's agent is done with what it was given, if it is
    * at work here, and read how the session ended, as a run's result: it
@@ -56,6 +59,8 @@ export interface TauServiceDeps {
   runs: RunLifecycle
   sessions: Sessions
   platform: Platform
+  /** Whether a run's release keeps its session, with its box, rather than archive it and remove its box; read at each release, false by default. */
+  keepSessions?: () => boolean
 }
 
 export class TauService {
@@ -73,11 +78,13 @@ export class TauService {
   private readonly runs: RunLifecycle
   private readonly sessions: Sessions
   private readonly log: (message: string) => void
+  private readonly keepSessions: () => boolean
 
-  constructor({ runs, sessions, platform }: TauServiceDeps) {
+  constructor({ runs, sessions, platform, keepSessions = () => false }: TauServiceDeps) {
     this.runs = runs
     this.sessions = sessions
     this.log = platform.log
+    this.keepSessions = keepSessions
   }
 
   /**
@@ -175,7 +182,11 @@ export class TauService {
   /**
    * Release a run: stop its init, if it runs, archive its session, which
    * stops its turn, remove its box, running or not, and forget the run; and
-   * so with the runs it started, first.
+   * so with the runs it started, first. With `keepSessions`, the session's
+   * turn is stopped instead, and the session kept, with its box, which
+   * stops once the run's end is recorded, and its entry, which no caller
+   * reaches since: the session is a person's, as any tau's session is, and
+   * archiving it removes its box.
    */
   async release(caller: Caller, sessionId: string): Promise<void> {
     await this.reach(caller, sessionId)
@@ -183,6 +194,12 @@ export class TauService {
     await this.releaseChildren(sessionId, () => true)
     await this.serial(sessionId, async () => {
       const entry = await this.runs.entry(sessionId)
+      if (this.keepSessions()) {
+        await this.sessions.stop(sessionId)
+        await this.runs.released(sessionId)
+        this.log(`released ${sessionId}, keeping its session and its box ${entry.box}`)
+        return
+      }
       await this.sessions.archive(sessionId)
       await this.runs.remove(sessionId)
       this.log(`released ${sessionId}, and removed its box ${entry.box}`)
@@ -191,7 +208,8 @@ export class TauService {
 
   /**
    * A run's entry, if the caller reaches it: the host reaches every run, a
-   * tau's session the runs it started. Another is as if it were not there.
+   * tau's session the runs it started, but a run released with its session
+   * kept. Another is as if it were not there.
    */
   private async reach(caller: Caller, sessionId: string): Promise<Entry> {
     const entry = await this.runs.entry(sessionId)
@@ -201,7 +219,7 @@ export class TauService {
 
   /** Release the runs a run started that `which` picks, and theirs. */
   private async releaseChildren(parent: string, which: (entry: Entry) => boolean): Promise<void> {
-    const children = (await this.runs.list()).filter(entry => entry.caller?.kind === 'session' && entry.caller.sessionId === parent && which(entry))
+    const children = (await this.runs.list()).filter(entry => reaches({ kind: 'session', sessionId: parent }, entry) && which(entry))
     for (const child of children) {
       await this.release(HOST, child.sessionId).catch((error: unknown) => {
         this.log(`could not release ${child.sessionId}, which ${parent} started: ${messageOf(error)}`)
@@ -356,7 +374,8 @@ function statusOf(entry: Entry): RunStatus {
   }
 }
 
-/** Whether a caller reaches a run: the host every run, a session those it started. */
+/** Whether a caller reaches a run: the host every run, a session those it started, and none a run released with its session kept. */
 function reaches(caller: Caller, entry: Entry): boolean {
+  if (entry.releasedAt !== undefined) return false
   return caller.kind === 'host' || (entry.caller?.kind === 'session' && entry.caller.sessionId === caller.sessionId)
 }

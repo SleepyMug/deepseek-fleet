@@ -39,6 +39,8 @@ tau finish fleet:<session id>                            wait for its result, an
 tau release fleet:<session id>                           drop it: archive its session, and remove its box
 ```
 
+With fleet-tau's `keepSessions` (docs/fleet-core/tau/index.md), a release
+keeps the session, and its box, for a person to go on with in the web UI.
 `$TAU_ADAPTOR=fleet` makes the fleet adaptor the default. `tau` keeps each
 run it started, where its outputs go, in its state folder until it is
 released, so `finish` and `release` work from any folder; interrupting

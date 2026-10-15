@@ -67,6 +67,13 @@ export function dshSessions(dsh: DshSessionsDeps, { preset, log }: DshSessionsOp
     async history(sessionId, signal) {
       return [...(await dsh.sessionController.inspect(sessionId as SessionId, signal)).events]
     },
+    async stop(sessionId) {
+      // The user's own stop, as the chat box's; a session not at work here has none to stop.
+      const agent = dsh.agents.get(sessionId as SessionId)
+      if (agent === undefined) return
+      agent.cancel({ kind: 'user' })
+      await agent.whenIdle()
+    },
     async archive(sessionId) {
       try {
         await dsh.workspaceRegistry.archiveSession(sessionId as SessionId, { stopActivity: true })

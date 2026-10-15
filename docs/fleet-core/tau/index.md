@@ -69,7 +69,7 @@ Three dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 |---|---|
 | `submit { title, project? }`, then the call | Start a run of the call, which carries the tau: admit it, set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch. Answers `{ id }`, the session's id. |
 | `finish { id }` | Wait until the run ends, and answer `null`, then send its result, the same each time; the caller's adaptor checks it, and puts what it gave back at the caller's paths. |
-| `release { id }` | Stop the run's init, if it runs, archive the session, which stops its turn, remove its box, running or not, and forget the run, and every run it started. |
+| `release { id }` | Stop the run's init, if it runs, archive the session, which stops its turn, remove its box, running or not, and forget the run, and every run it started; with `keepSessions`, stop the session's turn, and keep the session and its box. |
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { id }` | Where the run is, `running`, `ended` or `finished`, its prompt, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `history { id }` | The run's session's history, ended or not (below). |
@@ -229,15 +229,28 @@ boxes:
   the APIs' folder in the box, as the runtime reported them, the contracts of the
   APIs the tau holds, each linked, what it exposes, with what each says it is,
   the names of its skills, when it was made, when it was given its prompt, when and how its run
-  ended, when a `finish` first gave that back, and when the box was last
-  set up again, if it was. Beside it, a folder of
+  ended, when a `finish` first gave that back, when the box was last
+  set up again, if it was, and when the run was released with its session
+  kept, if it was. Beside it, a folder of
   the session's own, `$DSH_HOME/fleet/taus/<session id>/`, holds the call,
   `call.tar`, and the run's result, `result.tar`, until the run is
   released. An entry is
   written last, so an entry means a box that is set up, and before the dsh
   session is made. A service started later finds its sessions there. Only
   ids of the form the service mints name an entry, since they are file
-  names.
+  names. Its config names the dsh home, and has one switch:
+
+  | Field | What it is |
+  |---|---|
+  | `keepSessions` | Whether a run's release keeps its session, not archived, with its box (below); false by default. Volatile: a change reaches the next release. |
+
+  A profile turns it on with the row's whole config, since a patch
+  replaces it:
+
+  ```yaml
+  - id: fleet-tau
+    config: { dshHome: !!js dshHomePath(), keepSessions: true }
+  ```
 - **Starting the run**, once its box is set up: the submit starts the box,
   then, through dsh's workspace registry and session controller:
   1. makes the project a dsh workspace, or finds the one it is;
@@ -323,6 +336,16 @@ boxes:
   the only way to stop a run, as tau's protocol has it. A
   session never started is not dsh's, so there is nothing to archive. An
   archive that fails keeps the box and the entry.
+- **A kept session is a person's.** With `fleet-tau`'s `keepSessions`,
+  releasing a run stops its session's turn, as the chat box's stop does,
+  and keeps the session in its workspace, where the web UI lists it, its
+  box, and its entry, marked released: no caller reaches the run since,
+  neither its own nor the host's `fleet list`, as if it were gone, while
+  the session goes on as any tau's session, in its box, which starts on
+  its next use. Its run's end is recorded as any run's, the stopped turn's
+  failure if it ran still, and stops its box. Archiving the session, as a
+  person does in the web UI, removes its box, as any archived run's, and
+  keeps its entry and folder.
 - **An idle box stops.** A session's box runs while anything occupies it:
   its agent while it runs (`fleet-tau` follows `agent/status` and
   `agent/disposed`), and the world's file calls, processes and terminals,
@@ -535,6 +558,9 @@ boxes:
   host's `tau finish` asks again when run again.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
+- A run released with its session kept keeps its entry and its folder,
+  its call and its result, once its session is archived too; nothing
+  removes them yet.
 - A run cannot name a model of its own: each tau's session starts on
   `fleet-tau-model`'s.
 - The `tau` preset is in the web UI's list of presets, and its settings'

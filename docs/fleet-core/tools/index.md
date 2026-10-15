@@ -46,7 +46,7 @@ to load `tau` before running one and `tau-dev` before making one:
 - **Its description says what a call is in `TAU.md`'s terms**, and what
   fleet does that `TAU.md` leaves to a runtime: the run's agent is in a
   container of its own, with copies of the files, and cannot ask anything;
-  its session is archived; a file it gave back replaces one at the path,
+  its session cannot be continued; a file it gave back replaces one at the path,
   and a directory merges into one there, so what the agent removed from it
   stays; a failed run changes none of the paths, though its API calls
   stand; and calls in one message run at once, so each needs its own `out`
@@ -80,8 +80,9 @@ to load `tau` before running one and `tau-dev` before making one:
   reads, the tau and the `in` files, every mode reads.
 - **It waits for the run, and releases it,** so nothing outlives the call:
   once the run is finished, or the call cancelled, or refused as it ends,
-  the run is released, its session archived and its box removed, and a
-  cancelled run gives back nothing. Several calls in
+  the run is released, its session archived and its box removed, or kept
+  for a person, with `fleet-tau`'s `keepSessions`, and a cancelled run
+  gives back nothing. Several calls in
   one turn run at once (`isConcurrencySafe`): each run has a box of its
   own, and what each gives back goes where the model said.
 - **A tau's session does not have it:** it runs taus with its tau API, if

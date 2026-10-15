@@ -64,6 +64,12 @@ export interface Entry {
   ended?: { at: string; result: Result }
   /** When a `finish` first gave back how the run ended. */
   finishedAt?: string
+  /**
+   * When the run was released with its session kept (fleet-tau's
+   * `keepSessions`): no caller reaches it since, and its session, with its
+   * box, is a person's to go on with in the web UI.
+   */
+  releasedAt?: string
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
   resetAt?: string
   /**
