@@ -1,11 +1,20 @@
 {
   "name": "@sleepymug/fleet-core",
+  "description": "fleet's dsh bundle: runs taus, each a dsh session in a Docker box of its own",
   "version": "0.0.1",
   "type": "module",
   "bin": {
     "fleet-box": "./lib/box/cli/main.js"
   },
   "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./box": {
       "types": "./lib/box/box.d.ts",
       "default": "./lib/box/box.js"
@@ -46,6 +55,7 @@
       "types": "./lib/tau/model-plugin.d.ts",
       "default": "./lib/tau/model-plugin.js"
     },
+    "./tau/model-plugin/locale/*": "./locale/tau/model-plugin/*",
     "./tau/runs-plugin": {
       "types": "./lib/tau/runs-plugin.d.ts",
       "default": "./lib/tau/runs-plugin.js"
@@ -79,25 +89,36 @@
   "files": [
     "lib",
     "!lib/**/*.test.*",
+    "!lib/client/**/*.js",
+    "locale",
     "cordis.patch.yml"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -b",
-    "prepack": "tsc -b",
-    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+    "build": "tsc -b tsconfig.json tsconfig.client.json && node scripts/client-bundle.mjs",
+    "prepack": "tsc -b tsconfig.json tsconfig.client.json && node scripts/client-bundle.mjs",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo', 'tsconfig.client.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b tsconfig.json tsconfig.client.json && node scripts/client-bundle.mjs && node --test \"lib/**/*.test.js\""
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   },
   "dependencies": {
-    "@sleepymug/tau": "0.1.0",
     "@sleepymug/fleet-box-runtime": "workspace:*",
     "@sleepymug/fleet-protocol": "workspace:*",
+    "@sleepymug/tau": "0.1.0",
     "zod": "4.6.5"
   },
   "peerDependencies": {
@@ -130,8 +151,15 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-api-remotes": "0.2.0-rc.2",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2",
     "@deepseek-ai/dsh-api-workspace-files": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs-local": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs-sandbox": "0.2.0-rc.2",
@@ -152,6 +180,8 @@
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
     "@deepseek-ai/dsh-workspace": "0.2.0-rc.2",
-    "@deepseek-ai/schemastery": "3.18.4"
+    "@deepseek-ai/schemastery": "3.18.4",
+    "@types/react": "18.3.31",
+    "esbuild": "0.28.2"
   }
 }

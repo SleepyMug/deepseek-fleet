@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tau 模型",
+    "description": "所有 tau 会话使用的模型与推理等级，取代 dsh 的默认模型。"
+  }
+}

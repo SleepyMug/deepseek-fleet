@@ -18,6 +18,8 @@ allowBuilds:
   # dsh's (the root's dev dependency, for `pnpm exec dsh`).
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true
+  # fleet-core's client bundle; its binary is its platform package, which needs no script.
+  esbuild: false
   koffi: true
   node-pty: true
   protobufjs: true

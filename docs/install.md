@@ -67,9 +67,11 @@ runs a tau. Each session the web UI makes has `tau_run`, which runs one
 too, where its sandbox lets it write (docs/fleet-core/tools/index.md).
 
 A tau's session runs on dsh's default model, which the web UI's model
-picker sets, unless the profile names one for every tau's session, in its
-`cordis.patch.yml`, `~/.dsh/profiles/web/cordis.patch.yml` for the `web`
-profile (docs/fleet-core/tau/index.md):
+picker sets, unless the profile names one for every tau's session: on the
+web UI's Plugins page, fleet-core's "Tau model"
+(docs/fleet-core/client/index.md), or in its `cordis.patch.yml`,
+`~/.dsh/profiles/web/cordis.patch.yml` for the `web` profile
+(docs/fleet-core/tau/index.md):
 
 ```yaml
 - id: fleet-tau-model

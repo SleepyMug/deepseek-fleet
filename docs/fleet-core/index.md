@@ -4,8 +4,9 @@ fleet's dsh bundle: the tau service and the runs of taus with their boxes
 (docs/fleet-core/tau/index.md), the extensions they link
 (docs/fleet-core/ext/index.md), the world that serves a tau's session from
 its box (docs/fleet-core/world/index.md), `tau_run`
-(docs/fleet-core/tools/index.md), and Docker boxes
-(docs/fleet-core/box/index.md). This page is how its parts are put
+(docs/fleet-core/tools/index.md), Docker boxes
+(docs/fleet-core/box/index.md), and the web client's tau model page
+(docs/fleet-core/client/index.md). This page is how its parts are put
 together; each part's page is what it does.
 
 ## Design
@@ -31,8 +32,11 @@ together; each part's page is what it does.
   speaks dsh is in its own folders: `dsh/`, the adapters that give the tau
   service dsh's sessions, archive and agents' turns; `world/`, the file
   system, subprocess runtime and spill store dsh's sessions work through;
-  `preset/`, the plugins of the `tau` agent preset, its system prompt and
-  its box's reset notice; and `tools/`, `tau_run`.
+  `preset/`, the plugins of the `tau` agent preset, its system prompt,
+  its box's reset notice and its model; `tools/`, `tau_run`; and
+  `client/`, the web client's page, which runs in the browser and reaches
+  dsh, and nothing of fleet-core's host half, through the web client's
+  services.
 - **The plugins put the parts together.** Each dsh plugin checks its
   config, builds its parts on the services it injects, and provides them;
   `services.ts` declares every service fleet-core provides on dsh's

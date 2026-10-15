@@ -104,6 +104,15 @@
     - id: tool-tau
       name: '@sleepymug/fleet-core/tools/tau'
 
+# ═══ The web client's pages ═══
+
+# fleet-core's browser half, lib/client.js, which dsh's web client loads only
+# for a row that names the package itself: the tau model page, on the
+# Plugins page's fleet-tau-model row (src/client/).
+- insert:
+    - id: fleet-client
+      name: '@sleepymug/fleet-core'
+
 # ── The agent preset of a tau's session ──
 #
 # fleet-tau makes a tau's session with the `tau` preset (src/tau/plugin.ts),

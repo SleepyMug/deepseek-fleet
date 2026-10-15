@@ -52,8 +52,9 @@ Three dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
   ```
 
   Each field is volatile, so a change, in the profile's patch or through
-  dsh's settings, reaches each session's next request, and mounts nothing
-  again. A provider without its model, or a model without its provider,
+  dsh's settings, as the web UI's tau model page makes it
+  (docs/fleet-core/client/index.md), reaches each session's next request,
+  and mounts nothing again. A provider without its model, or a model without its provider,
   fails the plugin as it loads, or, changed later, each request of a
   tau's session.
 - `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
@@ -536,8 +537,7 @@ boxes:
   waits for a request to the model picked, tells the model of a switch at
   each step; it still becomes dsh's default, as a pick in any session
   does. Each session has `fleet-tau-model`'s model, none a model of its
-  own, and the web UI has no page for its fields, which dsh's settings
-  serve.
+  own.
 - The `tau` preset is in the web UI's list of presets, and its settings'
   default, since dsh has no hidden preset; a session given it fails each
   step.
