@@ -23,7 +23,7 @@ declares is linked to the client of the extension that implements it
 
 ## Provides
 
-Three dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
+Four dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 
 - `fleet-tau-runs` (`@sleepymug/fleet-core/tau/runs-plugin`): the runs of taus and
   their boxes (`runs.ts`), as `ctx.fleetTauRuns`. It builds on the
@@ -57,6 +57,24 @@ Three dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
   start, and mounts nothing again. A provider without its model, or a
   model without its provider, fails the plugin as it loads, or, changed
   later, the first request of each tau's session that starts.
+- `fleet-tau-lanes` (`@sleepymug/fleet-core/tau/lanes-plugin`): the cap
+  on how many of the taus' model calls stream at once (`lanes.ts`), over
+  dsh's `llm/stream`. Its config is one field, unset by default, for no
+  cap:
+
+  | Field | What it is |
+  |---|---|
+  | `lanes` | How many of the taus' model calls stream at once, at most, a whole number from 1. |
+
+  A profile sets it with a row of its own, as fleet-tau-model's:
+
+  ```yaml
+  - id: fleet-tau-lanes
+    config: { lanes: 4 }
+  ```
+
+  It is volatile, so a change reaches the next call to take or give back
+  a lane, and mounts nothing again.
 - `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
   registry and its agents, and serves its requests (`wire.ts`) with tau's
@@ -323,6 +341,22 @@ boxes:
   the only way to stop a run, as tau's protocol has it. A
   session never started is not dsh's, so there is nothing to archive. An
   archive that fails keeps the box and the entry.
+- **The taus share lanes.** Every model call of a tau's session, its
+  turns', its compaction's and its title's, whatever its provider, takes a
+  lane of `fleet-tau-lanes`' one pool before it reaches its provider, and
+  gives it back as its stream ends, however it ends; while every lane is
+  taken, it waits, first come, first served. A call is a tau's by the
+  session it names (`isTau`); a call of another session, or of none, is
+  not counted, since the taus are what runs at scale, unattended. A call
+  holds its lane only while it streams, not while its tools run, so a tau
+  that waits for the runs it started holds none, and nested runs cannot
+  starve one another of lanes. A call waits before its provider has it, so
+  its provider's timeouts do not run while it waits; one whose wait is
+  given up, as by a stop, an archive or a release, goes on without a lane,
+  its signal aborted, so its provider ends it as dsh ends any aborted
+  call. The calls are counted with no cap too, so a cap set later counts
+  those under way; a raised cap admits waiting calls as the next lane is
+  taken or given back.
 - **An idle box stops.** A session's box runs while anything occupies it:
   its agent while it runs (`fleet-tau` follows `agent/status` and
   `agent/disposed`), and the world's file calls, processes and terminals,
@@ -535,6 +569,8 @@ boxes:
   host's `tau finish` asks again when run again.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.
+- A call waiting for a lane shows nothing of it: its session looks as if
+  its model were slow to answer.
 - A run cannot name a model of its own: each tau's session starts on
   `fleet-tau-model`'s.
 - The `tau` preset is in the web UI's list of presets, and its settings'
@@ -551,6 +587,8 @@ boxes:
   archived sessions; `agent/pre-step`, `@deepseek-ai/dsh-llm`'s
   `createUserMessage` and `@deepseek-ai/dsh-session-projection`, for the
   notice.
+- `@deepseek-ai/dsh-llm`'s `llm/stream` waterfall, which every model call
+  goes through, for the lanes.
 - `@sleepymug/tau`: the backend SDK, `@sleepymug/tau/backend` (`admit`,
   `initDecision`); the core's `checkReport` and `serves`; `wire-tar`'s
   `decodeCall`, `decodeResult` and `packResult`; `transfer`'s

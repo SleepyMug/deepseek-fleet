@@ -90,6 +90,17 @@
     - id: fleet-tau-model
       name: '@sleepymug/fleet-core/tau/model-plugin'
 
+    # How many of the taus' model calls stream at once, at most: every call
+    # of a tau's session, its turns', its compaction's and its title's,
+    # whatever its provider, takes a lane of one pool, and waits for one
+    # while all are taken; other sessions' calls are not counted. `lanes`
+    # unset is no cap. A profile sets it with a row of its own, such as
+    #   - id: fleet-tau-lanes
+    #     config: { lanes: 4 }
+    # and a change reaches the next call to take or give back a lane.
+    - id: fleet-tau-lanes
+      name: '@sleepymug/fleet-core/tau/lanes-plugin'
+
     # The socket `fleet` talks to, $DSH_HOME/fleet/tau.sock, which makes a
     # run's session through dsh's session controller.
     - id: fleet-tau

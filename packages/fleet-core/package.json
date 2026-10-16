@@ -56,6 +56,11 @@
       "default": "./lib/tau/model-plugin.js"
     },
     "./tau/model-plugin/locale/*": "./locale/tau/model-plugin/*",
+    "./tau/lanes-plugin": {
+      "types": "./lib/tau/lanes-plugin.d.ts",
+      "default": "./lib/tau/lanes-plugin.js"
+    },
+    "./tau/lanes-plugin/locale/*": "./locale/tau/lanes-plugin/*",
     "./tau/runs-plugin": {
       "types": "./lib/tau/runs-plugin.d.ts",
       "default": "./lib/tau/runs-plugin.js"
