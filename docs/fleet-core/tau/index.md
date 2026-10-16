@@ -73,8 +73,9 @@ Four dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
     config: { lanes: 4 }
   ```
 
-  It is volatile, so a change reaches the next call to take or give back
-  a lane, and mounts nothing again.
+  It is volatile, so a change, in the profile's patch or on the web UI's
+  tau lanes page (docs/fleet-core/client/index.md), reaches the next call
+  to take or give back a lane, and mounts nothing again.
 - `fleet-tau` (`@sleepymug/fleet-core/tau/plugin`): the tau service (`service.ts`). It
   builds on `ctx.fleetTauRuns`, dsh's session controller, its workspace
   registry and its agents, and serves its requests (`wire.ts`) with tau's

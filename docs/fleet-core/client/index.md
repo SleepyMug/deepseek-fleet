@@ -1,9 +1,11 @@
 # fleet-core/client
 
 fleet-core's browser half: what dsh's web client loads of fleet. It has
-one page, the tau model page, which sets the model every tau's session
+two pages: the tau model page, which sets the model every tau's session
 starts on, `fleet-tau-model`'s config (docs/fleet-core/tau/index.md), from
-the models the chat box's model picker offers.
+the models the chat box's model picker offers; and the tau lanes page,
+which sets how many of the taus' model calls stream at once,
+`fleet-tau-lanes`' config.
 
 ## Provides
 
@@ -30,6 +32,12 @@ default, and `reasoningEffort` set or unset, into the profile's patch, as
 dsh's settings write it, and the next tau's session to start starts on
 them.
 
+The tau lanes page is the `fleet-tau-lanes` row's, titled "Tau lanes"
+(`locale/tau/lanes-plugin/`): one number, `lanes`, a whole number from 1,
+or empty for no cap, which a save sets, or unsets. A draft that is
+neither cannot be saved, and says so. A change reaches the next call to
+take or give back a lane.
+
 ## Design
 
 - **The catalog is the chat box's**: `remote.session.modelCatalog()`, the
@@ -53,8 +61,13 @@ them.
 - **What the page offers** (`catalog.ts`) is the catalog's, by provider,
   with what is saved among it whether the catalog has it or not, so the
   page always shows what a tau's session starts on.
-- **The page is there while dsh serves the row** (`configForms.whileServed`),
-  so a profile whose fleet-tau-model row is off shows none.
+- **A page is there while dsh serves its row** (`configForms.whileServed`),
+  so a profile whose fleet-tau-model or fleet-tau-lanes row is off shows
+  no page for it.
+- **The lanes page's state** (`lanes-controller.ts`) is the model page's,
+  without a catalog: the row's form and a draft of what a person typed,
+  saved fenced by its revision, conflicted by a change made meanwhile
+  that it does not match.
 - **Drop-downs are the browser's own** `<select>`, as dsh's Models page
   has them, styled as dsh's settings fields, with dsh's colors, in one
   style element the plugin adds (`styles.ts`), which dsh's module loader

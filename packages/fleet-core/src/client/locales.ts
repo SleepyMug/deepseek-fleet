@@ -1,4 +1,4 @@
-/** The tau model page's copy, in the web client's built-in languages. */
+/** The copy of fleet-core's pages, in the web client's built-in languages. */
 
 /** The page's dictionary namespace. */
 export const NS = 'fleet.tauModel'
@@ -50,6 +50,42 @@ export const zh: Record<TauModelKey, string> = {
   unavailable: 'fleet-tau-model 未加载，暂时无法配置。',
   readOnly: '此部署的设置为只读。',
   saveFailed: '部署未接受此选择，已保留以便修改。',
+  save: '保存',
+  saving: '正在保存…',
+}
+
+/** The tau lanes page's dictionary namespace. */
+export const LANES_NS = 'fleet.tauLanes'
+
+/** The tau lanes page's English copy. */
+export const lanesEn = {
+  summary: 'How many of the taus\' model calls run at once.',
+  hint: 'Every model call of a tau\'s session, whatever its provider, takes one of these lanes while it streams, and waits while all are taken. Other sessions are not counted. Leave it empty for no cap.',
+  lanesLabel: 'Lanes',
+  noCap: 'No cap',
+  malformed: 'Enter a whole number from 1, or leave it empty for no cap.',
+  conflict: 'This setting was changed elsewhere while you edited it. Discard your edits to see it.',
+  unavailable: 'fleet-tau-lanes is not loaded, so it cannot be configured right now.',
+  readOnly: 'This deployment stores settings read-only.',
+  saveFailed: 'The deployment did not accept this value; it was left for you to correct.',
+  save: 'Save',
+  saving: 'Saving…',
+}
+
+/** The tau lanes page's dictionary keys. */
+export type TauLanesKey = keyof typeof lanesEn
+
+/** The tau lanes page's Chinese copy. */
+export const lanesZh: Record<TauLanesKey, string> = {
+  summary: 'tau 的模型调用同时进行的数量。',
+  hint: '每个 tau 会话的模型调用，无论提供方，流式输出期间占用一个通道，通道全部占用时等待。其他会话不计入。留空表示不限。',
+  lanesLabel: '通道数',
+  noCap: '不限',
+  malformed: '请输入不小于 1 的整数，或留空表示不限。',
+  conflict: '编辑期间此设置已在别处更改。放弃编辑以查看。',
+  unavailable: 'fleet-tau-lanes 未加载，暂时无法配置。',
+  readOnly: '此部署的设置为只读。',
+  saveFailed: '部署未接受此值，已保留以便修改。',
   save: '保存',
   saving: '正在保存…',
 }
