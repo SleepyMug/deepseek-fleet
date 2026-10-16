@@ -131,12 +131,21 @@ workspace's own, which it pins, run as `pnpm exec dsh` in place of `dsh`.
    installed dsh, and keeps the workspace's, its dev dependencies, for its
    builds and tests (dsh's docs/user/develop/basic/publish.md).
 
-4. Run the host, and the commands from the checkout:
+4. Link the `tau` and `fleet` commands, which follow the checkout's builds,
+   and have `tau` run on fleet by default:
+
+   ```
+   pnpm add --global "link:$PWD/tau" "link:$PWD/packages/fleet-client"
+   mkdir -p ~/.config/tau && echo 'adaptor: fleet' > ~/.config/tau/config.yaml
+   ```
+
+   The socket is `~/.dsh/fleet/tau.sock` unless the file names another:
+   `adaptors: { fleet: { socket: <path> } }`.
+
+5. Run the host:
 
    ```
    dsh web
-   alias tau="node $PWD/tau/dist/cli/main.js"
-   alias fleet="node $PWD/packages/fleet-client/lib/cli.js"
    ```
 
 A change to tau is a commit in `tau/`, pushed to its own repository, and
