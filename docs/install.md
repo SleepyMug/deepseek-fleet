@@ -32,6 +32,13 @@ On linux, with Docker and pnpm on the PATH:
 
    dsh says once that fleet-box-runtime is no bundle.
 
+   Optionally, fleet's opinionated default, one basic agent preset with no
+   multi-agent tools, so sessions run taus instead (docs/fleet-basic/index.md):
+
+   ```
+   dsh plugin --profile web add @sleepymug/fleet-basic
+   ```
+
    A profile of its own works the same, made from dsh's web template
    first: `dsh --profile <name> --from-default-profile web --dump-config >
    /dev/null`.
@@ -126,6 +133,7 @@ workspace's own, which it pins, run as `pnpm exec dsh` in place of `dsh`.
    dsh plugin --profile web add ./packages/fleet-core ./ext/fleet-ext-tau ./ext/fleet-ext-notes
    ```
 
+   Optionally after them, `./packages/fleet-basic` (docs/fleet-basic/index.md).
    dsh then loads the checkout's latest build each time it starts. A
    linked package loads the dsh packages it declares as peers from the
    installed dsh, and keeps the workspace's, its dev dependencies, for its

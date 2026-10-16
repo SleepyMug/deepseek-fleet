@@ -1,0 +1,20 @@
+{
+  "name": "@sleepymug/fleet-basic",
+  "version": "0.0.1",
+  "description": "fleet's opinionated default for a profile's own sessions: one basic agent preset, a coding agent with files, bash, the web and skills, and dsh's other presets off, so its sessions have no subagents, teams or background jobs, and run taus with tau_run instead; a config-only dsh bundle, listed after fleet-core",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
