@@ -78,8 +78,12 @@ export interface Entry {
   modules: string
   /** The contracts of the tau's APIs, by name, each linked to the client of the extension that implements it. */
   apis: readonly string[]
-  /** What the tau exposes to its programs: `@api/<alias>`, or a package of its own, by name, with what it says it is. */
-  exposed: readonly { specifier: string; description?: string }[]
+  /**
+   * What the tau exposes to its programs, each by the name they import it
+   * as, with what it says it is: an API, with where the box has its
+   * contract's declarations, or a package of the tau's own.
+   */
+  exposed: readonly { specifier: string; description?: string; declarations?: string }[]
   /** The names of the tau's skills; none for an entry written before they were kept. */
   skills?: readonly string[]
   createdAt: string

@@ -87,14 +87,15 @@ switched in its chat box, as any session's:
   config: { provider: openai-codex, model: gpt-6-astra, reasoningEffort: high }
 ```
 
-A tau that uses an extension's API holds a copy of its contract, the
-package the extension depends on, such as `@sleepymug/tau-api-notes` for
-fleet-ext-notes, as published, in `api/<alias>/` (tau's
-docs/spec/apis.md):
+A tau that uses an extension's API names its contract, the package the
+extension depends on, such as `@sleepymug/tau-api-notes` for
+fleet-ext-notes, in its `apis`, with a range (tau's docs/spec/apis.md).
+`tau api add` names it, and pulls the contract into the tau's `.tau/`, for
+its author's TypeScript, from npm, or from the fleet host, which gives the
+contracts its extensions implement (tau's docs/spec/authoring.md):
 
 ```
-mkdir -p <tau-dir>/api/notes
-npm pack @sleepymug/tau-api-notes && tar -xzf sleepymug-tau-api-notes-*.tgz --strip-components=1 -C <tau-dir>/api/notes
+tau api add @sleepymug/tau-api-notes --from fleet <tau-dir>
 ```
 
 - The image holds the packages as installed on the host, so the host must

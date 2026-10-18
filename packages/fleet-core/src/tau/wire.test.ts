@@ -57,6 +57,10 @@ function fake(calls: string[], aborted: string[] = []): Operations {
       return once('the result')
     },
     release: op('release'),
+    contract: (name, range) => {
+      calls.push(`contract ${name} ${String(range)}`)
+      return { value: { name, version: '1.3.0', description: 'Notes.' }, body: once('the contract') }
+    },
   }
 }
 
@@ -79,8 +83,11 @@ test('the socket serves the host the requests of a run, and the service\'s own',
   assert.deepEqual(await service.exchange({ op: 'status', id: 'session-b' }), { value: { ...STATUS, sessionId: 'session-b' } })
   assert.deepEqual(await service.exchange({ op: 'history', id: 'session-a' }), { value: [{ type: 'turn/end' }] })
   await assert.rejects(service.exchange({ op: 'release', id: 'session-fails' }), /^Error: fleet: no tau session session-fails$/u)
+  const contract = await service.exchange({ op: 'contract', name: '@test/notes', range: '^1.2.0' })
+  assert.deepEqual([contract.value, await read(contract.body)], [{ name: '@test/notes', version: '1.3.0', description: 'Notes.' }, 'the contract'])
   assert.deepEqual(calls, [
     `host submit t /c ${call}`, 'host finish session-a', 'host release session-a', 'host list', 'host status session-b', 'host history session-a', 'host release session-fails',
+    'contract @test/notes ^1.2.0',
   ])
 
   // What does not fit is refused before the service sees it.
@@ -89,8 +96,9 @@ test('the socket serves the host the requests of a run, and the service\'s own',
   await assert.rejects(service.exchange({ op: 'submit', title: 't', targets: {} }, once(call)), /^Error: submit takes no targets$/u)
   await assert.rejects(service.exchange({ op: 'finish' }), /^Error: finish takes the run's id, a string$/u)
   await assert.rejects(service.exchange({ op: 'status' }), /^Error: fleet: status takes the run's id, a string$/u)
+  await assert.rejects(service.exchange({ op: 'contract', name: '@test/notes', range: '1.2.0' }), /^Error: contract takes range, \^ and a version/u)
   await assert.rejects(service.exchange({ op: 'cancel', id: 'session-a' }), /^Error: fleet: no op cancel$/u)
-  assert.equal(calls.length, 7)
+  assert.equal(calls.length, 8)
 })
 
 test('a session\'s requests are its own, as the way in names it', async () => {

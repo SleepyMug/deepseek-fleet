@@ -26,7 +26,7 @@ import { messageOf } from '../util/error.ts'
 import { spool } from '../util/stream.ts'
 import { admit, type Accepted } from './admission.ts'
 import { catalogOf, type Exts } from './apis.ts'
-import { furnish, packIn, placed } from './box-setup.ts'
+import { exposedIn, furnish, packIn, placed } from './box-setup.ts'
 import { callsOf } from './calls.ts'
 import type { About, Held, InitEnd, Occupant, RunBox, RunLifecycle, Started, TauBoxes } from './ports.ts'
 import { HOST, type Caller, type Entry, type Registry } from './registry.ts'
@@ -128,7 +128,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
         cwd: setup.cwd,
         modules: setup.modules,
         apis: accepted.links.map(link => link.contract),
-        exposed: accepted.exposed,
+        exposed: exposedIn(accepted, setup),
         skills: accepted.skills,
         createdAt: this.platform.now().toISOString(),
       })
@@ -162,7 +162,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
         cwd: setup.cwd,
         modules: setup.modules,
         apis: accepted.links.map(link => link.contract),
-        exposed: accepted.exposed,
+        exposed: exposedIn(accepted, setup),
         skills: accepted.skills,
         resetAt: this.platform.now().toISOString(),
       })
@@ -186,6 +186,10 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     if (own !== undefined) return own
     if (about.project === undefined || !posix.isAbsolute(about.project)) throw new Error('fleet: a run from outside a box names its project, an absolute path')
     return await realpath(about.project)
+  }
+
+  contract(name: string, range?: string): string | undefined {
+    return catalogOf(this.exts).find(name, range)?.declarations
   }
 
   entry(sessionId: string): Promise<Entry> {
@@ -375,7 +379,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     }, box)
   }
 
-  /** What answers the calls of the clients in a session's box, by the APIs its tau holds now. */
+  /** What answers the calls of the clients in a session's box, by the APIs its tau names now. */
   private callsOf(sessionId: string): ReturnType<typeof callsOf> {
     return callsOf(this.exts, sessionId, async () => (await this.registry.get(sessionId)).apis)
   }

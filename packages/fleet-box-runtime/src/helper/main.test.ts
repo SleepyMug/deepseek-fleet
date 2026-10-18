@@ -243,17 +243,17 @@ test('the helper runs a terminal: input, size, foreground group, activity, and a
 
 test('the helper links a tau\'s APIs to their clients, and its exposed packages, for code anywhere below', async (t) => {
   const dir = await folder(t)
-  await mkdir(join(dir, 'tau/self/api/notes'), { recursive: true })
-  await writeFile(join(dir, 'tau/self/api/notes/index.d.ts'), 'export declare function hello(): string;\n')
+  await mkdir(join(dir, 'tau/node_modules/.contracts/@test/notes'), { recursive: true })
+  await writeFile(join(dir, 'tau/node_modules/.contracts/@test/notes/index.d.ts'), 'export declare function hello(): string;\n')
   await mkdir(join(dir, 'tau/self/node_modules/wrap'), { recursive: true })
   await writeFile(join(dir, 'tau/self/node_modules/wrap/package.json'), JSON.stringify({ name: 'wrap', type: 'module', exports: './index.js' }))
-  await writeFile(join(dir, 'tau/self/node_modules/wrap/index.js'), 'import { hello } from "@api/notes"; export const loud = () => hello().toUpperCase();\n')
+  await writeFile(join(dir, 'tau/self/node_modules/wrap/index.js'), 'import { hello } from "@test/notes"; export const loud = () => hello().toUpperCase();\n')
   await mkdir(join(dir, 'client'))
   await writeFile(join(dir, 'client/index.js'), 'export const hello = () => "hi"; export default "whole";\n')
   await mkdir(join(dir, 'tau/scratch'))
   // TypeScript, which Node runs as is.
   await writeFile(join(dir, 'tau/scratch/main.ts'), [
-    'import notes, { hello } from "@api/notes";',
+    'import notes, { hello } from "@test/notes";',
     'import { loud } from "wrap";',
     'const said: string[] = [hello(), notes, loud()];',
     'process.stdout.write(JSON.stringify(said));',
@@ -262,19 +262,27 @@ test('the helper links a tau\'s APIs to their clients, and its exposed packages,
     {
       type: 'request', id: 1, method: 'apis.link', params: {
         modules: join(dir, 'tau/node_modules'),
-        apis: [{ name: 'notes', client: join(dir, 'client'), types: join(dir, 'tau/self/api/notes') }],
+        apis: [{ name: '@test/notes', client: join(dir, 'client'), types: join(dir, 'tau/node_modules/.contracts/@test/notes') }],
         packages: [{ name: 'wrap', dir: join(dir, 'tau/self/node_modules/wrap') }],
       },
     },
     { type: 'request', id: 2, method: 'exec', params: { argv: [process.execPath, join(dir, 'tau/scratch/main.ts')] } },
     { type: 'request', id: 3, method: 'apis.link', params: { modules: 'relative', apis: [], packages: [] } },
+    {
+      type: 'request', id: 4, method: 'apis.link', params: {
+        modules: join(dir, 'tau/node_modules'),
+        apis: [{ name: 'wrap', client: join(dir, 'client'), types: join(dir, 'client') }],
+        packages: [{ name: 'wrap', dir: join(dir, 'tau/self/node_modules/wrap') }],
+      },
+    },
   ], { sorted: false })
   assert.deepEqual(answers.find(answer => answer.id === 1), { type: 'result', id: 1, value: null })
   assert.deepEqual((answers.find(answer => answer.id === 2) as { value: { stdout: string } }).value.stdout, '["hi","whole","HI"]')
   assert.deepEqual(answers.find(answer => answer.id === 3), { type: 'error', id: 3, message: 'apis.link takes modules, an absolute path' })
-  const manifest = JSON.parse(await readFile(join(dir, 'tau/node_modules/@api/notes/package.json'), 'utf8')) as { exports: object }
-  assert.deepEqual(manifest.exports, { '.': { types: './api/index.d.ts', default: './index.js' } })
-  assert.equal(await readFile(join(dir, 'tau/node_modules/@api/notes/api/index.d.ts'), 'utf8'), 'export declare function hello(): string;\n')
+  assert.match((answers.find(answer => answer.id === 4) as { message: string }).message, /takes packages, .*none an API's/u)
+  const manifest = JSON.parse(await readFile(join(dir, 'tau/node_modules/@test/notes/package.json'), 'utf8')) as { name: string; exports: object }
+  assert.deepEqual([manifest.name, manifest.exports], ['@test/notes', { '.': { types: './contract/index.d.ts', default: './index.js' } }])
+  assert.equal(await readFile(join(dir, 'tau/node_modules/@test/notes/contract/index.d.ts'), 'utf8'), 'export declare function hello(): string;\n')
 })
 
 test('the helper relays a client\'s calls to the host, their answers back, and a caller gone as a cancel', async (t) => {

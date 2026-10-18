@@ -15,11 +15,11 @@ version of the contract's package it depends on, on the tau service,
 
 | Half | Module | |
 |---|---|---|
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API that holds a copy of the contract, by convention `@api/tau`, in the box: `files()` and `args()`, which read the places of the run's files, extra files included, and its args, expanded, as the box's runtime kept them when it set the box up, and `run(tau, call, signal?, options?)`, which runs a tau with tau's client and its fleet adaptor on the fleet host: it packs the call from the box's files, submits it, waits for it, puts what it gave back at the box's paths, and releases it; `options.history`, fleet's own, is where it writes the run's session's history; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API, by the contract's name, `@sleepymug/tau-api`, in the box: `files()` and `args()`, which read the places of the run's files, extra files included, and its args, expanded, as the box's runtime kept them when it set the box up, and `run(tau, call, signal?, options?)`, which runs a tau with tau's client and its fleet adaptor on the fleet host: it packs the call from the box's files, submits it, waits for it, puts what it gave back at the box's paths, and releases it; `options.history`, fleet's own, is where it writes the run's session's history; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
 | server | `src/tau.ts` | The method `exchange(request)`, with the bytes after it, if any: the relay of tau's fleet adaptor, which passes each request, a run's or the service's own, to the tau service as the calling session's, `ctx.fleetTau.handlerFor`, which reaches only the runs it started, and answers with the service's answer, with the bytes after it, if any. The service checks each request. |
 
-A tau uses it by holding a copy of the contract, tau's `contracts/tau-api`
-in its `api/tau/`, as `examples/relay` does.
+A tau uses it by naming the contract, tau's `contracts/tau-api`, in its
+`apis`, `"@sleepymug/tau-api": "^0.1.0"`, as `examples/relay` does.
 
 ## Design
 
@@ -75,7 +75,7 @@ session-b2a1…  finished  ok      relay
 A program below `/tau` in the session's box imports the API:
 
 ```ts
-import { files, run } from '@api/tau'
+import { files, run } from '@sleepymug/tau-api'
 const result = await run('/tau/self/taus/shout', { files: { out: files().report }, args: { text: 'hello' } })
 ```
 

@@ -19,11 +19,13 @@ contract's package it depends on, and types its client by:
 | Half | Module | |
 |---|---|---|
 | contract | `contract/`, the package `@sleepymug/tau-api-notes` | Its `package.json` and its declarations, `index.d.ts`, as tau's docs/spec/contracts.md has a contract: a workspace package of its own, since a contract's name and version are its identity, published beside the extension, which depends on it. |
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API that holds a copy of the contract, such as `@api/notes`, in the box: `addNote(text, tags?)` and `byTag(tag)`, each calling its server. A note's `written` crosses as an ISO date, which the client turns into a `Date`. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API, by the contract's name, `@sleepymug/tau-api-notes`, in the box: `addNote(text, tags?)` and `byTag(tag)`, each calling its server. A note's `written` crosses as an ISO date, which the client turns into a `Date`. |
 | server | `src/notes.ts` | The methods `addNote` and `byTag`, on the calling session's notebook, a file each, written whole. Each checks what the box sent. |
 
-A tau uses it by holding a copy of the contract, its `package.json` and
-`index.d.ts` in the tau's `api/notes/`, as `examples/notebook` does.
+A tau uses it by naming the contract in its `apis`, `"@sleepymug/tau-api-notes":
+"^0.1.0"`, as `examples/notebook` does; its author pulls the contract into
+the tau's `.tau/` with `tau api add @sleepymug/tau-api-notes --from fleet`
+(tau's docs/spec/authoring.md).
 
 ## How it runs
 
@@ -41,7 +43,7 @@ $ tau run --adaptor fleet <checkout>/examples/notebook --call-json '{"files": {"
 A program below `/tau` in the session's box imports the API:
 
 ```ts
-import { addNote, byTag } from '@api/notes'
+import { addNote, byTag } from '@sleepymug/tau-api-notes'
 await addNote('buy milk', ['shop'])
 console.log((await byTag('shop')).map(note => note.text))   // [ 'buy milk' ]
 ```

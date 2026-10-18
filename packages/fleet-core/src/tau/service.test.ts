@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -9,6 +9,7 @@ import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { type CallFile, checkInputs, type Delivery, type Envelope, kindAt, loadTau, type Report } from '@sleepymug/tau/core'
+import { createFleetAdaptor, fleetLoopback } from '@sleepymug/tau/adaptors'
 import { readContents } from '@sleepymug/tau/transfer'
 import { encodeCall, packCall, packResult, unpackResult } from '@sleepymug/tau/wire-tar'
 import type { Result } from '@sleepymug/fleet-protocol/tau'
@@ -36,13 +37,8 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
   const work = await mkdtemp(join(tmpdir(), 'fleet-tau-test-'))
   t.after(() => rm(work, { recursive: true, force: true }))
   const tauDir = join(work, 'tau')
-  await mkdir(join(tauDir, 'api', 'notes'), { recursive: true })
+  await mkdir(tauDir)
   await writeFile(join(tauDir, 'PROMPT.md'), PROMPT)
-  // A copy of the contract @test/notes, which programs import as @api/notes.
-  await writeFile(join(tauDir, 'api', 'notes', 'package.json'), JSON.stringify({
-    name: '@test/notes', version: '1.2.0', description: 'Notes.', tau: { contract: true }, type: 'module', types: './index.d.ts',
-  }))
-  await writeFile(join(tauDir, 'api', 'notes', 'index.d.ts'), 'export declare function add(text: string): void;\n')
   await writeFile(join(tauDir, 'tau.json'), JSON.stringify({
     files: {
       notes: { kind: 'file', mode: 'in', description: 'What to add.' },
@@ -51,7 +47,17 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
       pages: { kind: 'dir', mode: 'out', description: 'New pages.' },
     },
     args: { type: 'object', properties: { style: { type: 'string', description: 'How to write.' } }, required: ['style'] },
+    // The contract @test/notes, which programs import by its name.
+    apis: { '@test/notes': '^1.2.0' },
   }))
+  // The contract, at the version make()'s extension implements, with more than its declarations.
+  await mkdir(join(work, 'contract', 'lib'), { recursive: true })
+  await writeFile(join(work, 'contract', 'package.json'), JSON.stringify({
+    name: '@test/notes', version: '1.3.0', description: 'Notes.', tau: { contract: true }, type: 'module', types: './index.d.ts',
+  }))
+  await writeFile(join(work, 'contract', 'index.d.ts'), 'export declare function add(text: string): void;\n')
+  await writeFile(join(work, 'contract', 'lib', 'tags.d.ts'), 'export type Tag = string;\n')
+  await writeFile(join(work, 'contract', 'README.md'), 'Notes.\n')
   // The client of the extension that implements @test/notes, which make()'s extensions provide.
   await mkdir(join(work, 'client'))
   await writeFile(join(work, 'client', 'index.js'), 'import { call } from "@sleepymug/fleet-box-runtime/ext/client";\nexport function add(text) { return call("@test/notes", "add", [text]); }\n')
@@ -141,7 +147,10 @@ class FakeBoxes implements Boxes {
         this.existing.delete(name)
         await rm(this.root(name), { recursive: true, force: true })
       },
-      copyIn: async (from, to) => { record('copyIn', `copyIn ${from} ${to}`) },
+      copyIn: async (from, to) => {
+        record('copyIn', `copyIn ${from.replace(/\/contract-[^/]+\//u, '/contract-…/')} ${to}`)
+        await cp(from, join(this.root(name), to), { recursive: true })
+      },
       pipe: async (argv, io) => {
         const command = readTauCommand(argv.slice(2))
         record('pipe', `pipe ${command.command}`)
@@ -188,6 +197,7 @@ function make(work: string, log: (message: string) => void, sessions: Sessions, 
       contract: '@test/notes',
       version: '1.3.0',
       client: join(work, 'client'),
+      declarations: join(work, 'contract'),
       methods: {
         add: (args, { sessionId }) => {
           added.push({ args, sessionId })
@@ -342,9 +352,10 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
     'start',
     'pipe setup',
     `copyIn ${join(work, 'client')} /tau/node_modules/.fleet/@test/notes`,
+    `copyIn ${join(work, 'taus', created.sessionId, 'contract-…', 'contract')} /tau/node_modules/.contracts/@test/notes`,
     `apis.link ${JSON.stringify({
       modules: '/tau/node_modules',
-      apis: [{ name: 'notes', client: '/tau/node_modules/.fleet/@test/notes', types: '/tau/self/api/notes' }],
+      apis: [{ name: '@test/notes', client: '/tau/node_modules/.fleet/@test/notes', types: '/tau/node_modules/.contracts/@test/notes' }],
       packages: [],
     })}`,
     'stop',
@@ -355,6 +366,8 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
   assert.equal(await readFile(join(root, 'tau/workspace/site/index.md'), 'utf8'), '# Home\n')
   assert.equal(await readFile(join(root, 'tau/self/PROMPT.md'), 'utf8'), PROMPT)
   assert.deepEqual(await readdir(join(root, 'tau/out')), ['pages'])
+  // The contract as the extension has it, its package.json and declarations alone.
+  assert.deepEqual((await readdir(join(root, 'tau/node_modules/.contracts/@test/notes'), { recursive: true })).sort(), ['index.d.ts', 'lib', 'lib/tags.d.ts', 'package.json'])
   // The call is kept; the tau read from it here is gone.
   assert.deepEqual(await readdir(join(work, 'taus', created.sessionId)), ['call.tar'])
 
@@ -366,7 +379,7 @@ test('setting up a run\'s box reads its call, has the box place the files, copie
   assert.match(entry.promptRequestId, /^[0-9a-f-]{36}$/u)
   assert.equal(entry.promptedAt, undefined)
   assert.deepEqual(entry.apis, ['@test/notes'])
-  assert.deepEqual(entry.exposed, [{ specifier: '@api/notes', description: 'Notes.' }])
+  assert.deepEqual(entry.exposed, [{ specifier: '@test/notes', description: 'Notes.', declarations: '/tau/node_modules/.contracts/@test/notes' }])
   assert.deepEqual(entry.skills, [])
   assert.deepEqual(entry.files, {
     notes: { mode: 'in', kind: 'file', base: 'notes.md', description: 'What to add.', place: '/tau/in/notes.md' },
@@ -412,19 +425,30 @@ test('submit refuses a call that breaks the spec, or that does not fit the tau, 
   assert.deepEqual(await readdir(join(work, 'taus')), [])
 })
 
-test('submit refuses a tau with an API whose contract no extension implements, or at no version that serves its copy, before it makes a box', async (t) => {
+test('submit refuses a tau with an API whose contract no extension implements, or at no version within its range, before it makes a box', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const none = make(work, () => {}, new FakeSessions(), boxes, new FleetExts())
-  await assert.rejects(startIn(none, HOST, tauDir, call, work), /^Error: fleet: no implementation serves:\n {2}@api\/notes: @test\/notes@1\.2\.0$/u)
+  await assert.rejects(startIn(none, HOST, tauDir, call, work), /^Error: fleet: no implementation serves:\n {2}@test\/notes@\^1\.2\.0$/u)
   const older = new FleetExts()
-  older.provide({ contract: '@test/notes', version: '1.1.0', client: join(work, 'client'), methods: {} })
+  older.provide({ contract: '@test/notes', version: '1.1.0', client: join(work, 'client'), declarations: join(work, 'contract'), methods: {} })
   await assert.rejects(startIn(make(work, () => {}, new FakeSessions(), boxes, older), HOST, tauDir, call, work),
-    /^Error: fleet: no implementation serves:\n {2}@api\/notes: @test\/notes@1\.2\.0$/u)
+    /^Error: fleet: no implementation serves:\n {2}@test\/notes@\^1\.2\.0$/u)
   assert.deepEqual(boxes.calls, [])
 })
 
-test('the calls of a session\'s clients go to the extension\'s server, as that session\'s, for the contracts its tau holds', async (t) => {
+test('the service gives the contract an extension implements, the newest within a range, its package.json and declarations, to any caller', async (t) => {
+  const { work } = await fixture(t)
+  const service = make(work, () => {}, new FakeSessions(), new FakeBoxes(work))
+  const adaptor = createFleetAdaptor({ transport: fleetLoopback(service.handlerFor({ kind: 'session', sessionId: 'session-other' })) })
+  const at = join(work, 'pulled')
+  assert.deepEqual(await adaptor.contract?.('@test/notes', '^1.2.0', at), { name: '@test/notes', version: '1.3.0', description: 'Notes.' })
+  assert.deepEqual((await readdir(at, { recursive: true })).sort(), ['index.d.ts', 'lib', 'lib/tags.d.ts', 'package.json'])
+  await assert.rejects(adaptor.contract?.('@test/notes', '^1.4.0', join(work, 'none')) ?? Promise.resolve(), /^Error: fleet: no extension implements @test\/notes within \^1\.4\.0 now$/u)
+  await assert.rejects(adaptor.contract?.('@test/other', undefined, join(work, 'none')) ?? Promise.resolve(), /no extension implements @test\/other now/u)
+})
+
+test('the calls of a session\'s clients go to the extension\'s server, as that session\'s, for the contracts its tau names', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const boxes = new FakeBoxes(work)
   const service = make(work, () => {}, new FakeSessions(), boxes)
@@ -439,8 +463,8 @@ test('the calls of a session\'s clients go to the extension\'s server, as that s
   assert.equal(await onCall({ contract: '@test/notes', method: 'add', args: ['milk'] }, signal), 'added milk')
   assert.deepEqual(added, [{ args: ['milk'], sessionId }])
   await assert.rejects(onCall({ contract: '@test/notes', method: 'toString', args: [] }, signal), /the extension of @test\/notes has no method toString/u)
-  // By its contract, not by the alias the tau gives it.
-  await assert.rejects(onCall({ contract: 'notes', method: 'add', args: [] }, signal), /holds no API of notes/u)
+  // By its contract's name alone.
+  await assert.rejects(onCall({ contract: 'notes', method: 'add', args: [] }, signal), /names no API notes/u)
 })
 
 test('a set-up that fails removes its box and registers nothing', async (t) => {
@@ -910,7 +934,7 @@ test('archiving a run\'s session removes its box once the run ended, keeping the
   await service.followArchive(new Set())
   boxes.calls.length = 0
   assert.equal((await service.tauRuns.boxFor(sessionId))?.container, box)
-  assert.deepEqual(boxes.calls.map(call => call.split(' ')[0]), ['create', 'start', 'pipe', 'copyIn', 'apis.link'])
+  assert.deepEqual(boxes.calls.map(call => call.split(' ')[0]), ['create', 'start', 'pipe', 'copyIn', 'copyIn', 'apis.link'])
   // As the run began: what the agent left is gone.
   assert.equal(await readFile(join(boxes.root(box), 'tau', 'in', 'notes.md'), 'utf8'), 'buy milk\n')
   assert.deepEqual(await readdir(join(boxes.root(box), 'tau', 'workspace', 'site')), ['index.md'])
@@ -1019,13 +1043,13 @@ test('a real box places a call\'s files and the tau, and packs what its agent le
     await service.tauRuns.start(sessionId)
     const { stdout } = await run('docker', ['exec', box, 'find', '/tau', '-path', '/tau/node_modules', '-prune', '-o', '-not', '-type', 'd', '-print'])
     assert.deepEqual(stdout.trim().split('\n').sort(), [
-      '/tau/.run.json', '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/api/notes/index.d.ts', '/tau/self/api/notes/package.json', '/tau/self/tau.json',
+      '/tau/.run.json', '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/in/notes.md', '/tau/self/PROMPT.md', '/tau/self/tau.json',
       '/tau/workspace/site/index.md',
     ])
     // A program below /tau imports the API, and its client's call reaches the extension's server, as this session's.
     added.length = 0
     const started = await service.tauRuns.boxFor(sessionId)
-    const program = 'import { add } from "@api/notes"; process.stdout.write(await add("milk"));'
+    const program = 'import { add } from "@test/notes"; process.stdout.write(await add("milk"));'
     const ran = await started?.request('exec', { argv: ['sh', '-c', `cd /tau/workspace && node --input-type=module --eval '${program}'`] })
     assert.deepEqual(ran, { code: 0, signal: null, stdout: 'added milk', stderr: '' })
     assert.deepEqual(added, [{ args: ['milk'], sessionId }])
@@ -1034,7 +1058,7 @@ test('a real box places a call\'s files and the tau, and packs what its agent le
     await started?.request('exec', { argv: ['sh', '-c', [
       'mkdir -p /tau/self/node_modules/twice',
       `echo '{"name":"twice","type":"module","exports":"./index.js"}' > /tau/self/node_modules/twice/package.json`,
-      `echo 'import { add } from "@api/notes"; export const twice = async text => [await add(text), await add(text)]' > /tau/self/node_modules/twice/index.js`,
+      `echo 'import { add } from "@test/notes"; export const twice = async text => [await add(text), await add(text)]' > /tau/self/node_modules/twice/index.js`,
     ].join(' && ')] })
     const typed = await started?.request('exec', { argv: ['sh', '-c', [
       "cd /tau/self; node - eggs <<'EOF'",
@@ -1075,7 +1099,7 @@ test('a real box runs a tau\'s init in the agent\'s working directory, and a pro
   await withInit(tauDir)
   await writeFile(join(tauDir, 'init.mts'), [
     'import { mkdirSync, writeFileSync } from "node:fs"',
-    'import { add } from "@api/notes"',
+    'import { add } from "@test/notes"',
     'const said: string = await add("milk")',
     'writeFileSync("/tau/out/report.md", `${said}\\n`)',
     'mkdirSync("/tau/out/pages", { recursive: true })',

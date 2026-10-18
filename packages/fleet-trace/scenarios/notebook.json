@@ -8,26 +8,26 @@
     "args": { "tag": "shop" }
   },
   "steps": [
-    { "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/package.json" } },
-    { "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/api/index.d.ts" } },
+    { "tool": "read", "args": { "file_path": "/tau/node_modules/@sleepymug/tau-api-notes/package.json" } },
+    { "tool": "read", "args": { "file_path": "/tau/node_modules/.contracts/@sleepymug/tau-api-notes/index.d.ts" } },
     {
       "tool": "bash",
       "args": {
-        "command": "cd /tau/self; node - /tau/in/list.txt <<'EOF'\nimport { readFileSync } from 'node:fs'\nimport { addNote } from '@api/notes'\n\nconst ids: number[] = []\nfor (const line of readFileSync(process.argv[2] ?? '', 'utf8').split('\\n').filter(Boolean)) {\n  const [text = '', tags = ''] = line.split('#')\n  const note = await addNote(text.trim(), tags.split(',').map(tag => tag.trim()).filter(Boolean))\n  ids.push(note.id)\n}\nconsole.log(JSON.stringify(ids))\nEOF",
+        "command": "cd /tau/self; node - /tau/in/list.txt <<'EOF'\nimport { readFileSync } from 'node:fs'\nimport { addNote } from '@sleepymug/tau-api-notes'\n\nconst ids: number[] = []\nfor (const line of readFileSync(process.argv[2] ?? '', 'utf8').split('\\n').filter(Boolean)) {\n  const [text = '', tags = ''] = line.split('#')\n  const note = await addNote(text.trim(), tags.split(',').map(tag => tag.trim()).filter(Boolean))\n  ids.push(note.id)\n}\nconsole.log(JSON.stringify(ids))\nEOF",
         "description": "Save each line of the list as a note"
       }
     },
     {
       "tool": "bash",
       "args": {
-        "command": "cd /tau/self; node - <<'EOF'\nimport { byTag } from '@api/notes'\n\nawait byTag(42)\nEOF",
+        "command": "cd /tau/self; node - <<'EOF'\nimport { byTag } from '@sleepymug/tau-api-notes'\n\nawait byTag(42)\nEOF",
         "description": "Find the notes with a mistaken tag"
       }
     },
     {
       "tool": "bash",
       "args": {
-        "command": "cd /tau/self; node - <<'EOF'\nimport { writeFileSync } from 'node:fs'\nimport { byTag } from '@api/notes'\n\nconst texts = (await byTag('shop')).map(note => note.text)\nwriteFileSync('/tau/out/report.txt', texts.join('\\n') + '\\n')\nconsole.log(JSON.stringify(texts))\nEOF",
+        "command": "cd /tau/self; node - <<'EOF'\nimport { writeFileSync } from 'node:fs'\nimport { byTag } from '@sleepymug/tau-api-notes'\n\nconst texts = (await byTag('shop')).map(note => note.text)\nwriteFileSync('/tau/out/report.txt', texts.join('\\n') + '\\n')\nconsole.log(JSON.stringify(texts))\nEOF",
         "description": "Write the shop notes to the report"
       }
     }

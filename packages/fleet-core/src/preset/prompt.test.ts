@@ -84,7 +84,7 @@ test('a tau\'s prompt lists the run\'s files, each with its mode, its kind, its 
 test('a tau\'s prompt says how the model runs its programs, and lists what its tau exposes to them, with where each is declared, after its files', async () => {
   const ctx = await prompted({
     files: { list: { mode: 'in', kind: 'file', base: 'list.txt', place: '/tau/in/list.txt' } },
-    exposed: [{ specifier: '@api/notes', description: 'Notes, {{tagged}}.' }, { specifier: 'notes-digest' }],
+    exposed: [{ specifier: '@test/notes', description: 'Notes, {{tagged}}.', declarations: '/tau/node_modules/.contracts/@test/notes' }, { specifier: 'notes-digest' }],
   })
   const { sections } = await ctx.systemPrompt.assemble(forSession(SESSION))
   const names = sections.map(section => section.name)
@@ -92,7 +92,7 @@ test('a tau\'s prompt says how the model runs its programs, and lists what its t
   const text = sections.find(section => section.name === 'fleet:tau-programs')?.text ?? ''
   assert.match(text, /^Run programs with bash's `node`, `workdir` \/tau\/self, so that their imports resolve as the TAU's code does: `node - <<'EOF'`, the program, then `EOF`\. /u)
   assert.match(text, /Give a program absolute paths/u)
-  assert.match(text, /\n\n- `@api\/notes`, declared in \/tau\/self\/api\/notes\/index\.d\.ts: Notes, \{\{tagged\}\}\.\n- `notes-digest`, in \/tau\/self\/node_modules\/notes-digest, whose package\.json names its declarations$/u)
+  assert.match(text, /\n\n- `@test\/notes`, declared in \/tau\/node_modules\/\.contracts\/@test\/notes\/index\.d\.ts: Notes, \{\{tagged\}\}\.\n- `notes-digest`, in \/tau\/self\/node_modules\/notes-digest, whose package\.json names its declarations$/u)
   // A session not a tau's, and a tau that exposes nothing, get none.
   assert.ok(!(await ctx.systemPrompt.assemble(forSession('session-11111111-1111-4111-8111-111111111111'))).sections.some(section => section.name === 'fleet:tau-programs'))
   assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))

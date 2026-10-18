@@ -8,7 +8,7 @@
  * where it placed each, keeps what it needs of the run, puts tau's TAU.md
  * and TAU_DEV.md, as the runtime's tau library has them, beside them, and
  * reports to the host what the host needs: the prompt, where things are,
- * each file included, and which client each API needs. Once the run ended, the host has it pack the run's result,
+ * each file included, and which client, and which contract's declarations, each API needs. Once the run ended, the host has it pack the run's result,
  * which the host reads and checks again, since by then the box is the
  * agent's. Each runs as ./main.ts, with `docker exec`, before the agent
  * does, and runs no code of the tau's, as ./protocol.ts has the commands.
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 import { type Admitted, catalogOf, createBackendSdk } from '@sleepymug/tau/backend'
 import { checkOutputs, type Envelope, type Json, kindAt, type Outcome, type Output } from '@sleepymug/tau/core'
 import { packResult, unpackCall } from '@sleepymug/tau/wire-tar'
-import { DEV_PRIMER, FOLDERS, MODULES, PRIMER, RUN, SELF, clientOf, placer } from './layout.ts'
+import { DEV_PRIMER, FOLDERS, MODULES, PRIMER, RUN, SELF, clientOf, contractOf, placer } from './layout.ts'
 import type { Offered, Setup } from './protocol.ts'
 
 /** What the runtime keeps of a run in its box: each file, where the box has each, and the args, expanded. */
@@ -34,15 +34,15 @@ interface Kept {
 /**
  * Set a box up for a run of a call: make its folders, place the tau the
  * call carries, admit the call, place the content of each file, make each
- * `out` file's folder for a directory, and the folder each API's client
- * goes in, and put TAU.md and TAU_DEV.md there.
+ * `out` file's folder for a directory, and the folders each API's client
+ * and its contract's declarations go in, and put TAU.md and TAU_DEV.md there.
  * @param offered - the contracts whose clients the host has, for the tau's APIs.
  * @param root - where the box's paths are, the box's root unless a test has them elsewhere.
  */
 export async function setup(call: AsyncIterable<Uint8Array>, offered: readonly Offered[], root = '/'): Promise<Setup> {
   const at = (path: string): string => join(root, path)
   for (const folder of Object.values(FOLDERS)) await mkdir(at(folder), { recursive: true })
-  const sdk = createBackendSdk({ implementations: catalogOf(offered.map(({ contract, version }) => ({ contract, version, module: clientOf(contract) }))) })
+  const sdk = createBackendSdk({ implementations: catalogOf(offered.map(({ contract, version }) => ({ contract, version, module: clientOf(contract), declarations: contractOf(contract) }))) })
   let admitted: Admitted | undefined
   const places: { [name: string]: string } = {}
   await unpackCall(call, {
@@ -58,8 +58,11 @@ export async function setup(call: AsyncIterable<Uint8Array>, offered: readonly O
   ;(admitted as Admitted).place(rooted(places, at))
   const run = tau.expand(envelope, places, SELF)
   for (const [name, { mode, kind }] of Object.entries(envelope.files)) if (mode === 'out' && kind === 'dir') await mkdir(at(places[name]), { recursive: true })
-  // The folder each client goes in, as a scoped contract's name has one, which the host's copy does not make.
-  for (const { implementation } of links) await mkdir(at(posix.dirname(implementation.module)), { recursive: true })
+  // The folder each client and contract goes in, as a scoped contract's name has one, which the host's copy does not make.
+  for (const { implementation } of links) {
+    await mkdir(at(posix.dirname(implementation.module)), { recursive: true })
+    await mkdir(at(posix.dirname(implementation.declarations as string)), { recursive: true })
+  }
   const kept: Kept = { files: { ...envelope.files }, places, args: { ...run.args } }
   await writeFile(at(RUN), `${JSON.stringify(kept)}\n`)
   await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), at(PRIMER))
@@ -71,7 +74,7 @@ export async function setup(call: AsyncIterable<Uint8Array>, offered: readonly O
     modules: MODULES,
     self: SELF,
     ...run.init === undefined ? {} : { init: run.init },
-    links: links.map(({ api, implementation }) => ({ alias: api.alias, contract: implementation.contract, client: implementation.module })),
+    links: links.map(({ implementation }) => ({ contract: implementation.contract, client: implementation.module, declarations: implementation.declarations as string })),
     packages: tau.exposed.flatMap(entry => entry.kind === 'package' ? [{ name: entry.specifier, dir: posix.join(SELF, ...relative(tau.dir, entry.dir).split(sep)) }] : []),
   }
 }

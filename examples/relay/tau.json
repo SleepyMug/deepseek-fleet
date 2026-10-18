@@ -9,5 +9,6 @@
       "word": { "type": "string", "description": "The word to shout." }
     },
     "required": ["word"]
-  }
+  },
+  "apis": { "@sleepymug/tau-api": "^0.1.0" }
 }

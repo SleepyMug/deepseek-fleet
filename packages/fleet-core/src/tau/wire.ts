@@ -1,6 +1,7 @@
 /**
  * The tau service's requests (./service.ts), as tau's fleet adaptor makes a
- * run's, submit, finish and release (tau's docs/spec/fleet.md), and as
+ * run's, submit, finish and release, and a contract's (tau's
+ * docs/spec/fleet.md), and as
  * fleet-protocol has the service's own, list, status and history, served
  * for a caller, whom each way in names, never the request: the socket,
  * which tau's `listenFleet` serves (./plugin.ts), for the host; the `tau` API's extension (fleet-ext-tau),
@@ -9,12 +10,12 @@
  * @module @sleepymug/fleet-core/tau/wire
  */
 
-import { type FleetHandler, readFleetRunRequest } from '@sleepymug/tau/adaptors'
+import { type FleetHandler, readFleetContractRequest, readFleetRunRequest } from '@sleepymug/tau/adaptors'
 import type { Caller } from './registry.ts'
 import type { TauService } from './service.ts'
 
 /** What the wire asks of the service. */
-export type Operations = Pick<TauService, 'submit' | 'finish' | 'release' | 'list' | 'status' | 'history'>
+export type Operations = Pick<TauService, 'submit' | 'finish' | 'release' | 'contract' | 'list' | 'status' | 'history'>
 
 /** The service's requests, made by `caller`. */
 export function serveFor(service: Operations, caller: Caller): FleetHandler {
@@ -33,6 +34,8 @@ export function serveFor(service: Operations, caller: Caller): FleetHandler {
           return { value: null }
       }
     }
+    const asked = readFleetContractRequest(request)
+    if (asked !== undefined) return service.contract(asked.name, asked.range)
     switch (request.op) {
       case 'list':
         return { value: await service.list(caller) }

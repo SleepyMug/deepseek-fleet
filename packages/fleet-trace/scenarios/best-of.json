@@ -20,7 +20,7 @@
     {
       "tool": "bash",
       "args": {
-        "command": "cd /tau/self; node - <<'EOF'\nimport { mkdirSync, readFileSync } from 'node:fs'\nimport { args, run } from '@api/tau'\n\nconst { tau, runs, call } = args() as { tau: string; runs: number; call: { files: { out: string }; args: object } }\nconst ran = await Promise.all(Array.from({ length: runs }, async (_, i) => {\n  const out = `/tmp/run-${i + 1}/report.txt`\n  mkdirSync(`/tmp/run-${i + 1}`, { recursive: true })\n  const result = await run(tau, { files: { ...call.files, out }, args: call.args })\n  return { run: i + 1, ...result, left: result.ok ? readFileSync(out, 'utf8') : null }\n}))\nconsole.log(JSON.stringify(ran, null, 2))\nEOF",
+        "command": "cd /tau/self; node - <<'EOF'\nimport { mkdirSync, readFileSync } from 'node:fs'\nimport { args, run } from '@sleepymug/tau-api'\n\nconst { tau, runs, call } = args() as { tau: string; runs: number; call: { files: { out: string }; args: object } }\nconst ran = await Promise.all(Array.from({ length: runs }, async (_, i) => {\n  const out = `/tmp/run-${i + 1}/report.txt`\n  mkdirSync(`/tmp/run-${i + 1}`, { recursive: true })\n  const result = await run(tau, { files: { ...call.files, out }, args: call.args })\n  return { run: i + 1, ...result, left: result.ok ? readFileSync(out, 'utf8') : null }\n}))\nconsole.log(JSON.stringify(ran, null, 2))\nEOF",
         "description": "Run the TAU twice at once, each with its own out file"
       }
     },

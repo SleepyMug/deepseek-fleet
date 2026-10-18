@@ -2,8 +2,8 @@
  * fleet-ext-tau, an extension of the fleet host (fleet-core's
  * docs/fleet-core/ext/index.md), as a dsh plugin: it provides the contract
  * @sleepymug/tau-api, the tau API of tau's docs/spec/tau-api.md, whose client
- * (./client/index.ts) a tau's programs import as the API that holds a copy
- * of it, by convention `@api/tau`, and whose server (./tau.ts) starts,
+ * (./client/index.ts) a tau's programs import by the contract's name, and
+ * whose server (./tau.ts) starts,
  * finishes and cancels the runs a tau's session starts from its box, on the
  * tau service, `ctx.fleetTau`.
  * @module @sleepymug/fleet-ext-tau/plugin

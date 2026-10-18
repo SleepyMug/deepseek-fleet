@@ -34,7 +34,7 @@ A scenario is JSON, its paths relative to its file, such as
   "tau": "../../../examples/notebook",
   "files": { "list.txt": "buy milk #shop\n" },
   "call": { "files": { "list": "list.txt", "report": "out/report.txt" }, "args": { "tag": "shop" } },
-  "steps": [{ "tool": "read", "args": { "file_path": "/tau/node_modules/@api/notes/api/index.d.ts" } }],
+  "steps": [{ "tool": "read", "args": { "file_path": "/tau/node_modules/.contracts/@sleepymug/tau-api-notes/index.d.ts" } }],
   "final": "Done."
 }
 ```

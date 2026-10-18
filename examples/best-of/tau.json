@@ -14,5 +14,6 @@
       "judge": { "type": "string", "description": "What makes a run the best." }
     },
     "required": ["tau", "runs", "call", "judge"]
-  }
+  },
+  "apis": { "@sleepymug/tau-api": "^0.1.0" }
 }

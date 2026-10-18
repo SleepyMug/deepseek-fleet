@@ -11,7 +11,7 @@
 
 import { rm } from 'node:fs/promises'
 import { type Admitted, createBackendSdk, type ImplementationCatalog } from '@sleepymug/tau/backend'
-import type { Envelope } from '@sleepymug/tau/core'
+import { type Envelope, readContract } from '@sleepymug/tau/core'
 import { extractContent } from '@sleepymug/tau/transfer'
 import { decodeCall } from '@sleepymug/tau/wire-tar'
 import { messageOf } from '../util/error.ts'
@@ -20,10 +20,14 @@ import { messageOf } from '../util/error.ts'
 export interface Accepted {
   /** Each file of the call, checked against the tau, with what `tau.json` says it is, for a file it declares. */
   files: { [name: string]: Envelope['files'][string] & { description?: string } }
-  /** Each contract the tau's APIs hold a copy of, with the extension that serves it, by its client's folder. */
-  links: { contract: string; version: string; client: string }[]
-  /** What the tau exposes to its programs: `@api/<alias>`, or a package of its own, by name, with what it says it is. */
-  exposed: { specifier: string; description?: string }[]
+  /** Each contract the tau's APIs name, with the extension that serves it, by its client's folder, and its contract's. */
+  links: { contract: string; version: string; client: string; declarations: string }[]
+  /**
+   * What the tau exposes to its programs, each by the name they import it as,
+   * with what it says it is: an API, its contract as its extension has it, or
+   * a package of the tau's own.
+   */
+  exposed: { kind: 'api' | 'package'; specifier: string; description?: string }[]
   /** The names of the tau's skills. */
   skills: string[]
 }
@@ -66,13 +70,17 @@ async function read(call: AsyncIterable<Uint8Array>, tauDir: string, catalog: Im
   }
   if (admitted === undefined) throw new Error('fleet: the call breaks the spec: it carries no tau')
   const { envelope, links, tau } = admitted
+  const declarations = new Map(links.map(({ api, implementation }) => [api.name, implementation.declarations as string]))
   return {
     files: Object.fromEntries(Object.entries(envelope.files).map(([name, file]) => {
       const description = tau.files[name]?.description
       return [name, description === undefined ? file : { ...file, description }]
     })),
-    links: links.map(({ implementation: { contract, version, module } }) => ({ contract, version, client: module })),
-    exposed: tau.exposed.map(({ specifier, description }) => ({ specifier, ...description === undefined ? {} : { description } })),
+    links: links.map(({ implementation: { contract, version, module, declarations } }) => ({ contract, version, client: module, declarations: declarations as string })),
+    exposed: tau.exposed.map(entry => {
+      const description = entry.kind === 'api' ? readContract(declarations.get(entry.specifier) as string).description : entry.description
+      return { kind: entry.kind, specifier: entry.specifier, ...description === undefined ? {} : { description } }
+    }),
     skills: tau.skills.map(skill => skill.name),
   }
 }

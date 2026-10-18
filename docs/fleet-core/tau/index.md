@@ -92,6 +92,7 @@ Four dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | `list {}` | Every run, oldest first, as `status` gives each. |
 | `status { id }` | Where the run is, `running`, `ended` or `finished`, its prompt, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `history { id }` | The run's session's history, ended or not (below). |
+| `contract { name, range? }` | Answer `{ name, version, description }`, then send the contract's `package.json` and declarations, as tau's `packContract` packs them, at the version of the extension provided now that implements it, if it is within `range`, for a tau's author, as `tau api add --from fleet` asks (tau's docs/spec/authoring.md). Any caller may ask: a contract is declarations, which its extension publishes. |
 
 Each of the service's operations takes who calls it, a run's caller,
 which the way in says, never the request: the host's `tau`, through the
@@ -160,16 +161,18 @@ boxes:
      name, and the args against the schema, and finds each API an
      implementation in the catalog of the extensions provided
      (`apis.ts`), `ctx.fleetExts`, the extension of its contract whose
-     version serves the copy's, as tau's `serves` has it. A tau with an API
-     whose contract no extension implements, or at no version that serves
-     the copy's, is refused. Where the box places each file is the box's.
+     version is within the tau's range, as tau's `within` has it. A tau
+     with an API whose contract no extension implements, or at no version
+     within its range, is refused. Where the box places each file is the box's.
      Problems name the tau by the run's title. Here `session-<uuid>` is
      minted, the form dsh's session ids take, which the dsh session gets.
   2. It creates the box `fleet-tau-<uuid>`, starts it, and has the box's
      runtime set it up from the call (`box-setup.ts`; fleet-box-runtime's
      tau runtime, below), offered the contracts the call was admitted with, which
-     reports the prompt, where things are, and which client each API
-     needs; copies each client in, where the runtime says; has the helper
+     reports the prompt, where things are, and which client and contract
+     each API needs; copies each client in, and each contract's
+     `package.json` and declarations, from the extension's contract
+     package, where the runtime says; has the helper
      link the APIs and what the tau exposes (`apis.link`); and stops it.
   3. It writes the registry entry, with the files it checked and what the
      runtime reported; the call stays until the run is released.
@@ -186,17 +189,19 @@ boxes:
   - `setup '{"offered": […]}'` reads the call on its stdin with tau's
     `unpackCall`: it places the tau, admits the call against it, with a
     catalog of the contracts offered, each one's client at
-    `/tau/node_modules/.fleet/<contract>`, gives each file its place
+    `/tau/node_modules/.fleet/<contract>`, and its declarations at
+    `/tau/node_modules/.contracts/<contract>`, gives each file its place
     (./layout.ts), places the content of the `in` and `inout` files
     there, and checks them (`place`); then it expands the args, the prompt,
     and the tau's init, if it has one, with the places (`expand`), makes
-    each `out` folder and each client's, keeps the files, their places and
+    each `out` folder, and each client's and contract's, keeps the files, their places and
     the args the agent sees in `/tau/.run.json`, puts tau's `TAU.md` and
     `TAU_DEV.md`, as its tau library has them, in `/tau`, and reports
     `{ prompt, cwd, places, modules, self, init?, links, packages }`: the
     prompt, the agent's working directory, each file's place, where the
     APIs go, where the tau is, the init, each
-    API with its contract and where its client goes, and the packages of
+    API with its contract, where its client goes, and where its contract's
+    declarations go, and the packages of
     the tau's own it exposes. It runs before the agent, on a call the host
     admitted, and runs no code of the tau's, so the host takes its report
     as its own, once it has its shape, linking only clients it offered.
@@ -215,8 +220,9 @@ boxes:
   | an `inout` file | `/tau/workspace/<base name>` |
   | an `out` file | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
-  | the APIs, `@api/<alias>`, and the packages the tau exposes | `/tau/node_modules` |
+  | the APIs, each by its contract's name, and the packages the tau exposes | `/tau/node_modules` |
   | the client of each API's extension | `/tau/node_modules/.fleet/<contract>` |
+  | each API's contract, its `package.json` and declarations, as its extension has them | `/tau/node_modules/.contracts/<contract>` |
   | tau's `TAU.md`, what a tau takes and what a run of one promises, for the agent to read | `/tau/TAU.md` |
   | tau's `TAU_DEV.md`, how to make a tau, for the agent to read | `/tau/TAU_DEV.md` |
 
@@ -235,9 +241,12 @@ boxes:
   program from stdin and resolving its imports from its working directory,
   so a program resolves as the tau's code does: the tau's `node_modules`
   first, every package of its own whether exposed or not, then
-  `/tau/node_modules`. Each `@api/<alias>` there is
-  typed by the tau's copy of its contract, in `/tau/self/api/<alias>`, and
-  re-exports the client, so every import in a process gets one module.
+  `/tau/node_modules`, in which no package of the tau's is named as an API,
+  as tau refuses. Each API there, by its contract's name, is typed by its
+  contract's declarations, as the extension that implements it has them,
+  in `/tau/node_modules/.contracts/<contract>`, where the prompt tells the
+  agent to read them, and re-exports the client, so every import in a
+  process gets one module.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/fleet/taus/<session id>.json`: who started the run, its
   caller; the box, the run's title, the project,
@@ -246,7 +255,8 @@ boxes:
   name, mode, kind and base name, what `tau.json` says it is, and its
   place, as the runtime reported it), the working directory and
   the APIs' folder in the box, as the runtime reported them, the contracts of the
-  APIs the tau holds, each linked, what it exposes, with what each says it is,
+  APIs the tau names, each linked, what it exposes, with what each says it is,
+  and, for an API, where the box has its contract's declarations,
   the names of its skills, when it was made, when it was given its prompt, when and how its run
   ended, when a `finish` first gave that back, and when the box was last
   set up again, if it was. Beside it, a folder of

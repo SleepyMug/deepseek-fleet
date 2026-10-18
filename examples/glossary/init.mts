@@ -2,7 +2,7 @@
 // does not, and fails, the agent then told why, when the glossary cannot be read, as when it is not
 // JSON.
 import { readFileSync, writeFileSync } from 'node:fs'
-import { TAU_RUN, args, files } from '@api/tau'
+import { TAU_RUN, args, files } from '@sleepymug/tau-api'
 
 const { glossary, definition } = files()
 const { term } = args() as { term: string }

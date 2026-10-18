@@ -119,14 +119,14 @@ export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
       + `Give a program absolute paths, such as your files' places, since its working directory is ${SELF}. `
       + 'It can import the modules below; read what one declares before you use it.',
     '',
-    ...exposed.map(({ specifier, description }) => `- \`${specifier}\`, ${declared(specifier)}${description === undefined ? '' : `: ${description}`}`),
+    ...exposed.map(({ specifier, description, declarations }) => `- \`${specifier}\`, ${declared(specifier, declarations)}${description === undefined ? '' : `: ${description}`}`),
   ].join('\n')
 }
 
-/** Where the model reads what a module declares: an API's in the tau's copy of its contract, a package of the tau's own as it says. */
-function declared(specifier: string): string {
-  return specifier.startsWith('@api/')
-    ? `declared in ${posix.join(SELF, 'api', specifier.slice('@api/'.length), 'index.d.ts')}`
+/** Where the model reads what a module declares: an API's in its contract, where the box has it, a package of the tau's own as it says. */
+function declared(specifier: string, declarations: string | undefined): string {
+  return declarations !== undefined
+    ? `declared in ${posix.join(declarations, 'index.d.ts')}`
     : `in ${posix.join(SELF, 'node_modules', specifier)}, whose package.json names its declarations`
 }
 

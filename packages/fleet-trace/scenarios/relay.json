@@ -8,7 +8,7 @@
     {
       "tool": "bash",
       "args": {
-        "command": "cd /tau/self; node - <<'EOF'\nimport { args, files, run } from '@api/tau'\n\nconst { word } = args() as { word: string }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { files: { out: files().report }, args: { text: word } })))\nEOF",
+        "command": "cd /tau/self; node - <<'EOF'\nimport { args, files, run } from '@sleepymug/tau-api'\n\nconst { word } = args() as { word: string }\nconsole.log(JSON.stringify(await run('/tau/self/taus/shout', { files: { out: files().report }, args: { text: word } })))\nEOF",
         "description": "Run the shout TAU on the word"
       }
     }

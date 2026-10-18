@@ -11,5 +11,6 @@
     },
     "required": ["term"]
   },
+  "apis": { "@sleepymug/tau-api": "^0.1.0" },
   "init": "node ${self}/init.mts"
 }

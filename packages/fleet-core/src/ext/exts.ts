@@ -2,8 +2,9 @@
  * The extensions provided to the fleet host (docs/fleet-core/ext/index.md):
  * each implements one contract (tau's docs/spec/contracts.md), at a version,
  * with a client, which runs in the box as the implementation of each API
- * that is a copy of it, and a server, its methods here, which the client
- * calls. An extension is a dsh plugin of its own, which provides itself as
+ * of a tau that names the contract, a server, its methods here, which the
+ * client calls, and the contract's declarations, which the box shows the
+ * agent, and the tau service gives a tau's author. An extension is a dsh plugin of its own, which provides itself as
  * long as it is loaded. This holds only what is
  * provided; the runs of taus link it, and relay the calls (../tau/).
  * @module @sleepymug/fleet-core/ext/exts
@@ -39,12 +40,19 @@ export interface Ext {
   /**
    * The version of the contract it implements, as its package says, such as
    * the version it is built and type-checked against: it serves a tau whose
-   * copy of the contract that version serves.
+   * range of the contract it is within.
    */
   version: string
   /**
+   * The folder of the contract's package at that version, absolute, with
+   * its package.json and declarations, which are copied into each box whose
+   * tau names the contract, for the agent to read, and given to whoever asks
+   * the tau service for the contract.
+   */
+  declarations: string
+  /**
    * Its client's folder, absolute: index.js, the implementation. It is
-   * copied into each box whose tau holds the contract, so it is
+   * copied into each box whose tau names the contract, so it is
    * self-contained: it imports only its own files, Node's modules, and
    * fleet's client runtime, `@sleepymug/fleet-box-runtime/ext/client`.
    */
@@ -69,8 +77,9 @@ export class FleetExts {
     if (typeof ext?.contract !== 'string' || !NAME.test(ext.contract)) throw new TypeError('fleet: an extension implements a contract, by its package\'s name')
     if (typeof ext.version !== 'string' || parseVersion(ext.version) === undefined) throw new TypeError(`fleet: the extension of ${ext.contract} implements it at a version, a SemVer one`)
     if (typeof ext.client !== 'string' || !isAbsolute(ext.client)) throw new TypeError(`fleet: the extension of ${ext.contract} names its client's folder, an absolute path`)
+    if (typeof ext.declarations !== 'string' || !isAbsolute(ext.declarations)) throw new TypeError(`fleet: the extension of ${ext.contract} names its contract's folder, an absolute path`)
     if (this.provided.has(ext.contract)) throw new Error(`fleet: an extension of ${ext.contract} is provided already`)
-    const own: Ext = { contract: ext.contract, version: ext.version, client: ext.client, methods: { ...ext.methods } }
+    const own: Ext = { contract: ext.contract, version: ext.version, client: ext.client, declarations: ext.declarations, methods: { ...ext.methods } }
     this.provided.set(ext.contract, own)
     return () => {
       if (this.provided.get(own.contract) === own) this.provided.delete(own.contract)

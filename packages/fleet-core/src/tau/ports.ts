@@ -116,6 +116,12 @@ export interface RunLifecycle {
   entry(sessionId: string): Promise<Entry>
   /** Every session's registry entry, oldest first. */
   list(): Promise<Entry[]>
+  /**
+   * The folder of the contract `name`'s package, with its package.json and
+   * declarations, at the newest version an extension provided now implements
+   * within `range`, or at any without one; undefined without one.
+   */
+  contract(name: string, range?: string): string | undefined
   /** Admit a call, and set up a box for its run, stopped, and register the session. */
   create(call: AsyncIterable<Uint8Array>, about: About, caller?: Caller): Promise<Started>
   /** Start a session's box. */

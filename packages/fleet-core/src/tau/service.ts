@@ -8,7 +8,8 @@
  * done, or its init did the run, has its box pack what it gave back, and
  * records how it ended; gives back its result, for the
  * caller's adaptor to check and put at the caller's paths; and releases the
- * run, removing its box. It never learns a caller's paths, so it serves the
+ * run, removing its box; and gives the contracts the extensions implement,
+ * for taus' authors. It never learns a caller's paths, so it serves the
  * host's `tau` command, which reaches every run, and a session, a tau's from
  * its box or another with `tau_run`, which reaches only the runs it
  * started, alike; a run's end releases those it started and did not finish,
@@ -18,6 +19,8 @@
  */
 
 import type { FleetHandler } from '@sleepymug/tau/adaptors'
+import { type Contract, readContract } from '@sleepymug/tau/core'
+import { packContract } from '@sleepymug/tau/wire-tar'
 import type { Result, RunStatus } from '@sleepymug/fleet-protocol/tau'
 import type { Platform } from '../platform.ts'
 import { abortable } from '../util/abort.ts'
@@ -129,6 +132,19 @@ export class TauService {
     this.log(`started ${sessionId} in ${String(project)}, ${init ? 'to run its init' : 'and gave it its prompt'}`)
     void this.watch(sessionId, init)
     return started
+  }
+
+  /**
+   * The contract `name`, at the newest version an extension provided now
+   * implements within `range`, or at any without one, for a tau's author
+   * (tau's docs/spec/protocol.md#contracts): its identity, and its
+   * package.json and declarations, as a tar archive. Any caller may ask:
+   * a contract is declarations, which the extension publishes.
+   */
+  contract(name: string, range?: string): { value: Contract; body: AsyncIterable<Uint8Array> } {
+    const declarations = this.runs.contract(name, range)
+    if (declarations === undefined) throw new Error(`fleet: no extension implements ${name}${range === undefined ? '' : ` within ${range}`} now`)
+    return { value: readContract(declarations), body: packContract(declarations) }
   }
 
   /** Where a run is, and how it ended, once it did. */

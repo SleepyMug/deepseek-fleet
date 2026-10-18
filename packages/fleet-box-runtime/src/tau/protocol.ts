@@ -38,8 +38,8 @@ export interface Setup {
   self: string
   /** The tau's init, its command, its placeholders expanded; none for a tau without one. */
   init?: string
-  /** Each API of the tau, by its alias: its contract, and where its client goes. */
-  links: { alias: string; contract: string; client: string }[]
+  /** Each API of the tau, by its contract's name: where its client goes, and where its contract's declarations go. */
+  links: { contract: string; client: string; declarations: string }[]
   /** The packages of the tau's own that it exposes, each by name, with its folder. */
   packages: { name: string; dir: string }[]
 }
@@ -97,7 +97,7 @@ export function readSetup(text: string): Setup {
   const paths = [setup.cwd, setup.modules, setup.self]
   if (typeof setup.prompt !== 'string' || !['string', 'undefined'].includes(typeof setup.init) || !paths.every(absolute)
     || typeof setup.places !== 'object' || setup.places === null || Array.isArray(setup.places) || !Object.values(setup.places).every(absolute)
-    || !Array.isArray(setup.links) || !setup.links.every(link => typeof link?.alias === 'string' && typeof link.contract === 'string' && absolute(link.client))
+    || !Array.isArray(setup.links) || !setup.links.every(link => typeof link?.contract === 'string' && absolute(link.client) && absolute(link.declarations))
     || !Array.isArray(setup.packages) || !setup.packages.every(entry => typeof entry?.name === 'string' && absolute(entry.dir))) {
     throw new Error('fleet: the box\'s runtime reported no setup')
   }

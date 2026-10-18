@@ -7,9 +7,10 @@
  * base name is taken in its folder is in a folder of its own there, named
  * for the file, with a suffix if that is taken too: notes.md, then
  * extra/notes.md, for the file extra. The tau's APIs, and what it exposes,
- * are in /tau/node_modules, so code anywhere below /tau finds them, and the
- * clients that implement the APIs in a hidden folder there, each in a folder
- * by its contract's name. The agent runs its
+ * are in /tau/node_modules, so code anywhere below /tau finds them, each
+ * API by its contract's name; the clients that implement the APIs in a
+ * hidden folder there, and the contracts' declarations, as the extensions
+ * have them, in another, each in a folder by its contract's name. The agent runs its
  * programs from the tau's own directory, `cd /tau/self; node -`, so that
  * they resolve as the tau's own code does: its node_modules first, then
  * /tau/node_modules. What the runtime keeps
@@ -36,6 +37,14 @@ export const CLIENTS = `${MODULES}/.fleet`
 /** Where the client that implements a contract is. */
 export function clientOf(contract: string): string {
   return posix.join(CLIENTS, contract)
+}
+
+/** Where each API's contract is, its package.json and declarations, in a folder by its name. */
+export const CONTRACTS = `${MODULES}/.contracts`
+
+/** Where the declarations of a contract are, as its extension has them. */
+export function contractOf(contract: string): string {
+  return posix.join(CONTRACTS, contract)
 }
 
 /** What the runtime keeps of a run: its files, where the box has each, and its args as the agent sees them. */

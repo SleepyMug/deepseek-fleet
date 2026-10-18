@@ -2,7 +2,7 @@
  * fleet-ext-notes, an extension of the fleet host (fleet-core's
  * docs/fleet-core/ext/index.md), as a dsh plugin: it provides the contract
  * @sleepymug/tau-api-notes, whose client (./client/index.ts) a tau's
- * programs import as the API that holds a copy of it, and whose server
+ * programs import by the contract's name, and whose server
  * (./notes.ts) keeps each session's notebook in the dsh home.
  * @module @sleepymug/fleet-ext-notes/plugin
  */
