@@ -207,9 +207,11 @@
                   enableRunInBackground: false
                   promoteOnTimeout: false
 
-              # read / write / edit
+              # read / write / edit, and read_image, which dsh's tool-fs
+              # alone cannot reach the box's isolated fs from: the plugin
+              # says why.
               - id: tool-fs
-                name: '@deepseek-ai/dsh-tool-fs'
+                name: '@sleepymug/fleet-core/preset/tool-fs'
 
               # The tau's skills, each /tau/self/skills/<name>/SKILL.md, read
               # from the session's box, and only those: no project, user or
