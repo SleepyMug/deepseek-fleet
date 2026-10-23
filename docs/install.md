@@ -91,11 +91,13 @@ A tau that uses an extension's API names its contract, the package the
 extension depends on, such as `@sleepymug/tau-api-notes` for
 fleet-ext-notes, in its `apis`, with a range (tau's docs/spec/apis.md).
 `tau api add` names it, and pulls the contract into the tau's `.tau/`, for
-its author's TypeScript, from npm, or from the fleet host, which gives the
-contracts its extensions implement (tau's docs/spec/authoring.md):
+its author's TypeScript, from npm, or from the provider, the fleet host
+when the `tau` command runs on fleet, as its config's `adaptor: fleet`
+says, which gives the contracts its extensions implement (tau's
+docs/spec/authoring.md):
 
 ```
-tau api add @sleepymug/tau-api-notes --from fleet <tau-dir>
+tau api add @sleepymug/tau-api-notes --from-provider <tau-dir>
 ```
 
 - The image holds the packages as installed on the host, so the host must

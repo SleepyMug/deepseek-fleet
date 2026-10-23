@@ -24,7 +24,7 @@ contract's package it depends on, and types its client by:
 
 A tau uses it by naming the contract in its `apis`, `"@sleepymug/tau-api-notes":
 "^0.1.0"`, as `examples/notebook` does; its author pulls the contract into
-the tau's `.tau/` with `tau api add @sleepymug/tau-api-notes --from fleet`
+the tau's `.tau/` with `tau api add @sleepymug/tau-api-notes --from-provider`
 (tau's docs/spec/authoring.md).
 
 ## How it runs

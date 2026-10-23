@@ -92,7 +92,7 @@ Four dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | `trace { id }` | The run's trace, `{ format: "dsh-session-events", events }`, its session's events, ended or not (below). |
 | `release { id }` | Stop the run's init, if it runs, archive the session, which stops its turn, remove its box, running or not, and forget the run, and every run it started. |
 | `list {}` | Every run, oldest first, each where it is, `running`, `ended` or `finished`, its prompt, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
-| `contract { name, range? }` | Answer `{ name, version, description }`, then send the contract's `package.json` and declarations, as tau's `packContract` packs them, at the version of the extension provided now that implements it, if it is within `range`, for a tau's author, as `tau api add --from fleet` asks (tau's docs/spec/authoring.md). Any caller may ask: a contract is declarations, which its extension publishes. |
+| `contract { name, range? }` | Answer `{ name, version, description }`, then send the contract's `package.json` and declarations, as tau's `packContract` packs them, at the version of the extension provided now that implements it, if it is within `range`, for a tau's author, as `tau api add --from-provider` asks, the fleet adaptor its provider (tau's docs/spec/authoring.md). Any caller may ask: a contract is declarations, which its extension publishes. |
 
 Each of the service's operations takes who calls it, a run's caller,
 which the way in says, never the request: the host's `tau`, through the
