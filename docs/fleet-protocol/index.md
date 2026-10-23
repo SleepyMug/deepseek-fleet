@@ -2,9 +2,9 @@
 
 The tau service's own requests (fleet-core/tau), beside a run's, shared by
 `fleet` (fleet-client) and the service. It is a package of its own so that
-neither end imports the other. A run's requests, `submit`, `finish` and
-`release`, are tau's fleet adaptor's, as tau's docs/spec/fleet.md has
-them, with the socket they travel on.
+neither end imports the other. A run's requests, `submit`, `status`,
+`result`, `trace` and `release`, are tau's fleet adaptor's, as tau's
+docs/spec/fleet.md has them, with the socket they travel on.
 
 ## Provides
 
@@ -22,12 +22,10 @@ extension, from a box (docs/fleet-ext-tau/index.md).
 
 | Request | Answer |
 |---|---|
-| `{ "op": "list" }` | a run's status, as `status` answers, for each run the caller reaches, oldest first |
-| `{ "op": "status", "id": "session-…" }` | `{ "sessionId", "parent"?, "title", "project", "prompt", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did; `prompt`, the tau's, expanded with where the box has each file |
-| `{ "op": "history", "id": "session-…" }` | the run's session's events, as dsh logs them, oldest first |
+| `{ "op": "list" }` | for each run the caller reaches, oldest first, `{ "sessionId", "parent"?, "title", "project", "prompt", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did; `prompt`, the tau's, expanded with where the box has each file; `finished`, once its result was first given back |
 
-A run's id is its session's. The history is no part of tau's spec, and has
-the form dsh gives it. A request names no path of the caller's.
+A run's id is its session's. Where one run is, and what its agent did,
+are tau's `status` and `trace`. A request names no path of the caller's.
 
 ## Built on
 

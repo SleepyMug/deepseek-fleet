@@ -6,20 +6,21 @@
  * its workspace, which it gives the prompt, once the tau's init, if it has
  * one, asks for the agent (./init.ts); watches the run until its agent is
  * done, or its init did the run, has its box pack what it gave back, and
- * records how it ended; gives back its result, for the
- * caller's adaptor to check and put at the caller's paths; and releases the
- * run, removing its box; and gives the contracts the extensions implement,
+ * records how it ended; gives where it is, at once, and back its result,
+ * once it ended, for the caller's adaptor to check and put at the caller's
+ * paths, and its trace, its dsh session's events; and releases the run,
+ * removing its box; and gives the contracts the extensions implement,
  * for taus' authors. It never learns a caller's paths, so it serves the
  * host's `tau` command, which reaches every run, and a session, a tau's from
  * its box or another with `tau_run`, which reaches only the runs it
- * started, alike; a run's end releases those it started and did not finish,
- * and its release all it started. The service reaches dsh's sessions only
- * through {@link Sessions}.
+ * started, alike; a run's end releases those it started whose result it
+ * did not take, and its release all it started. The service reaches dsh's
+ * sessions only through {@link Sessions}.
  * @module @sleepymug/fleet-core/tau/service
  */
 
 import type { FleetHandler } from '@sleepymug/tau/adaptors'
-import { type Contract, readContract } from '@sleepymug/tau/core'
+import { type Contract, readContract, type Status, type Trace } from '@sleepymug/tau/core'
 import { packContract } from '@sleepymug/tau/wire-tar'
 import type { Result, RunStatus } from '@sleepymug/fleet-protocol/tau'
 import type { Platform } from '../platform.ts'
@@ -30,6 +31,9 @@ import { fellBack, nextOf } from './init.ts'
 import type { About, RunLifecycle, Started } from './ports.ts'
 import { HOST, type Caller, type Entry } from './registry.ts'
 import { serveFor } from './wire.ts'
+
+/** The format of a run's trace: its dsh session's events, oldest first, as dsh logs them, which dsh, not tau, defines. */
+export const TRACE_FORMAT = 'dsh-session-events'
 
 /** What the service does with dsh's sessions (../dsh/sessions.ts). */
 export interface Sessions {
@@ -62,7 +66,7 @@ export interface TauServiceDeps {
 }
 
 export class TauService {
-  /** Each session's operations, one after another, so that a run's start, end, finish and release keep their order. */
+  /** Each session's operations, one after another, so that a run's start, end, result and release keep their order. */
   private readonly queue = new KeyedQueue<string>()
   /** Each run watched until it ends, by its session. */
   private readonly watches = new Map<string, Promise<void>>()
@@ -147,30 +151,35 @@ export class TauService {
     return { value: readContract(declarations), body: packContract(declarations) }
   }
 
-  /** Where a run is, and how it ended, once it did. */
-  async status(caller: Caller, sessionId: string): Promise<RunStatus> {
-    return statusOf(await this.reach(caller, sessionId))
+  /**
+   * Where a run is, at once, as tau's status has it: running until it
+   * ended, then ended, with its one result, numbered 1, and how it ended.
+   */
+  async status(caller: Caller, sessionId: string): Promise<Status> {
+    const { ended } = await this.reach(caller, sessionId)
+    if (ended === undefined) return { state: 'running' }
+    const { ok, failure } = ended.result
+    return failure === undefined ? { state: 'ended', result: 1, ok } : { state: 'ended', result: 1, ok, failure }
   }
 
   /** Every run the caller reaches, oldest first. */
   async list(caller: Caller): Promise<RunStatus[]> {
-    return (await this.runs.list()).filter(entry => reaches(caller, entry)).map(statusOf)
+    return (await this.runs.list()).filter(entry => reaches(caller, entry)).map(listed)
   }
 
   /**
-   * Wait until a run ends, and give back its result's archive: how it
-   * ended, and what it gave back for its `out` and `inout` files, the same
-   * each time.
-   * @param signal - gives up the wait; the run goes on.
+   * A run's result, at once: its number, 1, a run having one, and its
+   * archive, how it ended, and what it gave back for its `out` and `inout`
+   * files, the same each time. A run that has not ended has none yet.
    */
-  async finish(caller: Caller, sessionId: string, signal: AbortSignal): Promise<AsyncIterable<Uint8Array>> {
-    await this.untilEnded(caller, sessionId, signal)
+  async result(caller: Caller, sessionId: string): Promise<{ value: { result: number }; body: AsyncIterable<Uint8Array> }> {
+    await this.reach(caller, sessionId)
     return await this.serial(sessionId, async () => {
       const { ended, finishedAt } = await this.runs.entry(sessionId)
-      if (ended === undefined) throw new Error(`fleet: the fleet host stopped before ${sessionId} ended`)
+      if (ended === undefined) throw new Error(`fleet: ${sessionId} has no result yet: it is running`)
       const archive = await this.runs.result(sessionId)
       if (finishedAt === undefined) await this.runs.finished(sessionId)
-      return archive
+      return { value: { result: 1 }, body: archive }
     })
   }
 
@@ -182,10 +191,10 @@ export class TauService {
     if ((await this.reach(caller, sessionId)).ended === undefined) await abortable(this.watch(sessionId), signal)
   }
 
-  /** A run's session's events, oldest first, as dsh logs them, whether the run ended or not. */
-  async history(caller: Caller, sessionId: string, signal: AbortSignal): Promise<unknown[]> {
+  /** A run's trace: its session's events, oldest first, as dsh logs them, whether the run ended or not. */
+  async trace(caller: Caller, sessionId: string, signal: AbortSignal): Promise<Trace> {
     await this.reach(caller, sessionId)
-    return await this.sessions.history(sessionId, signal)
+    return { format: TRACE_FORMAT, events: await this.sessions.history(sessionId, signal) as Trace['events'] }
   }
 
   /**
@@ -311,7 +320,7 @@ export class TauService {
       // At once, unless something else uses the box, such as a user's terminal: then once it no longer does.
       await this.runs.stopWhenVacant(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${messageOf(error)}`) })
     })
-    // What it started and did not finish cannot give back anything now: its box is its caller's.
+    // What it started and did not take the result of cannot give back anything now: its box is its caller's.
     await this.releaseChildren(sessionId, entry => entry.finishedAt === undefined)
   }
 
@@ -357,8 +366,8 @@ export class TauService {
   }
 }
 
-/** A run's state, as its registry entry has it. */
-function statusOf(entry: Entry): RunStatus {
+/** A run, as fleet's own `list` gives it, from its registry entry. */
+function listed(entry: Entry): RunStatus {
   const state = entry.finishedAt !== undefined ? 'finished' : entry.ended !== undefined ? 'ended' : 'running'
   return {
     sessionId: entry.sessionId,

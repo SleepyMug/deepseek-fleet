@@ -15,7 +15,7 @@ version of the contract's package it depends on, on the tau service,
 
 | Half | Module | |
 |---|---|---|
-| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API, by the contract's name, `@sleepymug/tau-api`, in the box: `files()` and `args()`, which read the places of the run's files, extra files included, and its args, expanded, as the box's runtime kept them when it set the box up, and `run(tau, call, signal?, options?)`, which runs a tau with tau's client and its fleet adaptor on the fleet host: it packs the call from the box's files, submits it, waits for it, puts what it gave back at the box's paths, and releases it; `options.history`, fleet's own, is where it writes the run's session's history; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
+| client | `src/client/index.ts`, built as `lib/client/` | What a tau's programs import as the API, by the contract's name, `@sleepymug/tau-api`, in the box: `files()` and `args()`, which read the places of the run's files, extra files included, and its args, expanded, as the box's runtime kept them when it set the box up, and `run(tau, call, signal?, options?)`, which runs a tau with tau's client and its fleet adaptor on the fleet host: it packs the call from the box's files, submits it, waits for it, puts what it gave back at the box's paths, and releases it; `options.trace`, fleet's own, is where it writes the run's trace; and `TAU_SKIP`, `TAU_RUN` and `TAU_FALLBACK`, the exit codes of a tau's init. |
 | server | `src/tau.ts` | The method `exchange(request)`, with the bytes after it, if any: the relay of tau's fleet adaptor, which passes each request, a run's or the service's own, to the tau service as the calling session's, `ctx.fleetTau.handlerFor`, which reaches only the runs it started, and answers with the service's answer, with the bytes after it, if any. The service checks each request. |
 
 A tau uses it by naming the contract, tau's `contracts/tau-api`, in its
@@ -38,17 +38,17 @@ A tau uses it by naming the contract, tau's `contracts/tau-api`, in its
 - **The client imports** `@sleepymug/fleet-box-runtime/ext/tau`, tau's
   client, its fleet adaptor and the relay, and
   `@sleepymug/fleet-box-runtime/tau/layout`, for where the files and args are kept.
-- **A run's history**, beyond tau's spec, is fleet's: `run`'s fourth
-  argument, `{ history }`, a path in the box, `process.cwd()`'s if
-  relative, has `run` finish the run, ask the service for the run's
-  session's history (docs/fleet-core/tau/index.md), and write it there,
-  dsh's events, one JSON object per line, its folder made if missing,
-  whether the run succeeded or not, before it releases the run. The
-  contract does not declare it, so a program passes it as an argument its
-  types do not name.
+- **A run's trace**, beyond the tau API's contract, is fleet's: `run`'s
+  fourth argument, `{ trace }`, a path in the box, `process.cwd()`'s if
+  relative, has `run` finish the run, ask for the run's trace, its
+  session's events (docs/fleet-core/tau/index.md), and write it there, as
+  `tau trace` prints it, its folder made if missing, whether the run
+  succeeded or not, before it releases the run. The contract does not
+  declare it, so a program passes it as an argument its types do not
+  name.
 - **A run's runs go with it.** A run that ends releases the runs it
-  started and did not finish; `run` finishes and releases each run it
-  starts, and aborting its signal releases it.
+  started whose result it did not take; `run` finishes and releases each
+  run it starts, and aborting its signal releases it.
 
 ## How it runs
 

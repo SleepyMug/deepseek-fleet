@@ -1,9 +1,10 @@
 /**
  * The tau service's own requests (fleet-core/tau), beside a run's, which
- * tau's fleet adaptor makes (tau's docs/spec/fleet.md): on its socket in
- * the dsh home, or from a box, through the `tau` API's extension, a request
- * is a JSON object with its `op`, and its answer JSON. Shared by both ends,
- * so it holds only types, and where the socket is.
+ * tau's fleet adaptor makes (tau's docs/spec/fleet.md), its status, result
+ * and trace among them: on its socket in the dsh home, or from a box,
+ * through the `tau` API's extension, a request is a JSON object with its
+ * `op`, and its answer JSON. Shared by both ends, so it holds only types,
+ * and where the socket is.
  * @module @sleepymug/fleet-protocol/tau
  */
 
@@ -14,18 +15,10 @@ export function socketPath(dshHome: string): string {
   return join(dshHome, 'fleet', 'tau.sock')
 }
 
-/** What the service is asked besides a run's submit, finish and release. */
+/** What the service is asked besides a run's own requests, tau's. */
 export type Request =
   /** Every run the caller reaches, oldest first. */
   | { op: 'list' }
-  /** Where a run is, and how it ended, once it did. */
-  | { op: 'status'; id: string }
-  /**
-   * A run's session's history: its events, oldest first, as dsh logs them.
-   * It is dsh's, not tau's, so a caller reads it to inspect the run, not to
-   * rely on its form.
-   */
-  | { op: 'history'; id: string }
 
 /** How a run ended, as tau's docs/spec/results.md has it. */
 export interface Result {
@@ -39,11 +32,11 @@ export interface Result {
 
 /**
  * Where a run is: `running` until its agent is done, `ended` once it is,
- * with its result, and `finished` once a `finish` has given that back.
+ * with its result, and `finished` once its result was first given back.
  */
 export type RunState = 'running' | 'ended' | 'finished'
 
-/** What `status` answers with, and `list` with for each run. */
+/** What `list` answers with for each run. */
 export interface RunStatus {
   /** The run's id, its session's. */
   sessionId: string
@@ -66,6 +59,4 @@ export interface RunStatus {
 /** What each op answers with. */
 export interface Answers {
   list: RunStatus[]
-  status: RunStatus
-  history: unknown[]
 }

@@ -19,7 +19,7 @@ to load `tau` before running one and `tau-dev` before making one:
 
 | Tool | Takes | Gives |
 |---|---|---|
-| `tau_run` | `{ tau, files?, args?, history? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did; with `history`, a path, the run's session's history written there. A call that does not fit the tau, one that writes where the session's sandbox does not let it, or a run that cannot start, is a tool error. |
+| `tau_run` | `{ tau, files?, args?, trace? }` | `{ sessionId, ok, text, failure? }`: the run's session, whether it succeeded, its agent's final text, and why it failed, if it did; with `trace`, a path, the run's trace written there. A call that does not fit the tau, one that writes where the session's sandbox does not let it, or a run that cannot start, is a tool error. |
 
 ## Design
 
@@ -29,7 +29,7 @@ to load `tau` before running one and `tau-dev` before making one:
   the tool runs it with tau's client and its fleet adaptor, over a
   transport in this process, `fleetLoopback`, to the tau service's
   requests as the session makes them, `ctx.fleetTau.handlerFor`
-  (docs/fleet-core/tau/index.md), so `status` gives the session as the
+  (docs/fleet-core/tau/index.md), so `list` gives the session as the
   run's `parent`, and the session reaches only the runs it started. The
   run's own session is in the session's working directory, its project,
   and the web UI lists it there.
@@ -60,16 +60,17 @@ to load `tau` before running one and `tau-dev` before making one:
   `tau-dev`, registered at the top, in dsh's skill registry, each the
   file's text. A tau's session does not list them: the `tau` preset
   shadows them, and its box has the files (docs/fleet-core/tau/index.md).
-- **Its history,** if `history` names a path, the session's working
-  directory's if relative, is the run's session's history, as the
-  service gives it (docs/fleet-core/tau/index.md): dsh's events, one JSON object per
-  line, written there, its folder made if missing, before the result is
-  put at its paths, whether the run succeeded or not.
+- **Its trace,** if `trace` names a path, the session's working
+  directory's if relative, is the run's trace, its session's events, as
+  the service gives it (docs/fleet-core/tau/index.md), written there as
+  `tau trace` prints it, a line naming its format, then an event a line,
+  its folder made if missing, before the result is put at its paths,
+  whether the run succeeded or not.
 - **It writes where the session's sandbox lets it,** as dsh's sandbox
   policy has it for the session (`ctx.sandboxPolicy.resolve`), which is
   what dsh's file tools fence a write by: under `danger-full-access`,
   anywhere; under `read-only`, nowhere, so a call with an `out` or `inout`
-  file, or `history`, is refused; under `workspace-write`, under its
+  file, or `trace`, is refused; under `workspace-write`, under its
   writable roots, the session's folder and the temporary folders, as
   dsh's `writableRoots` has them. Each path is compared as far as it is
   there, its links resolved, the rest as it is, which is where tau puts a
@@ -96,7 +97,8 @@ to load `tau` before running one and `tau-dev` before making one:
 - `@sleepymug/tau`, for `tau_run`: its client, `createClient`, and its
   fleet adaptor, `createFleetAdaptor` and `fleetLoopback`.
 - `ctx.fleetTau` (fleet-core/tau), for `tau_run`'s runs: `handlerFor`,
-  and `untilEnded` and `history`, fleet's own.
+  and `untilEnded`, fleet's own, which waits for the run's end in this
+  process rather than asking its status.
 - `ctx.fleetTauRuns` (fleet-core/tau), for which sessions are a tau's.
 - `@deepseek-ai/dsh-sandbox` (`writableRoots`) and
   `@deepseek-ai/dsh-sandbox-policy`, for the session's sandbox.

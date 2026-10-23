@@ -96,7 +96,8 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
       for (const path of paths) mkdirSync(dirname(resolve(work, path)), { recursive: true })
       const client = createClient({ adaptors: { fleet: createFleetAdaptor({ transport: fleetSocket(socket), project: work }) } })
       const run = await failing('start', client.start(resolve(dirname(scenarioFile), scenario.tau), call, { cwd: work }))
-      model.prompt = (await ask(socket, { op: 'status', id: run.slice('fleet:'.length) })).prompt.trim()
+      const id = run.slice('fleet:'.length)
+      model.prompt = String((await ask(socket, { op: 'list' })).find(listed => listed.sessionId === id)?.prompt).trim()
       // The run is released with the others, once its caller's folder is kept.
       const ended = await Promise.race([failing('finish', client.finish(run)), exited, interrupted])
       if (!ended.ok) process.stderr.write(`fleet-trace: the run failed: ${String(ended.failure)}\n`)

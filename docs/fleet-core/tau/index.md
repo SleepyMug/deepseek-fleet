@@ -87,11 +87,11 @@ Four dsh plugins, which fleet-core's `cordis.patch.yml` mounts:
 | Request | What it does |
 |---|---|
 | `submit { title, project? }`, then the call | Start a run of the call, which carries the tau: admit it, set up its box, start it, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch. Answers `{ id }`, the session's id. |
-| `finish { id }` | Wait until the run ends, and answer `null`, then send its result, the same each time; the caller's adaptor checks it, and puts what it gave back at the caller's paths. |
+| `status { id }` | Where the run is, at once, as tau's status has it: `{ state: "running" }`, or, once it ended, `{ state: "ended", result: 1, ok, failure? }`, a run having one result. |
+| `result { id }` | Answer `{ result: 1 }`, then send the run's result, the same each time, at once, refused while the run is running; the caller's adaptor checks it, and puts what it gave back at the caller's paths. |
+| `trace { id }` | The run's trace, `{ format: "dsh-session-events", events }`, its session's events, ended or not (below). |
 | `release { id }` | Stop the run's init, if it runs, archive the session, which stops its turn, remove its box, running or not, and forget the run, and every run it started. |
-| `list {}` | Every run, oldest first, as `status` gives each. |
-| `status { id }` | Where the run is, `running`, `ended` or `finished`, its prompt, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
-| `history { id }` | The run's session's history, ended or not (below). |
+| `list {}` | Every run, oldest first, each where it is, `running`, `ended` or `finished`, its prompt, and once it ended, when and how: `{ ok, text, failure? }`; and the run that started it, its `parent`, if one did. |
 | `contract { name, range? }` | Answer `{ name, version, description }`, then send the contract's `package.json` and declarations, as tau's `packContract` packs them, at the version of the extension provided now that implements it, if it is within `range`, for a tau's author, as `tau api add --from fleet` asks (tau's docs/spec/authoring.md). Any caller may ask: a contract is declarations, which its extension publishes. |
 
 Each of the service's operations takes who calls it, a run's caller,
@@ -264,7 +264,7 @@ boxes:
   APIs the tau names, each linked, what it exposes, with what each says it is,
   and, for an API, where the box has its contract's declarations,
   the names of its skills, when it was made, when it was given its prompt, when and how its run
-  ended, when a `finish` first gave that back, and when the box was last
+  ended, when its result was first given back, and when the box was last
   set up again, if it was. Beside it, a folder of
   the session's own, `$DSH_HOME/fleet/taus/<session id>/`, holds the call,
   `call.tar`, and the run's result, `result.tar`, until the run is
@@ -290,7 +290,7 @@ boxes:
 
   A failure on the way archives the session and removes the box and the
   entry, so a run either started or left nothing. A session's operations
-  run one after another, so its start, its end, a finish and a release
+  run one after another, so its start, its end, its result and a release
   keep their order.
 - **The init** of a tau that has one (`init.ts`, tau's docs/spec/init.md)
   runs as its run's watch begins: the helper spawns `sh -c` with the
@@ -334,24 +334,28 @@ boxes:
   for each `out` and `inout` file, of its kind, and the agent's own text. One that
   does not fit fails the run. A run that failed gives nothing back: its
   result, which the host writes, holds how it ended alone.
-- **Finishing** waits for the run's end, which a client that goes away
-  gives up, leaving the run as it is. Then it sends the result; the first
-  time, it records the finish in the entry. The caller's adaptor checks
-  the result, as tau's docs/spec/protocol.md asks, and puts what it holds
-  at the caller's paths, which the service never learns. The service
-  sends the same again, so a client that lost its connection, as when dsh
+- **Its status and its result** wait for nothing: the caller's client
+  asks its status until it has ended, as tau's finish does. Once it has, a
+  result request sends the result; the first time, it records in the
+  entry that the result was given back. The caller's adaptor checks the
+  result, as tau's docs/spec/protocol.md asks, and puts what it holds at
+  the caller's paths, which the service never learns. The service sends
+  the same again, so a client that lost its connection, as when dsh
   restarts, asks again, and a client other than the one that started the
-  run, sharing its run store, can finish it.
-- **A run's history**, for a caller to inspect it, is its session's events,
-  oldest first, as dsh's session controller inspects them: the prompt, each
-  request's system prompt and tools, each model message, tool call and
-  result, and each turn's end, read when asked, ended or not, failed run
-  or not. It is dsh's, not tau's spec's, so its form is dsh's session
-  log's, and the caller writes it where it wants it.
+  run, sharing its run store, can finish it. A run has one result,
+  numbered 1. `tau_run`, in this process, waits for the run's end itself,
+  with `untilEnded`, rather than asking.
+- **A run's trace**, for a caller to look into it, is its session's
+  events, oldest first, as dsh's session controller inspects them: the
+  prompt, each request's system prompt and tools, each model message, tool
+  call and result, and each turn's end, read when asked, ended or not,
+  failed run or not. Its format, `dsh-session-events`, is dsh's session
+  log's, not tau's spec's, which nothing may rely on, and the caller
+  writes it where it wants it, as `tau trace` does.
 - **The runs a run started** go with it. Once a run ends, its box is
-  stopped, and nothing it started and did not finish can give anything
-  back, so those runs are released. Releasing a run releases every run it
-  started first, finished or not, and theirs.
+  stopped, and nothing it started whose result it did not take can give
+  anything back, so those runs are released. Releasing a run releases
+  every run it started first, its result taken or not, and theirs.
 - **Releasing** stops the run's init, if it runs, and archives the
   session, stopping its work, since dsh does not delete sessions; then it
   removes the box and the session's folder, and forgets the session. It is
@@ -510,7 +514,7 @@ boxes:
   callers, has its box removed once the run has ended, since the box packs
   the run's result as it ends: a stop-and-archive cancels the run's turn,
   and the run ends soon after. Its entry, call and result stay, so its
-  caller can still finish it, and only releasing it forgets it. While the
+  caller can still take its result, and only releasing it forgets it. While the
   session is archived, `boxFor` fails, and so does the world's work in the
   box. A session that no longer is archived has no box until its next use.
 - **A box gone is set up again** from the run's call, which the session's
@@ -540,8 +544,8 @@ boxes:
   with mode 0700, so only the owner can open it. That is its
   authentication, as it is for the dsh home's own files. It takes one
   request per connection: one line of JSON in, with a submit's call after
-  it, up to the end of what the client sends, and one out, with a finish's
-  result after it. A socket a service answers on is not taken over; one
+  it, up to the end of what the client sends, and one out, with a result
+  after it, for a result request. A socket a service answers on is not taken over; one
   left by a service that died is.
 - **The requests** (`wire.ts`), however they come, go through one
   handler, `handlerFor(caller)`: tau's `readFleetRunRequest` checks a
@@ -579,10 +583,10 @@ boxes:
 - A bash command in a box has no timeout of its own: one that waits for
   input, or serves, holds the run until it is cancelled, through dsh. A
   later design of limits may bound it.
-- A finish gives back the result its box packed when the run ended; what
-  a person asks the run's session in the web UI later is not collected
-  again, though tau's protocol lets a finish give the latest result.
-- A finish whose connection is lost, as when dsh restarts, fails; the
+- A run has one result, the one its box packed when the run ended; what a
+  person asks the run's session in the web UI later is not collected
+  again, though tau's protocol lets a later result have the next number.
+- A request whose connection is lost, as when dsh restarts, fails; the
   host's `tau finish` asks again when run again.
 - A box left by a dsh that died while it set up a run stays. `fleet-box list` shows
   it as `fleet-tau-…`, and `fleet-box delete` removes it.

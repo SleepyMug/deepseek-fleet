@@ -22,7 +22,7 @@ const STATUS: RunStatus = { sessionId: 'session-a', title: 't', project: '/c', p
 
 /**
  * A service that records its calls, each with who made it, and fails a
- * session named `session-fails`. A finish of `session-waits` waits until its
+ * session named `session-fails`. A trace of `session-waits` waits until its
  * signal aborts, which `aborted` then records.
  */
 function fake(calls: string[], aborted: string[] = []): Operations {
@@ -42,19 +42,19 @@ function fake(calls: string[], aborted: string[] = []): Operations {
     },
     status: async (caller, sessionId) => {
       await op('status')(caller, sessionId)
-      return { ...STATUS, sessionId }
+      return { state: 'ended', result: 1, ok: true }
     },
-    history: async (caller, sessionId) => {
-      await op('history')(caller, sessionId)
-      return [{ type: 'turn/end' }]
+    result: async (caller, sessionId) => {
+      await op('result')(caller, sessionId)
+      return { value: { result: 1 }, body: once('the result') }
     },
-    finish: async (caller, sessionId, signal) => {
-      await op('finish')(caller, sessionId)
+    trace: async (caller, sessionId, signal) => {
+      await op('trace')(caller, sessionId)
       if (sessionId === 'session-waits') {
         await new Promise((resolve) => { signal.addEventListener('abort', resolve, { once: true }) })
         aborted.push(sessionId)
       }
-      return once('the result')
+      return { format: 'dsh-session-events', events: [{ type: 'turn/end' }] }
     },
     release: op('release'),
     contract: (name, range) => {
@@ -76,17 +76,17 @@ test('the socket serves the host the requests of a run, and the service\'s own',
 
   const call = 'a call, '.repeat(20000)
   assert.deepEqual(await service.exchange({ op: 'submit', title: 't', project: '/c' }, once(call)), { value: { id: 'session-new' } })
-  const finished = await service.exchange({ op: 'finish', id: 'session-a' })
-  assert.deepEqual([finished.value, await read(finished.body)], [null, 'the result'])
+  assert.deepEqual(await service.exchange({ op: 'status', id: 'session-b' }), { value: { state: 'ended', result: 1, ok: true } })
+  const result = await service.exchange({ op: 'result', id: 'session-a' })
+  assert.deepEqual([result.value, await read(result.body)], [{ result: 1 }, 'the result'])
+  assert.deepEqual(await service.exchange({ op: 'trace', id: 'session-a' }), { value: { format: 'dsh-session-events', events: [{ type: 'turn/end' }] } })
   assert.deepEqual(await service.exchange({ op: 'release', id: 'session-a' }), { value: null })
   assert.deepEqual(await service.exchange({ op: 'list' }), { value: [STATUS] })
-  assert.deepEqual(await service.exchange({ op: 'status', id: 'session-b' }), { value: { ...STATUS, sessionId: 'session-b' } })
-  assert.deepEqual(await service.exchange({ op: 'history', id: 'session-a' }), { value: [{ type: 'turn/end' }] })
   await assert.rejects(service.exchange({ op: 'release', id: 'session-fails' }), /^Error: fleet: no tau session session-fails$/u)
   const contract = await service.exchange({ op: 'contract', name: '@test/notes', range: '^1.2.0' })
   assert.deepEqual([contract.value, await read(contract.body)], [{ name: '@test/notes', version: '1.3.0', description: 'Notes.' }, 'the contract'])
   assert.deepEqual(calls, [
-    `host submit t /c ${call}`, 'host finish session-a', 'host release session-a', 'host list', 'host status session-b', 'host history session-a', 'host release session-fails',
+    `host submit t /c ${call}`, 'host status session-b', 'host result session-a', 'host trace session-a', 'host release session-a', 'host list', 'host release session-fails',
     'contract @test/notes ^1.2.0',
   ])
 
@@ -94,8 +94,10 @@ test('the socket serves the host the requests of a run, and the service\'s own',
   await assert.rejects(service.exchange({ op: 'submit', title: ' ' }, once(call)), /^Error: submit takes a title, a string$/u)
   await assert.rejects(service.exchange({ op: 'submit', title: 't', project: 'c' }, once(call)), /takes project, an absolute path/u)
   await assert.rejects(service.exchange({ op: 'submit', title: 't', targets: {} }, once(call)), /^Error: submit takes no targets$/u)
-  await assert.rejects(service.exchange({ op: 'finish' }), /^Error: finish takes the run's id, a string$/u)
-  await assert.rejects(service.exchange({ op: 'status' }), /^Error: fleet: status takes the run's id, a string$/u)
+  await assert.rejects(service.exchange({ op: 'result' }), /^Error: result takes the run's id, a string$/u)
+  await assert.rejects(service.exchange({ op: 'status', id: 'session-a', since: 1 }), /^Error: status takes no since$/u)
+  await assert.rejects(service.exchange({ op: 'finish', id: 'session-a' }), /^Error: fleet: no op finish$/u)
+  await assert.rejects(service.exchange({ op: 'history', id: 'session-a' }), /^Error: fleet: no op history$/u)
   await assert.rejects(service.exchange({ op: 'contract', name: '@test/notes', range: '1.2.0' }), /^Error: contract takes range, \^ and a version/u)
   await assert.rejects(service.exchange({ op: 'cancel', id: 'session-a' }), /^Error: fleet: no op cancel$/u)
   assert.equal(calls.length, 8)
@@ -109,7 +111,7 @@ test('a session\'s requests are its own, as the way in names it', async () => {
   assert.deepEqual(calls, ['session-caller submit t undefined call', 'session-caller list'])
 })
 
-test('a client that goes away gives up its wait', async (t) => {
+test('a client that goes away gives up what it asked for', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-tau-wire-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const path = join(dir, 'tau.sock')
@@ -117,11 +119,11 @@ test('a client that goes away gives up its wait', async (t) => {
   const aborted: string[] = []
   t.after(await listenFleet(path, serveFor(fake(calls, aborted), HOST)))
   const waiting = new AbortController()
-  const finishing = fleetSocket(path).exchange({ op: 'finish', id: 'session-waits' }, undefined, waiting.signal)
+  const tracing = fleetSocket(path).exchange({ op: 'trace', id: 'session-waits' }, undefined, waiting.signal)
   while (calls.length === 0) await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(aborted, [])
   waiting.abort(new Error('enough'))
-  await assert.rejects(finishing, /enough/u)
+  await assert.rejects(tracing, /enough/u)
   while (aborted.length === 0) await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(aborted, ['session-waits'])
 })

@@ -9,7 +9,7 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
-import type { Envelope } from '@sleepymug/tau/core'
+import type { Envelope, Status, Trace } from '@sleepymug/tau/core'
 import { extractContent } from '@sleepymug/tau/transfer'
 import { decodeCall, packResult } from '@sleepymug/tau/wire-tar'
 import type { About, Started } from '../tau/ports.ts'
@@ -79,15 +79,20 @@ class FakeTau {
     await abortable(this.ending.promise, signal)
   }
 
-  async finish(caller: Caller, sessionId: string): Promise<AsyncIterable<Uint8Array>> {
-    this.calls.push(`finish ${who(caller, sessionId)}`)
-    await writeFile(join(this.work, 'left.md'), 'Milk.\n')
-    return packResult({ ok: true, text: 'Done.', outputs: { report: { kind: 'file' } } }, { report: join(this.work, 'left.md') })
+  async status(caller: Caller, sessionId: string): Promise<Status> {
+    this.calls.push(`status ${who(caller, sessionId)}`)
+    return { state: 'ended', result: 1, ok: true }
   }
 
-  async history(caller: Caller, sessionId: string): Promise<unknown[]> {
-    this.calls.push(`history ${who(caller, sessionId)}`)
-    return [{ type: 'user/message' }, { type: 'turn/end' }]
+  async result(caller: Caller, sessionId: string): Promise<{ value: { result: number }; body: AsyncIterable<Uint8Array> }> {
+    this.calls.push(`result ${who(caller, sessionId)}`)
+    await writeFile(join(this.work, 'left.md'), 'Milk.\n')
+    return { value: { result: 1 }, body: packResult({ ok: true, text: 'Done.', outputs: { report: { kind: 'file' } } }, { report: join(this.work, 'left.md') }) }
+  }
+
+  async trace(caller: Caller, sessionId: string): Promise<Trace> {
+    this.calls.push(`trace ${who(caller, sessionId)}`)
+    return { format: 'dsh-session-events', events: [{ type: 'user/message' }, { type: 'turn/end' }] }
   }
 
   async release(caller: Caller, sessionId: string): Promise<void> {
@@ -142,18 +147,18 @@ test('tau_run packs the call from the session\'s folder, runs it as the session\
   tau.end()
   assert.deepEqual(await running, { sessionId: RUN, ok: true, text: 'Done.' })
   assert.equal(await readFile(join(work, 'out', 'report.md'), 'utf8'), 'Milk.\n')
-  assert.deepEqual(tau.calls, [`wait ${SESSION} ${RUN}`, `finish ${SESSION} ${RUN}`, `release ${SESSION} ${RUN}`])
+  assert.deepEqual(tau.calls, [`wait ${SESSION} ${RUN}`, `status ${SESSION} ${RUN}`, `result ${SESSION} ${RUN}`, `release ${SESSION} ${RUN}`])
 })
 
-test('tau_run writes the run\'s session\'s history where it is asked to, a relative path the session\'s', async (t) => {
+test('tau_run writes the run\'s trace where it is asked to, as tau trace prints it, a relative path the session\'s', async (t) => {
   const work = await fixture(t)
   const tau = new FakeTau(work)
-  const running = toolOn(tau).execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' }, history: 'logs/run.jsonl' }, execIn(work))
+  const running = toolOn(tau).execute({ tau: 'tau', files: { notes: 'notes.md', report: 'out/report.md' }, args: { style: 'few' }, trace: 'logs/run.jsonl' }, execIn(work))
   await Promise.race([tau.finishing.promise, running])
   tau.end()
   assert.deepEqual(await running, { sessionId: RUN, ok: true, text: 'Done.' })
-  assert.equal(await readFile(join(work, 'logs', 'run.jsonl'), 'utf8'), '{"type":"user/message"}\n{"type":"turn/end"}\n')
-  assert.deepEqual(tau.calls, [`wait ${SESSION} ${RUN}`, `history ${SESSION} ${RUN}`, `finish ${SESSION} ${RUN}`, `release ${SESSION} ${RUN}`])
+  assert.equal(await readFile(join(work, 'logs', 'run.jsonl'), 'utf8'), '{"format":"dsh-session-events"}\n{"type":"user/message"}\n{"type":"turn/end"}\n')
+  assert.deepEqual(tau.calls, [`wait ${SESSION} ${RUN}`, `trace ${SESSION} ${RUN}`, `status ${SESSION} ${RUN}`, `result ${SESSION} ${RUN}`, `release ${SESSION} ${RUN}`])
 })
 
 test('tau_run refuses a call that does not fit the tau before it starts a run', async (t) => {
@@ -178,11 +183,11 @@ test('tau_run writes a workspace-write session\'s results under its writable roo
   const work = await fixture(t)
   // A link in the session's folder to a folder outside every root.
   await symlink('/', join(work, 'root'))
-  for (const [report, history] of [[OUTSIDE, undefined], ['out/report.md', `${OUTSIDE}.d/run.jsonl`], [`root${OUTSIDE}`, undefined]] as const) {
+  for (const [report, trace] of [[OUTSIDE, undefined], ['out/report.md', `${OUTSIDE}.d/run.jsonl`], [`root${OUTSIDE}`, undefined]] as const) {
     const tau = new FakeTau(work)
     await assert.rejects(
       toolOn(tau, new FakePolicy('workspace-write')).execute({
-        tau: 'tau', files: { notes: 'notes.md', report }, args: { style: 'few' }, ...history === undefined ? {} : { history },
+        tau: 'tau', files: { notes: 'notes.md', report }, args: { style: 'few' }, ...trace === undefined ? {} : { trace },
       }, execIn(work)),
       /^Error: tau_run cannot write .*: this session's sandbox, workspace-write, lets it write only under /u,
     )

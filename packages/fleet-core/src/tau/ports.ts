@@ -136,7 +136,7 @@ export interface RunLifecycle {
   ended(sessionId: string, result: Result): Promise<void>
   /** The result of a session's run that ended, as {@link pack} kept it. */
   result(sessionId: string): Promise<AsyncIterable<Uint8Array>>
-  /** Record that a `finish` first gave back how a session's run ended. */
+  /** Record that a session's run's result was first given back. */
   finished(sessionId: string): Promise<void>
   /** Stop a session's box as soon as nothing occupies it. */
   stopWhenVacant(sessionId: string): Promise<void>

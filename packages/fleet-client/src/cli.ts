@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * `fleet`: see the runs of taus on the tau service of the dsh host
- * fleet-core is installed in (`dsh web`), where they are, and what each
- * run's agent did, on the service's socket, as tau's `defaultFleetSocket`
- * finds it. A run is started, finished and released with tau's own command,
- * `tau --adaptor fleet` (tau's docs/spec/fleet.md).
+ * fleet-core is installed in (`dsh web`), and where each is, on the
+ * service's socket, as tau's `defaultFleetSocket` finds it. A run is
+ * started, looked into, finished and released with tau's own command,
+ * `tau --adaptor fleet` (tau's docs/spec/fleet.md): what its agent did is
+ * its trace, which `tau trace` prints.
  * @module @sleepymug/fleet-client/cli
  */
 
@@ -18,17 +19,16 @@ Commands:
   list                   list the runs: session, state, how each ended, tau
   status <run>           show a run as list does, then why it failed, if it
                          did, and its prompt
-  history <run>          print the run's session's history, an event of dsh's
-                         per line, whether it ended or not
 
 A run is named by its session's id, or by its id as tau gives it,
 fleet:<session-id>. A run is running until its agent is done, then ended,
-and finished once tau's finish has given back how it ended.
+and finished once its result was first given back.
 
-Runs are started, finished and released with tau's command:
+Runs are started, looked into, finished and released with tau's command:
   tau run --adaptor fleet <tau-dir> --call <call.json>
   tau start --adaptor fleet <tau-dir> --call <call.json>
-  tau finish | wait | release fleet:<session-id>
+  tau status | result | trace | finish | wait | release fleet:<session-id>
+tau trace prints what a run's agent did, its session's events, while it is kept.
 
 The tau service listens on $TAU_FLEET_SOCKET, or else $DSH_HOME/fleet/tau.sock,
 ~/.dsh/fleet/tau.sock when DSH_HOME is not set.
@@ -50,13 +50,12 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     for (const status of await ask({ op: 'list' })) process.stdout.write(`${row(status)}\n`)
   },
   async status(args) {
-    const status = await ask({ op: 'status', id: runOf('status', args) })
+    const id = runOf('status', args)
+    const status = (await ask({ op: 'list' })).find(run => run.sessionId === id)
+    if (status === undefined) throw new Error(`fleet: no tau session ${id}`)
     process.stdout.write(`${row(status)}\n`)
     if (status.result?.failure !== undefined) process.stdout.write(`  ${status.result.failure}\n`)
     process.stdout.write(`${status.prompt}${status.prompt.endsWith('\n') ? '' : '\n'}`)
-  },
-  async history(args) {
-    for (const event of await ask({ op: 'history', id: runOf('history', args) })) process.stdout.write(`${JSON.stringify(event)}\n`)
   },
 }
 

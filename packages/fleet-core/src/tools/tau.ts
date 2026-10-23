@@ -5,8 +5,8 @@
  * does, with tau's client and its fleet adaptor, on the tau service,
  * `ctx.fleetTau`, in this process, as the run's caller. Its call is packed
  * here, from the session's files, relative paths its working directory's,
- * and the run's result put at its paths, once the run ends, and its
- * session's history, if asked for; then the run is released. The tool waits
+ * and the run's result put at its paths, once the run ends, and its trace,
+ * if asked for, as `tau trace` prints it; then the run is released. The tool waits
  * for it, so nothing outlives the call. tau's primers are skills of every
  * session (./primers.ts): `tau`, its TAU.md, what a tau takes and what a
  * run of one promises, and `tau-dev`, its TAU_DEV.md, how to make one; a
@@ -32,7 +32,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { createClient } from '@sleepymug/tau'
+import { createClient, traceLines } from '@sleepymug/tau'
 import { createFleetAdaptor, fleetLoopback } from '@sleepymug/tau/adaptors'
 import type { TauBoxes } from '../tau/ports.ts'
 import type { Caller } from '../tau/registry.ts'
@@ -86,10 +86,11 @@ export function apply(ctx: Context): void {
           + 'so a string names a file only by its placeholder, the file\'s name in ${}, which becomes where its agent sees it, '
           + 'as in "${site}/index.html"; and ${ meant as text is written $${. None for a TAU that takes no args.',
       },
-      history: {
+      trace: {
         type: 'string',
-        description: 'Where to write the run\'s session history, to see what its agent did: one JSON event per line, '
-          + 'written whether the run succeeded or not. A relative path is your working directory\'s. None writes no history.',
+        description: 'Where to write the run\'s trace, to see what its agent did: a line of JSON naming its format, then each event '
+          + 'of its session, a line each, written whether the run succeeded or not. A relative path is your working directory\'s. '
+          + 'None writes no trace.',
       },
     },
     output: {
@@ -119,7 +120,7 @@ export function apply(ctx: Context): void {
       const call = { files: args.files ?? {}, args: args.args ?? {} }
       const { call: resolved } = client.check(tauDir, call, cwd)
       const targets = Object.entries(resolved.files).flatMap(([name, { mode }]) => mode === 'in' ? [] : [resolved.paths[name] as string])
-      const written = [...targets, ...args.history === undefined ? [] : [resolve(cwd, args.history)]]
+      const written = [...targets, ...args.trace === undefined ? [] : [resolve(cwd, args.trace)]]
       checkWritable(ctx, session, written)
       const run = await client.start(tauDir, call, { cwd, signal: exec.signal })
       const sessionId = run.slice('fleet:'.length)
@@ -127,10 +128,10 @@ export function apply(ctx: Context): void {
         await ctx.fleetTau.untilEnded(caller, sessionId, exec.signal)
         // Its sandbox, or what is at its paths, may have changed while the run ran.
         checkWritable(ctx, session, written)
-        if (args.history !== undefined) {
-          const at = resolve(cwd, args.history)
+        if (args.trace !== undefined) {
+          const at = resolve(cwd, args.trace)
           await mkdir(dirname(at), { recursive: true })
-          await writeFile(at, (await ctx.fleetTau.history(caller, sessionId, exec.signal)).map(event => `${JSON.stringify(event)}\n`).join(''))
+          await writeFile(at, traceLines(await client.trace(run, { signal: exec.signal })))
         }
         const { ok, text, failure } = await client.finish(run, { signal: exec.signal })
         return { sessionId, ok, text, ...failure === undefined ? {} : { failure } }

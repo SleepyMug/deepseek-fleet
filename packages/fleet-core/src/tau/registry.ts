@@ -62,7 +62,7 @@ export interface Entry {
   promptedAt?: string
   /** When the run ended, its agent done, and how. */
   ended?: { at: string; result: Result }
-  /** When a `finish` first gave back how the run ended. */
+  /** When the run's result was first given back. */
   finishedAt?: string
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
   resetAt?: string

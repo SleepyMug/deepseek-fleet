@@ -12,12 +12,12 @@ async function read(bytes: AsyncIterable<Uint8Array>): Promise<string> {
   return text
 }
 
-/** A service that records what it is asked, as whom, answering a finish with bytes after it. */
+/** A service that records what it is asked, as whom, answering a result with bytes after it. */
 function fake(calls: string[]): Service {
   return {
     handlerFor: caller => async (request, body) => {
       calls.push(`${JSON.stringify(caller)} ${JSON.stringify(request)} ${await read(body)}`)
-      return request.op === 'finish' ? { value: null, body: once('the result') } : { value: { id: 'session-child' } }
+      return request.op === 'result' ? { value: { result: 1 }, body: once('the result') } : { value: { id: 'session-child' } }
     },
   }
 }
@@ -27,14 +27,14 @@ test('the server passes each request to the service as the calling session\'s, w
   const server = methods(fake(calls))
   const call = { sessionId: 'session-parent', signal: new AbortController().signal }
   assert.deepEqual(await server.exchange?.([{ op: 'submit', title: 'shout' }], { ...call, body: once('the call') }), { id: 'session-child' })
-  const finished = await server.exchange?.([{ op: 'finish', id: 'session-child' }], call) as { value: unknown; body: AsyncIterable<Uint8Array> }
-  assert.equal((finished as unknown as Record<symbol, unknown>)[Symbol.for('fleet.streamed')], true)
-  assert.equal(finished.value, null)
-  assert.equal(await read(finished.body), 'the result')
+  const result = await server.exchange?.([{ op: 'result', id: 'session-child' }], call) as { value: unknown; body: AsyncIterable<Uint8Array> }
+  assert.equal((result as unknown as Record<symbol, unknown>)[Symbol.for('fleet.streamed')], true)
+  assert.deepEqual(result.value, { result: 1 })
+  assert.equal(await read(result.body), 'the result')
   const parent = JSON.stringify({ kind: 'session', sessionId: 'session-parent' })
   assert.deepEqual(calls, [
     `${parent} {"op":"submit","title":"shout"} the call`,
-    `${parent} {"op":"finish","id":"session-child"} `,
+    `${parent} {"op":"result","id":"session-child"} `,
   ])
 })
 

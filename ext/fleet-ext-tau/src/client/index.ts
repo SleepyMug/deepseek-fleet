@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { createClient, createFleetAdaptor, relayTransport, type FleetTransport } from '@sleepymug/fleet-box-runtime/ext/tau'
+import { createClient, createFleetAdaptor, relayTransport, traceLines, type FleetTransport } from '@sleepymug/fleet-box-runtime/ext/tau'
 import { RUN } from '@sleepymug/fleet-box-runtime/tau/layout'
 import type { Call, Json, Result } from '@sleepymug/tau-api'
 import { CONTRACT } from './contract.ts'
@@ -17,11 +17,11 @@ import { CONTRACT } from './contract.ts'
 /** How to run a tau, besides what tau's spec has: fleet's own. */
 export interface RunOptions {
   /**
-   * Where to write the run's session history, to see what its agent did: its events, one JSON
-   * object per line, as fleet's host logs them, whether the run succeeded or not. A relative path
-   * is `process.cwd()`'s.
+   * Where to write the run's trace, to see what its agent did, as `tau trace` prints it: a line of
+   * JSON naming its format, then each event of its session, as fleet's host logs them, a line
+   * each, once the run ended, whether it succeeded or not. A relative path is `process.cwd()`'s.
    */
-  readonly history?: string
+  readonly trace?: string
 }
 
 /** What the box's runtime kept of this run when it set the box up: where the agent sees each file, and the args, expanded. */
@@ -63,21 +63,19 @@ const service: FleetTransport = relayTransport(CONTRACT, 'exchange')
 export async function run(tau: string, call: Call, signal?: AbortSignal, options: RunOptions = {}): Promise<Result> {
   // Its project is this session's own, which the service gives it.
   const client = createClient({ adaptors: { fleet: createFleetAdaptor({ transport: service }) } })
-  const { history } = options
-  if (history === undefined) return await client.run(tau, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
-  const started = await client.start(tau, call, { cwd: process.cwd(), ...signal === undefined ? {} : { signal } })
-  try {
-    const result = await client.finish(started, signal === undefined ? {} : { signal })
-    const { value } = await service.exchange({ op: 'history', id: started.slice('fleet:'.length) }, undefined, signal)
-    await mkdir(dirname(resolve(history)), { recursive: true })
-    await writeFile(history, (value as unknown[]).map(event => `${JSON.stringify(event)}\n`).join(''))
-    return result
-  } catch (error) {
-    if (signal?.aborted !== true) throw error
-    return { ok: false, text: '', failure: 'the run was stopped' }
-  } finally {
-    await client.release(started).catch(() => {})
-  }
+  const { trace } = options
+  return await client.run(tau, call, {
+    cwd: process.cwd(),
+    ...signal === undefined ? {} : { signal },
+    ...trace === undefined
+      ? {}
+      : {
+          trace: async (given) => {
+            await mkdir(dirname(resolve(trace)), { recursive: true })
+            await writeFile(trace, traceLines(given))
+          },
+        },
+  })
 }
 
 /** Init's exit code when it did the run: the agent does not run, and init's stdout is its text. */

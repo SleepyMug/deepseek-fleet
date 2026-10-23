@@ -1,12 +1,12 @@
 /**
  * The tau service's requests (./service.ts), as tau's fleet adaptor makes a
- * run's, submit, finish and release, and a contract's (tau's
- * docs/spec/fleet.md), and as
- * fleet-protocol has the service's own, list, status and history, served
- * for a caller, whom each way in names, never the request: the socket,
- * which tau's `listenFleet` serves (./plugin.ts), for the host; the `tau` API's extension (fleet-ext-tau),
- * for a tau's session, from its box; and `tau_run` (../tools/tau.ts), for
- * another session, in this process. What a caller sends is checked here.
+ * run's, submit, status, result, trace and release, and a contract's (tau's
+ * docs/spec/fleet.md), and as fleet-protocol has the service's own, list,
+ * served for a caller, whom each way in names, never the request: the
+ * socket, which tau's `listenFleet` serves (./plugin.ts), for the host; the
+ * `tau` API's extension (fleet-ext-tau), for a tau's session, from its box;
+ * and `tau_run` (../tools/tau.ts), for another session, in this process.
+ * What a caller sends is checked here.
  * @module @sleepymug/fleet-core/tau/wire
  */
 
@@ -15,7 +15,7 @@ import type { Caller } from './registry.ts'
 import type { TauService } from './service.ts'
 
 /** What the wire asks of the service. */
-export type Operations = Pick<TauService, 'submit' | 'finish' | 'release' | 'contract' | 'list' | 'status' | 'history'>
+export type Operations = Pick<TauService, 'submit' | 'status' | 'result' | 'trace' | 'release' | 'contract' | 'list'>
 
 /** The service's requests, made by `caller`. */
 export function serveFor(service: Operations, caller: Caller): FleetHandler {
@@ -27,8 +27,12 @@ export function serveFor(service: Operations, caller: Caller): FleetHandler {
           const { sessionId } = await service.submit(caller, { title: run.title, ...run.project === undefined ? {} : { project: run.project } }, body)
           return { value: { id: sessionId } }
         }
-        case 'finish':
-          return { value: null, body: await service.finish(caller, run.id, signal) }
+        case 'status':
+          return { value: await service.status(caller, run.id) }
+        case 'result':
+          return await service.result(caller, run.id)
+        case 'trace':
+          return { value: await service.trace(caller, run.id, signal) }
         case 'release':
           await service.release(caller, run.id)
           return { value: null }
@@ -36,20 +40,7 @@ export function serveFor(service: Operations, caller: Caller): FleetHandler {
     }
     const asked = readFleetContractRequest(request)
     if (asked !== undefined) return service.contract(asked.name, asked.range)
-    switch (request.op) {
-      case 'list':
-        return { value: await service.list(caller) }
-      case 'status':
-        return { value: await service.status(caller, idOf(request)) }
-      case 'history':
-        return { value: await service.history(caller, idOf(request), signal) }
-      default:
-        throw new Error(`fleet: no op ${request.op}`)
-    }
+    if (request.op === 'list') return { value: await service.list(caller) }
+    throw new Error(`fleet: no op ${request.op}`)
   }
-}
-
-function idOf(request: { op: string; id?: unknown }): string {
-  if (typeof request.id !== 'string' || request.id === '') throw new TypeError(`fleet: ${request.op} takes the run's id, a string`)
-  return request.id
 }

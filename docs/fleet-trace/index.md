@@ -77,7 +77,7 @@ told so after the prompt, defines the term.
   `tau start --adaptor fleet` and `tau finish` do it, with tau's client and
   its fleet adaptor, which pack the call and put the result at the caller's
   paths, the scripted model told the run's prompt by the service's
-  `status`, with the caller's
+  `list`, with the caller's
   folder made from `files`, and the folder of each file's path in `call`,
   where an `out` goes.
 - **A session** is made through the driver (`driver.ts`), a dsh plugin of

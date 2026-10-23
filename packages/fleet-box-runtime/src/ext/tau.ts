@@ -8,11 +8,11 @@
  * @module @sleepymug/fleet-box-runtime/ext/tau
  */
 
-import { createClient, type Outcome, type TauClient } from '@sleepymug/tau'
+import { createClient, type Outcome, type TauClient, type Trace, traceLines } from '@sleepymug/tau'
 import { createFleetAdaptor, type FleetTransport } from '@sleepymug/tau/adaptors'
 import { callStream } from './client.ts'
 
-export { createClient, createFleetAdaptor, type FleetTransport, type Outcome, type TauClient }
+export { createClient, createFleetAdaptor, type FleetTransport, type Outcome, type TauClient, type Trace, traceLines }
 
 /**
  * A transport of tau's fleet adaptor through the server of the extension
