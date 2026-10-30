@@ -24,8 +24,8 @@ or, from a checkout, `./packages/fleet-basic`.
   dsh-base's presets, off. fleet-core's `tau` preset stays, for the runs'
   sessions.
 - `agent-preset-registry`: new sessions get `basic`.
-- `preset-basic`, the `basic` preset: a persona naming the model and the
-  working directory; the project's AGENTS.md; `bash`, foreground only;
+- `preset-basic`, the `basic` preset: a persona naming the model, and
+  dsh's working directory in the runtime context; the project's AGENTS.md; `bash`, foreground only;
   `read`, `write`, `edit` and `read_image`; `glob` and `grep`;
   `web_search` and `web_fetch`; `skill`, which loads tau's primers, the
   skills `tau` and `tau-dev`, that `tau_run`'s prompt points to; and

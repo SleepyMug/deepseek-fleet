@@ -39,7 +39,6 @@
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: You are a coding agent powered by the {{model}} model.
-              suffix: Your working directory is {{cwd}}.
 
           # AGENTS.md of the project, as pi reads it.
           - id: agent-instructions
