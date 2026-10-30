@@ -12,7 +12,7 @@ class FakeForm implements TauLanesForm {
   private readonly listeners = new Set<() => void>()
 
   constructor(value: TauLanesValue) {
-    this.snapshot = { status: 'ready', value, base: {}, user: {}, revision: 1, writable: true, mode: 'host' }
+    this.snapshot = { status: 'ready', value, base: {}, user: {}, revision: 1, writable: true }
   }
 
   getSnapshot(): ConfigFormSnapshot<TauLanesValue> { return this.snapshot }

@@ -38,6 +38,11 @@ class Attachments extends Service {
   }
 }
 
+class WorkingDirectory extends Service {
+  constructor(ctx: Context) { super(ctx, 'workingDirectory') }
+  async ensure() { return '/tau/workspace' }
+}
+
 class Llm extends Service {
   constructor(ctx: Context) { super(ctx, 'llm') }
   async resolveModelInfo() { return { inputModalities: ['text', 'image'] } }
@@ -50,6 +55,7 @@ function fsOf(owner: string) {
     async resolve(path: string) { return { key: `${owner}:${path}`, displayPath: `${owner}:${path}`, processPath: path } }
     async stat() { return { type: 'file', size: PNG.length, version: owner } }
     async readBytes() { return PNG }
+    processPath(target: { key: string }) { return target.key }
   }
 }
 
@@ -60,6 +66,7 @@ async function readImage(plugin: unknown): Promise<unknown> {
   await root.plugin(SystemPrompt)
   await root.plugin(Attachments)
   await root.plugin(Llm)
+  await root.plugin(WorkingDirectory)
   await root.plugin(fsOf('host'))
   const box = root.isolate('fs')
   await box.plugin(fsOf('box'))
@@ -71,7 +78,7 @@ async function readImage(plugin: unknown): Promise<unknown> {
   return tool.execute({ file_path: '/tau/in/pic.png' }, { agent, signal: new AbortController().signal })
 }
 
-test('dsh\'s tool-fs alone cannot read an image from an isolated fs, as cordis 4.0.4 looks it up', async () => {
+test('dsh\'s tool-fs alone cannot read an image from an isolated fs, as cordis 4.0.5 looks it up', async () => {
   await assert.rejects(readImage(dshToolFs), /cannot get property "fs" without inject/)
 })
 

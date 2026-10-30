@@ -123,7 +123,7 @@ end, unless the model gives one a timeout, since a program that runs taus
 waits for each, read/write/edit and read_image, the tau's skills; and
 compaction. read_image needs dsh's tool-fs mounted through
 `@sleepymug/fleet-core/preset/tool-fs`: tool-fs registers it in a nested
-inject, whose `ctx.fs` cordis 4.0.4 cannot find under the group's isolated
+inject, whose `ctx.fs` cordis 4.0.5 cannot find under the group's isolated
 `fs`, since it compares isolation keys with the root context's, not the
 caller's; the wrapper has each nested inject require tool-fs's own
 services, `fs` among them, until cordis looks up with the caller's key. What its rows register reaches only the sessions

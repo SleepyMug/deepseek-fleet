@@ -15,10 +15,10 @@ On linux, with Docker and pnpm on the PATH:
    not check:
 
    ```
-   npm install --global @deepseek-ai/dsh@0.2.0-rc.2
+   npm install --global @deepseek-ai/dsh@0.2.1-rc.4
    ```
 
-   With pnpm, `pnpm add --global @deepseek-ai/dsh@0.2.0-rc.2`, then
+   With pnpm, `pnpm add --global @deepseek-ai/dsh@0.2.1-rc.4`, then
    `pnpm approve-builds --global` for dsh's native dependencies.
 
 2. fleet-core, with fleet-box-runtime, whose command builds the image;

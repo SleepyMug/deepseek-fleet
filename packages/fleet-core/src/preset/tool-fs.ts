@@ -4,7 +4,7 @@
  *
  * tool-fs registers read_image in a nested `ctx.inject(['attachments'], …)`,
  * whose fiber reads `ctx.fs` without injecting it, so that cordis looks for
- * it up the fibers above. cordis 4.0.4 compares the isolation key of each
+ * it up the fibers above. cordis, as of 4.0.5, compares the isolation key of each
  * fiber it passes with the root context's, not the caller's, so under an
  * isolated `fs` it stops at the group and read_image fails with `cannot get
  * property "fs" without inject`. This plugin is tool-fs, but each nested
