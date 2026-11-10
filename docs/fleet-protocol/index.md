@@ -1,31 +1,83 @@
 # fleet-protocol
 
-The tau service's own requests (fleet-core/tau), beside a run's, shared by
-`fleet` (fleet-client) and the service. It is a package of its own so that
-neither end imports the other. A run's requests, `submit`, `status`,
-`result`, `trace` and `release`, are tau's fleet adaptor's, as tau's
-docs/spec/fleet.md has them, with the socket they travel on.
+The fleet host's wires, shared by their ends, and where things lie in a
+box: a package of its own, of types and constants, so that no end imports
+another, and a harness or a service imports none of the host's code.
 
 ## Provides
 
-`@sleepymug/fleet-protocol/tau`:
-- `socketPath(dshHome)`, where the service listens: `<dshHome>/fleet/tau.sock`,
-  as tau's `defaultFleetSocket` finds it;
-- the types `Request`, `Answers`, `RunStatus`, `RunState` and `Result`.
+- `@sleepymug/fleet-protocol/fleet`: the wire between the fleet host and its
+  clients (below): `FLEET_PROTOCOL`, the message types, `Ops`, each op's
+  params, result and events, the box's and the service's types, `BoxSpec`,
+  `BoxInfo`, `BoxState`, `Occupant`, `ServiceSpec`, `ServiceInfo` and
+  `Preamble`, the codes `BOX_GONE`, `NO_BOX` and `NOT_STARTED`, and
+  `fleetHome(env)` and `fleetSocket(env)`: `$FLEET_HOME`, or `~/.fleet`, and
+  `$FLEET_SOCKET`, or `fleet.sock` in the home.
+- `@sleepymug/fleet-protocol/helper`: the wire between the host and the
+  helper in a box, whose methods are docs/fleet-box/helper/index.md's:
+  `PROTOCOL_VERSION`, the message types, `Methods`, `ServiceInBox` and
+  `CONNECTION_WINDOW`.
+- `@sleepymug/fleet-protocol/layout`: where things lie in a box, which the
+  host, the helper and the services agree on:
+
+  | Constant | Value |
+  |---|---|
+  | `PACKAGE_ROOT` | `/opt/fleet`, fleet-box as it would be packed |
+  | `HELPER_NODE`, `HELPER_ENTRY` | `/usr/local/bin/node`, the base image's, and `/opt/fleet/lib/helper/main.js` |
+  | `SERVICES_DIR`, `serviceDir(name)` | `/opt/fleet/services`, each service's package as `<name>@<digest>`, and `/opt/fleet/services/<name>`, the one in use |
+  | `BIN_DIR` | `/opt/fleet/bin`, the services' commands |
+  | `SOCKETS_DIR`, `socketOf(name)` | `/run/fleet/services`, and `/run/fleet/services/<name>.sock` |
+  | `SERVICES_VARIABLE` | `FLEET_SERVICES`, which names `SOCKETS_DIR` for every process |
+  | `DEFAULT_IMAGE` | `fleet:local` |
 
 ## Design
 
-A request is a JSON object, its `op` and what it takes, and its answer
-JSON, carried as tau's fleet wire carries every request: on the socket,
-one line each way, with the wire's version, or through the `tau` API's
-extension, from a box (docs/fleet-ext-tau/index.md).
+The host's socket is a Unix socket only its owner can open, its
+authentication. A client opens one connection and sends one JSON message a
+line, as the host does back:
 
-| Request | Answer |
-|---|---|
-| `{ "op": "list" }` | for each run the caller reaches, oldest first, `{ "sessionId", "parent"?, "title", "project", "prompt", "state": "running" \| "ended" \| "finished", "createdAt", "endedAt"?, "result"? }`; `parent`, the run that started it, if one did; `prompt`, the tau's, expanded with where the box has each file; `finished`, once its result was first given back |
+- client: `{ "type": "hello", "protocol": 1 }` first; the host answers
+  `{ "type": "hello", "protocol": 1 }`, or refuses another version with
+  `{ "type": "error", "id": 0, "message" }` and closes.
+- client: `{ "type": "request", "id": 1, "op": "box.get", "params": { "box": "box-…" } }`,
+  any number at once, each under an id of the client's;
+  `{ "type": "cancel", "id": 1 }` gives one up, its signal aborted on the
+  host, as a watch ends.
+- host: `{ "type": "event", "id": 1, "value" }`, any number before a
+  request's answer, for an op that sends them; then
+  `{ "type": "result", "id": 1, "value" }`, or
+  `{ "type": "error", "id": 1, "message", "code"? }`, once.
 
-A run's id is its session's. Where one run is, and what its agent did,
-are tau's `status` and `trace`. A request names no path of the caller's.
+A message that is not one closes the connection. What the client holds,
+its leases and the services it registered, it holds while its connection
+lasts.
+
+| Op | Params | Result | Events |
+|---|---|---|---|
+| `box.create` | `BoxSpec`: `{ image?, labels?, env?, services?, idleStopMs? }` | `BoxInfo` | |
+| `box.list` | `{ labels? }` | `BoxInfo[]` | |
+| `box.get` | `{ box }` | `BoxInfo`: `{ id, image, labels, env, services, idleStopMs?, createdAt, state }` | |
+| `box.start`, `box.stop`, `box.stopWhenVacant`, `box.remove` | `{ box }` | `null` | |
+| `box.lease` | `{ box, occupant: { kind, id }, start? }` | `{ lease }` | |
+| `box.release` | `{ lease }` | `null` | |
+| `box.watch` | `{ box }` | `null`, once cancelled or the box removed | `{ state }`: `stopped`, `started`, `stopping`, `gone`, or `removed` |
+| `box.request` | `{ box, method, params, hold? }` | the method's | the method's |
+| `box.copyIn`, `box.copyOut` | `{ box, from, to }` | `null` | |
+| `box.pipe` | `{ box, argv, input?, output? }` | `{ stdout }` | |
+| `service.register` | `ServiceSpec`: `{ name, description, package, env?, endpoint }` | `ServiceInfo`: `{ name, description, bins, env, digest }` | |
+| `service.unregister` | `{ name }` | `null` | |
+| `service.list` | `{}` | `ServiceInfo[]` | |
+
+What each op does is docs/fleet/index.md's. A failure's `code` is
+`BOX_GONE`, for a box whose container was removed by other means, which its
+owner makes again; `NO_BOX`, for a box the host does not know;
+`NOT_STARTED`, for a request without `hold` of a box that is not started;
+or the helper's own, such as an `FsError`'s.
+
+A service's endpoint reads one line first of each connection the host
+opens to it, the `Preamble`, `{ "box", "labels" }`, the box the connection
+comes from, as the host knows it, and its labels; then the box's program's
+bytes, both ways (docs/fleet/services/index.md).
 
 ## Built on
 

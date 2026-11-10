@@ -1,87 +1,107 @@
 # fleet-client
 
-`fleet`, the command that shows the runs of taus on the tau service in the
-fleet host (docs/fleet-core/tau/index.md), and where each is. It loads no
-dsh module. Runs are started, looked into, finished and released with
-tau's own command, `tau`, through its fleet adaptor (tau's
-docs/spec/fleet.md), which talks to the same service; what a run's agent
-did is its trace, which `tau trace` prints.
+The fleet host's client, `@sleepymug/fleet-client`: what a harness uses of
+the host's boxes, their files, processes and terminals, and their lives;
+and what a service's gateway registers itself with (docs/fleet/index.md). It
+speaks the host's wire on its socket (docs/fleet-protocol/index.md), one
+connection that carries every request the client asks, and holds its
+leases and services as long as it lasts. dsh-tau runs its taus' boxes with
+it (docs/dsh-tau/tau/index.md); fleet-notes registers with it
+(docs/fleet-notes/index.md).
 
 ## Provides
 
-```
-fleet list             list the runs: session, state, how each ended, tau
-fleet status <run>     show a run as list does, then why it failed, if it
-                       did, and its prompt
-```
+```ts
+import { FleetClient } from '@sleepymug/fleet-client'
 
-- A run is named by its session's id, or by its id as `tau` prints it,
-  `fleet:<session id>`.
-- A run is `running` until its agent is done, then `ended`, and `finished`
-  once its result was first given back, which it is again each time.
-- Exit codes:
-  - `0` on success;
-  - `1` when the service refuses or fails, or there is no service;
-  - `2` on a mistaken command line, with a pointer to `--help`.
-
-A run's life is tau's:
-
-```
-tau run --adaptor fleet <tau-dir> --call <call.json>     start a run, wait for it, put its outputs, and release it
-tau start --adaptor fleet <tau-dir> --call <call.json>   start a run, and print its id, fleet:<session id>
-tau status fleet:<session id>                            whether it is running or ended, and how, at once
-tau trace fleet:<session id>                             what its agent did: its session's events, as dsh logs them
-tau finish fleet:<session id>                            wait for its result, and put its outputs, as often as asked
-tau release fleet:<session id>                           drop it: archive its session, and remove its box
+const fleet = await FleetClient.connect()                  // $FLEET_SOCKET, or fleet.sock in the fleet home
+const { id } = await fleet.create({ labels: { who: 'me' } })
+const box = fleet.box(id)
+const release = await box.lease({ kind: 'turn', id: 'agent-1' })   // started, and occupied
+await box.request('fs.stat', { target })                   // a helper method, holding the box while it runs
+await box.exec(['ls', '/'])                                // what it wrote to stdout
+await release()
+await fleet.close()                                        // what the client held, the host lets go
 ```
 
-`$TAU_ADAPTOR=fleet`, or `adaptor: fleet` in tau's config file,
-`~/.config/tau/config.yaml`, makes the fleet adaptor the default. `tau` keeps each
-run it started, where its outputs go, in its state folder until it is
-released, so `finish` and `release` work from any folder; interrupting
-`tau run` releases the run (tau's docs/spec/client.md).
+`FleetClient`:
+
+| Member | What it does |
+|---|---|
+| `FleetClient.connect({ socket?, log? })` | Connect to the host, which must answer now: the socket `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, unless `socket` names another; `log` is told what goes wrong outside a request, such as a connection lost. |
+| `request(op, params, { onEvent?, signal? })` | Ask any op of the wire, and give its result; `onEvent` is told each event first; aborting `signal` cancels it. |
+| `create(spec)`, `list(labels?)` | `box.create` and `box.list`. |
+| `box(id)` | A `FleetBox`, to ask of. |
+| `register(definition)` | Register a service (below), and give its `Registration`, `{ info, unregister() }`. |
+| `close()` | Close the connection: the host releases the client's leases and unregisters its services. |
+
+`FleetBox`, each verb the op of its name (docs/fleet/index.md):
+
+| Member | What it does |
+|---|---|
+| `get()` | The box, with its state. |
+| `request(method, params, { onEvent?, hold?, signal? })` | A request of the box's helper; with `hold`, the default, occupying the box while it runs, starting it if need be; without, of a box that is started. |
+| `lease(occupant, { start? })` | Occupy the box, `occupant` `{ kind, id }`, and give back what releases it; with `start`, the default, once it is started. |
+| `watch(listener)` | Follow the box's state: `listener` is told it now and at each change, until the returned stop, or the box's removal. |
+| `start()`, `stop()`, `stopWhenVacant()`, `remove()` | The box's life. |
+| `copyIn(from, to)`, `copyOut(from, to)` | Copy a host file or folder in, or a box folder out, host paths absolute. |
+| `pipe(argv, { input?, output? })` | Run a program for bytes: `input`, a host file, its stdin; its stdout to `output`, a host file, or given back. |
+| `exec(argv)` | Run a program in the box, and give back what it wrote to stdout; an exit other than 0 fails, with what it wrote to stderr. |
+
+A service, as `register` takes it, `ServiceDefinition`: `name`,
+`description`, `package`, a node package installed on this host, absolute,
+`env`, and `serve(connection, from)`, which serves each connection a
+program in a box opens to the service's socket there, as a socket on this
+host, `from` the `Preamble`, `{ box, labels }` (docs/fleet/services/index.md).
+
+It also exports `FleetError`, a failure the host reported, with its `code`:
+`BOX_GONE`, `NO_BOX` and `NOT_STARTED`, which it exports too, or a helper's,
+such as an `FsError`'s; `FleetUnreachable`, for no host on the socket;
+`fleetHome` and `fleetSocket`; and the wire's types.
 
 ## Design
 
-- **The socket** is where tau's `defaultFleetSocket` finds it, as `tau`
-  does: `$TAU_FLEET_SOCKET`, or `$DSH_HOME/fleet/tau.sock`, or
-  `~/.dsh/fleet/tau.sock` when `DSH_HOME` is unset or blank, as dsh finds
-  its home; not the socket tau's config file names, which `fleet` does
-  not read. Each command is the service's own request, `list`
-  (`@sleepymug/fleet-protocol/tau`), on a connection of its own, through
-  tau's `fleetSocket`.
-- **Nothing of a run's files** passes through `fleet`: tau's client packs
-  a call, and its fleet adaptor checks a result and puts it at the
-  caller's paths.
+- **One connection** carries every request, each with an id of the
+  client's, answered in any order: many at once, from one process, such as
+  dsh's world serving many sessions' tools.
+- **A service's endpoint** is a socket of the client's own, in a folder of
+  its own made in the system's temporary folder, mode 0700, which the host
+  opens a connection to for each one a box opens. The client reads the
+  line that says which box it comes from, as the host knows it, and gives
+  `serve` the rest of the connection, which flows once `serve` reads it, as
+  with a `data` listener, a pipe, or tau's `serveConnection`. A line that is
+  no `Preamble` cuts the connection, and so does a `serve` that throws.
+- **A connection the host loses is made again,** after a pause, a tenth of a
+  second at first, twice as long each time, up to two seconds, until a host
+  answers or the client is closed: as after `fleet serve` restarts. What was
+  asked on the lost connection fails, the asker's to ask again; then the
+  client registers its services again, takes each lease it still holds
+  again, as occupancy, without starting the box, since what held it asks
+  for the box again as it needs it, and follows each watch again, whose
+  listener is told the state now. A request asked while no host answers
+  fails with `FleetUnreachable`.
+- **Who the client is,** the host learns from the connection: its leases and
+  its services are that connection's, and what it registered another client
+  cannot unregister.
 
 ## Built on
 
-- `@sleepymug/tau/adaptors`' `fleetSocket` and `defaultFleetSocket`.
-- `@sleepymug/fleet-protocol/tau`, for the service's own requests.
-- `node:util`'s `parseArgs`, for the command line.
+- `@sleepymug/fleet-protocol/fleet` and `/helper`, for the wire and its types.
+- Node's `net` and `readline`.
 
 ## How it runs
 
-With `pnpm exec dsh web` running, after `pnpm build` and
-`pnpm image`, in a folder with `notes.md`, a folder `site`, and a folder
-`out`:
+```ts
+import { FleetClient } from '@sleepymug/fleet-client'
 
+const fleet = await FleetClient.connect({ log: message => console.error(message) })
+await fleet.register({
+  name: 'echo',
+  description: 'Says back what it is sent.',
+  package: '/home/me/echo-box',               // with "bin": { "echo-back": "bin/echo-back.js" }
+  serve: (connection, { box }) => { connection.pipe(connection) },
+})
 ```
-$ alias fleet='node <checkout>/packages/fleet-client/lib/cli.js'
-$ alias tau='node <checkout>/tau/dist/cli/main.js'
-$ echo '{"files": {"notes": "notes.md", "site": "site", "report": "out/report.md"}, "args": {"style": "terse"}}' > call.json
-$ tau start --adaptor fleet <checkout>/examples/demo --call call.json
-fleet:session-4458…
-$ fleet status session-4458…
-session-4458…  running   -       demo
-Read /tau/in/notes.md, and add what it says to the pages in /tau/workspace/site it concerns, in a
-terse style. Then write what you changed to /tau/out/report.md.
-$ tau finish fleet:session-4458…
-Added the notes to site/index.md.
-$ tau trace fleet:session-4458… | head -2
-{"format":"dsh-session-events"}
-{"type":"user/message",…}
-$ tau release fleet:session-4458…
-$ tau run --adaptor fleet <checkout>/examples/demo --call call.json
-Added the notes to site/index.md.
-```
+
+Each box then has `echo-back` on its PATH, which reaches `serve` through
+`$FLEET_SERVICES/echo.sock`.

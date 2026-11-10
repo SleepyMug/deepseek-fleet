@@ -3,17 +3,38 @@
   "args": {
     "type": "object",
     "properties": {
-      "tau": { "type": "string", "description": "The TAU to run: its folder, which a caller gives as an extra in file, named here as \"${name}\"." },
-      "runs": { "type": "integer", "minimum": 1, "description": "How many runs to make." },
+      "tau": {
+        "type": "string",
+        "description": "The TAU to run: its folder, which a caller gives as an extra in file, named here as \"${name}\"."
+      },
+      "runs": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "How many runs to make."
+      },
       "call": {
         "type": "object",
-        "properties": { "files": { "type": "object" }, "args": { "type": "object" } },
+        "properties": {
+          "files": {
+            "type": "object"
+          },
+          "args": {
+            "type": "object"
+          }
+        },
         "additionalProperties": false,
         "description": "The call to make: each path names a file given as an extra file, as \"${name}\", and a placeholder meant for the TAU's agent takes one $ more, as \"$${name}\"."
       },
-      "judge": { "type": "string", "description": "What makes a run the best." }
+      "judge": {
+        "type": "string",
+        "description": "What makes a run the best."
+      }
     },
-    "required": ["tau", "runs", "call", "judge"]
-  },
-  "apis": { "@sleepymug/tau-api": "^0.1.0" }
+    "required": [
+      "tau",
+      "runs",
+      "call",
+      "judge"
+    ]
+  }
 }

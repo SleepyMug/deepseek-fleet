@@ -1,0 +1,27 @@
+{
+  "name": "@sleepymug/fleet-notes-box",
+  "version": "0.0.1",
+  "description": "What fleet-notes puts in each box: the notes command, which keeps notes in the box's notebook on the fleet host",
+  "type": "module",
+  "bin": {
+    "notes": "./lib/notes.js"
+  },
+  "exports": {
+    "./wire": {
+      "types": "./lib/wire.d.ts",
+      "default": "./lib/wire.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b"
+  }
+}

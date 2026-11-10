@@ -1,0 +1,183 @@
+{
+  "name": "@sleepymug/dsh-tau",
+  "description": "The tau backend on dsh: each run of a tau a dsh session in a box of its own, which the fleet host keeps; its tau service, which puts the tau command in every box, so that a tau's agent runs taus; and tau_run, with which any session runs one",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./paths": {
+      "types": "./lib/paths.d.ts",
+      "default": "./lib/paths.js"
+    },
+    "./services": {
+      "types": "./lib/services.d.ts",
+      "default": "./lib/services.js"
+    },
+    "./tau/plugin": {
+      "types": "./lib/tau/plugin.d.ts",
+      "default": "./lib/tau/plugin.js"
+    },
+    "./preset/reset": {
+      "types": "./lib/preset/reset.d.ts",
+      "default": "./lib/preset/reset.js"
+    },
+    "./preset/prompt": {
+      "types": "./lib/preset/prompt.d.ts",
+      "default": "./lib/preset/prompt.js"
+    },
+    "./preset/model": {
+      "types": "./lib/preset/model.d.ts",
+      "default": "./lib/preset/model.js"
+    },
+    "./preset/tool-fs": {
+      "types": "./lib/preset/tool-fs.d.ts",
+      "default": "./lib/preset/tool-fs.js"
+    },
+    "./tau/model-plugin": {
+      "types": "./lib/tau/model-plugin.d.ts",
+      "default": "./lib/tau/model-plugin.js"
+    },
+    "./tau/model-plugin/locale/*": "./locale/tau/model-plugin/*",
+    "./tau/lanes-plugin": {
+      "types": "./lib/tau/lanes-plugin.d.ts",
+      "default": "./lib/tau/lanes-plugin.js"
+    },
+    "./tau/lanes-plugin/locale/*": "./locale/tau/lanes-plugin/*",
+    "./tau/runs-plugin": {
+      "types": "./lib/tau/runs-plugin.d.ts",
+      "default": "./lib/tau/runs-plugin.js"
+    },
+    "./tools/tau": {
+      "types": "./lib/tools/tau.d.ts",
+      "default": "./lib/tools/tau.js"
+    },
+    "./world/box-fs": {
+      "types": "./lib/world/box-fs.d.ts",
+      "default": "./lib/world/box-fs.js"
+    },
+    "./world/box-subprocess": {
+      "types": "./lib/world/box-subprocess.d.ts",
+      "default": "./lib/world/box-subprocess.js"
+    },
+    "./world/fs": {
+      "types": "./lib/world/fs.d.ts",
+      "default": "./lib/world/fs.js"
+    },
+    "./world/spill": {
+      "types": "./lib/world/spill.d.ts",
+      "default": "./lib/world/spill.js"
+    },
+    "./world/subprocess": {
+      "types": "./lib/world/subprocess.d.ts",
+      "default": "./lib/world/subprocess.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*",
+    "!lib/client/**/*.js",
+    "locale",
+    "cordis.patch.yml"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json tsconfig.client.json && node scripts/client-bundle.mjs",
+    "prepack": "tsc -b tsconfig.json tsconfig.client.json && node scripts/client-bundle.mjs",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo', 'tsconfig.client.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b tsconfig.json tsconfig.client.json && node scripts/client-bundle.mjs && node --test \"lib/**/*.test.js\""
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  },
+  "dependencies": {
+    "@sleepymug/dsh-tau-box": "workspace:*",
+    "@sleepymug/fleet-client": "workspace:*",
+    "@sleepymug/fleet-protocol": "workspace:*",
+    "@sleepymug/tau": "0.1.0",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-workspace-files": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-fs": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-fs-sandbox": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-permission-presets": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-skill": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-spill": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-spill-local": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-subprocess": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-tool-fs": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-workspace": "0.2.1-rc.4",
+    "@deepseek-ai/schemastery": "3.18.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-api-workspace-files": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-fs": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-fs-sandbox": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-permission-presets": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-skill": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-spill": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-spill-local": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-storage-domain": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-subprocess": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-tool-fs": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-workspace": "0.2.1-rc.4",
+    "@deepseek-ai/schemastery": "3.18.5",
+    "@types/react": "18.3.31",
+    "esbuild": "0.28.2",
+    "@sleepymug/fleet": "workspace:*"
+  }
+}

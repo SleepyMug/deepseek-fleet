@@ -1,0 +1,247 @@
+# dsh-tau's bundle patch: list dsh-tau after @deepseek-ai/dsh-base and
+# @deepseek-ai/dsh-web-app in a profile's bundles, as in dsh's own `web`
+# profile, which dsh-tau is installed in as it is (docs/install.md). It needs
+# the fleet host running, `fleet serve`, whose boxes the runs of taus are in.
+# Every session the web UI makes stays as dsh has it, with its sandbox, its
+# permission presets and its agent presets; dsh-tau adds fleet-tau, the tau
+# backend (docs/dsh-tau/tau/index.md), which makes each tau's session through
+# dsh's session controller, with the `tau` agent preset below, and registers
+# the tau service with the fleet host, which puts the `tau` command in every
+# box; tau_run, with which any session runs a tau; and the world
+# (docs/dsh-tau/world/index.md): in place of dsh-base's `fs-sandbox`,
+# `subprocess` and `spill-local`, services that serve a tau's session from
+# its box and every other from the host, through the very modules they
+# replace. A patch's `name` only asserts an existing row's module, so
+# swapping a module means disabling its row and inserting a replacement
+# under a new id.
+
+# ═══ The runs of taus with their boxes ═══
+
+# `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, which the
+# fleet host keeps, in the registry $DSH_HOME/tau/runs/; and `ctx.fleetClient`,
+# the fleet host's client, on its socket, $FLEET_SOCKET or fleet.sock in the
+# fleet home, unless `fleetSocket` names another. It needs nothing of dsh's,
+# so the world below builds on it, and dsh's session controller on the world.
+- insert:
+    - id: fleet-tau-runs
+      name: '@sleepymug/dsh-tau/tau/runs-plugin'
+      config:
+        dshHome: !!js dshHomePath()
+        # A box nothing uses, no turn, terminal, process or file call, is
+        # stopped by the fleet host after this long, and started again on its
+        # next use.
+        idleStopMs: 60000
+
+# ═══ The world: a tau's session in its box, everything else on the host ═══
+
+# dsh's sandboxed file system, which fleet-fs mounts where only it sees it,
+# for every file that is not a box's.
+- id: fs-sandbox
+  disabled: true
+
+# dsh's local subprocess runtime, which fleet-subprocess mounts where only
+# it sees it, for every process that is not a box's; dsh's sandboxed bash
+# confines what it runs there.
+- id: subprocess
+  disabled: true
+
+# dsh's local spill store, which fleet-spill mounts where only it sees it,
+# for every session that is not a tau's.
+- id: spill-local
+  disabled: true
+
+# What dsh's web UI reaches for a session, whatever its agent preset: the
+# file viewer, the sidebar terminal, the attachments its model is told of.
+# fleet-fs puts the files of dsh's attachment store, $DSH_HOME/attachments/,
+# that a tau's session's model is told of into its box.
+- insert:
+    - id: fleet-fs
+      name: '@sleepymug/dsh-tau/world/fs'
+      config:
+        dshHome: !!js dshHomePath()
+
+    - id: fleet-subprocess
+      name: '@sleepymug/dsh-tau/world/subprocess'
+
+    # A tau's session has no spill files: they would sit on the host, where
+    # its model cannot read them, so its results stay in its conversation.
+    - id: fleet-spill
+      name: '@sleepymug/dsh-tau/world/spill'
+
+# ═══ fleet-tau, and tau_run ═══
+
+- insert:
+    # `ctx.fleetTauModel`: the model every tau's session starts on, in place
+    # of dsh's default, which the `tau` preset's tau-model gives it, and a
+    # person can switch in its chat box as any session's: `provider` and
+    # `model` together, as dsh's model picker names them, and
+    # `reasoningEffort`, each unset to follow dsh's default model, which a
+    # person picks in the web UI. A profile sets them with a row of its own,
+    # whose config replaces this one's whole, such as
+    #   - id: fleet-tau-model
+    #     config: { provider: openai-codex, model: gpt-6-astra, reasoningEffort: high }
+    # or the web UI's Tau model page, and a change reaches the next tau's
+    # session to start.
+    - id: fleet-tau-model
+      name: '@sleepymug/dsh-tau/tau/model-plugin'
+
+    # How many of the taus' model calls stream at once, at most: every call
+    # of a tau's session, its turns', its compaction's and its title's,
+    # whatever its provider, takes a lane of one pool, and waits for one
+    # while all are taken; other sessions' calls are not counted. `lanes`
+    # unset is no cap. A profile sets it with a row of its own, such as
+    #   - id: fleet-tau-lanes
+    #     config: { lanes: 4 }
+    # and a change reaches the next call to take or give back a lane.
+    - id: fleet-tau-lanes
+      name: '@sleepymug/dsh-tau/tau/lanes-plugin'
+
+    # The tau backend's socket, $DSH_HOME/tau/tau.sock, which the host's `tau
+    # --adaptor socket` talks to, and the tau service, which the fleet host
+    # relays a box's `tau` to; each makes a run's session through dsh's
+    # session controller.
+    - id: fleet-tau
+      name: '@sleepymug/dsh-tau/tau/plugin'
+      config:
+        dshHome: !!js dshHomePath()
+
+    # tau_run: run a tau, as `tau run --adaptor socket` does, as this
+    # session's child (docs/dsh-tau/tools/index.md), for every session,
+    # whatever its agent preset, writing only where its sandbox lets it. The
+    # `tau` preset hides it from a tau's session, which runs taus with the
+    # `tau` command in its box instead.
+    - id: tool-tau
+      name: '@sleepymug/dsh-tau/tools/tau'
+
+# ═══ The web client's pages ═══
+
+# dsh-tau's browser half, lib/client.js, which dsh's web client loads only
+# for a row that names the package itself: the tau model page, on the
+# Plugins page's fleet-tau-model row (src/client/).
+- insert:
+    - id: fleet-client
+      name: '@sleepymug/dsh-tau'
+
+# ── The agent preset of a tau's session ──
+#
+# fleet-tau makes a tau's session with the `tau` preset (src/tau/plugin.ts),
+# which the web UI lists last. Its bash and file tools have a world of their
+# own, the session's box: a file system and a subprocess runtime that serve
+# nothing else, and bash over that, unconfined, since the box is the
+# session's own; its programs, which bash runs with `node`, run there too.
+# A session that is not a tau's, as one a person gives this preset, reaches
+# nothing through them, and its steps fail (src/preset/reset.ts).
+- insert:
+    - id: preset-tau
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tau
+        order: 100
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 'You are an agent powered by the {{model}} model, running a TAU, an agent packaged as a directory: its prompt, the first user message, is your task.'
+
+          # Where the model works, its box and the run's files, how its run
+          # ends, and what it runs programs with, in place of dsh's sections
+          # about the host, which are false in a box; none of the host's
+          # tools, which every session has, such as tau_run; and none of the
+          # skills of tau's primers, which the box has as files.
+          - id: tau-prompt
+            name: '@sleepymug/dsh-tau/preset/prompt'
+
+          # The box ready before each step, set up again from the run's call
+          # if it is gone, as after an archive, which the model is told once.
+          - id: tau-reset
+            name: '@sleepymug/dsh-tau/preset/reset'
+
+          # The session's start on the model fleet-tau-model's config names,
+          # in place of dsh's default, and its system prompt naming it.
+          - id: tau-model
+            name: '@sleepymug/dsh-tau/preset/model'
+
+          # The tools as they are, whatever the host presents (dsh's
+          # DSH_TOOLS_MODE): a program the model writes runs in the box, with
+          # bash's `node`, not on the host, as PTC's run_code would.
+          - id: tool-presentation
+            name: '@deepseek-ai/dsh-agent-tool-presentation'
+            config:
+              mode: native
+
+          - id: box
+            name: cordis:group
+            group: true
+            isolate:
+              fs: true
+              subprocess: true
+              shell: true
+            config:
+              - id: box-fs
+                name: '@sleepymug/dsh-tau/world/box-fs'
+
+              - id: box-subprocess
+                name: '@sleepymug/dsh-tau/world/box-subprocess'
+
+              # The `ctx.shell` of the tools below, which runs bash through
+              # the box's subprocess runtime above. A command runs until it
+              # ends, as long as Node can wait, unless the model gives it a
+              # timeout: a program that runs taus waits for each, and a run is
+              # cancelled through dsh, which a later design of limits may
+              # bound.
+              - id: bash-local
+                name: '@deepseek-ai/dsh-bash-local'
+                config:
+                  timeoutMs: 2147483647
+                  maxTimeoutMs: 2147483647
+
+              # bash, foreground only: a call waits for its command. A command
+              # past its timeout is killed rather than moved to the background;
+              # what it started in the background of its own keeps running.
+              - id: tool-bash
+                name: '@deepseek-ai/dsh-tool-bash'
+                config:
+                  enableRunInBackground: false
+                  promoteOnTimeout: false
+
+              # read / write / edit, and read_image, which dsh's tool-fs
+              # alone cannot reach the box's isolated fs from: the plugin
+              # says why.
+              - id: tool-fs
+                name: '@sleepymug/dsh-tau/preset/tool-fs'
+
+              # The tau's skills, each /tau/self/skills/<name>/SKILL.md, read
+              # from the session's box, and only those: no project, user or
+              # bundled roots, and no host watcher, since none of the paths
+              # are the host's.
+              - id: skill-filesystem
+                name: '@deepseek-ai/dsh-skill-filesystem'
+                config:
+                  providerName: tau
+                  includeDefaultRoots: false
+                  customSkillDirs:
+                    - /tau/self/skills
+                  watch: false
+
+              # skill: the catalog of the skills above, and the tool that loads one.
+              - id: tool-skill
+                name: '@deepseek-ai/dsh-tool-skill'
+
+          # Not model tools: automatic compaction, /compact, and old tool-result pruning.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024

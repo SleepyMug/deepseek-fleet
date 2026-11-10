@@ -1,11 +1,11 @@
-# fleet-basic's bundle patch: list it after @sleepymug/fleet-core in a
+# fleet-basic's bundle patch: list it after @sleepymug/dsh-tau in a
 # profile's bundles (docs/fleet-basic/index.md). Every session the web UI
 # makes gets one basic agent preset, a coding agent as pi has it, with
 # none of dsh's multi-agent tools, so work that would go to subagents goes
-# to taus, with fleet-core's tau_run. The profile's own patch, which dsh's
+# to taus, with dsh-tau's tau_run. The profile's own patch, which dsh's
 # settings write, comes after it, and wins.
 
-# dsh's own presets off: standard, ptc, minimal and cordis. fleet-core's
+# dsh's own presets off: standard, ptc, minimal and cordis. dsh-tau's
 # `tau` preset, for its runs' sessions, stays.
 - id: preset-standard
   disabled: true
@@ -26,7 +26,7 @@
 
 # read, write, edit (and read_image), glob and grep, bash in the foreground,
 # web_search and web_fetch, and skill, which loads tau's primers, the skills
-# tau and tau-dev; tau_run comes from fleet-core, for every session. No
+# tau and tau-dev; tau_run comes from dsh-tau, for every session. No
 # subagents, teams, todo, ask_user, plan mode, goals or background jobs.
 - insert:
     - id: preset-basic

@@ -1,0 +1,41 @@
+{
+  "name": "@sleepymug/fleet",
+  "version": "0.0.1",
+  "description": "The fleet host: boxes, Docker containers each with fleet's helper, their lifetime, and the services that plug into them, each the gateway that the means it puts in a box reaches",
+  "type": "module",
+  "bin": {
+    "fleet": "./lib/cli/main.js"
+  },
+  "exports": {
+    "./host": {
+      "types": "./lib/host.d.ts",
+      "default": "./lib/host.js"
+    },
+    "./server": {
+      "types": "./lib/server.d.ts",
+      "default": "./lib/server.js"
+    },
+    "./box": {
+      "types": "./lib/box/box.d.ts",
+      "default": "./lib/box/box.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dependencies": {
+    "@sleepymug/fleet-box": "workspace:*",
+    "@sleepymug/fleet-client": "workspace:*",
+    "@sleepymug/fleet-protocol": "workspace:*"
+  }
+}

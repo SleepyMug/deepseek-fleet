@@ -2,7 +2,7 @@
   "name": "@sleepymug/fleet-trace",
   "version": "0.0.1",
   "private": true,
-  "description": "Run a tau against a scripted model on a scratch fleet host, and dump what the model was sent",
+  "description": "Run a tau against a scripted model on a scratch fleet host and dsh, and dump what the model was sent",
   "type": "module",
   "bin": {
     "fleet-trace": "./lib/cli.js"
@@ -25,7 +25,9 @@
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dependencies": {
-    "@sleepymug/tau": "0.1.0",
-    "@sleepymug/fleet-protocol": "workspace:*"
+    "@sleepymug/dsh-tau-box": "workspace:*",
+    "@sleepymug/fleet-client": "workspace:*",
+    "@sleepymug/fleet-protocol": "workspace:*",
+    "@sleepymug/tau": "0.1.0"
   }
 }

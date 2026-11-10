@@ -1,11 +1,20 @@
 {
   "name": "@sleepymug/fleet-protocol",
   "version": "0.0.1",
+  "description": "The fleet host's wires, shared by its ends: to its clients, harnesses and services, and to the helper in each box; and where things lie in a box",
   "type": "module",
   "exports": {
-    "./tau": {
-      "types": "./lib/tau.d.ts",
-      "default": "./lib/tau.js"
+    "./fleet": {
+      "types": "./lib/fleet.d.ts",
+      "default": "./lib/fleet.js"
+    },
+    "./helper": {
+      "types": "./lib/helper.d.ts",
+      "default": "./lib/helper.js"
+    },
+    "./layout": {
+      "types": "./lib/layout.d.ts",
+      "default": "./lib/layout.js"
     },
     "./package.json": "./package.json"
   },

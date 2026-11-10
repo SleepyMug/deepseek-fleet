@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib"
+  },
+  "include": ["src"],
+  "exclude": ["src/client"],
+  "references": [{ "path": "../dsh-tau-box" }, { "path": "../fleet-client" }, { "path": "../fleet-protocol" }, { "path": "../fleet" }]
+}

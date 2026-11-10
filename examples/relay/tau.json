@@ -1,14 +1,22 @@
 {
   "description": "Have another tau shout a word into a report, and say what it said.",
   "files": {
-    "report": { "kind": "file", "mode": "out", "description": "The word, shouted." }
+    "report": {
+      "kind": "file",
+      "mode": "out",
+      "description": "The word, shouted."
+    }
   },
   "args": {
     "type": "object",
     "properties": {
-      "word": { "type": "string", "description": "The word to shout." }
+      "word": {
+        "type": "string",
+        "description": "The word to shout."
+      }
     },
-    "required": ["word"]
-  },
-  "apis": { "@sleepymug/tau-api": "^0.1.0" }
+    "required": [
+      "word"
+    ]
+  }
 }

@@ -169,12 +169,15 @@ importers:
       '@deepseek-ai/dsh':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4(7250686819dff203fefc31aee39e2f2a)
-      '@sleepymug/fleet-client':
+      '@sleepymug/dsh-tau':
         specifier: workspace:*
-        version: link:packages/fleet-client
-      '@sleepymug/fleet-core':
+        version: link:packages/dsh-tau
+      '@sleepymug/fleet':
         specifier: workspace:*
-        version: link:packages/fleet-core
+        version: link:packages/fleet
+      '@sleepymug/fleet-notes':
+        specifier: workspace:*
+        version: link:services/notes
       '@sleepymug/fleet-trace':
         specifier: workspace:*
         version: link:packages/fleet-trace
@@ -185,75 +188,14 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
-  ext/fleet-ext-notes:
+  packages/dsh-tau:
     dependencies:
-      '@sleepymug/tau-api-notes':
-        specifier: 0.1.0
-        version: link:contract
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: 4.0.5
-        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@sleepymug/fleet-box-runtime':
+      '@sleepymug/dsh-tau-box':
         specifier: workspace:*
-        version: link:../../packages/fleet-box-runtime
-      '@sleepymug/fleet-core':
+        version: link:../dsh-tau-box
+      '@sleepymug/fleet-client':
         specifier: workspace:*
-        version: link:../../packages/fleet-core
-
-  ext/fleet-ext-notes/contract: {}
-
-  ext/fleet-ext-tau:
-    dependencies:
-      '@sleepymug/tau-api':
-        specifier: 0.1.0
-        version: link:../../tau/contracts/tau-api
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: 4.0.5
-        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@sleepymug/fleet-box-runtime':
-        specifier: workspace:*
-        version: link:../../packages/fleet-box-runtime
-      '@sleepymug/fleet-core':
-        specifier: workspace:*
-        version: link:../../packages/fleet-core
-
-  packages/fleet-basic: {}
-
-  packages/fleet-box-runtime:
-    dependencies:
-      '@sleepymug/tau':
-        specifier: 0.1.0
-        version: link:../../tau
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: 4.0.5
-        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@deepseek-ai/dsh-fs':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-sandbox@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))))
-      '@deepseek-ai/dsh-fs-local':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-fs@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-sandbox@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)))))
-      node-pty:
-        specifier: 1.2.0-beta.15
-        version: 1.2.0-beta.15
-
-  packages/fleet-client:
-    dependencies:
-      '@sleepymug/fleet-protocol':
-        specifier: workspace:*
-        version: link:../fleet-protocol
-      '@sleepymug/tau':
-        specifier: 0.1.0
-        version: link:../../tau
-
-  packages/fleet-core:
-    dependencies:
-      '@sleepymug/fleet-box-runtime':
-        specifier: workspace:*
-        version: link:../fleet-box-runtime
+        version: link:../fleet-client
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
@@ -300,9 +242,6 @@ importers:
       '@deepseek-ai/dsh-fs':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-sandbox@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))))
-      '@deepseek-ai/dsh-fs-local':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-fs@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-sandbox@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)))))
       '@deepseek-ai/dsh-fs-sandbox':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4(21030d8fc44dc838107bbfd32b11e452)
@@ -363,12 +302,62 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.5
         version: 3.18.5
+      '@sleepymug/fleet':
+        specifier: workspace:*
+        version: link:../fleet
       '@types/react':
         specifier: 18.3.31
         version: 18.3.31
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
+
+  packages/dsh-tau-box:
+    dependencies:
+      '@sleepymug/fleet-protocol':
+        specifier: workspace:*
+        version: link:../fleet-protocol
+      '@sleepymug/tau':
+        specifier: 0.1.0
+        version: link:../../tau
+
+  packages/fleet:
+    dependencies:
+      '@sleepymug/fleet-box':
+        specifier: workspace:*
+        version: link:../fleet-box
+      '@sleepymug/fleet-client':
+        specifier: workspace:*
+        version: link:../fleet-client
+      '@sleepymug/fleet-protocol':
+        specifier: workspace:*
+        version: link:../fleet-protocol
+
+  packages/fleet-basic: {}
+
+  packages/fleet-box:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: 4.0.5
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+      '@deepseek-ai/dsh-fs':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-sandbox@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))))
+      '@deepseek-ai/dsh-fs-local':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-fs@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-sandbox@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)))))
+      '@sleepymug/fleet-protocol':
+        specifier: workspace:*
+        version: link:../fleet-protocol
+      node-pty:
+        specifier: 1.2.0-beta.15
+        version: 1.2.0-beta.15
+
+  packages/fleet-client:
+    dependencies:
+      '@sleepymug/fleet-protocol':
+        specifier: workspace:*
+        version: link:../fleet-protocol
 
   packages/fleet-protocol: {}
 
@@ -392,12 +381,29 @@ importers:
 
   packages/fleet-trace:
     dependencies:
+      '@sleepymug/dsh-tau-box':
+        specifier: workspace:*
+        version: link:../dsh-tau-box
+      '@sleepymug/fleet-client':
+        specifier: workspace:*
+        version: link:../fleet-client
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
       '@sleepymug/tau':
         specifier: 0.1.0
         version: link:../../tau
+
+  services/notes:
+    dependencies:
+      '@sleepymug/fleet-client':
+        specifier: workspace:*
+        version: link:../../packages/fleet-client
+      '@sleepymug/fleet-notes-box':
+        specifier: workspace:*
+        version: link:box
+
+  services/notes/box: {}
 
   tau:
     dependencies:
@@ -414,8 +420,6 @@ importers:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
-
-  tau/contracts/tau-api: {}
 
 packages:
 

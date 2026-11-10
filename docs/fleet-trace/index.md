@@ -2,8 +2,8 @@
 
 Shows what fleet's models are sent. `fleet-trace` runs a tau, or a session
 given a prompt, as the web UI makes one, against a scripted model on a
-scratch dsh host with fleet, and dumps every request dsh makes of the
-model: the system prompt, the tools, and the conversation, each call and
+scratch fleet host and dsh with dsh-tau, and dumps every request dsh makes
+of the model: the system prompt, the tools, and the conversation, each call and
 each result as sent. It is for working on the prompt and the tools, not a
 test of the model.
 
@@ -22,9 +22,10 @@ workspace's root lists, so `pnpm exec fleet-trace` runs it. It writes to
 | `result.json` | How the run ended; for a session, `{ sessionId, end, text }`: why its last turn ended, as dsh logs it, and its agent's last text. |
 | `work/` | The caller's folder after the run or the session, with what the runs gave back at its paths. |
 | `dsh.log` | What dsh wrote. |
+| `fleet.log` | What the fleet host and the notes service wrote. |
 
 A run whose tau's init does it, without the model, has no requests, and so
-only `result.json`, `work/` and `dsh.log`.
+only `result.json`, `work/`, `dsh.log` and `fleet.log`.
 
 A scenario is JSON, its paths relative to its file, such as
 `packages/fleet-trace/scenarios/notebook.json`:
@@ -34,7 +35,7 @@ A scenario is JSON, its paths relative to its file, such as
   "tau": "../../../examples/notebook",
   "files": { "list.txt": "buy milk #shop\n" },
   "call": { "files": { "list": "list.txt", "report": "out/report.txt" }, "args": { "tag": "shop" } },
-  "steps": [{ "tool": "read", "args": { "file_path": "/tau/node_modules/.contracts/@sleepymug/tau-api-notes/index.d.ts" } }],
+  "steps": [{ "tool": "bash", "args": { "command": "notes --help" } }],
   "final": "Done."
 }
 ```
@@ -49,14 +50,18 @@ A scenario is JSON, its paths relative to its file, such as
   them.
 - `steps`: the model's tool calls, one per turn, in order.
 - `final`: the model's answer after the last step.
-- `runs`: what the model does in the runs the run starts, through the `tau`
-  API, or the session, with `tau_run`, each `{ match, steps, final }`, for
-  the run whose prompt holds the phrase `match`. `scenarios/relay.json` runs `examples/relay`, whose
-  program runs the tau it holds, `taus/shout`, which writes the report.
+- `runs`: what the model does in the runs the run starts, with the `tau`
+  command in its box, or the session, with `tau_run`, each `{ match, steps,
+  final }`, for the run whose prompt holds the phrase `match`.
+  `scenarios/relay.json` runs `examples/relay`, whose agent runs the tau it
+  holds, `taus/shout`, with `tau run`, which writes the report.
   `scenarios/best-of.json` runs `examples/best-of`, given a shout tau of the
   caller's folder and the report as extra files, and a call to make, which
-  its program makes twice at once, each run with an `out` of its own, and
-  keeps one; the call's `$${out}` reaches each shout as its own place.
+  its program, reading the call from the run's context, makes twice at
+  once with `tau run`, each run with an `out` of its own, and keeps one;
+  the call's `$${out}` reaches each shout as its own place.
+  `scenarios/notebook.json` runs `examples/notebook`, whose agent saves its
+  list with the notes service's `notes` command, and reports a tag's notes.
 
 `scenarios/glossary.json` runs `examples/glossary`, whose init defines a
 term its glossary has without the model; `scenarios/glossary-broken.json`
@@ -65,21 +70,26 @@ told so after the prompt, defines the term.
 
 ## Design
 
-- **A scratch host.** Each run makes a dsh home in a temporary folder,
-  whose profile, `fleet`, links this checkout's fleet-core and every
-  extension in `ext/`, after dsh's base and web bundles, as dsh's `web`
-  profile has them, mounts fleet-trace's driver,
+- **A scratch fleet host.** Each run makes a fleet home in a temporary
+  folder, and runs this checkout's `fleet serve` on it
+  (docs/fleet/cli/index.md), its boxes on the image `$FLEET_TRACE_IMAGE`,
+  or the host's own, `fleet:local`, so build first: `pnpm build` and
+  `pnpm image`; and, once the host listens, this checkout's notes service,
+  `fleet-notes` (docs/fleet-notes/index.md), registered there, its
+  notebooks in the fleet home. What they write is `fleet.log`.
+- **A scratch dsh.** Each run makes a dsh home in the same folder, whose
+  profile, `fleet`, links this checkout's dsh-tau, after dsh's base and web
+  bundles, as dsh's `web` profile has them, mounts fleet-trace's driver,
   and routes the model to the scripted one; dsh's own `plugin install`
-  installs it. It runs the
-  workspace's dsh, on a free port, and the image `fleet:local`, so build
-  first: `pnpm build` and `pnpm image`.
-- **The run** is started and finished through the tau service's socket, as
-  `tau start --adaptor fleet` and `tau finish` do it, with tau's client and
-  its fleet adaptor, which pack the call and put the result at the caller's
-  paths, the scripted model told the run's prompt by the service's
-  `list`, with the caller's
-  folder made from `files`, and the folder of each file's path in `call`,
-  where an `out` goes.
+  installs it. It runs the workspace's dsh, on a free port, with
+  `$FLEET_SOCKET` naming the scratch host's socket, so dsh-tau's boxes are
+  the scratch host's, and its tau service registers there.
+- **The run** is started and finished through the tau backend's socket, as
+  `tau start --adaptor socket` and `tau finish` do it, with tau's client
+  and its socket adaptor, which pack the call and put the result at the
+  caller's paths, the scripted model told the run's prompt by the
+  backend's `list`, with the caller's folder made from `files`, and the
+  folder of each file's path in `call`, where an `out` goes.
 - **A session** is made through the driver (`driver.ts`), a dsh plugin of
   this package on a socket in the scratch home, as the web UI makes one: in
   the dsh workspace of the caller's folder, with the profile's default
@@ -98,17 +108,21 @@ told so after the prompt, defines the term.
   comes.
 - **The end.** Once the run has ended, as `finish` says, and what it gave
   back is put at the caller's paths, or the session's agent is done, the
-  result and the caller's folder are kept, and every run is deleted, with
-  its box; a run that failed says why on stderr. dsh is
-  stopped, its whole process group, and the temporary folder
-  removed. A run that stops when dsh exits says so, with its log. An
+  result and the caller's folder are kept, and every run is released, with
+  its box; a run that failed says why on stderr. dsh is stopped, its whole
+  process group; every box the scratch host still has is removed, whatever
+  a run left; the notes service and the host are stopped; and the
+  temporary folder removed. A run that stops when dsh exits says so, with its log. An
   interrupted one, by Ctrl-C or SIGTERM, cleans up the same way before it
   exits.
 
 ## Built on
 
-- `@sleepymug/fleet-client/connection`, `@sleepymug/fleet-client/runs` and `@sleepymug/fleet-protocol/tau`,
-  for the tau service.
+- tau's client and its socket adaptor, `createSocketAdaptor` and
+  `socketTransport`, and `@sleepymug/dsh-tau-box/runs`, for the tau
+  backend and its own `list`.
+- `@sleepymug/fleet-client`, for the boxes left at the end.
+- The checkout's `fleet` and `fleet-notes`, run on this Node.
 - dsh's workspace registry, session controller and agents, for the
   driver, whose types it writes out, so it imports nothing of dsh's.
 - The workspace's dsh, through `pnpm exec dsh`.

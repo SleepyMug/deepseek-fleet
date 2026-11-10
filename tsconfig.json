@@ -1,13 +1,16 @@
 {
   "files": [],
   "references": [
-    { "path": "ext/fleet-ext-notes" },
+    { "path": "packages/dsh-tau" },
+    { "path": "packages/dsh-tau/tsconfig.client.json" },
+    { "path": "packages/dsh-tau-box" },
+    { "path": "packages/fleet" },
+    { "path": "packages/fleet-box" },
     { "path": "packages/fleet-client" },
-    { "path": "packages/fleet-core" },
-    { "path": "packages/fleet-core/tsconfig.client.json" },
-    { "path": "packages/fleet-box-runtime" },
     { "path": "packages/fleet-protocol" },
     { "path": "packages/fleet-signin" },
-    { "path": "packages/fleet-trace" }
+    { "path": "packages/fleet-trace" },
+    { "path": "services/notes" },
+    { "path": "services/notes/box" }
   ]
 }

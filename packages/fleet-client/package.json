@@ -1,11 +1,13 @@
 {
   "name": "@sleepymug/fleet-client",
   "version": "0.0.1",
+  "description": "The fleet host's client: boxes, their files, processes and terminals, for a harness; and the registration of a service, for its gateway",
   "type": "module",
-  "bin": {
-    "fleet": "./lib/cli.js"
-  },
   "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -17,11 +19,9 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "prepack": "tsc -b",
-    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+    "prepack": "tsc -b"
   },
   "dependencies": {
-    "@sleepymug/tau": "0.1.0",
     "@sleepymug/fleet-protocol": "workspace:*"
   }
 }

@@ -1,8 +1,0 @@
-{
-  "contracts": {
-    "@sleepymug/tau-api": {
-      "version": "0.1.0",
-      "from": "../../tau/contracts/tau-api"
-    }
-  }
-}

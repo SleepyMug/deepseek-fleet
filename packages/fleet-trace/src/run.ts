@@ -1,20 +1,22 @@
 /**
- * One run of a scenario on a scratch fleet host: a dsh home of its own in a
- * temporary folder, whose profile links this checkout's fleet-core and
- * extensions, and fleet-trace's driver (./driver.ts), and routes the model
- * to the scripted one (./model.ts); dsh itself, the workspace's, started on
- * a free port; there, a run of the tau, through the tau service's socket, as
- * `tau run --adaptor fleet` does it, or a session given a prompt, as the web
- * UI makes one, through the driver's; and, once it has ended, every run released, dsh
- * stopped and the temporary folder removed. What the model was sent is left
- * in the output folder: every request, and the last of the scenario's
+ * One run of a scenario on a scratch fleet host and dsh: a fleet home of its
+ * own in a temporary folder, the checkout's `fleet serve` on it, with the
+ * checkout's notes service registered; a dsh home of its own, whose profile
+ * links this checkout's dsh-tau, and fleet-trace's driver (./driver.ts), and
+ * routes the model to the scripted one (./model.ts); dsh itself, the
+ * workspace's, started on a free port; there, a run of the tau, through the
+ * tau backend's socket, as `tau run --adaptor socket` does it, or a session
+ * given a prompt, as the web UI makes one, through the driver's; and, once
+ * it has ended, every run released, every box removed, dsh and the fleet
+ * host stopped and the temporary folder removed. What the model was sent is
+ * left in the output folder: every request, and the last of the scenario's
  * conversation rendered (./render.ts); and how it ended, and the caller's
  * folder after it.
  * @module @sleepymug/fleet-trace/run
  */
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -22,8 +24,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createClient } from '@sleepymug/tau'
-import { createFleetAdaptor, fleetSocket } from '@sleepymug/tau/adaptors'
-import { socketPath, type Answers, type Request as ServiceRequest } from '@sleepymug/fleet-protocol/tau'
+import { createSocketAdaptor, socketTransport } from '@sleepymug/tau/adaptors'
+import { socketPath, type Answers, type Request as ServiceRequest } from '@sleepymug/dsh-tau-box/runs'
+import { FleetClient } from '@sleepymug/fleet-client'
 import type { Request, Settled } from './driver.ts'
 import { ScriptedModel, type Script, type Step } from './model.ts'
 import { render } from './render.ts'
@@ -49,6 +52,9 @@ export interface Scenario {
 /** This checkout. */
 const CHECKOUT = fileURLToPath(new URL('../../../', import.meta.url))
 
+/** The image the boxes run: $FLEET_TRACE_IMAGE, or the fleet host's default. */
+const IMAGE = process.env.FLEET_TRACE_IMAGE
+
 /**
  * Run a scenario, and write what the model was sent to `out`, which is
  * emptied first.
@@ -61,13 +67,24 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
   mkdirSync(join(out, 'requests'), { recursive: true })
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-trace-'))
   const home = join(scratch, 'home')
+  const fleetHome = join(scratch, 'fleet')
+  const fleetSock = join(fleetHome, 'fleet.sock')
   const work = join(scratch, 'work')
   const model = await ScriptedModel.start(scenario.steps, scenario.final, join(out, 'requests'), scenario.runs)
   let dsh: ChildProcess | undefined
+  let fleet: ChildProcess | undefined
+  let notes: ChildProcess | undefined
   let released = false
   try {
     await profile(home, model.port)
-    dsh = startDsh(home)
+    const hostLog = createWriteStream(join(out, 'fleet.log'))
+    fleet = startNode(['packages/fleet/lib/cli/main.js', 'serve', ...IMAGE === undefined ? [] : ['--image', IMAGE]], fleetHome, fleetSock)
+    fleet.stderr?.pipe(hostLog, { end: false })
+    await until(() => existsSync(fleetSock) || fleet?.exitCode !== null)
+    if (!existsSync(fleetSock)) throw new Error(`fleet-trace: fleet serve exited; see ${join(out, 'fleet.log')}`)
+    notes = startNode(['services/notes/lib/main.js', '--dir', join(fleetHome, 'notes')], fleetHome, fleetSock)
+    notes.stderr?.pipe(hostLog, { end: false })
+    dsh = startDsh(home, fleetSock)
     const exited = new Promise<never>((_, reject) => {
       dsh?.once('exit', (code, signal) => { reject(new Error(`fleet-trace: dsh exited (${signal ?? `exit ${String(code)}`}); see ${join(out, 'dsh.log')}`)) })
     })
@@ -94,9 +111,9 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
       // The folder of each file's path, where an `out` goes.
       const paths = Object.values(call.files ?? {}).flatMap(file => typeof file === 'object' && !Array.isArray(file) ? file.path : file)
       for (const path of paths) mkdirSync(dirname(resolve(work, path)), { recursive: true })
-      const client = createClient({ adaptors: { fleet: createFleetAdaptor({ transport: fleetSocket(socket), project: work }) } })
+      const client = createClient({ adaptors: { socket: createSocketAdaptor({ transport: socketTransport(socket), project: work }) } })
       const run = await failing('start', client.start(resolve(dirname(scenarioFile), scenario.tau), call, { cwd: work }))
-      const id = run.slice('fleet:'.length)
+      const id = run.slice('socket:'.length)
       model.prompt = String((await ask(socket, { op: 'list' })).find(listed => listed.sessionId === id)?.prompt).trim()
       // The run is released with the others, once its caller's folder is kept.
       const ended = await Promise.race([failing('finish', client.finish(run)), exited, interrupted])
@@ -114,6 +131,9 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
   } finally {
     if (!released && dsh?.exitCode === null) await releaseRuns(socketPath(home)).catch(() => {})
     if (dsh !== undefined) await stop(dsh)
+    if (fleet?.exitCode === null) await removeBoxes(fleetSock).catch(() => {})
+    if (notes !== undefined) await stop(notes)
+    if (fleet !== undefined) await stop(fleet)
     await model.close()
     rmSync(scratch, { recursive: true, force: true })
   }
@@ -129,16 +149,14 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
 
 /**
  * The profile of a scratch dsh home, `fleet`: dsh's base and web bundles,
- * as dsh's own `web` profile has them, then this checkout's fleet-core and
- * every extension in ext/, linked; the driver, on its socket in the home;
- * and the model routed to the scripted one, installed with dsh's own
- * `plugin`.
+ * as dsh's own `web` profile has them, then this checkout's dsh-tau, linked;
+ * the driver, on its socket in the home; and the model routed to the
+ * scripted one, installed with dsh's own `plugin`.
  */
 async function profile(home: string, port: number): Promise<void> {
   const dir = join(home, 'profiles', 'fleet')
   mkdirSync(dir, { recursive: true })
-  const exts = readdirSync(join(CHECKOUT, 'ext')).map(name => join(CHECKOUT, 'ext', name)).filter(path => existsSync(join(path, 'package.json')))
-  const packages = Object.fromEntries([join(CHECKOUT, 'packages', 'fleet-core'), ...exts].map(path => [packageName(path), path]))
+  const packages = Object.fromEntries([join(CHECKOUT, 'packages', 'dsh-tau')].map(path => [packageName(path), path]))
   const trace = join(CHECKOUT, 'packages', 'fleet-trace')
   const manifest = {
     name: 'dsh-profile-fleet',
@@ -174,14 +192,34 @@ function packageName(path: string): string {
   return (JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')) as { name: string }).name
 }
 
-/** The workspace's dsh, in a process group of its own, so that stopping it stops pnpm and dsh both. */
-function startDsh(home: string): ChildProcess {
+/** The workspace's dsh, in a process group of its own, so that stopping it stops pnpm and dsh both, on the fleet host at `fleetSock`. */
+function startDsh(home: string, fleetSock: string): ChildProcess {
   return spawn('pnpm', ['exec', 'dsh', '--profile', 'fleet', '--no-open', '--port', '0'], {
     cwd: CHECKOUT,
-    env: { ...process.env, DSH_HOME: home, FLEET_TRACE_KEY: 'scripted' },
+    env: { ...process.env, DSH_HOME: home, FLEET_SOCKET: fleetSock, FLEET_TRACE_KEY: 'scripted' },
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+}
+
+/** A program of this checkout's, on this Node, in a process group of its own, with the fleet home and socket given. */
+function startNode(argv: string[], fleetHome: string, fleetSock: string): ChildProcess {
+  return spawn(process.execPath, argv, {
+    cwd: CHECKOUT,
+    env: { ...process.env, FLEET_HOME: fleetHome, FLEET_SOCKET: fleetSock },
+    detached: true,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+}
+
+/** Remove every box of the scratch fleet host, whatever a run left. */
+async function removeBoxes(fleetSock: string): Promise<void> {
+  const client = await FleetClient.connect({ socket: fleetSock })
+  try {
+    for (const box of await client.list()) await client.box(box.id).remove().catch(() => {})
+  } finally {
+    await client.close()
+  }
 }
 
 async function stop(dsh: ChildProcess): Promise<void> {
@@ -222,13 +260,13 @@ async function releaseRuns(socket: string): Promise<void> {
   const runs = await ask(socket, { op: 'list' })
   const known = new Set(runs.map(run => run.sessionId))
   for (const run of runs) {
-    if (run.parent === undefined || !known.has(run.parent)) await failing('release', fleetSocket(socket).exchange({ op: 'release', id: run.sessionId }))
+    if (run.parent === undefined || !known.has(run.parent)) await failing('release', socketTransport(socket).exchange({ op: 'release', id: run.sessionId }))
   }
 }
 
-/** One of the tau service's own requests, whose failure throws. */
+/** One of the tau backend's own requests, whose failure throws. */
 async function ask<O extends ServiceRequest['op']>(socket: string, request: ServiceRequest & { op: O }): Promise<Answers[O]> {
-  return (await failing(request.op, fleetSocket(socket).exchange(request))).value as Answers[O]
+  return (await failing(request.op, socketTransport(socket).exchange(request))).value as Answers[O]
 }
 
 /** What an op gives, its failure named. */

@@ -1,16 +1,28 @@
 {
   "description": "Define a term, from a glossary when it has the term, and write the definition to a file.",
   "files": {
-    "glossary": { "kind": "file", "mode": "in", "description": "A JSON object from each term, in lower case, to its definition." },
-    "definition": { "kind": "file", "mode": "out", "description": "The term's definition." }
+    "glossary": {
+      "kind": "file",
+      "mode": "in",
+      "description": "A JSON object from each term, in lower case, to its definition."
+    },
+    "definition": {
+      "kind": "file",
+      "mode": "out",
+      "description": "The term's definition."
+    }
   },
   "args": {
     "type": "object",
     "properties": {
-      "term": { "type": "string", "description": "The term to define." }
+      "term": {
+        "type": "string",
+        "description": "The term to define."
+      }
     },
-    "required": ["term"]
+    "required": [
+      "term"
+    ]
   },
-  "apis": { "@sleepymug/tau-api": "^0.1.0" },
   "init": "node ${self}/init.mts"
 }

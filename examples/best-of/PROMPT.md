@@ -1,5 +1,5 @@
-Run the TAU at ${tau} ${runs} times at once, from one program with the tau API, each with this
-call, and keep the best run, the one with ${judge}:
+Run the TAU at ${tau} ${runs} times at once, with the tau command, each with this call, and keep
+the best run, the one with ${judge}:
 
 ${call}
 

@@ -1,8 +1,0 @@
-{
-  "contracts": {
-    "@sleepymug/tau-api-notes": {
-      "version": "0.1.0",
-      "from": "../../ext/fleet-ext-notes/contract"
-    }
-  }
-}
