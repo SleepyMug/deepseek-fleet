@@ -504,14 +504,14 @@ their boxes:
   the web UI's file cards and links (`ui:deliverable-file-references`),
   and `@` mentions as host paths (`context:file-reference`), the last
   registered in each agent's own scope, which a section of the preset's
-  cannot shadow. It leaves out the runtime contexts on the sandbox policy
-  (`sandbox:policy`), the host's file policy, the approval policy
-  (`approval:policy`), which asks not to widen a sandbox the box does not
-  have, and those of the checkout and the web GUI's URL, named as their
-  sections. dsh requires the working directory's (`working-directory:current`),
-  the session's on the host, and restores it before each step if it is left
-  out, so the preset registers its own of that name, which shadows dsh's
-  for the preset's sessions, with the box's, `/tau/workspace`. It says once, in `tool:write`'s place, what write's and edit's
+  cannot shadow. The preset suppresses dsh's runtime context, the facts
+  dsh sends the model before each step, all of them the host's, such as
+  its file policy and its working directory, the session's on the host,
+  where the web UI files the session: suppressed, dsh still sends the
+  contexts it requires, of which a tau's session has the working
+  directory's (`working-directory:current`) alone, so the preset registers
+  its own of that name, empty, which shadows dsh's for the preset's
+  sessions. It says once, in `tool:write`'s place, what write's and edit's
   sections each say, that a file is read before it is changed. It gives
   bash a description of its own, in place of dsh's, whose file sandbox,
   `$DSH_*` variables and spill files are the host's: a fresh shell in
