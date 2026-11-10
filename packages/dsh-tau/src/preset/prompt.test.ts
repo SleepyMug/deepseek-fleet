@@ -42,8 +42,9 @@ test('a tau\'s prompt says where the model works, how its run ends and where tau
   section('tool:edit', 'TOOL_EDIT', 'Read a file before editing it.')
   ctx.systemPrompt.context({ name: 'sandbox:policy', order: ctx.systemPrompt.getContextOrder('SANDBOX_POLICY'), text: 'Current DSH file policy: danger-full-access.' })
   ctx.systemPrompt.context({ name: 'approval:policy', order: ctx.systemPrompt.getContextOrder('APPROVAL_POLICY'), text: 'Approval prompts are disabled.' })
+  ctx.systemPrompt.context({ name: 'harness:source', order: ctx.systemPrompt.getContextOrder('HARNESS_SOURCE'), text: 'Current DeepSeek Harness implementation checkout: "/host/dsh".' })
   const { sections, contexts } = await ctx.systemPrompt.assemble(forSession(SESSION))
-  assert.deepEqual(contexts, [])
+  assert.deepEqual(contexts.map(({ name, text }) => ({ name, text })), [{ name: 'working-directory:current', text: 'Current working directory: "/tau/workspace".' }])
   assert.deepEqual(sections.map(section => section.name).filter(name => name !== 'deployment:persona-prefix' && name !== 'deployment:persona-suffix'), [
     'fleet:tau-where', 'tool:bash', 'tool:write',
   ])

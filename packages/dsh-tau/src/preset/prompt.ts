@@ -15,7 +15,8 @@
  *
  * It leaves out the sections and runtime contexts dsh writes for a person
  * at the host, which are false in a box, and dsh's identity, which the
- * persona says in its place; gives bash a description of what it does in
+ * persona says in its place; names the box's working directory in place of
+ * the host's; gives bash a description of what it does in
  * a box, in place of dsh's, which is the host's; says once what write and
  * edit each say, that a file is read first; and hides the skill tool from a
  * session whose tau has no skills. It leaves out the host's tools, which
@@ -57,13 +58,26 @@ export const HOST_SECTIONS: ReadonlySet<string> = new Set([
 
 /**
  * dsh's runtime contexts about the host, by name: the sandbox policy, full
- * access, which is the host's file policy, not the box's; and the approval
- * policy, which asks the model not to widen a sandbox the box does not have.
+ * access, which is the host's file policy, not the box's; the approval
+ * policy, which asks the model not to widen a sandbox the box does not have;
+ * and its checkout and the web GUI's URL, as their sections.
  */
 export const HOST_CONTEXTS: ReadonlySet<string> = new Set([
   'sandbox:policy',
   'approval:policy',
+  'harness:source',
+  'app:web-surface',
 ])
+
+/**
+ * The runtime context dsh names the session's working directory with, the
+ * host's, which dsh requires, so that it restores it before each step if it
+ * is left out: the preset's own, of the same name, shadows it, with the box's.
+ */
+export const WORKING_DIRECTORY_CONTEXT = 'working-directory:current'
+
+/** The working directory, as the box has it. */
+export const WORKING_DIRECTORY = `Current working directory: ${JSON.stringify(FOLDERS.inout)}.`
 
 /** Where the model works, how its run ends, and where tau's primers are, which follow the persona. */
 export const WHERE = 'You work in a container of your own, as root, with network access: bash and the file tools act on it, '
@@ -161,7 +175,9 @@ export function boxed(
   return {
     ...assembly,
     sections: [...sections.slice(0, where), ...added, ...sections.slice(where)],
-    contexts: assembly.contexts.filter(context => !HOST_CONTEXTS.has(context.name)),
+    contexts: assembly.contexts
+      .filter(context => !HOST_CONTEXTS.has(context.name))
+      .map(context => context.name === WORKING_DIRECTORY_CONTEXT ? { ...context, text: WORKING_DIRECTORY } : context),
     tools: assembly.tools
       .filter(tool => tool.name !== 'skill' || entry?.skills === undefined || entry.skills.length > 0)
       .map(tool => tool.name === 'bash' ? bash(tool) : tool),
@@ -184,6 +200,13 @@ export function apply(ctx: Context): void {
     name: 'fleet:tau-where',
     order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX') + 1,
     text: WHERE,
+  })
+  ctx.systemPrompt.context({
+    name: WORKING_DIRECTORY_CONTEXT,
+    order: ctx.systemPrompt.getContextOrder('WORKING_DIRECTORY'),
+    required: true,
+    interpolate: false,
+    text: WORKING_DIRECTORY,
   })
   const runs: TauBoxes = ctx.fleetTauRuns
   // Prepended, so it sees the assembly once every other listener has had it.
