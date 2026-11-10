@@ -314,7 +314,7 @@ their boxes:
   command, `${self}` expanded as `/tau/self` by the half's `setup`, in the
   agent's working directory, `/tau/workspace`, as a bash command of the
   agent's runs, in the box's environment, with `TAU_CONTEXT`, from which
-  it reads the args, and the services' commands, so a program of the
+  it reads the args, and the services' commands on its PATH, so a program of the
   tau's, such as `node ${self}/init.mts`, imports the tau's packages, and
   can run taus with the `tau` command, its runs the session's; it holds a
   lease of the box until it exits. Its exit says what comes next, as tau's
@@ -488,9 +488,10 @@ their boxes:
   `/tau/programs`, or pipe them to `node -` in the working directory, so
   that they import the tau's packages by name, and lists each exposed package, with where it is and what it says
   it is; and, from the fleet host's list of the services, a section,
-  `fleet:tau-commands`, lists the commands of the box's services, each
-  with what its service says it is, such as `tau`, of dsh-tau's own, and
-  says to run one with `--help` first. None of the descriptions are
+  `fleet:tau-services`, lists the box's services, each with its directory,
+  `/opt/fleet/services/<name>`, where its code is, its commands, if it has
+  any, which are on the PATH, and what the service says it is, such as
+  `tau`, dsh-tau's own; how a service is used, its sentence says. None of the descriptions are
   interpolated, as dsh's prompt variables would be.
 
   The assembly (the `system-prompt/assemble` waterfall) leaves out by name

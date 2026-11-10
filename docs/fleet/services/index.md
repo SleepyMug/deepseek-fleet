@@ -6,9 +6,10 @@ Services of the fleet host (docs/fleet/index.md). A service is two halves:
   host opens a connection to for each one a program in a box opens to the
   service, and which reaches whatever the service serves: a notebook kept on
   the host, a backend that runs agents, credentials a box must not hold;
-- **the means of calling it**, a node package, which the host puts in each
-  box that has the service, its commands on the box's PATH, and which talk
-  to the gateway through the service's socket in the box.
+- **the means of calling it**, a node package, which the host installs in
+  each box that has the service, and whose code talks to the gateway
+  through the service's socket in the box: commands, a module programs
+  import, or both, as the service has it, and says in its description.
 
 A service plugs in by registering, through fleet-client
 (docs/fleet-client/index.md), from any process of the host's owner, for as
@@ -20,8 +21,14 @@ is one (docs/dsh-tau/tau/index.md); fleet-notes is the example
 
 ## Provides
 
-What the host does with a service, in a box that has it, each place as
-`@sleepymug/fleet-protocol/layout` gives it:
+What the host guarantees of a service, in a box that has it, and no more:
+its package installed, with its dependencies, in its directory; its
+package's commands, if it declares any, on the PATH; and its socket, and
+the environment it gives, each place as `@sleepymug/fleet-protocol/layout`
+gives it. How a box's programs use the service, by a command, or by
+importing its code from its directory, is the service's to say, in its
+description, the sentence a harness shows the model beside its directory
+and commands, and in what its package holds, such as docs of its own:
 
 | What | Where in the box |
 |---|---|
@@ -102,9 +109,10 @@ await registration.unregister()                              // or the connectio
   none: every box that has a service can call it. The endpoint is a socket
   of the owner's on the host, which no box reaches but through the host;
   the host's owner can open it, as the owner can everything the host does.
-- **Writing a service**: a package for the boxes, whose commands are node
-  programs, self-contained or with what they import as their dependencies,
-  each finding its socket in `$FLEET_SERVICES`; and a process on the host
+- **Writing a service**: a package for the boxes, whose code, commands or
+  modules, is node programs, self-contained or with what they import as
+  their dependencies, each finding its socket in `$FLEET_SERVICES`; a
+  description, one sentence saying what it is and how a program uses it; and a process on the host
   that registers it with fleet-client, as `services/notes` does, with
   `fleet-notes` and its box package, `services/notes/box`.
 

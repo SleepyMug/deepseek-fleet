@@ -9,9 +9,9 @@
  * with its mode, its kind, where the box has it and what `tau.json` says
  * it is; says how the model runs its programs, below the program directory,
  * /tau, so that they import the tau's packages as the tau's code does, and
- * which its tau exposes, each with where it is; and lists the commands of
- * the box's services, which the fleet host puts in it, each with what its
- * service is.
+ * which its tau exposes, each with where it is; and lists the box's
+ * services, which the fleet host puts in it, each with where its code is,
+ * its commands, if any, and what it says it is.
  *
  * It leaves out the sections dsh writes for a person at the host, which
  * are false in a box, and dsh's identity, which the persona says in its
@@ -33,6 +33,7 @@ import type {} from '@deepseek-ai/dsh-skill'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { AssembledSection, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { ServiceInfo } from '@sleepymug/fleet-protocol/fleet'
+import { serviceDir } from '@sleepymug/fleet-protocol/layout'
 import { DEV_PRIMER, FOLDERS, PRIMER, PROGRAMS, SELF } from '@sleepymug/dsh-tau-box/layout'
 import type {} from '../services.ts'
 import type { TauBoxes } from '../tau/ports.ts'
@@ -68,7 +69,7 @@ export const WHERE = 'You work in a container of your own, as root, with network
   + 'holds its tau.json and what else it brings: read it, but do not change it.\n\n'
   + 'No one answers you during the run, so finish the task on your own. When you stop, the run ends, and your last message is the text '
   + 'your caller gets: make it your answer, and say there if you could not do the task. Your caller gets that text, what you leave at '
-  + 'your out and inout files, and what the commands of your container\'s services did; anything else you write is discarded with the container.\n\n'
+  + 'your out and inout files, and what your container\'s services did; anything else you write is discarded with the container.\n\n'
   + `${PRIMER} says what a TAU takes, and what a run of one promises, and ${DEV_PRIMER} how to make one: `
   + `read ${PRIMER} before you run a TAU yourself.`
 
@@ -122,15 +123,18 @@ export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
   ].join('\n')
 }
 
-/** The commands of the box's services, each with what its service is; nothing for a box without any. */
-export function commands(services: readonly Pick<ServiceInfo, 'name' | 'description' | 'bins'>[]): string {
-  const listed = services.filter(service => Object.keys(service.bins).length > 0)
+/** The box's services, each with where its code is, its commands, if any, and what it says it is; nothing for a box without any. */
+export function services(listed: readonly Pick<ServiceInfo, 'name' | 'description' | 'bins'>[]): string {
   if (listed.length === 0) return ''
+  const commands = (bins: ServiceInfo['bins']): string => {
+    const names = Object.keys(bins).map(bin => `\`${bin}\``)
+    return names.length === 0 ? '' : `, with ${names.length === 1 ? 'the command' : 'the commands'} ${names.join(', ')}`
+  }
   return [
-    'Your container\'s services, each a command on your PATH that reaches what it serves outside your container; '
-      + 'run one with `--help` before you use it:',
+    'Your container\'s services, each reaching what it serves outside your container, its code installed in its directory, '
+      + 'and its commands, if any, on your PATH:',
     '',
-    ...listed.map(({ name, description, bins }) => `- ${Object.keys(bins).map(bin => `\`${bin}\``).join(', ')}, of the service ${name}: ${description}`),
+    ...listed.map(({ name, description, bins }) => `- \`${name}\`, in ${serviceDir(name)}${commands(bins)}: ${description}`),
   ].join('\n')
 }
 
@@ -141,13 +145,13 @@ export function commands(services: readonly Pick<ServiceInfo, 'name' | 'descript
 export function boxed(
   assembly: PromptAssembly,
   entry: Pick<Entry, 'files' | 'exposed' | 'skills'> | undefined,
-  services: readonly Pick<ServiceInfo, 'name' | 'description' | 'bins'>[] = [],
+  listed: readonly Pick<ServiceInfo, 'name' | 'description' | 'bins'>[] = [],
 ): PromptAssembly {
   const added: AssembledSection[] = entry === undefined ? [] : [
     // The tau's descriptions are its author's, and the services' theirs, not prompt variables.
     { name: 'fleet:tau-files', text: files(entry), interpolate: false },
     { name: 'fleet:tau-programs', text: programs(entry), interpolate: false },
-    { name: 'fleet:tau-commands', text: commands(services), interpolate: false },
+    { name: 'fleet:tau-services', text: services(listed), interpolate: false },
   ].filter(section => section.text !== '')
   const merged = assembly.sections.some(section => section.name === 'tool:write') && assembly.sections.some(section => section.name === 'tool:edit')
   const sections = assembly.sections

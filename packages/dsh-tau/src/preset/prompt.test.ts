@@ -102,20 +102,21 @@ test('a tau\'s prompt says how the model runs its programs, below the program di
   assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))
 })
 
-test('a tau\'s prompt lists the commands of its box\'s services, each with what its service is, and says nothing of a service without one', async () => {
+test('a tau\'s prompt lists its box\'s services, each with where its code is, its commands, if any, and what it says it is', async () => {
   const ctx = await prompted({}, [
     { name: 'tau', description: 'Runs TAUs.', bins: { tau: 'lib/tau.js' } },
     { name: 'notes', description: 'A notebook, {{kept}}.', bins: { notes: 'lib/notes.js', 'notes-dump': 'lib/dump.js' } },
     { name: 'quiet', description: 'Nothing to run.', bins: {} },
   ])
-  const text = (await ctx.systemPrompt.assemble(forSession(SESSION))).sections.find(section => section.name === 'fleet:tau-commands')?.text ?? ''
+  const text = (await ctx.systemPrompt.assemble(forSession(SESSION))).sections.find(section => section.name === 'fleet:tau-services')?.text ?? ''
   assert.equal(text, [
-    'Your container\'s services, each a command on your PATH that reaches what it serves outside your container; run one with `--help` before you use it:',
+    'Your container\'s services, each reaching what it serves outside your container, its code installed in its directory, and its commands, if any, on your PATH:',
     '',
-    '- `tau`, of the service tau: Runs TAUs.',
-    '- `notes`, `notes-dump`, of the service notes: A notebook, {{kept}}.',
+    '- `tau`, in /opt/fleet/services/tau, with the command `tau`: Runs TAUs.',
+    '- `notes`, in /opt/fleet/services/notes, with the commands `notes`, `notes-dump`: A notebook, {{kept}}.',
+    '- `quiet`, in /opt/fleet/services/quiet: Nothing to run.',
   ].join('\n'))
-  assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-commands'))
+  assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-services'))
 })
 
 test('in a box, bash says what it does there, and the skill tool is hidden from a session whose tau has no skills', () => {

@@ -48,7 +48,7 @@ export const inject = ['fleetTauRuns', 'sessionProjections']
 /** What the model is told of a box set up again. */
 export const NOTICE = `Your container was set up again, as it was when your run began, before any init: ${SELF}, ${FOLDERS.in}, `
   + `${FOLDERS.inout} and ${FOLDERS.out} hold again what they held then, and whatever else you changed or installed there is gone. `
-  + 'What the commands of your container\'s services did stands, so do not do it again.'
+  + 'What your container\'s services did stands, so do not do it again.'
 
 
 /** Why the step of a session that is not a tau's fails, as of one a person gave this preset. */
