@@ -34,6 +34,15 @@ export function socketOf(name: string): string {
   return posix.join(SOCKETS_DIR, `${name}.sock`)
 }
 
+/**
+ * Where the box's channel to the host is, a folder of the host's mounted in
+ * the box, the one thing of the host's it has (./channel.ts).
+ */
+export const CHANNEL_DIR = '/run/fleet/host'
+
+/** The channel's socket, which the host listens on, and the helper connects to. */
+export const CHANNEL = `${CHANNEL_DIR}/channel.sock`
+
 /** Names {@link SOCKETS_DIR} for every process the helper starts, so that a service's command finds its socket. */
 export const SERVICES_VARIABLE = 'FLEET_SERVICES'
 

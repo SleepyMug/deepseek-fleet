@@ -13,12 +13,13 @@ import type { Writable } from 'node:stream'
 import { promisify } from 'node:util'
 import { SERVICES_DIR } from '@sleepymug/fleet-protocol/layout'
 import type { EventOf, Method, Methods } from '@sleepymug/fleet-protocol/helper'
-import { Helper, type ConnectionHandler } from './box/helper.ts'
+import { Helper } from './box/helper.ts'
+import { channelSocket } from './channel.ts'
 import type { Boxes, RunBox } from './managed.ts'
 
-/** The helper as built, served on this Node, its services' things under `root`. */
-export function localHelper(root: string): readonly [string, ...string[]] {
-  const layout = { services: join(root, 'services'), bin: join(root, 'bin'), sockets: join(root, 'sockets') }
+/** The helper as built, served on this Node, its services' things under `root`, its channel the host's in `channel`. */
+export function localHelper(root: string, channel: string): readonly [string, ...string[]] {
+  const layout = { services: join(root, 'services'), bin: join(root, 'bin'), sockets: join(root, 'sockets'), channel: channelSocket(channel) }
   const serve = JSON.stringify(import.meta.resolve('@sleepymug/fleet-box/helper/serve'))
   const program = [
     `import { serve } from ${serve}`,
@@ -32,13 +33,13 @@ class LocalBox implements RunBox {
   private helper: Helper | undefined
   starts = 0
 
-  constructor(readonly container: string, readonly root: string, private readonly boxes: LocalBoxes) {}
+  constructor(readonly container: string, readonly root: string, private readonly channel: string, private readonly boxes: LocalBoxes) {}
 
-  async start(onConnection?: ConnectionHandler): Promise<void> {
+  async start(): Promise<void> {
     await this.helper?.close()
     this.starts++
     this.boxes.running.add(this.container)
-    this.helper = await Helper.start(localHelper(this.root), onConnection)
+    this.helper = await Helper.start(localHelper(this.root, this.channel))
   }
 
   request<M extends Method>(method: M, params: Methods[M]['params'], onEvent?: (event: EventOf<M>) => void): Promise<Methods[M]['result']> {
@@ -82,8 +83,9 @@ export class LocalBoxes implements Boxes {
 
   constructor(private readonly root: string) {}
 
-  async create(name: string): Promise<RunBox> {
-    const box = new LocalBox(name, join(this.root, name), this)
+  /** As if the box had the channel's folder mounted: its helper connects to the host's socket there. */
+  async create(name: string, { channel }: { channel: string }): Promise<RunBox> {
+    const box = new LocalBox(name, join(this.root, name), channel, this)
     await mkdir(box.root, { recursive: true })
     this.made.set(name, box)
     return box

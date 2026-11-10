@@ -56,7 +56,7 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     const paths = fleetPaths(fleetHome(), fleetSocket())
     const platform = systemPlatform()
     const host = new FleetHost({
-      registry: new Registry(paths.boxes), cache: paths.services, platform,
+      registry: new Registry(paths.boxes), cache: paths.services, channels: paths.channels, platform,
       ...values.image === undefined ? {} : { image: values.image },
       ...idleStopMs === undefined ? {} : { idleStopMs },
     })

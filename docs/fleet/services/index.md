@@ -35,7 +35,7 @@ and commands, and in what its package holds, such as docs of its own:
 | the service's package, as the host staged it | `/opt/fleet/services/<name>@<digest>` |
 | the one in use, a link to it | `/opt/fleet/services/<name>` |
 | each of its commands, its `bin`, a link into the package through the one in use | `/opt/fleet/bin/<command>` |
-| its socket, which the helper listens on, and relays to the gateway | `/run/fleet/services/<name>.sock` |
+| its socket, which the helper listens on, and carries to the gateway over the box's channel | `/run/fleet/services/<name>.sock` |
 
 - `/opt/fleet/bin` is first on the PATH of every process the helper starts,
   whatever environment the host gives the process, and
@@ -93,7 +93,7 @@ await registration.unregister()                              // or the connectio
 - **The gateway is told the box.** For each connection, the host opens a
   connection to the service's endpoint, writes one line of JSON first, the
   `Preamble`, `{ "box", "labels" }`, the box it comes from, as the host knows
-  it, from which box's helper sent it, never as the box says, with the
+  it, from which box's channel it came in on, never as the box says, with the
   labels its creator gave it; then it passes the bytes both ways, each end a
   half-close, a cut connection cut on both sides. fleet-client reads that
   line, and gives `serve` the rest of the connection, which flows once
@@ -119,8 +119,9 @@ await registration.unregister()                              // or the connectio
 ## Built on
 
 - fleet-box's `image/stage`, for staging a package as installed.
-- The helper's `services.installed` and `services.sync`, and its relay of
-  the services' sockets (docs/fleet-box/helper/index.md).
+- The helper's `services.installed` and `services.sync`, and its carrying
+  of the services' sockets' connections over the box's channel
+  (docs/fleet-box/helper/index.md, docs/fleet/index.md).
 - `Box.copyIn` (docs/fleet/box/index.md), for the packages.
 - fleet-client's `register` and endpoints, for a gateway
   (docs/fleet-client/index.md).

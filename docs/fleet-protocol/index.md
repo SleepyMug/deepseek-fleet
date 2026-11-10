@@ -15,8 +15,15 @@ another, and a harness or a service imports none of the host's code.
   `$FLEET_SOCKET`, or `fleet.sock` in the home.
 - `@sleepymug/fleet-protocol/helper`: the wire between the host and the
   helper in a box, whose methods are docs/fleet-box/helper/index.md's:
-  `PROTOCOL_VERSION`, the message types, `Methods`, `ServiceInBox` and
-  `CONNECTION_WINDOW`.
+  `PROTOCOL_VERSION`, the message types, `Methods` and `ServiceInBox`.
+- `@sleepymug/fleet-protocol/channel`: the box's channel to the host, one
+  HTTP/2 connection the helper makes to the host's socket, each connection
+  to a service's socket in the box a stream of it (docs/fleet/index.md,
+  docs/fleet-box/helper/index.md): `servicePath(name)`, `/services/<name>`,
+  the path of a service's streams, and `serviceOf(path)`; `OPENED`, `200`,
+  the status of a stream the host passes on, and `NO_SERVICE`, `404`, of
+  one it refuses; and `CONNECTION_WINDOW`, a stream's window, a mebibyte,
+  and `CHANNEL_WINDOW`, the connection's, sixteen.
 - `@sleepymug/fleet-protocol/layout`: where things lie in a box, which the
   host, the helper and the services agree on:
 
@@ -28,6 +35,7 @@ another, and a harness or a service imports none of the host's code.
   | `BIN_DIR` | `/opt/fleet/bin`, the services' commands |
   | `SOCKETS_DIR`, `socketOf(name)` | `/run/fleet/services`, and `/run/fleet/services/<name>.sock` |
   | `SERVICES_VARIABLE` | `FLEET_SERVICES`, which names `SOCKETS_DIR` for every process |
+  | `CHANNEL_DIR`, `CHANNEL` | `/run/fleet/host`, the host's folder of the box's channel, mounted, and `/run/fleet/host/channel.sock`, its socket |
   | `DEFAULT_IMAGE` | `fleet:local` |
 
 ## Design

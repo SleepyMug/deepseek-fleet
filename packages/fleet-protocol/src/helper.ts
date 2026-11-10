@@ -2,11 +2,9 @@
  * The wire between the fleet host and the helper in a box: one JSON message
  * per line over the stdin and stdout of the `docker exec` that runs the
  * helper. The host sends requests; the helper answers each exactly once, in
- * any order, and may send events for a request before it answers it. Both
- * ways, the bytes of the connections the helper relays between a service's
- * socket in the box and the service: the helper says when a program in the
- * box opens one, and each side sends what it reads, base64, acknowledges
- * what it wrote, and says when it is done. The helper exits when its stdin
+ * any order, and may send events for a request before it answers it. The
+ * connections to the box's services cross the box's channel, not this wire
+ * (./channel.ts). The helper exits when its stdin
  * ends, and ends the processes it started first. Shared by both ends, so it
  * holds only types and constants. The methods but `hello`, `echo` and
  * `services.*` are the box's API, which a harness reaches through the fleet
@@ -184,56 +182,16 @@ export interface ServiceInBox {
   env: Record<string, string>
 }
 
-/** How many bytes of a connection either side sends that the other has not acknowledged, at most. */
-export const CONNECTION_WINDOW = 1024 * 1024
-
-/** Bytes a connection's side read, base64, which the other writes to its own side, then acknowledges. */
-export interface ConnectionData {
-  type: 'conn-data'
-  conn: number
-  data: string
-}
-
-/** That a side wrote this many of the other's bytes, so the other may send that many more. */
-export interface ConnectionAck {
-  type: 'conn-ack'
-  conn: number
-  bytes: number
-}
-
-/**
- * That a side is done: without `error`, it sends nothing more, and the other
- * ends its side's writing, as a half-close; with it, the connection is cut,
- * both ways.
- */
-export interface ConnectionEnd {
-  type: 'conn-end'
-  conn: number
-  error?: string
-}
-
 export type Method = keyof Methods
 
 /** What a method sends before its result, or never for a method without events. */
 export type EventOf<M extends Method> = Methods[M] extends { event: infer E } ? E : never
 
-/** Host to helper: a request, or what the service sent on a connection. */
-export type HostMessage =
-  | { type: 'request'; id: number; method: string; params: unknown }
-  | ConnectionData
-  | ConnectionAck
-  | ConnectionEnd
+/** Host to helper: a request. */
+export type HostMessage = { type: 'request'; id: number; method: string; params: unknown }
 
-/**
- * Helper to host: a request's answer, or its event; or a connection a
- * program in the box opened to a service's socket, under an id the helper
- * gives, and what it sent there.
- */
+/** Helper to host: a request's answer, or its event. */
 export type HelperMessage =
   | { type: 'result'; id: number; value: unknown }
   | { type: 'event'; id: number; value: unknown }
   | { type: 'error'; id: number; message: string; code?: string }
-  | { type: 'conn-open'; conn: number; service: string }
-  | ConnectionData
-  | ConnectionAck
-  | ConnectionEnd

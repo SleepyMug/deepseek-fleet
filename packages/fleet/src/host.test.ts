@@ -16,7 +16,7 @@ import { listen } from './server.ts'
 async function hosted(t: { after: (fn: () => Promise<void>) => void }, idleStopMs = 60_000): Promise<{ dir: string; socket: string; boxes: LocalBoxes; client: FleetClient; host: FleetHost }> {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-host-'))
   const boxes = new LocalBoxes(join(dir, 'boxes'))
-  const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), platform: systemPlatform(() => {}), boxes, idleStopMs })
+  const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes, idleStopMs })
   await host.load()
   const socket = join(dir, 'fleet.sock')
   const close = await listen(socket, host)
@@ -141,7 +141,7 @@ test('a host started later knows the boxes made before, and a client takes its s
   const boxes = new LocalBoxes(join(dir, 'boxes'))
   const socket = join(dir, 'fleet.sock')
   const start = async (): Promise<{ host: FleetHost; close: () => Promise<void> }> => {
-    const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), platform: systemPlatform(() => {}), boxes })
+    const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes })
     await host.load()
     return { host, close: await listen(socket, host) }
   }
@@ -176,7 +176,7 @@ const noImage = await new Promise<string | false>((resolve) => {
 
 test('in a Docker box, a service\'s package is copied in, its command runs on the box\'s Node, and its connections reach the service', { skip: noImage }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-host-docker-'))
-  const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), platform: systemPlatform(() => {}), image: IMAGE })
+  const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), image: IMAGE })
   const socket = join(dir, 'fleet.sock')
   const close = await listen(socket, host)
   const client = await FleetClient.connect({ socket })

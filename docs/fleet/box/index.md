@@ -11,10 +11,10 @@ as a `Box` (docs/fleet/index.md); this is the container and its helper alone.
 
 | Verb | What it does | Using |
 |---|---|---|
-| `Box.create({ image?, name?, env?, labels? })` | Create the container, stopped, with `env` the environment of every process in it, and `labels` beside its own. | `docker create --init --pull never --label fleet.box … sleep infinity` |
+| `Box.create({ image?, name?, env?, labels?, channel? })` | Create the container, stopped, with `env` the environment of every process in it, `labels` beside its own, and the host's folder `channel`, the box's channel (docs/fleet/index.md), mounted at `/run/fleet/host`. | `docker create --init --pull never --label fleet.box --mount type=bind,… sleep infinity` |
 | `Box.open(name)` | Take a box that exists already, running or not. | `docker container inspect`, which must show the label |
 | `Box.list()` | List every box, with its state. | `docker container ls --all --filter label=fleet.box` |
-| `box.start(onConnection?)` | Start the container, then a new helper in it, and do the handshake. `onConnection` takes each connection a program in the box opens to a service's socket while that helper runs; without it, each is cut. | `docker start`, `docker exec --interactive` |
+| `box.start()` | Start the container, then a new helper in it, and do the handshake. | `docker start`, `docker exec --interactive` |
 | `box.request(method, params, onEvent?)` | Send one method to the started box's helper; `onEvent` is told each event it sends before its result. | the helper connection |
 | `box.stop()` | End the helper and stop the container. | `docker stop` |
 | `box.copyIn(from, to)` | Copy a host file to a path in the box, or a host folder's contents into a folder in the box. | `docker cp <from> <container>:<to>`, or `<from>/.` for a folder |
@@ -27,8 +27,6 @@ It also exports:
   `exec`, and gives back what it wrote to stdout; an exit other than 0 fails,
   with what it wrote to stderr;
 - `HelperError`, a failure the helper reports for one request, with its `code`, if it has one;
-- `ConnectionHandler`, what takes a relayed connection:
-  `(service, connection) => void`, `connection` a `Duplex` stream (below);
 - `METHODS`, the methods a helper takes;
 - `BOX_LABEL`, the label that marks a box's container.
 
@@ -47,20 +45,11 @@ It also exports:
   every result and every event before using it: a file target, for one, must
   name an absolute path. A helper that breaks the protocol loses its
   connection.
-- **Relayed connections** come over the same connection: the helper says a
-  program in the box opened one to a service's socket there, which the
-  connection hands to `onConnection` as a `Duplex` stream, under the
-  service's name. What the stream reads is what the program sent, and what
-  is written to it reaches the program; its end, either way, is a
-  half-close, and destroying it cuts the connection on both sides. Neither
-  side has more than `CONNECTION_WINDOW`, a mebibyte, of the other's bytes
-  that it has not acknowledged: a write waits while the box is behind, and
-  the bytes the stream has not had read yet are acknowledged only as they
-  are read, so a side that reads slowly slows the other. A helper that
-  opens a connection under an id in use loses its connection; one that ends,
-  ends its connections too.
+- **The services' connections** do not cross the helper connection: they
+  come over the box's channel (`channel.ts`, docs/fleet/index.md), the
+  host's to listen on.
 - **When the helper exits on its own,** every pending and later request
-  fails, and its connections are cut. The container stays, and `start()`
+  fails, and its channel's streams are cut. The container stays, and `start()`
   starts a new helper.
 - **A box keeps the image it was made from,** so a rebuilt image reaches
   only boxes made after it. The handshake refuses a helper that lacks a

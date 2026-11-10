@@ -4,21 +4,24 @@
  * in use; its commands, links in the folder of commands, which is on the
  * PATH of every process the helper starts; its environment, which each of
  * them starts with; and its socket, which the helper listens on, and whose
- * every connection it relays to the host, which passes it on to the
- * service. A connection's bytes cross as `conn-data`, at most
- * {@link CONNECTION_WINDOW} of them unacknowledged each way, so that a side
- * that reads slowly slows the other; either side's end is a half-close, and
- * a cut connection is cut on both sides. Which box a connection comes from
- * is the host's to say, not the program's, so the helper checks only that
- * the service is the box's. Each helper has its own {@link Services}.
+ * every connection it carries to the host as a stream of the box's channel
+ * (fleet-protocol's channel), which the host passes on to the service:
+ * either side's end is a half-close, and a cut connection is cut on both
+ * sides. The helper makes the channel's connection as the first program
+ * connects, and again after the host drops it, as when it restarts. Which
+ * box a connection comes from is the host's to say, by the channel it comes
+ * in on, so the helper checks only that the service is the box's. Each
+ * helper has its own {@link Services}.
  * @module @sleepymug/fleet-box/helper/cmd/services
  */
 
 import { chmod, mkdir, readdir, readlink, realpath, rename, rm, symlink } from 'node:fs/promises'
-import { createServer, type Server, type Socket } from 'node:net'
+import { connect as connectSession, constants, type ClientHttp2Session } from 'node:http2'
+import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'
-import { BIN_DIR, SERVICES_DIR, SERVICES_VARIABLE, SOCKETS_DIR } from '@sleepymug/fleet-protocol/layout'
-import { CONNECTION_WINDOW, type ConnectionAck, type ConnectionData, type ConnectionEnd, type HelperMessage, type Methods, type ServiceInBox } from '@sleepymug/fleet-protocol/helper'
+import { CHANNEL_WINDOW, CONNECTION_WINDOW, OPENED, servicePath } from '@sleepymug/fleet-protocol/channel'
+import { BIN_DIR, CHANNEL, SERVICES_DIR, SERVICES_VARIABLE, SOCKETS_DIR } from '@sleepymug/fleet-protocol/layout'
+import type { Methods, ServiceInBox } from '@sleepymug/fleet-protocol/helper'
 import { withBin, type Environment } from './env.ts'
 
 /** Where the services' things are: the box's own, unless a test has them elsewhere. */
@@ -26,9 +29,11 @@ export interface ServicesLayout {
   services: string
   bin: string
   sockets: string
+  /** The channel's socket. */
+  channel: string
 }
 
-export const BOX_LAYOUT: ServicesLayout = { services: SERVICES_DIR, bin: BIN_DIR, sockets: SOCKETS_DIR }
+export const BOX_LAYOUT: ServicesLayout = { services: SERVICES_DIR, bin: BIN_DIR, sockets: SOCKETS_DIR, channel: CHANNEL }
 
 /** A service's name: lowercase letters, digits and hyphens, a letter first. */
 const NAME = /^[a-z][a-z0-9-]*$/u
@@ -37,30 +42,16 @@ const DIGEST = /^[0-9a-f]{8,64}$/u
 /** A command's name. */
 const BIN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
 
-/** One relayed connection, as the helper has it. */
-interface Relayed {
-  socket: Socket
-  /** What this side sent the host that the host has not acknowledged. */
-  unacked: number
-  /** This side sent its end. */
-  ended: boolean
-  /** The host's side sent its end. */
-  hostEnded: boolean
-}
-
 export class Services {
   private readonly servers = new Map<string, Server>()
-  private readonly connections = new Map<number, Relayed>()
+  private readonly connections = new Set<Socket>()
+  /** The channel's connection, once a program connected, until the host drops it. */
+  private session: ClientHttp2Session | undefined
   /** What the services listed last added to the environment, by name. */
   private added: Record<string, string> = {}
-  private nextId = 1
 
-  /**
-   * @param send - sends a message to the host; false while the host is behind.
-   * @param env - the helper's environment, which every process it starts starts from, the services' added.
-   */
+  /** @param env - the helper's environment, which every process it starts starts from, the services' added. */
   constructor(
-    private readonly send: (message: HelperMessage) => boolean,
     private readonly env: Record<string, string | undefined>,
     private readonly layout: ServicesLayout = BOX_LAYOUT,
   ) {}
@@ -115,31 +106,12 @@ export class Services {
     return null
   }
 
-  /** What the host sent on a connection: its service's bytes, an acknowledgement, or its end. */
-  receive(message: ConnectionData | ConnectionAck | ConnectionEnd): void {
-    const relayed = this.connections.get(message.conn)
-    if (relayed === undefined) return
-    switch (message.type) {
-      case 'conn-data': {
-        const bytes = Buffer.from(message.data, 'base64')
-        relayed.socket.write(bytes, () => { this.send({ type: 'conn-ack', conn: message.conn, bytes: bytes.length }) })
-        return
-      }
-      case 'conn-ack':
-        relayed.unacked -= message.bytes
-        if (relayed.unacked < CONNECTION_WINDOW && relayed.socket.isPaused()) relayed.socket.resume()
-        return
-      case 'conn-end':
-        relayed.hostEnded = true
-        if (message.error === undefined) relayed.socket.end()
-        else relayed.socket.destroy()
-    }
-  }
-
   /** Stop listening, and cut every connection. */
   async close(): Promise<void> {
-    for (const { socket } of this.connections.values()) socket.destroy()
+    for (const socket of this.connections) socket.destroy()
     this.connections.clear()
+    this.session?.destroy()
+    this.session = undefined
     await Promise.all([...this.servers.values()].map(server => new Promise<void>((resolve) => { server.close(() => { resolve() }) })))
     this.servers.clear()
   }
@@ -180,27 +152,42 @@ export class Services {
     return server
   }
 
-  /** Relay a connection a program in the box opened to a service's socket. */
+  /** Carry a connection a program in the box opened to a service's socket to the host, as a stream of the channel. */
   private accept(service: string, socket: Socket): void {
-    const conn = this.nextId++
-    const relayed: Relayed = { socket, unacked: 0, ended: false, hostEnded: false }
-    this.connections.set(conn, relayed)
-    this.send({ type: 'conn-open', conn, service })
+    this.connections.add(socket)
     socket.on('error', () => {})
-    socket.on('data', (chunk: Buffer) => {
-      relayed.unacked += chunk.length
-      this.send({ type: 'conn-data', conn, data: chunk.toString('base64') })
-      if (relayed.unacked >= CONNECTION_WINDOW) socket.pause()
+    socket.once('close', () => { this.connections.delete(socket) })
+    let stream: ReturnType<ClientHttp2Session['request']>
+    try {
+      stream = this.channel().request({ ':method': 'POST', ':path': servicePath(service) }, { endStream: false })
+    } catch {
+      socket.destroy()
+      return
+    }
+    stream.once('response', (headers) => {
+      if (headers[':status'] === OPENED) stream.pipe(socket)
+      else socket.destroy()
     })
-    socket.once('end', () => {
-      relayed.ended = true
-      this.send({ type: 'conn-end', conn })
+    socket.pipe(stream)
+    // Cut on either side before both were done: the other is cut too.
+    stream.once('close', () => { if (stream.rstCode !== constants.NGHTTP2_NO_ERROR || !stream.readableEnded) socket.destroy() })
+    stream.on('error', () => {})
+    // A program that ended what it sent is done with it once the stream's end is sent, so only one cut before cuts the stream.
+    socket.once('close', () => { if (!socket.readableEnded && !stream.closed) stream.close(constants.NGHTTP2_CANCEL) })
+  }
+
+  /** The channel's connection, made as it is first wanted, and again once the host dropped it. */
+  private channel(): ClientHttp2Session {
+    if (this.session !== undefined && !this.session.closed && !this.session.destroyed) return this.session
+    const session = connectSession('http://box', {
+      createConnection: () => createConnection(this.layout.channel),
+      settings: { initialWindowSize: CONNECTION_WINDOW },
     })
-    socket.once('close', () => {
-      this.connections.delete(conn)
-      // Cut before both sides were done, so the host's side is cut too.
-      if (!relayed.ended || !relayed.hostEnded) this.send({ type: 'conn-end', conn, error: 'the program in the box closed the connection' })
-    })
+    session.on('error', () => {})
+    session.once('connect', () => { session.setLocalWindowSize(CHANNEL_WINDOW) })
+    session.once('close', () => { if (this.session === session) this.session = undefined })
+    this.session = session
+    return session
   }
 }
 

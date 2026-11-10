@@ -11,12 +11,12 @@ import { stat } from 'node:fs/promises'
 import { posix, resolve } from 'node:path'
 import { Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from '@sleepymug/fleet-protocol/layout'
+import { CHANNEL_DIR, DEFAULT_IMAGE, HELPER_ENTRY, HELPER_NODE } from '@sleepymug/fleet-protocol/layout'
 import type { EventOf, Method, Methods } from '@sleepymug/fleet-protocol/helper'
 import { Queue } from '../util/queue.ts'
-import { Helper, type ConnectionHandler } from './helper.ts'
+import { Helper } from './helper.ts'
 
-export { HelperError, METHODS, type ConnectionHandler } from './helper.ts'
+export { HelperError, METHODS } from './helper.ts'
 export { exec } from './cmd/exec.ts'
 
 /** The label every box's container carries, with an empty value, which `list` and `open` look for. */
@@ -36,6 +36,8 @@ export interface BoxOptions extends DockerOptions {
   env?: Readonly<Record<string, string>>
   /** Labels of the container's own, beside {@link BOX_LABEL}. */
   labels?: Readonly<Record<string, string>>
+  /** The host's folder of the box's channel (../channel.ts), mounted at {@link CHANNEL_DIR}; none without it. */
+  channel?: string
 }
 
 /** A box's container as `list` finds it. */
@@ -67,9 +69,10 @@ export class Box {
     const container = options.name ?? `fleet-box-${randomBytes(6).toString('hex')}`
     const env = Object.entries(options.env ?? {}).flatMap(([key, value]) => ['--env', `${key}=${value}`])
     const labels = Object.entries(options.labels ?? {}).flatMap(([key, value]) => ['--label', `${key}=${value}`])
+    const channel = options.channel === undefined ? [] : ['--mount', `type=bind,source=${resolve(options.channel)},target=${CHANNEL_DIR}`]
     // An init as its first process, so `sleep` ends on the SIGTERM of `docker stop`.
     await run(docker, [
-      'create', '--init', '--pull', 'never', '--name', container, '--label', BOX_LABEL, ...labels, ...env,
+      'create', '--init', '--pull', 'never', '--name', container, '--label', BOX_LABEL, ...labels, ...env, ...channel,
       options.image ?? DEFAULT_IMAGE, 'sleep', 'infinity',
     ])
     return new Box(container, docker)
@@ -99,14 +102,13 @@ export class Box {
   /**
    * Start the container, if it is not running, and a new helper in it. A
    * start that fails leaves the container stopped.
-   * @param onConnection - takes each connection a program in the box opens to a service's socket, while this helper runs; without it, each is cut.
    */
-  start(onConnection?: ConnectionHandler): Promise<void> {
+  start(): Promise<void> {
     return this.serial(async () => {
       await this.closeHelper()
       await run(this.docker, ['start', this.container])
       try {
-        this.helper = await Helper.start([this.docker, 'exec', '--interactive', this.container, HELPER_NODE, HELPER_ENTRY], onConnection)
+        this.helper = await Helper.start([this.docker, 'exec', '--interactive', this.container, HELPER_NODE, HELPER_ENTRY])
       } catch (error) {
         await run(this.docker, ['stop', this.container]).catch(() => {})
         throw error

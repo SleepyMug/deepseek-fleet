@@ -137,7 +137,10 @@ prompt, and runs only where the fleet host has the service registered
 
 - The image holds the packages as installed on the host, and so does
   each service's package as the host copies it into a box, so the host
-  must be linux, on the architecture of Docker's server.
+  must be linux, on the architecture of Docker's server; and each box
+  mounts a folder of the host's, its channel to the host's services
+  (docs/fleet/index.md), so Docker's server must be the host's own, not a
+  remote one or Docker Desktop's VM.
 - dsh's sandbox, which confines the sessions the web UI makes, needs
   bubblewrap or Landlock on linux (dsh's sandbox-local).
 

@@ -30,6 +30,7 @@ The host's **home** is `$FLEET_HOME`, or `~/.fleet`:
 | `fleet.sock` | The socket, unless `$FLEET_SOCKET` names another. |
 | `boxes/<id>.json` | Each box the host made, as it made it: its id, image, labels, environment, services, idle time, and when (`registry.ts`). |
 | `services/<name>@<digest>` | Each service's package, as the host staged it (docs/fleet/services/index.md). |
+| `channels/<id>/channel.sock` | Each box's channel, the socket its helper reaches the host's services on, the folder mounted in the box (below). |
 
 What its clients ask, the ops of its wire, each answered once, with events
 before the answer for an op that sends them; the wire itself is
@@ -62,8 +63,8 @@ docs/fleet-protocol/index.md:
   `Platform` (`platform.ts`: `log`, `now`, `newId` and `after`, a timer
   that keeps nothing alive) and its `Boxes`, Docker's containers through
   `Box` unless a test gives local ones; each box is a `ManagedBox`
-  (`managed.ts`); the services are `Services` (`services.ts`); and the
-  socket is `server.ts`'s. A test serves a host in its own process, its
+  (`managed.ts`), with its `Channel` (`channel.ts`); the services are
+  `Services` (`services.ts`); and the socket is `server.ts`'s. A test serves a host in its own process, its
   boxes folders with the helper as built running in each.
 - **A box** is made with a spec: its image, the host's default without one,
   `fleet:local` unless `fleet serve --image` names another; its labels, its
@@ -111,6 +112,20 @@ docs/fleet-protocol/index.md:
 - **The socket** has mode 0600, its folder made with mode 0700, so only its
   owner can open it, which is its authentication; the host takes it over
   only if no host answers on it.
+- **Each box has a channel**, the one way from the box to the host: a
+  socket the host listens on in a folder of the box's own,
+  `channels/<id>/`, which the box's container mounts at
+  `/run/fleet/host`, as a box in the cloud would have one connection to its
+  gateway. The helper makes one HTTP/2 connection to it, and each
+  connection a program in the box opens to a service's socket is a stream
+  of it, which the host passes on to the service
+  (docs/fleet/services/index.md). A stream that comes in on a box's channel
+  is that box's, so the box never says who it is. `channels/` has mode
+  0700, so no one else on the host reaches a channel; a box's folder, mode
+  0711, and its socket, 0666, let the box's root reach it whatever its user
+  is on the host. The host listens on a box's channel as it makes the box,
+  or knows it from its registry, and removes the folder with the box; a box
+  made by a host before channels has none, and reaches no service.
 
 ## Not yet
 

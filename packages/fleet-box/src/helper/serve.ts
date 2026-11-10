@@ -47,7 +47,7 @@ export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT 
   const processes = new Processes(env)
   const terminals = new Terminals(env)
   const send = (message: HelperMessage): boolean => output.write(`${JSON.stringify(message)}\n`)
-  const services = new Services(send, env, layout)
+  const services = new Services(env, layout)
 
   const handlers: Handlers = {
     hello: () => ({ protocol: PROTOCOL_VERSION, methods: Object.keys(handlers) }),
@@ -108,10 +108,6 @@ export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT 
       message = JSON.parse(line) as HostMessage
     } catch {
       log('unreadable message')
-      return
-    }
-    if (message.type === 'conn-data' || message.type === 'conn-ack' || message.type === 'conn-end') {
-      services.receive(message)
       return
     }
     const handled = handle(message)

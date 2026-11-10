@@ -123,16 +123,18 @@ export class Services {
   }
 
   /**
-   * Pass a connection a program in a box opened to a service's socket on to
-   * the service, after a line saying which box it comes from; a service the
-   * box does not have, or that is not registered now, cuts it.
+   * What passes a connection a program in a box opened to a service's socket
+   * on to the service, after a line saying which box it comes from; none for
+   * a service the box does not have, or that is not registered now.
    */
-  relay(record: BoxRecord, name: string, connection: Duplex): void {
+  taker(record: BoxRecord, name: string): ((connection: Duplex) => void) | undefined {
     const service = this.registered.get(name)
-    if (service === undefined || (record.services !== null && !record.services.includes(name))) {
-      connection.destroy(new Error(`the service ${name} is not available`))
-      return
-    }
+    if (service === undefined || (record.services !== null && !record.services.includes(name))) return undefined
+    return (connection) => { this.relay(record, service, connection) }
+  }
+
+  private relay(record: BoxRecord, service: Registered, connection: Duplex): void {
+    const { name } = service
     const gateway = createConnection({ path: service.endpoint, allowHalfOpen: true })
     const preamble: Preamble = { box: record.id, labels: record.labels }
     gateway.write(`${JSON.stringify(preamble)}\n`)

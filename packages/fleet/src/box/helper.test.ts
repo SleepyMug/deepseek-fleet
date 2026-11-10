@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -7,8 +6,9 @@ import { PROTOCOL_VERSION } from '@sleepymug/fleet-protocol/helper'
 import { Helper, HelperError, METHODS } from './helper.ts'
 
 /** The helper as built, served on this Node, its services' things under `layout`. */
-function servedHelper(layout: { services: string; bin: string; sockets: string } = {
+function servedHelper(layout: { services: string; bin: string; sockets: string; channel: string } = {
   services: join(tmpdir(), 'fleet-helper-test', 'services'), bin: join(tmpdir(), 'fleet-helper-test', 'bin'), sockets: join(tmpdir(), 'fleet-helper-test', 'sockets'),
+  channel: join(tmpdir(), 'fleet-helper-test', 'channel.sock'),
 }): readonly [string, ...string[]] {
   const serve = JSON.stringify(import.meta.resolve('@sleepymug/fleet-box/helper/serve'))
   const program = [
@@ -83,61 +83,4 @@ test('a helper that sends an unexpected event loses its connection', async () =>
   const helper = await Helper.start([process.execPath, '--eval', code])
   await assert.rejects(helper.request('echo', { text: 'hi' }), /unexpected event/u)
   await helper.close()
-})
-
-test('a connection a program in the box opens to a service\'s socket reaches the host as a stream, its bytes both ways, more than a window of them', async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-helper-relay-'))
-  t.after(() => rm(dir, { recursive: true, force: true }))
-  const layout = { services: join(dir, 'services'), bin: join(dir, 'bin'), sockets: join(dir, 'sockets') }
-  await mkdir(join(layout.services, 'shout@00000000'), { recursive: true })
-  const served: string[] = []
-  // The helper as built, its services' things in the test's folder.
-  const helper = await Helper.start(servedHelper(layout), (service, connection) => {
-    let size = 0
-    connection.on('data', (chunk: Buffer) => { size += chunk.length })
-    connection.on('end', () => {
-      served.push(`${service} ${String(size)}`)
-      for (let index = 0; index < 30; index++) connection.write(Buffer.alloc(100_000, 'D'))
-      connection.end()
-    })
-  })
-  try {
-    await helper.request('services.sync', { services: [{ name: 'shout', digest: '00000000', bins: {}, env: {} }] })
-    const program = [
-      'import { createConnection } from "node:net"',
-      `const socket = createConnection(${JSON.stringify(join(layout.sockets, 'shout.sock'))})`,
-      'let size = 0',
-      'socket.on("data", (chunk) => { size += chunk.length })',
-      'socket.on("end", () => { process.stdout.write(String(size)) })',
-      'for (let i = 0; i < 20; i++) socket.write(Buffer.alloc(100_000, "u"))',
-      'socket.end()',
-    ].join('\n')
-    const ran = await helper.request('exec', { argv: [process.execPath, '--input-type=module', '--eval', program] })
-    assert.equal(ran.stderr, '')
-    assert.equal(ran.stdout, '3000000')
-    assert.deepEqual(served, ['shout 2000000'])
-  } finally {
-    await helper.close()
-  }
-})
-
-test('a connection the host has no taker for is cut', async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-helper-refused-'))
-  t.after(() => rm(dir, { recursive: true, force: true }))
-  const layout = { services: join(dir, 'services'), bin: join(dir, 'bin'), sockets: join(dir, 'sockets') }
-  await mkdir(join(layout.services, 'none@00000000'), { recursive: true })
-  const helper = await Helper.start(servedHelper(layout))
-  try {
-    await helper.request('services.sync', { services: [{ name: 'none', digest: '00000000', bins: {}, env: {} }] })
-    const program = [
-      'import { createConnection } from "node:net"',
-      `const socket = createConnection(${JSON.stringify(join(layout.sockets, 'none.sock'))})`,
-      'socket.on("error", () => {})',
-      'socket.on("close", () => { process.stdout.write("closed") })',
-      'socket.write("hi")',
-    ].join('\n')
-    assert.equal((await helper.request('exec', { argv: [process.execPath, '--input-type=module', '--eval', program] })).stdout, 'closed')
-  } finally {
-    await helper.close()
-  }
 })

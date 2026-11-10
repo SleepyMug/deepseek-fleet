@@ -6,15 +6,16 @@ processes and terminals, which the host's clients ask of the box
 (docs/fleet/index.md), as dsh-tau's world does for a tau's session
 (docs/dsh-tau/world/index.md); and it keeps the box's services: their
 commands on the PATH, their environment, and their sockets, whose
-connections it relays to the host, which passes them on to each service's
-gateway (docs/fleet/services/index.md).
+connections it carries to the host over the box's channel, which the host
+passes on to each service's gateway (docs/fleet/services/index.md).
 
 ## Provides
 
 - `@sleepymug/fleet-protocol/helper`: the wire between the host and the
   helper, shared by both ends (docs/fleet-protocol/index.md). It holds
-  `PROTOCOL_VERSION`, the message types, `Methods`, which gives each method's
-  params, result and events, and `CONNECTION_WINDOW`.
+  `PROTOCOL_VERSION`, the message types, and `Methods`, which gives each
+  method's params, result and events; and `@sleepymug/fleet-protocol/channel`,
+  the box's channel's (docs/fleet-protocol/index.md).
 - `lib/helper/main.js`: the helper itself. It runs only in the image, at the
   path `@sleepymug/fleet-protocol/layout` gives, and is not exported. It
   serves the host (`serve.ts`) on its stdin and stdout, in the box's
@@ -33,22 +34,11 @@ One JSON message per line over the helper's stdin and stdout:
   - `{ "type": "error", "id": 1, "message": "…", "code": "…" }`, with the
     code of the failure, such as an `FsError`'s, if it has one;
   - `{ "type": "event", "id": 1, "value": … }`, any number of them before
-    the request's result, for a method that sends events;
-  - `{ "type": "conn-open", "conn": 7, "service": "notes" }`, a connection
-    a program in the box opened to a service's socket, under an id the
-    helper gives.
-- either way, for a relayed connection:
-  - `{ "type": "conn-data", "conn": 7, "data": "<base64>" }`, bytes its side
-    read, which the other side writes to its own;
-  - `{ "type": "conn-ack", "conn": 7, "bytes": 512 }`, that its side wrote
-    that many of the other's bytes, so the other may send that many more;
-  - `{ "type": "conn-end", "conn": 7, "error"?: "…" }`: without `error`, its
-    side sends nothing more, and the other ends its side's writing, a
-    half-close; with it, the connection is cut, both ways.
+    the request's result, for a method that sends events.
 
 The helper answers every request exactly once, in any order. When its stdin
-ends, it ends the processes and terminals it started, its watches and its
-relayed connections, answers what is left, and exits.
+ends, it ends the processes and terminals it started, its watches and the
+services' connections, answers what is left, and exits.
 
 | Method | Params | Result | |
 |---|---|---|---|
@@ -87,15 +77,21 @@ relayed connections, answers what is left, and exits.
   the helper makes the services' folders and names them in its
   environment; `services.sync` then listens on each listed service's socket,
   which anyone in the box may open, since the box is its own. Each
-  connection is relayed to the host as it comes: its bytes in `conn-data`,
-  no more than `CONNECTION_WINDOW`, a mebibyte, of them unacknowledged, so
-  the helper stops reading a connection whose other side is behind; and
-  what the host sends written to it, acknowledged once written. A program's
-  end of what it sends is a half-close, and the host's end of what it sends
-  ends the program's; a connection the host cuts is cut in the box. Which
-  box a connection comes from is the host's to say, and whether the box
-  may use the service, so the helper checks only that its service is
-  listed. Without the services' folders, only the services fail.
+  connection is a stream of the box's channel (fleet-protocol's channel):
+  the helper makes one HTTP/2 connection to the channel's socket,
+  `/run/fleet/host/channel.sock`, as the first program connects, and again
+  once the host dropped it, as when it restarts; and sends each connection
+  as a request, `POST /services/<name>`, its body what the program sends,
+  the response's body what the host sends back, once the host answered
+  `200`. HTTP/2's flow control paces each stream, a mebibyte its window, so
+  a side that reads slowly slows the other, and the channel, sixteen. A
+  program's end of what it sends is a half-close, and the host's end of
+  what it sends ends the program's; a stream the host cuts, or refuses, is
+  a connection cut in the box, and one the program cuts before its end is
+  a stream cut. Which box a connection comes from is the host's to say, by
+  the channel it comes in on, and whether the box may use the service, so
+  the helper checks only that its service is listed. Without the services'
+  folders, only the services fail.
 - **A helper is what it is given.** `serve({ input, output, env, cwd, log })`
   puts one together: its processes (`cmd/spawn.ts`, `Processes`), its
   terminals (`cmd/terminal.ts`, `Terminals`), its files and watches

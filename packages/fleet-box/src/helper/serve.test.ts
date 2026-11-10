@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { existsSync, readlinkSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { constants, createServer as createChannel, type ServerHttp2Stream } from 'node:http2'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { test } from 'node:test'
+import { NO_SERVICE, OPENED, serviceOf } from '@sleepymug/fleet-protocol/channel'
 import { SERVICES_VARIABLE } from '@sleepymug/fleet-protocol/layout'
 import type { HelperMessage, HostMessage, ServiceInBox } from '@sleepymug/fleet-protocol/helper'
 import type { ServicesLayout } from './cmd/services.ts'
@@ -18,7 +20,7 @@ type Answer = Extract<HelperMessage, { id: number }> & { value?: unknown; events
 class Served {
   readonly input = new PassThrough()
   readonly output = new PassThrough()
-  /** What the helper sent that answers no request, such as a relayed connection's messages. */
+  /** What the helper sent that answers no request. */
   readonly sent: HelperMessage[] = []
   readonly logged: string[] = []
   readonly done: Promise<void>
@@ -81,7 +83,29 @@ class Served {
 async function scratch(t: { after: (fn: () => Promise<void>) => void }): Promise<{ work: string; layout: ServicesLayout }> {
   const work = await mkdtemp(join(tmpdir(), 'fleet-serve-'))
   t.after(() => rm(work, { recursive: true, force: true }))
-  return { work, layout: { services: join(work, 'services'), bin: join(work, 'bin'), sockets: join(work, 'sockets') } }
+  return { work, layout: { services: join(work, 'services'), bin: join(work, 'bin'), sockets: join(work, 'sockets'), channel: join(work, 'channel.sock') } }
+}
+
+/** The host's end of the box's channel, as a test has it: each stream taken by `take`, by its service, or refused. */
+async function hostChannel(t: { after: (fn: () => Promise<void>) => void }, path: string, take: (service: string, stream: ServerHttp2Stream) => boolean): Promise<void> {
+  const server = createChannel()
+  server.on('stream', (stream: ServerHttp2Stream, headers) => {
+    const service = serviceOf(headers[':path'])
+    if (service === undefined || !take(service, stream)) {
+      stream.respond({ ':status': NO_SERVICE }, { endStream: true })
+      return
+    }
+    stream.respond({ ':status': OPENED })
+  })
+  await new Promise<void>((resolve) => { server.listen(path, resolve) })
+  t.after(() => new Promise<void>((resolve) => { server.close(() => { resolve() }) }))
+}
+
+/** What a stream sent, up to its end. */
+async function received(stream: ServerHttp2Stream): Promise<string> {
+  let text = ''
+  for await (const chunk of stream) text += (chunk as Buffer).toString('utf8')
+  return text
 }
 
 /** The text of a spawn's stdout events. */
@@ -124,26 +148,28 @@ test('a service the box holds is synced in: its commands on the PATH, its enviro
   assert.equal(stdout(ran), 'notes at the socket\n')
   assert.deepEqual((await helper.request('which', { command: 'notes', env: { PATH: '/bin' } })).value, join(layout.bin, 'notes'))
 
-  // A program in the box opens the service's socket; the host answers for the service.
+  // A program in the box opens the service's socket; the host answers for the service, on the box's channel.
+  const streams: Array<{ service: string; stream: ServerHttp2Stream }> = []
+  await hostChannel(t, layout.channel, (service, stream) => {
+    streams.push({ service, stream })
+    return true
+  })
   const socket = createConnection(join(layout.sockets, 'notes.sock'))
   let answer = ''
   socket.on('data', (chunk: Buffer) => { answer += chunk.toString('utf8') })
   const closed = new Promise<void>((resolve) => { socket.once('close', () => { resolve() }) })
-  socket.write('add milk\n')
+  // More than the stream's window, so that each side reads as the other writes.
+  const big = 'm'.repeat(3 * 1024 * 1024)
+  socket.write(`add ${big}\n`)
   socket.end()
-  const opened = await helper.until(() => helper.sent.find(message => message.type === 'conn-open'))
-  assert.deepEqual(opened, { type: 'conn-open', conn: 1, service: 'notes' })
-  await helper.until(() => helper.sent.find(message => message.type === 'conn-end'))
-  const data = helper.sent.filter(message => message.type === 'conn-data').map(message => Buffer.from((message as { data: string }).data, 'base64').toString('utf8')).join('')
-  assert.equal(data, 'add milk\n')
-  helper.write({ type: 'conn-ack', conn: 1, bytes: data.length })
-  helper.write({ type: 'conn-data', conn: 1, data: Buffer.from('added\n').toString('base64') })
-  helper.write({ type: 'conn-end', conn: 1 })
+  const { service, stream } = await until(() => streams[0])
+  assert.equal(service, 'notes')
+  // The program's end is the request's, a half-close: the host answers after it.
+  assert.equal(await received(stream), `add ${big}\n`)
+  stream.end('added\n')
   await closed
   assert.equal(answer, 'added\n')
-  await helper.until(() => helper.sent.find(message => message.type === 'conn-ack'))
-  assert.deepEqual(helper.sent.find(message => message.type === 'conn-ack'), { type: 'conn-ack', conn: 1, bytes: 6 })
-  assert.equal(helper.sent.filter(message => message.type === 'conn-end').length, 1, 'a connection ended by both sides is not cut')
+  assert.equal(stream.rstCode, constants.NGHTTP2_NO_ERROR, 'a connection ended by both sides is not cut')
 
   // Synced without it, the box has none of it but its package.
   assert.equal((await helper.request('services.sync', { services: [] })).type, 'result')
@@ -155,23 +181,43 @@ test('a service the box holds is synced in: its commands on the PATH, its enviro
   assert.equal((await helper.request('services.sync', { services: [{ ...notes, digest: 'fedcba9876543210' }] })).type, 'error')
 })
 
-test('a connection the box\'s side closes is ended on the host\'s, and one the host cuts is cut in the box', async (t) => {
+test('a connection the box\'s side closes is ended on the host\'s, and one the host cuts, or refuses, is cut in the box', async (t) => {
   const { work, layout } = await scratch(t)
   const helper = new Served({ PATH: process.env.PATH }, work, layout)
   t.after(() => helper.close())
   await mkdir(join(layout.services, 'echo@aaaaaaaa'), { recursive: true })
-  await helper.request('services.sync', { services: [{ name: 'echo', digest: 'aaaaaaaa', bins: {}, env: {} }] })
+  await mkdir(join(layout.services, 'gone@bbbbbbbb'), { recursive: true })
+  await helper.request('services.sync', { services: [{ name: 'echo', digest: 'aaaaaaaa', bins: {}, env: {} }, { name: 'gone', digest: 'bbbbbbbb', bins: {}, env: {} }] })
+  const streams: ServerHttp2Stream[] = []
+  await hostChannel(t, layout.channel, (service, stream) => {
+    if (service !== 'echo') return false
+    streams.push(stream)
+    return true
+  })
   const first = createConnection(join(layout.sockets, 'echo.sock'))
-  await helper.until(() => helper.sent.find(message => message.type === 'conn-open'))
+  first.write('hi')
+  const opened = await until(() => streams[0])
   // A closed socket's end is all its other side sees of it, as a request's end, after which the service answers no one.
   first.destroy()
-  const ended = await helper.until(() => helper.sent.find(message => message.type === 'conn-end'))
-  assert.deepEqual(ended, { type: 'conn-end', conn: 1 })
+  assert.equal(await received(opened), 'hi')
 
-  const second = createConnection(join(layout.sockets, 'echo.sock'))
-  second.on('error', () => {})
-  const closed = new Promise<void>((resolve) => { second.once('close', () => { resolve() }) })
-  await helper.until(() => helper.sent.find(message => message.type === 'conn-open' && message.conn === 2))
-  helper.write({ type: 'conn-end', conn: 2, error: 'the service went away' })
-  await closed
+  const cut = async (socketPath: string, after?: () => Promise<void>): Promise<void> => {
+    const socket = createConnection(socketPath)
+    socket.on('error', () => {})
+    const closed = new Promise<void>((resolve) => { socket.once('close', () => { resolve() }) })
+    socket.write('hi')
+    await after?.()
+    await closed
+  }
+  await cut(join(layout.sockets, 'echo.sock'), async () => { (await until(() => streams[1])).close(constants.NGHTTP2_CANCEL) })
+  await cut(join(layout.sockets, 'gone.sock'))
 })
+
+/** Once `found` finds something, as the streams come in. */
+async function until<T>(found: () => T | undefined): Promise<T> {
+  for (;;) {
+    const value = found()
+    if (value !== undefined) return value
+    await new Promise<void>((resolve) => { setTimeout(resolve, 5) })
+  }
+}

@@ -14,6 +14,8 @@ export interface FleetPaths {
   boxes: string
   /** The services' packages, staged, each `<name>@<digest>`. */
   services: string
+  /** The boxes' channels, each in a folder by the box's id (./channel.ts). */
+  channels: string
 }
 
 /**
@@ -22,5 +24,5 @@ export interface FleetPaths {
  */
 export function fleetPaths(home: string, socket?: string): FleetPaths {
   if (!isAbsolute(home)) throw new Error(`fleet: the home is an absolute path, not ${JSON.stringify(home)}`)
-  return { home, socket: socket ?? join(home, 'fleet.sock'), boxes: join(home, 'boxes'), services: join(home, 'services') }
+  return { home, socket: socket ?? join(home, 'fleet.sock'), boxes: join(home, 'boxes'), services: join(home, 'services'), channels: join(home, 'channels') }
 }

@@ -2,8 +2,8 @@
  * The fleet host (docs/fleet/index.md): the boxes it made, each a container
  * with fleet's helper in it while it runs, kept as their creators ask and
  * stopped once idle (./managed.ts); the services registered with it, which
- * it puts in the boxes that have them, and whose connections it relays
- * (./services.ts); and the ops its clients ask of them, as
+ * it puts in the boxes that have them, and whose connections it passes on
+ * from each box's channel (./services.ts, ./channel.ts); and the ops its clients ask of them, as
  * fleet-protocol's fleet wire has them, each a client's, whose leases and
  * services last as long as the client does. It knows nothing of whoever
  * uses its boxes, a harness or a service: a box is its id, its labels, and
@@ -12,12 +12,14 @@
  */
 
 import { createReadStream, createWriteStream } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { chmod, mkdir, rm } from 'node:fs/promises'
+import { isAbsolute, join } from 'node:path'
 import { Writable } from 'node:stream'
 import { type BoxInfo, type BoxSpec, type BoxState, NO_BOX, type Op, type OpEvent, type Ops } from '@sleepymug/fleet-protocol/fleet'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
 import type { Method } from '@sleepymug/fleet-protocol/helper'
 import { Box, METHODS } from './box/box.ts'
+import { Channel } from './channel.ts'
 import { type Boxes, ManagedBox, type RunBox } from './managed.ts'
 import type { Platform } from './platform.ts'
 import { BOX_ID, type BoxRecord, Registry } from './registry.ts'
@@ -29,7 +31,7 @@ export { systemPlatform } from './platform.ts'
 
 /** Docker's containers, through `Box`. */
 export const dockerBoxes: Boxes = {
-  create: (name, { image, env, labels }) => Box.create({ name, image, env, labels }),
+  create: (name, { image, env, labels, channel }) => Box.create({ name, image, env, labels, channel }),
   open: name => Box.open(name),
   async state(name) {
     const found = (await Box.list()).find(box => box.name === name)
@@ -41,6 +43,8 @@ export interface FleetHostDeps {
   registry: Registry
   /** Where the services' packages are staged. */
   cache: string
+  /** Where the boxes' channels are, each in a folder by its box's id. */
+  channels: string
   platform: Platform
   /** Docker's, by default. */
   boxes?: Boxes
@@ -68,11 +72,13 @@ interface Kept {
   record: BoxRecord
   box: ManagedBox
   watchers: Set<(state: BoxState | 'removed') => void>
+  channel: Channel
 }
 
 export class FleetHost {
   private readonly kept = new Map<string, Kept>()
   private readonly registry: Registry
+  private readonly channels: string
   private readonly platform: Platform
   private readonly boxes: Boxes
   private readonly image: string
@@ -80,8 +86,9 @@ export class FleetHost {
   readonly services: Services
   private nextLease = 1
 
-  constructor({ registry, cache, platform, boxes = dockerBoxes, image = DEFAULT_IMAGE, idleStopMs = 60_000 }: FleetHostDeps) {
+  constructor({ registry, cache, channels, platform, boxes = dockerBoxes, image = DEFAULT_IMAGE, idleStopMs = 60_000 }: FleetHostDeps) {
     this.registry = registry
+    this.channels = channels
     this.platform = platform
     this.boxes = boxes
     this.image = image
@@ -92,7 +99,7 @@ export class FleetHost {
   /** Know the boxes the registry has, as a host before this one left them: one still running stops once idle. */
   async load(): Promise<void> {
     for (const record of await this.registry.list()) {
-      const kept = this.keep(record)
+      const kept = await this.keep(record)
       const state = await this.boxes.state(record.id).catch(() => 'stopped' as const)
       if (state === 'running') kept.box.adopt()
     }
@@ -117,9 +124,12 @@ export class FleetHost {
     return await handler(params ?? ({} as Ops[O]['params']), context)
   }
 
-  /** Stop the boxes started here. */
+  /** Stop the boxes started here, and their channels. */
   async close(): Promise<void> {
-    await Promise.all([...this.kept.values()].map(kept => kept.box.close()))
+    await Promise.all([...this.kept.values()].map(async (kept) => {
+      await kept.box.close()
+      await kept.channel.close()
+    }))
   }
 
   private readonly ops: { [O in Op]: Handler<O> } = {
@@ -146,6 +156,8 @@ export class FleetHost {
         await this.registry.delete(box)
         this.kept.delete(box)
       })
+      await kept.channel.close()
+      await rm(this.channelOf(box), { recursive: true, force: true })
       for (const watcher of kept.watchers) watcher('removed')
       this.platform.log(`removed ${box}`)
       return null
@@ -244,32 +256,56 @@ export class FleetHost {
       id, image, labels: { ...labels }, env: { ...env }, services: services === undefined ? null : [...services],
       ...idleStopMs === undefined ? {} : { idleStopMs }, createdAt: this.platform.now().toISOString(),
     }
-    const container = await this.boxes.create(id, { image, env: record.env, labels: { ...Object.fromEntries(Object.entries(labels).map(([key, value]) => [`fleet.label.${key}`, value])) } })
+    // The channel's folder first, which the container mounts.
+    const channel = await this.listen(record)
+    let container: RunBox
+    try {
+      container = await this.boxes.create(id, {
+        image, env: record.env, labels: { ...Object.fromEntries(Object.entries(labels).map(([key, value]) => [`fleet.label.${key}`, value])) }, channel: this.channelOf(id),
+      })
+    } catch (error) {
+      await channel.close()
+      await rm(this.channelOf(id), { recursive: true, force: true })
+      throw error
+    }
     try {
       await this.registry.put(record)
     } catch (error) {
       await container.remove().catch(() => {})
+      await channel.close()
+      await rm(this.channelOf(id), { recursive: true, force: true })
       throw error
     }
-    const kept = this.keep(record, container)
+    const kept = await this.keep(record, container, channel)
     this.platform.log(`created ${id}${Object.keys(labels).length === 0 ? '' : `, ${Object.entries(labels).map(([key, value]) => `${key}=${value}`).join(' ')}`}`)
     return infoOf(kept)
   }
 
-  private keep(record: BoxRecord, container?: RunBox): Kept {
+  private async keep(record: BoxRecord, container?: RunBox, channel?: Channel): Promise<Kept> {
     const watchers = new Set<(state: BoxState | 'removed') => void>()
     const box = new ManagedBox({
       id: record.id,
       boxes: this.boxes,
       platform: this.platform,
       idleStopMs: record.idleStopMs ?? this.idleStopMs,
-      onConnection: (service, connection) => { this.services.relay(record, service, connection) },
       onStarted: running => this.services.provision(running, record),
       onState: (state) => { for (const watcher of watchers) watcher(state) },
     }, container)
-    const kept: Kept = { record, box, watchers }
+    const kept: Kept = { record, box, watchers, channel: channel ?? await this.listen(record) }
     this.kept.set(record.id, kept)
     return kept
+  }
+
+  /** Listen on a box's channel, its connections passed on to its services. */
+  private async listen(record: BoxRecord): Promise<Channel> {
+    // Only the host's owner reaches the channels but through a box's mount.
+    await mkdir(this.channels, { recursive: true, mode: 0o700 })
+    await chmod(this.channels, 0o700)
+    return await Channel.listen(this.channelOf(record.id), service => this.services.taker(record, service))
+  }
+
+  private channelOf(id: string): string {
+    return join(this.channels, id)
   }
 
   /** A box the host keeps; another fails. */

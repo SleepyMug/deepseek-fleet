@@ -888,7 +888,7 @@ async function absent(image: string): Promise<string | false> {
  */
 async function realFleet(t: { after(fn: () => Promise<void>): void }, work: string, served: () => TauService & { tauRuns: TauRuns }): Promise<FleetPort> {
   const home = join(work, 'fleet')
-  const host = new FleetHost({ registry: new FleetRegistry(join(home, 'boxes')), cache: join(home, 'services'), platform: fleetPlatform(() => {}), image: IMAGE })
+  const host = new FleetHost({ registry: new FleetRegistry(join(home, 'boxes')), cache: join(home, 'services'), channels: join(home, 'channels'), platform: fleetPlatform(() => {}), image: IMAGE })
   const close = await listen(join(home, 'fleet.sock'), host)
   const client = await FleetClient.connect({ socket: join(home, 'fleet.sock') })
   await client.register(tauService(box => served().tauRuns.sessionOfBox(box), caller => served().handlerFor(caller)))

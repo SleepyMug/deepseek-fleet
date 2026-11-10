@@ -8,7 +8,7 @@
  */
 
 import { BOX_GONE, NOT_STARTED, type BoxState, type Occupant } from '@sleepymug/fleet-protocol/fleet'
-import type { Box, ConnectionHandler } from './box/box.ts'
+import type { Box } from './box/box.ts'
 import type { Platform } from './platform.ts'
 import { messageOf } from './util/error.ts'
 import { Queue } from './util/queue.ts'
@@ -18,7 +18,8 @@ export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copy
 
 /** Where the host gets the boxes' containers: Docker's, through `Box`, unless a test stands in. */
 export interface Boxes {
-  create(name: string, options: { image: string; env: Readonly<Record<string, string>>; labels: Readonly<Record<string, string>> }): Promise<RunBox>
+  /** @param options.channel - the host's folder of the box's channel, which the box has mounted. */
+  create(name: string, options: { image: string; env: Readonly<Record<string, string>>; labels: Readonly<Record<string, string>>; channel: string }): Promise<RunBox>
   open(name: string): Promise<RunBox>
   /** Whether a container is there, and whether it runs. */
   state(name: string): Promise<'running' | 'stopped' | 'missing'>
@@ -39,8 +40,6 @@ export interface ManagedDeps {
   platform: Platform
   /** How long the box runs while nothing occupies it before it is stopped. */
   idleStopMs: number
-  /** Takes each connection a program in the box opens to a service's socket, while its helper runs. */
-  onConnection: ConnectionHandler
   /** Readies a box whose helper just started, before anything else uses it, as by putting its services in. */
   onStarted: (box: RunBox) => Promise<void>
   /** Told each change of the box's state. */
@@ -196,7 +195,7 @@ export class ManagedBox {
     }
     const box = await this.box()
     try {
-      await box.start(this.deps.onConnection)
+      await box.start()
       await this.deps.onStarted(box)
     } catch (error) {
       await box.stop().catch(() => {})
