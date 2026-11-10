@@ -135,8 +135,7 @@ added.
   its services', and what dsh gives it, but dsh's own variables, `DSH_*`,
   which tell of the host, such as the dsh home and the web UI's URL, and
   the host's `PATH` and `HOME`, which are false in a box, so the box's own
-  stand: its PATH has the services' commands first, then the tau's
-  packages', then the image's. Terminating
+  stand: its PATH has the services' commands first, then the image's. Terminating
   it, or aborting its signal, ends its group, and so does this service's
   unloading. `resolveExecutable` asks the box's helper (`which`), whose
   answer for a program not there, `EXECUTABLE_NOT_FOUND`, comes as the

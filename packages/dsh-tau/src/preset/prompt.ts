@@ -114,8 +114,8 @@ export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
   if (exposed.length === 0) return ''
   return [
     `Run programs with bash's \`node\`: write each anywhere below ${PROGRAMS}, such as in ${PROGRAMS}/programs, or pipe it to \`node -\` `
-      + `in your working directory, so that it imports the TAU's packages, in ${PROGRAMS}/node_modules, by name, as the TAU's code does; `
-      + 'their commands are on your PATH. Write JavaScript, or TypeScript that Node.js runs as is, its types stripped, without `enum` or '
+      + `in your working directory, so that it imports the TAU's packages, in ${PROGRAMS}/node_modules, by name, as the TAU's code does. `
+      + 'Write JavaScript, or TypeScript that Node.js runs as is, its types stripped, without `enum` or '
       + '`namespace`. It can import the packages below; read what one declares before you use it.',
     '',
     ...exposed.map(({ specifier, dir, description }) => `- \`${specifier}\`, in ${dir}, whose package.json names its declarations${description === undefined ? '' : `: ${description}`}`),

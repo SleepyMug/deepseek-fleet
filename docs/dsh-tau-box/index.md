@@ -39,8 +39,7 @@ for whoever asks them.
 - `@sleepymug/dsh-tau-box/layout`, where a run has its things in its box,
   which the half owns and reports: `FOLDERS`, `/tau/in`, `/tau/workspace`
   and `/tau/out`; `SELF`, `/tau/self`; `PROGRAMS`, `/tau`, the program
-  directory; `MODULES`, `/tau/node_modules`, and `MODULE_BINS`, its
-  `.bin`; `CONTEXT`, `/tau/context.json`, and `CONTEXT_VARIABLE`,
+  directory; `MODULES`, `/tau/node_modules`; `CONTEXT`, `/tau/context.json`, and `CONTEXT_VARIABLE`,
   `TAU_CONTEXT`; `RUN`, `/tau/.run.json`; `PRIMER` and `DEV_PRIMER`;
   `SERVICE`, `tau`, the service's name; and `placer()`, which gives each
   file its place, under its base name, in a folder of its own named for

@@ -236,8 +236,7 @@ test('setting up a run\'s box makes it on the fleet host, has the box\'s half pl
   assert.deepEqual(fleet.calls, [`create ${created.box}`, 'start', 'pipe setup'])
   // Made for the session, with its run's context, the tau's packages' commands on its PATH.
   assert.deepEqual(fleet.made.get(created.box)?.spec, { labels: { 'dsh.session': created.sessionId, 'tau.title': 'tau' }, env: BOX_ENV })
-  assert.equal(BOX_ENV.TAU_CONTEXT, '/tau/context.json')
-  assert.ok(BOX_ENV.PATH?.startsWith('/tau/node_modules/.bin:'))
+  assert.deepEqual(BOX_ENV, { TAU_CONTEXT: '/tau/context.json' })
   // The box's half placed everything where it has things.
   const root = fleet.root(created.box)
   assert.equal(await readFile(join(root, 'tau/in/notes.md'), 'utf8'), 'buy milk\n')

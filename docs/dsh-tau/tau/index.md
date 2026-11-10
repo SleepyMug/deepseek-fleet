@@ -198,9 +198,7 @@ their boxes:
   2. It makes the box on the fleet host (`box.create`), its labels
      `dsh.session`, the session's id, `tau.title`, the run's title, and,
      for a run a session started, `tau.parent`, that session's id; its
-     environment `BOX_ENV`, `TAU_CONTEXT=/tau/context.json` and a PATH
-     with the tau's packages' commands, `/tau/node_modules/.bin`, before
-     the image's own; and the config's image and idle time, if it names
+     environment `BOX_ENV`, `TAU_CONTEXT=/tau/context.json`; and the config's image and idle time, if it names
      them. Every box has every service registered, the tau service among
      them.
   3. It has dsh-tau's half in the box set it up from the call
@@ -272,8 +270,7 @@ their boxes:
   so a program the agent writes anywhere below `/tau`, such as in
   `/tau/programs`, or pipes to `node -` in its working directory, imports
   the tau's packages by name from `/tau/node_modules`, as the tau's own
-  code does from `/tau/self/node_modules`; and their commands, in
-  `/tau/node_modules/.bin`, are on the PATH. The tau's own directory is
+  code does from `/tau/self/node_modules`. The tau's own directory is
   read, never written, by what the agent runs.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/tau/runs/<session id>.json`: who started the run, its
@@ -489,8 +486,7 @@ their boxes:
   tau that exposes a package of its own, a section, `fleet:tau-programs`,
   says to write programs anywhere below `/tau`, such as in
   `/tau/programs`, or pipe them to `node -` in the working directory, so
-  that they import the tau's packages by name, whose commands are on the
-  PATH, and lists each exposed package, with where it is and what it says
+  that they import the tau's packages by name, and lists each exposed package, with where it is and what it says
   it is; and, from the fleet host's list of the services, a section,
   `fleet:tau-commands`, lists the commands of the box's services, each
   with what its service says it is, such as `tau`, of dsh-tau's own, and

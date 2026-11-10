@@ -8,8 +8,7 @@
  * named for the file, with a suffix if that is taken too: notes.md, then
  * extra/notes.md, for the file extra. /tau is the program directory (tau's
  * docs/spec/runtimes.md): /tau/node_modules is a link to the tau's own, so a
- * program anywhere below /tau imports the tau's packages, and their
- * commands, in /tau/node_modules/.bin, are on the agent's PATH. The run's
+ * program anywhere below /tau imports the tau's packages. The run's
  * context is /tau/context.json, which `TAU_CONTEXT` names for every process
  * in the box (tau's docs/spec/context.md); what dsh-tau keeps of the run
  * beside it, /tau/.run.json; and tau's TAU.md, what a tau is, and
@@ -31,9 +30,6 @@ export const PROGRAMS = '/tau'
 
 /** Where the tau's packages are, for the programs below {@link PROGRAMS}: a link to the tau's node_modules. */
 export const MODULES = `${PROGRAMS}/node_modules`
-
-/** The commands of the tau's packages, on the agent's PATH. */
-export const MODULE_BINS = `${MODULES}/.bin`
 
 /** The run's context (tau's docs/spec/context.md). */
 export const CONTEXT = '/tau/context.json'

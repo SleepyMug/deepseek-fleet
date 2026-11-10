@@ -19,7 +19,7 @@
 import { createReadStream } from 'node:fs'
 import { mkdir, open, realpath, rm } from 'node:fs/promises'
 import { posix } from 'node:path'
-import { CONTEXT, CONTEXT_VARIABLE, MODULE_BINS } from '@sleepymug/dsh-tau-box/layout'
+import { CONTEXT, CONTEXT_VARIABLE } from '@sleepymug/dsh-tau-box/layout'
 import type { ServiceInfo } from '@sleepymug/fleet-protocol/fleet'
 import type { Result } from '@sleepymug/dsh-tau-box/runs'
 import type { Platform } from '../platform.ts'
@@ -34,14 +34,9 @@ import { SessionBox } from './session-box.ts'
 /** How long a run's init, cancelled, has after SIGTERM before SIGKILL. */
 const INIT_GRACE_MS = 5_000
 
-/**
- * The environment of every process in a tau's box: where its run's context
- * is, and, first on the PATH, the commands of the tau's packages, before the
- * box's own.
- */
+/** The environment of every process in a tau's box: where its run's context is. */
 export const BOX_ENV: Record<string, string> = {
   [CONTEXT_VARIABLE]: CONTEXT,
-  PATH: `${MODULE_BINS}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
 }
 
 /** What the runs are built on. */

@@ -95,7 +95,7 @@ test('a tau\'s prompt says how the model runs its programs, below the program di
   assert.equal(names.indexOf('fleet:tau-programs'), names.indexOf('fleet:tau-files') + 1)
   const text = sections.find(section => section.name === 'fleet:tau-programs')?.text ?? ''
   assert.match(text, /^Run programs with bash's `node`: write each anywhere below \/tau, such as in \/tau\/programs, or pipe it to `node -` in your working directory, so that it imports the TAU's packages, in \/tau\/node_modules, by name/u)
-  assert.match(text, /their commands are on your PATH/u)
+  assert.doesNotMatch(text, /PATH/u)
   assert.match(text, /\n\n- `notes-kit`, in \/tau\/node_modules\/notes-kit, whose package\.json names its declarations: Notes, \{\{tagged\}\}\.\n- `notes-digest`, in \/tau\/node_modules\/notes-digest, whose package\.json names its declarations$/u)
   // A session not a tau's, and a tau that exposes nothing, get none.
   assert.ok(!(await ctx.systemPrompt.assemble(forSession('session-11111111-1111-4111-8111-111111111111'))).sections.some(section => section.name === 'fleet:tau-programs'))
