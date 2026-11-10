@@ -102,6 +102,8 @@ export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT 
 
   const lines = createInterface({ input, crlfDelay: Infinity })
   const closed = new Promise<void>((resolve) => { lines.once('close', resolve) })
+  // Input that fails, as when the host is gone, ends as input that ends does.
+  lines.on('error', () => { lines.close() })
   lines.on('line', (line) => {
     let message: HostMessage
     try {

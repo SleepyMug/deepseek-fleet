@@ -95,7 +95,10 @@ export class Helper {
       const stderr = this.stderr.trim()
       this.fail(new Error(`fleet: the helper exited${stderr === '' ? '' : `: ${stderr}`}`))
     })
-    createInterface({ input: child.stdout, crlfDelay: Infinity }).on('line', (line) => { this.receive(line) })
+    const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+    // The helper's output failing fails its lines too; its exit reports the loss.
+    lines.on('error', () => {})
+    lines.on('line', (line) => { this.receive(line) })
   }
 
   /**

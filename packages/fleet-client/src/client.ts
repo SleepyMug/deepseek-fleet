@@ -235,7 +235,10 @@ export class FleetClient {
     })
     const greeted = Promise.withResolvers<void>()
     socket.on('error', () => {})
-    createInterface({ input: socket, crlfDelay: Infinity }).on('line', (line) => {
+    const lines = createInterface({ input: socket, crlfDelay: Infinity })
+    // A connection reset, as by a host killed, fails its lines too; its close connects again.
+    lines.on('error', () => {})
+    lines.on('line', (line) => {
       let message: HostMessage
       try {
         message = JSON.parse(line) as HostMessage

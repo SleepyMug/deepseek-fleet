@@ -60,7 +60,10 @@ export function serve(connection: Socket, host: FleetHost): void {
     inFlight.clear()
     host.leave(client)
   })
-  createInterface({ input: connection, crlfDelay: Infinity }).on('line', (line) => {
+  const lines = createInterface({ input: connection, crlfDelay: Infinity })
+  // A connection reset, as by a client killed, fails its lines too; its close lets the client go.
+  lines.on('error', () => {})
+  lines.on('line', (line) => {
     let message: ClientMessage
     try {
       message = JSON.parse(line) as ClientMessage

@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { createConnection } from 'node:net'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { FleetClient, type BoxState } from '@sleepymug/fleet-client'
+import { FLEET_PROTOCOL } from '@sleepymug/fleet-protocol/fleet'
 import { FleetHost } from './host.ts'
 import { LocalBoxes } from './local-boxes.test.util.ts'
 import { systemPlatform } from './platform.ts'
@@ -121,6 +123,20 @@ test('a box whose container was removed by other means is gone, and its owner ma
   // A request of a box that is not started, without holding it, fails as such.
   const { id: other } = await client.create()
   await assert.rejects(client.box(other).request('echo', { text: 'x' }, { hold: false }), (error: Error & { code?: string }) => error.code === 'NOT_STARTED')
+})
+
+test('a client whose connection is reset, as by a process killed with the host\'s answers unread, leaves the host serving the others', async (t) => {
+  const { socket, client } = await hosted(t)
+  const raw = createConnection(socket)
+  raw.on('error', () => {})
+  // Never read, so that closing it with the host's answers unread resets it.
+  raw.pause()
+  raw.write(`${JSON.stringify({ type: 'hello', protocol: FLEET_PROTOCOL })}\n`)
+  for (let id = 1; id <= 50; id++) raw.write(`${JSON.stringify({ type: 'request', id, op: 'box.list', params: {} })}\n`)
+  await delay(200)
+  raw.destroy()
+  await delay(200)
+  assert.deepEqual(await client.list(), [])
 })
 
 test('a client\'s leases go with its connection, so a box it held stops once idle', async (t) => {
