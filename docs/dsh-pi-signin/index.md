@@ -1,4 +1,4 @@
-# fleet-signin
+# dsh-pi-signin
 
 A one-shot terminal sign-in to a model provider, booted as a dsh profile of
 its own. It obtains the stored sign-in a profile's model route authenticates
@@ -6,15 +6,15 @@ with, such as `llm-pi-ai/openai-codex` for a ChatGPT subscription, and exits.
 
 ## Provides
 
-`@sleepymug/fleet-signin/app`, which the package's `cordis.patch.yml` mounts after
+`@sleepymug/dsh-pi-signin/app`, which the package's `cordis.patch.yml` mounts after
 dsh-base:
 
 ```
-dsh fleet-signin [provider]
+dsh pi-signin [provider]
                  sign in to the provider, openai-codex by default; a bare
                  provider means llm-pi-ai/<provider>, and <scope>/<id> names
                  any flow dsh registers
-dsh fleet-signin --help
+dsh pi-signin --help
                  list the sign-ins dsh registers
 ```
 
@@ -48,13 +48,13 @@ dsh fleet-signin --help
 Once, after `pnpm build`, make the profile:
 
 ```
-pnpm exec dsh plugin --profile fleet-signin add link:<checkout>/packages/fleet-signin
+pnpm exec dsh plugin --profile pi-signin add link:<checkout>/packages/dsh-pi-signin
 ```
 
-which lists `@deepseek-ai/dsh-base` and `@sleepymug/fleet-signin` in its bundles. Then:
+which lists `@deepseek-ai/dsh-base` and `@sleepymug/dsh-pi-signin` in its bundles. Then:
 
 ```
-$ pnpm exec dsh fleet-signin
+$ pnpm exec dsh pi-signin
 [signin] Signing in to OpenAI Codex (llm-pi-ai/openai-codex). Ctrl-D at a prompt declines; Ctrl-C aborts.
 [signin] Select OpenAI Codex login method:
   1) Browser login (default)

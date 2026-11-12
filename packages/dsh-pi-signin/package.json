@@ -1,7 +1,7 @@
 {
-  "name": "@sleepymug/fleet-signin",
+  "name": "@sleepymug/dsh-pi-signin",
   "version": "0.0.1",
-  "description": "One-shot terminal sign-in to a model provider, as a dsh profile of its own: `dsh plugin --profile fleet-signin add @sleepymug/fleet-signin` once, then `dsh fleet-signin [provider]`; a long-running profile must not select it",
+  "description": "One-shot terminal sign-in to a model provider, as a dsh profile of its own: `dsh plugin --profile pi-signin add @sleepymug/dsh-pi-signin` once, then `dsh pi-signin [provider]`; a long-running profile must not select it",
   "type": "module",
   "exports": {
     "./app": {

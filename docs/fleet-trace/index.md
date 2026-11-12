@@ -121,7 +121,7 @@ told so after the prompt, defines the term.
 - tau's client and its socket adaptor, `createSocketAdaptor` and
   `socketTransport`, and `@sleepymug/dsh-tau-box/runs`, for the tau
   backend and its own `list`.
-- `@sleepymug/fleet-client`, for the boxes left at the end.
+- `@sleepymug/fleet-sdk`, for the boxes left at the end.
 - The checkout's `fleet` and `fleet-notes`, run on this Node.
 - dsh's workspace registry, session controller and agents, for the
   driver, whose types it writes out, so it imports nothing of dsh's.

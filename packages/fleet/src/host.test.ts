@@ -6,7 +6,7 @@ import { createConnection } from 'node:net'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
-import { FleetClient, type BoxState } from '@sleepymug/fleet-client'
+import { Fleet, type BoxState } from '@sleepymug/fleet-sdk'
 import { FLEET_PROTOCOL } from '@sleepymug/fleet-protocol/fleet'
 import { FleetHost } from './host.ts'
 import { LocalBoxes } from './local-boxes.test.util.ts'
@@ -15,14 +15,14 @@ import { Registry } from './registry.ts'
 import { listen } from './server.ts'
 
 /** A host of the test's, on a socket of its own, its boxes local ones (./local-boxes.test.util.ts). */
-async function hosted(t: { after: (fn: () => Promise<void>) => void }, idleStopMs = 60_000): Promise<{ dir: string; socket: string; boxes: LocalBoxes; client: FleetClient; host: FleetHost }> {
+async function hosted(t: { after: (fn: () => Promise<void>) => void }, idleStopMs = 60_000): Promise<{ dir: string; socket: string; boxes: LocalBoxes; client: Fleet; host: FleetHost }> {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-host-'))
   const boxes = new LocalBoxes(join(dir, 'boxes'))
   const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes, idleStopMs })
   await host.load()
   const socket = join(dir, 'fleet.sock')
   const close = await listen(socket, host)
-  const client = await FleetClient.connect({ socket })
+  const client = await Fleet.connect({ socket })
   t.after(async () => {
     await client.close()
     await close()
@@ -142,7 +142,7 @@ test('a client whose connection is reset, as by a process killed with the host\'
 test('a client\'s leases go with its connection, so a box it held stops once idle', async (t) => {
   const { socket, client } = await hosted(t, 100)
   const { id } = await client.create()
-  const other = await FleetClient.connect({ socket })
+  const other = await Fleet.connect({ socket })
   await other.box(id).lease({ kind: 'test', id: 'held' })
   await delay(200)
   assert.equal((await client.box(id).get()).state, 'started')
@@ -163,7 +163,7 @@ test('a host started later knows the boxes made before, and a client takes its s
   }
   let first = await start()
   const logged: string[] = []
-  const client = await FleetClient.connect({ socket, log: (message) => { logged.push(message) } })
+  const client = await Fleet.connect({ socket, log: (message) => { logged.push(message) } })
   t.after(() => client.close())
   await client.register({ name: 'shout', description: 'Shouts.', package: await shoutPackage(dir), serve: connection => connection.end('HI') })
   const { id } = await client.create()
@@ -195,7 +195,7 @@ test('in a Docker box, a service\'s package is copied in, its command runs on th
   const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), image: IMAGE })
   const socket = join(dir, 'fleet.sock')
   const close = await listen(socket, host)
-  const client = await FleetClient.connect({ socket })
+  const client = await Fleet.connect({ socket })
   let id: string | undefined
   t.after(async () => {
     if (id !== undefined) await client.box(id).remove().catch(() => {})

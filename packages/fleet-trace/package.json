@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "@sleepymug/dsh-tau-box": "workspace:*",
-    "@sleepymug/fleet-client": "workspace:*",
+    "@sleepymug/fleet-sdk": "workspace:*",
     "@sleepymug/fleet-protocol": "workspace:*",
     "@sleepymug/tau": "0.1.0"
   }

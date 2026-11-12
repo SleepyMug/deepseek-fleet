@@ -9,7 +9,7 @@
  */
 
 import { parseArgs } from 'node:util'
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 import { buildImage } from '@sleepymug/fleet-box/image/build'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
 import { fleetHome, fleetSocket } from '@sleepymug/fleet-protocol/fleet'
@@ -43,8 +43,8 @@ fleet.sock in its home.
 /** A mistake in the command line, answered with a pointer to the usage. */
 class UsageError extends Error {}
 
-async function client(): Promise<FleetClient> {
-  return await FleetClient.connect()
+async function client(): Promise<Fleet> {
+  return await Fleet.connect()
 }
 
 const commands: Record<string, (args: string[]) => Promise<void>> = {

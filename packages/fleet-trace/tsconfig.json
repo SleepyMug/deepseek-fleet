@@ -5,5 +5,5 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../fleet-protocol" }, { "path": "../dsh-tau-box" }, { "path": "../fleet-client" }]
+  "references": [{ "path": "../fleet-protocol" }, { "path": "../dsh-tau-box" }, { "path": "../fleet-sdk" }]
 }

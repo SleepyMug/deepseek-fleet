@@ -1,5 +1,5 @@
-# fleet-basic's bundle patch: list it after @sleepymug/dsh-tau in a
-# profile's bundles (docs/fleet-basic/index.md). Every session the web UI
+# dsh-tau-basic's bundle patch: list it after @sleepymug/dsh-tau in a
+# profile's bundles (docs/dsh-tau-basic/index.md). Every session the web UI
 # makes gets one basic agent preset, a coding agent as pi has it, with
 # none of dsh's multi-agent tools, so work that would go to subagents goes
 # to taus, with dsh-tau's tau_run. The profile's own patch, which dsh's

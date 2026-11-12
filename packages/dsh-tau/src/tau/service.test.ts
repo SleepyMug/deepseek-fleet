@@ -24,7 +24,7 @@ import { BOX_ENV, TauRuns } from './runs.ts'
 import { FakeFleet } from './fake-fleet.test.util.ts'
 import { tauService } from './box-service.ts'
 import { fleetOf } from './fleet.ts'
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 import { FleetHost, Registry as FleetRegistry, systemPlatform as fleetPlatform } from '@sleepymug/fleet/host'
 import { listen } from '@sleepymug/fleet/server'
 import { TauService, TRACE_FORMAT, type Sessions } from './service.ts'
@@ -890,7 +890,7 @@ async function realFleet(t: { after(fn: () => Promise<void>): void }, work: stri
   const home = join(work, 'fleet')
   const host = new FleetHost({ registry: new FleetRegistry(join(home, 'boxes')), cache: join(home, 'services'), channels: join(home, 'channels'), platform: fleetPlatform(() => {}), image: IMAGE })
   const close = await listen(join(home, 'fleet.sock'), host)
-  const client = await FleetClient.connect({ socket: join(home, 'fleet.sock') })
+  const client = await Fleet.connect({ socket: join(home, 'fleet.sock') })
   await client.register(tauService(box => served().tauRuns.sessionOfBox(box), caller => served().handlerFor(caller)))
   t.after(async () => {
     await client.close()

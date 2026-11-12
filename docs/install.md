@@ -67,11 +67,11 @@ On linux, with Docker and pnpm on the PATH:
    dsh plugin --profile web add @sleepymug/dsh-tau
    ```
 
-   Optionally, fleet's opinionated default, one basic agent preset with no
-   multi-agent tools, so sessions run taus instead (docs/fleet-basic/index.md):
+   Optionally, dsh-tau's opinionated default, one basic agent preset with no
+   multi-agent tools, so sessions run taus instead (docs/dsh-tau-basic/index.md):
 
    ```
-   dsh plugin --profile web add @sleepymug/fleet-basic
+   dsh plugin --profile web add @sleepymug/dsh-tau-basic
    ```
 
    A profile of its own works the same, made from dsh's web template
@@ -89,11 +89,11 @@ On linux, with Docker and pnpm on the PATH:
    ```
 
 7. Signing in to a model provider from a terminal, if wanted, is a profile
-   of its own (docs/fleet-signin/index.md):
+   of its own (docs/dsh-pi-signin/index.md):
 
    ```
-   dsh plugin --profile fleet-signin add @sleepymug/fleet-signin
-   dsh fleet-signin
+   dsh plugin --profile pi-signin add @sleepymug/dsh-pi-signin
+   dsh pi-signin
    ```
 
 Then, with `fleet serve` running, `dsh web` starts dsh with the web UI and
@@ -175,7 +175,7 @@ pins, run as `pnpm exec dsh` in place of `dsh`.
    dsh plugin --profile web add ./packages/dsh-tau
    ```
 
-   Optionally after it, `./packages/fleet-basic` (docs/fleet-basic/index.md).
+   Optionally after it, `./packages/dsh-tau-basic` (docs/dsh-tau-basic/index.md).
    dsh then loads the checkout's latest build each time it starts. A
    linked package loads the dsh packages it declares as peers from the
    installed dsh, and keeps the workspace's, its dev dependencies, for its

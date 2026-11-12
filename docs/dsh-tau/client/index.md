@@ -12,7 +12,7 @@ which sets how many of the taus' model calls stream at once,
 - `@sleepymug/dsh-tau/client`, `lib/client.js`, the bundle dsh's web
   client loads for the package (`dsh.client` in its `package.json`), whose
   plugin puts the page on the Plugins page.
-- `fleet-client` (`@sleepymug/dsh-tau`), the row the bundle is loaded
+- `fleet-sdk` (`@sleepymug/dsh-tau`), the row the bundle is loaded
   for, which does nothing on the host: dsh loads a package's `./client`
   only for a row that names the package itself, and every other row of
   dsh-tau's names one of its modules. Its id is older than the package's

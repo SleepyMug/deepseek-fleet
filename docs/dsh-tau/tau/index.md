@@ -28,7 +28,7 @@ Four dsh plugins, which dsh-tau's `cordis.patch.yml` mounts:
 
 - `fleet-tau-runs` (`@sleepymug/dsh-tau/tau/runs-plugin`): the runs of
   taus and their boxes (`runs.ts`), as `ctx.fleetTauRuns`, and the fleet
-  host's client, as `ctx.fleetClient`. It uses nothing of dsh's. The runs
+  host's client, as `ctx.fleet`. It uses nothing of dsh's. The runs
   put together what a run needs: its admission (`admission.ts`), its box's
   setup by dsh-tau's half in the box (`box-setup.ts`), the registry
   (`registry.ts`), and each session's box (`session-box.ts`), all on the
@@ -86,7 +86,7 @@ Four dsh plugins, which dsh-tau's `cordis.patch.yml` mounts:
   tau lanes page (docs/dsh-tau/client/index.md), reaches the next call
   to take or give back a lane, and mounts nothing again.
 - `fleet-tau` (`@sleepymug/dsh-tau/tau/plugin`): the tau backend
-  (`service.ts`). It builds on `ctx.fleetTauRuns`, `ctx.fleetClient`,
+  (`service.ts`). It builds on `ctx.fleetTauRuns`, `ctx.fleet`,
   dsh's session controller, its workspace registry and its agents. It
   registers the tau service with the fleet host (`box-service.ts`, below),
   then serves the backend's requests (`wire.ts`) with tau's `listenSocket`
@@ -421,7 +421,7 @@ their boxes:
   unless something leases it, such as a user's terminal, and then as soon
   as nothing does. `boxFor` leases for no longer than it asks, so a box it
   starts for no one stops once it is idle. Every lease is held on
-  `ctx.fleetClient`'s connection, so one dsh no longer holds, as when it
+  `ctx.fleet`'s connection, so one dsh no longer holds, as when it
   exits, is released, and the host stops each box once it is idle.
 - **One `SessionBox` per session** (`session-box.ts`) keeps all that is
   the box's on dsh-tau's side: the box's id, which a box set up again
@@ -637,8 +637,8 @@ their boxes:
 
 ## Built on
 
-- The fleet host (docs/fleet/index.md), through `@sleepymug/fleet-client`
-  (docs/fleet-client/index.md): `box.create`, `box.lease` and
+- The fleet host (docs/fleet/index.md), through `@sleepymug/fleet-sdk`
+  (docs/fleet-sdk/index.md): `box.create`, `box.lease` and
   `box.release`, `box.watch`, `box.request`, `box.pipe`, `box.copyIn`,
   `box.stop`, `box.stopWhenVacant`, `box.remove`, `service.register` and
   `service.list`; and `@sleepymug/fleet-protocol`'s codes and layout.

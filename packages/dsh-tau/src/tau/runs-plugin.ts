@@ -14,7 +14,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 import { tauPaths } from '../paths.ts'
 import { systemPlatform } from '../platform.ts'
 import type {} from '../services.ts'
@@ -44,7 +44,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   if (image !== undefined && (typeof image !== 'string' || image === '')) throw new Error(`${name}: image, if given, is an image's name`)
   if (fleetSocket !== undefined && (typeof fleetSocket !== 'string' || fleetSocket === '')) throw new Error(`${name}: fleetSocket, if given, is a path`)
   const platform = systemPlatform()
-  const client = await FleetClient.connect({ ...fleetSocket === undefined ? {} : { socket: fleetSocket }, log: platform.log })
+  const client = await Fleet.connect({ ...fleetSocket === undefined ? {} : { socket: fleetSocket }, log: platform.log })
   ctx.effect(() => () => client.close(), 'fleet client')
   const runs = new TauRuns({
     registry: new Registry(paths.runs),
@@ -55,6 +55,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
   await runs.load()
   ctx.provide('fleetTauRuns', runs)
-  ctx.provide('fleetClient', client)
+  ctx.provide('fleet', client)
   ctx.effect(() => () => { runs.close() }, 'fleet-tau boxes')
 }

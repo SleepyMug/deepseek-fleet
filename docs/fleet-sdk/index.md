@@ -1,6 +1,6 @@
-# fleet-client
+# fleet-sdk
 
-The fleet host's client, `@sleepymug/fleet-client`: what a harness uses of
+The fleet host's SDK, `@sleepymug/fleet-sdk`: what a harness uses of
 the host's boxes, their files, processes and terminals, and their lives;
 and what a service's gateway registers itself with (docs/fleet/index.md). It
 speaks the host's wire on its socket (docs/fleet-protocol/index.md), one
@@ -12,9 +12,9 @@ it (docs/dsh-tau/tau/index.md); fleet-notes registers with it
 ## Provides
 
 ```ts
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 
-const fleet = await FleetClient.connect()                  // $FLEET_SOCKET, or fleet.sock in the fleet home
+const fleet = await Fleet.connect()                  // $FLEET_SOCKET, or fleet.sock in the fleet home
 const { id } = await fleet.create({ labels: { who: 'me' } })
 const box = fleet.box(id)
 const release = await box.lease({ kind: 'turn', id: 'agent-1' })   // started, and occupied
@@ -24,11 +24,11 @@ await release()
 await fleet.close()                                        // what the client held, the host lets go
 ```
 
-`FleetClient`:
+`Fleet`:
 
 | Member | What it does |
 |---|---|
-| `FleetClient.connect({ socket?, log? })` | Connect to the host, which must answer now: the socket `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, unless `socket` names another; `log` is told what goes wrong outside a request, such as a connection lost. |
+| `Fleet.connect({ socket?, log? })` | Connect to the host, which must answer now: the socket `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, unless `socket` names another; `log` is told what goes wrong outside a request, such as a connection lost. |
 | `request(op, params, { onEvent?, signal? })` | Ask any op of the wire, and give its result; `onEvent` is told each event first; aborting `signal` cancels it. |
 | `create(spec)`, `list(labels?)` | `box.create` and `box.list`. |
 | `box(id)` | A `FleetBox`, to ask of. |
@@ -92,9 +92,9 @@ such as an `FsError`'s; `FleetUnreachable`, for no host on the socket;
 ## How it runs
 
 ```ts
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 
-const fleet = await FleetClient.connect({ log: message => console.error(message) })
+const fleet = await Fleet.connect({ log: message => console.error(message) })
 await fleet.register({
   name: 'echo',
   description: 'Says back what it is sent.',

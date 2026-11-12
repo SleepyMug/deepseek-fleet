@@ -12,7 +12,7 @@ Two packages:
 
 | Package | | |
 |---|---|---|
-| `@sleepymug/fleet-notes` | `services/notes` | The gateway: the command `fleet-notes [--dir <dir>]`, which registers the service `notes` with the fleet host, at `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, and serves it until interrupted, each box's notebook in `<dir>`, by default `notes/` in the fleet home, as `<box>.json`; and `@sleepymug/fleet-notes/service`, `notesService(notebooks)`, the service as fleet-client's `register` takes it. |
+| `@sleepymug/fleet-notes` | `services/notes` | The gateway: the command `fleet-notes [--dir <dir>]`, which registers the service `notes` with the fleet host, at `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, and serves it until interrupted, each box's notebook in `<dir>`, by default `notes/` in the fleet home, as `<box>.json`; and `@sleepymug/fleet-notes/service`, `notesService(notebooks)`, the service as fleet-sdk's `register` takes it. |
 | `@sleepymug/fleet-notes-box` | `services/notes/box` | What the host puts in each box: the command `notes`; and `@sleepymug/fleet-notes-box/wire`, the wire's types, which both import. |
 
 ```
@@ -43,7 +43,7 @@ usage.
 
 ## Built on
 
-- `@sleepymug/fleet-client`'s `register`, for the service.
+- `@sleepymug/fleet-sdk`'s `register`, for the service.
 - Node alone, for `notes`, which imports nothing but its own files.
 
 ## How it runs

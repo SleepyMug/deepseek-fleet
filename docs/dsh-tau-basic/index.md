@@ -1,6 +1,6 @@
-# fleet-basic
+# dsh-tau-basic
 
-fleet's opinionated default for a profile's own sessions, the ones the
+dsh-tau's opinionated default for a profile's own sessions, the ones the
 web UI makes: one agent preset, `basic`, a coding agent as simple as pi's,
 and dsh's other presets off. Its sessions have no subagents, teams, todo,
 plan mode, goals or background jobs, so work they would hand to other
@@ -13,10 +13,10 @@ agents goes to taus, with dsh-tau's `tau_run`
 After dsh-tau, in the same profile:
 
 ```
-dsh plugin --profile web add @sleepymug/fleet-basic
+dsh plugin --profile web add @sleepymug/dsh-tau-basic
 ```
 
-or, from a checkout, `./packages/fleet-basic`.
+or, from a checkout, `./packages/dsh-tau-basic`.
 
 ## What it sets
 

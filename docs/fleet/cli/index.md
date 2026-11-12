@@ -55,8 +55,8 @@ piped input, it prints no prompt, so a script gets results alone on stdout.
 
 ## Built on
 
-- `FleetHost` and its socket, for `serve`; `@sleepymug/fleet-client`, for
-  the others (docs/fleet-client/index.md).
+- `FleetHost` and its socket, for `serve`; `@sleepymug/fleet-sdk`, for
+  the others (docs/fleet-sdk/index.md).
 - `@sleepymug/fleet-box/image/build`, for `image build`
   (docs/fleet-box/image/index.md).
 - `node:util`'s `parseArgs`, for the command line, and `node:readline`, for

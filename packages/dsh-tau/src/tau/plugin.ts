@@ -30,7 +30,7 @@ import { HOST } from './registry.ts'
 import { TauService } from './service.ts'
 
 export const name = 'fleet-tau'
-export const inject = ['fleetTauRuns', 'fleetClient', 'sessionController', 'workspaceRegistry', 'agents']
+export const inject = ['fleetTauRuns', 'fleet', 'sessionController', 'workspaceRegistry', 'agents']
 
 /** The agent preset a tau's session has, which dsh-tau's cordis.patch.yml declares. */
 export const PRESET = 'tau'
@@ -46,7 +46,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const runs = ctx.fleetTauRuns
   const service = new TauService({ runs, sessions: dshSessions(ctx, { preset: PRESET, log: platform.log }), platform })
   // The tau service first, whose package every run's box sets itself up with.
-  const registration = await ctx.fleetClient.register(tauService(box => runs.sessionOfBox(box), caller => service.handlerFor(caller)))
+  const registration = await ctx.fleet.register(tauService(box => runs.sessionOfBox(box), caller => service.handlerFor(caller)))
   ctx.effect(() => () => registration.unregister(), 'fleet-tau service')
   // Then the socket: a backend that does not get it, as when another serves this dsh home, watches no runs.
   const closeSocket = await listenSocket(paths.socket, service.handlerFor(HOST))

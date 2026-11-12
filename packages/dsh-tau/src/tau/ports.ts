@@ -22,7 +22,7 @@ export interface FleetPort {
   services(): Promise<ServiceInfo[]>
 }
 
-/** A box of the fleet host's, as fleet-client's `FleetBox` is. */
+/** A box of the fleet host's, as fleet-sdk's `FleetBox` is. */
 export interface FleetBoxPort {
   readonly id: string
   request<M extends Method>(method: M, params: Methods[M]['params'], options?: { onEvent?: (event: EventOf<M>) => void; hold?: boolean }): Promise<Methods[M]['result']>

@@ -8,7 +8,7 @@
 
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { FleetClient, fleetHome } from '@sleepymug/fleet-client'
+import { Fleet, fleetHome } from '@sleepymug/fleet-sdk'
 import { Notebooks } from './notes.ts'
 import { notesService } from './service.ts'
 
@@ -28,7 +28,7 @@ try {
     process.exitCode = 2
   } else {
     const log = (message: string): void => { process.stderr.write(`fleet-notes: ${message}\n`) }
-    const client = await FleetClient.connect({ log })
+    const client = await Fleet.connect({ log })
     await client.register(notesService(new Notebooks(values.dir ?? join(fleetHome(), 'notes'))))
     log('registered the notes service')
     await new Promise<void>((resolve) => {

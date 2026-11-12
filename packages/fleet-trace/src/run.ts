@@ -26,7 +26,7 @@ import { promisify } from 'node:util'
 import { createClient } from '@sleepymug/tau'
 import { createSocketAdaptor, socketTransport } from '@sleepymug/tau/adaptors'
 import { socketPath, type Answers, type Request as ServiceRequest } from '@sleepymug/dsh-tau-box/runs'
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 import type { Request, Settled } from './driver.ts'
 import { ScriptedModel, type Script, type Step } from './model.ts'
 import { render } from './render.ts'
@@ -214,7 +214,7 @@ function startNode(argv: string[], fleetHome: string, fleetSock: string): ChildP
 
 /** Remove every box of the scratch fleet host, whatever a run left. */
 async function removeBoxes(fleetSock: string): Promise<void> {
-  const client = await FleetClient.connect({ socket: fleetSock })
+  const client = await Fleet.connect({ socket: fleetSock })
   try {
     for (const box of await client.list()) await client.box(box.id).remove().catch(() => {})
   } finally {

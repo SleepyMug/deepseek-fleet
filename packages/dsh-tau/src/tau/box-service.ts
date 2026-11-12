@@ -10,7 +10,7 @@
 
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
-import type { ServiceDefinition } from '@sleepymug/fleet-client'
+import type { ServiceDefinition } from '@sleepymug/fleet-sdk'
 import { SERVICE } from '@sleepymug/dsh-tau-box/layout'
 import { socketOf } from '@sleepymug/fleet-protocol/layout'
 import { type RequestHandler, serveConnection } from '@sleepymug/tau/adaptors'

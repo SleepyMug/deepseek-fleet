@@ -11,8 +11,8 @@ Services of the fleet host (docs/fleet/index.md). A service is two halves:
   through the service's socket in the box: commands, a module programs
   import, or both, as the service has it, and says in its description.
 
-A service plugs in by registering, through fleet-client
-(docs/fleet-client/index.md), from any process of the host's owner, for as
+A service plugs in by registering, through fleet-sdk
+(docs/fleet-sdk/index.md), from any process of the host's owner, for as
 long as its connection lasts. The host knows nothing of what a service
 does: it stages its package, puts it in the boxes, and relays the bytes.
 dsh-tau's `tau` service, whose `tau` command runs taus as the box's run's,
@@ -43,12 +43,12 @@ and commands, and in what its package holds, such as docs of its own:
 - What the service's spec adds to the environment, every process the
   helper starts from then on has.
 
-A service registers with fleet-client's `register`:
+A service registers with fleet-sdk's `register`:
 
 ```ts
-import { FleetClient } from '@sleepymug/fleet-client'
+import { Fleet } from '@sleepymug/fleet-sdk'
 
-const fleet = await FleetClient.connect()                    // $FLEET_SOCKET, or ~/.fleet/fleet.sock
+const fleet = await Fleet.connect()                    // $FLEET_SOCKET, or ~/.fleet/fleet.sock
 const registration = await fleet.register({
   name: 'notes',                                             // its socket's name in a box
   description: 'A notebook of short notes, …',               // what it is, for whoever lists the services
@@ -95,7 +95,7 @@ await registration.unregister()                              // or the connectio
   `Preamble`, `{ "box", "labels" }`, the box it comes from, as the host knows
   it, from which box's channel it came in on, never as the box says, with the
   labels its creator gave it; then it passes the bytes both ways, each end a
-  half-close, a cut connection cut on both sides. fleet-client reads that
+  half-close, a cut connection cut on both sides. fleet-sdk reads that
   line, and gives `serve` the rest of the connection, which flows once
   `serve` reads it. The bytes are the service's own protocol: one line of
   JSON each way, as fleet-notes has it, or tau's socket wire, as the tau
@@ -113,7 +113,7 @@ await registration.unregister()                              // or the connectio
   modules, is node programs, self-contained or with what they import as
   their dependencies, each finding its socket in `$FLEET_SERVICES`; a
   description, one sentence saying what it is and how a program uses it; and a process on the host
-  that registers it with fleet-client, as `services/notes` does, with
+  that registers it with fleet-sdk, as `services/notes` does, with
   `fleet-notes` and its box package, `services/notes/box`.
 
 ## Built on
@@ -123,5 +123,5 @@ await registration.unregister()                              // or the connectio
   of the services' sockets' connections over the box's channel
   (docs/fleet-box/helper/index.md, docs/fleet/index.md).
 - `Box.copyIn` (docs/fleet/box/index.md), for the packages.
-- fleet-client's `register` and endpoints, for a gateway
-  (docs/fleet-client/index.md).
+- fleet-sdk's `register` and endpoints, for a gateway
+  (docs/fleet-sdk/index.md).

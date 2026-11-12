@@ -10,7 +10,7 @@
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
 import type { Socket } from 'node:net'
-import type { ServiceDefinition } from '@sleepymug/fleet-client'
+import type { ServiceDefinition } from '@sleepymug/fleet-sdk'
 import { type Answer, type Request, SERVICE } from '@sleepymug/fleet-notes-box/wire'
 import type { Notebooks } from './notes.ts'
 

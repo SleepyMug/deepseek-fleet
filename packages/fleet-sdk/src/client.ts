@@ -5,7 +5,7 @@
  * connection the host loses is made again, after a pause, its services
  * registered again, its leases and its watches taken again; what was asked
  * on it fails, and is the asker's to ask again.
- * @module @sleepymug/fleet-client/client
+ * @module @sleepymug/fleet-sdk/client
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -77,7 +77,7 @@ interface Held {
   released: boolean
 }
 
-export class FleetClient {
+export class Fleet {
   private socket: Socket | undefined
   private readonly pending = new Map<number, Pending>()
   private nextId = 1
@@ -97,8 +97,8 @@ export class FleetClient {
   }
 
   /** Connect to the host, which must answer now. */
-  static async connect(options: ClientOptions = {}): Promise<FleetClient> {
-    const client = new FleetClient(options)
+  static async connect(options: ClientOptions = {}): Promise<Fleet> {
+    const client = new Fleet(options)
     await client.ensure()
     return client
   }
@@ -380,7 +380,7 @@ function specOf({ name, description, package: root, env }: ServiceDefinition, en
 
 /** A box of the host's, as a client asks of it. */
 export class FleetBox {
-  constructor(private readonly client: FleetClient, readonly id: string) {}
+  constructor(private readonly client: Fleet, readonly id: string) {}
 
   get(): Promise<BoxInfo> {
     return this.client.request('box.get', { box: this.id })

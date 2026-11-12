@@ -70,7 +70,7 @@ added.
   runs, a process until it exits, and a terminal until it ends. Each
   request goes to its helper (docs/fleet-box/helper/index.md) through the
   fleet host's `box.request`, made with `hold: false`, since the lease
-  holds the box started (docs/fleet-client/index.md).
+  holds the box started (docs/fleet-sdk/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
   or else to the box of the session it is for, if a tau's. The targets a box

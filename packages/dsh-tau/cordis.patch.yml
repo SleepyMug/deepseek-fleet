@@ -18,7 +18,7 @@
 # ═══ The runs of taus with their boxes ═══
 
 # `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, which the
-# fleet host keeps, in the registry $DSH_HOME/tau/runs/; and `ctx.fleetClient`,
+# fleet host keeps, in the registry $DSH_HOME/tau/runs/; and `ctx.fleet`,
 # the fleet host's client, on its socket, $FLEET_SOCKET or fleet.sock in the
 # fleet home, unless `fleetSocket` names another. It needs nothing of dsh's,
 # so the world below builds on it, and dsh's session controller on the world.
@@ -119,7 +119,7 @@
 # for a row that names the package itself: the tau model page, on the
 # Plugins page's fleet-tau-model row (src/client/).
 - insert:
-    - id: fleet-client
+    - id: fleet-sdk
       name: '@sleepymug/dsh-tau'
 
 # ── The agent preset of a tau's session ──

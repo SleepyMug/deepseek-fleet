@@ -7,8 +7,8 @@ and stops each once nothing has used it for a while; and that takes
 services, each a gateway on the host that plugs in, whose means of calling
 it, a node package of commands, it puts in the boxes
 (docs/fleet/services/index.md). Its clients, a harness such as dsh's
-dsh-tau, or a service, reach it on its socket, through fleet-client
-(docs/fleet-client/index.md), and ask a box's files, processes and terminals
+dsh-tau, or a service, reach it on its socket, through fleet-sdk
+(docs/fleet-sdk/index.md), and ask a box's files, processes and terminals
 of its helper through it. It knows nothing of tau or dsh: a box is its id,
 its labels, and what is in it.
 

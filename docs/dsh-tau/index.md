@@ -27,7 +27,7 @@ dsh or of tau.
   backend's `RunLifecycle` and the world's `TauBoxes` (`tau/ports.ts`); the
   backend reaches dsh's sessions through its `Sessions`; and the runs
   reach the fleet host through its `FleetPort`, its boxes as
-  fleet-client's `FleetBox` is (`tau/fleet.ts` gives one of the client's).
+  fleet-sdk's `FleetBox` is (`tau/fleet.ts` gives one of the client's).
   A test gives a fake of it, such as `tau/fake-fleet.test.util.ts`, whose
   boxes are folders, or a fleet host in the test's own process, its boxes
   Docker's.
@@ -47,14 +47,14 @@ dsh or of tau.
   the browser and reach dsh, and nothing of dsh-tau's host half, through
   the web client's services.
 - **The fleet host is reached through its client.** `fleet-tau-runs`
-  connects one client, `ctx.fleetClient`, on the host's socket, which
+  connects one client, `ctx.fleet`, on the host's socket, which
   every lease of a run's box, and the tau service, are held on; the
   client makes its connection again when the host loses it, and takes them
-  back (docs/fleet-client/index.md).
+  back (docs/fleet-sdk/index.md).
 - **The plugins put the parts together.** Each dsh plugin checks its
   config, builds its parts on the services it injects, and provides them;
   `services.ts` declares every service dsh-tau provides on dsh's context,
-  `ctx.fleetClient`, `ctx.fleetTauRuns`, `ctx.fleetTauModel` and
+  `ctx.fleet`, `ctx.fleetTauRuns`, `ctx.fleetTauModel` and
   `ctx.fleetTau`, which a plugin that uses one declares with
   `import type {} from '@sleepymug/dsh-tau/services'`. Their names, and
   the rows' ids, `fleet-tau-runs`, `fleet-tau`, `fleet-fs` and the others,
@@ -85,7 +85,7 @@ Beside each part's own modules:
 ## Built on
 
 - The fleet host, `fleet serve`, which must be running (docs/fleet/index.md),
-  through `@sleepymug/fleet-client` and the wire's types,
+  through `@sleepymug/fleet-sdk` and the wire's types,
   `@sleepymug/fleet-protocol`.
 - dsh-tau-box (docs/dsh-tau-box/index.md), for what goes in the boxes.
 - `@sleepymug/tau`, for the backend SDK, the socket adaptor's transports,

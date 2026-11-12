@@ -1,7 +1,7 @@
 {
-  "name": "@sleepymug/fleet-client",
+  "name": "@sleepymug/fleet-sdk",
   "version": "0.0.1",
-  "description": "The fleet host's client: boxes, their files, processes and terminals, for a harness; and the registration of a service, for its gateway",
+  "description": "The fleet host's SDK: boxes, their files, processes and terminals, for a harness; and the registration of a service, for its gateway",
   "type": "module",
   "exports": {
     ".": {

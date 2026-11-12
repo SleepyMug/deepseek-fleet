@@ -188,17 +188,35 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  packages/dsh-pi-signin:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: 4.0.5
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+      '@deepseek-ai/dsh-authorization':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-credentials@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))
+      '@deepseek-ai/dsh-cmdline':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis-plugin-loader@1.0.6)(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-credentials':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/schemastery':
+        specifier: 3.18.5
+        version: 3.18.5
+
   packages/dsh-tau:
     dependencies:
       '@sleepymug/dsh-tau-box':
         specifier: workspace:*
         version: link:../dsh-tau-box
-      '@sleepymug/fleet-client':
-        specifier: workspace:*
-        version: link:../fleet-client
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
+      '@sleepymug/fleet-sdk':
+        specifier: workspace:*
+        version: link:../fleet-sdk
       '@sleepymug/tau':
         specifier: 0.1.0
         version: link:../../tau
@@ -312,6 +330,8 @@ importers:
         specifier: 0.28.2
         version: 0.28.2
 
+  packages/dsh-tau-basic: {}
+
   packages/dsh-tau-box:
     dependencies:
       '@sleepymug/fleet-protocol':
@@ -326,14 +346,12 @@ importers:
       '@sleepymug/fleet-box':
         specifier: workspace:*
         version: link:../fleet-box
-      '@sleepymug/fleet-client':
-        specifier: workspace:*
-        version: link:../fleet-client
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
-
-  packages/fleet-basic: {}
+      '@sleepymug/fleet-sdk':
+        specifier: workspace:*
+        version: link:../fleet-sdk
 
   packages/fleet-box:
     dependencies:
@@ -353,55 +371,37 @@ importers:
         specifier: 1.2.0-beta.15
         version: 1.2.0-beta.15
 
-  packages/fleet-client:
+  packages/fleet-protocol: {}
+
+  packages/fleet-sdk:
     dependencies:
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
-
-  packages/fleet-protocol: {}
-
-  packages/fleet-signin:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: 4.0.5
-        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@deepseek-ai/dsh-authorization':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-credentials@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))
-      '@deepseek-ai/dsh-cmdline':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4(@deepseek-ai/cordis-plugin-loader@1.0.6)(@deepseek-ai/cordis@4.0.5)
-      '@deepseek-ai/dsh-credentials':
-        specifier: 0.2.1-rc.4
-        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
-      '@deepseek-ai/schemastery':
-        specifier: 3.18.5
-        version: 3.18.5
 
   packages/fleet-trace:
     dependencies:
       '@sleepymug/dsh-tau-box':
         specifier: workspace:*
         version: link:../dsh-tau-box
-      '@sleepymug/fleet-client':
-        specifier: workspace:*
-        version: link:../fleet-client
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
+      '@sleepymug/fleet-sdk':
+        specifier: workspace:*
+        version: link:../fleet-sdk
       '@sleepymug/tau':
         specifier: 0.1.0
         version: link:../../tau
 
   services/notes:
     dependencies:
-      '@sleepymug/fleet-client':
-        specifier: workspace:*
-        version: link:../../packages/fleet-client
       '@sleepymug/fleet-notes-box':
         specifier: workspace:*
         version: link:box
+      '@sleepymug/fleet-sdk':
+        specifier: workspace:*
+        version: link:../../packages/fleet-sdk
 
   services/notes/box: {}
 
