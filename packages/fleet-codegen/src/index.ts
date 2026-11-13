@@ -12,17 +12,17 @@ import { CLIENT_RUNTIME } from './generate.ts'
 
 export { CLIENT_RUNTIME, generateClient, SchemaError, type ClientPlace, type ClientSpec, type GeneratedClient } from './generate.ts'
 
-/** What a client imports, which the box needs beside it, with what it depends on: fleet-box-client, at the version its code is made for. */
+/** What a client imports, which the box needs beside it, with what it depends on: fleet-service-client, at the version its code is made for. */
 export const RUNTIME = [CLIENT_RUNTIME] as const
 
 const PACKAGE_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
-/** Who makes the clients, so that a client made by another is another: this package's version, and fleet-box-client's. */
+/** Who makes the clients, so that a client made by another is another: this package's version, and fleet-service-client's. */
 export const GENERATOR = (() => {
   const require = createRequire(import.meta.url)
   const own = require('../package.json') as { version: string }
   const runtime = require(`${CLIENT_RUNTIME}/package.json`) as { version: string }
-  return `fleet-codegen ${own.version}, fleet-box-client ${runtime.version}`
+  return `fleet-codegen ${own.version}, fleet-service-client ${runtime.version}`
 })()
 
 /** Where the runtime's packages are installed beside this one, for the gateway to stage. */

@@ -1,5 +1,5 @@
 {
-  "name": "@sleepymug/fleet-box-client",
+  "name": "@sleepymug/fleet-service-client",
   "version": "0.0.1",
   "description": "What a service's client in a box runs on: plain objects, as its declarations have them, to and from the service's protobuf messages, and calls through the box's services socket",
   "type": "module",

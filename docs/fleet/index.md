@@ -40,7 +40,7 @@ a call that answers once. What is where is fleet-protocol's wire
 
 | On | Path | What it is |
 |---|---|---|
-| clients' | `/fleet.v1.Boxes/*`, `/fleet.v1.Services/*` | The gateway's own API (below). |
+| clients' | `/fleet.gateway.v1.Boxes/*`, `/fleet.gateway.v1.Services/*` | The gateway's own API (below). |
 | clients' | `/boxes/<id>/fleet.box.v1.Box/*` | A box's API, carried to its helper, the box held while the call lasts and started if it is not, or, with `fleet-hold: false`, of a started box alone. |
 | clients' | `/services/<name>/<package>.<Service>/*` | A service, carried to its server, told the call is a client's. |
 | clients' | `/fleet/tunnel`, a WebSocket | A service's server's tunnel, naming the service and its spec. |
@@ -50,11 +50,11 @@ a call that answers once. What is where is fleet-protocol's wire
 A call is carried as it came, its headers, body and trailers, both ways as
 they come, never decoded; a caller's `fleet-` headers are dropped, so what
 fleet's headers say, the gateway alone says. A call refused is refused as
-its protocol has it, with a `fleet.v1.Failure` detail giving the reason:
+its protocol has it, with a `fleet.gateway.v1.Failure` detail giving the reason:
 `NO_BOX`, `BOX_GONE`, `NOT_STARTED`, `NO_SERVICE`, `UNKNOWN_SPEC`,
 `NO_PACKAGE` or `NAME_TAKEN`.
 
-The gateway's API, `fleet.v1` (packages/fleet-protocol/proto/fleet/v1):
+The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gateway/v1):
 
 | Method | What it does |
 |---|---|
@@ -94,7 +94,7 @@ The gateway's API, `fleet.v1` (packages/fleet-protocol/proto/fleet/v1):
   then, with its spec. Its tree (`boxes/contents.ts`) is made from them, so
   it is fixed too, and named by the digest of what it is made from: each
   client in `node_modules/@fleet/<name>`, with what the clients import,
-  fleet-box-client, staged from the gateway's own install, so
+  fleet-service-client, staged from the gateway's own install, so
   the clients and what they import never drift apart and no image holds
   them; each service's own package in `services/<name>`, its commands linked
   in `bin`, made executable; and the box's README, `README.md`. The helper

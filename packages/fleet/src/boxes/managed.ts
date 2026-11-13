@@ -10,7 +10,7 @@
 
 import { setTimeout as delay } from 'node:timers/promises'
 import { create } from '@bufbuild/protobuf'
-import { BoxState } from '@sleepymug/fleet-protocol/fleet'
+import { BoxState } from '@sleepymug/fleet-protocol/gateway'
 import { InstallRequestSchema } from '@sleepymug/fleet-protocol/box'
 import { boxGone, noBox, notStarted } from '../failure.ts'
 import type { Platform } from '../platform.ts'

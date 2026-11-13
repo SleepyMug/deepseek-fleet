@@ -11,7 +11,7 @@ import { create } from '@bufbuild/protobuf'
 import { Code, ConnectError, createClient, type ConnectRouter } from '@connectrpc/connect'
 import { connectNodeAdapter, createConnectTransport, createGrpcTransport } from '@connectrpc/connect-node'
 import { Box, WriteFileRequestSchema } from '@sleepymug/fleet-protocol/box'
-import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/fleet'
+import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/gateway'
 import { AUTHORITY, connectTransport, dial, forward, listen, openTunnel, refuse, TunnelRefused, webSocketStream, type AcceptedTunnel, type TunnelVia } from './index.ts'
 
 /** A server of the test's: which answers with what it is asked and who said so, reads a file of n bytes, writes one, and waits on a stream until cancelled. */

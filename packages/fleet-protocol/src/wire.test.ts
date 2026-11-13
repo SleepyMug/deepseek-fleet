@@ -5,7 +5,7 @@ import { boxPath, decodeCaller, encodeCaller, routeOf, servicePath } from './wir
 test('a call\'s path says where it goes, a service or box not named rightly nowhere', () => {
   assert.deepEqual(routeOf(`${servicePath('notes')}/notes.v1.Notes/Add`), { kind: 'service', name: 'notes', path: '/notes.v1.Notes/Add' })
   assert.deepEqual(routeOf(`${boxPath('box-0123456789abcdef')}/fleet.box.v1.Box/Exec`), { kind: 'box', box: 'box-0123456789abcdef', path: '/fleet.box.v1.Box/Exec' })
-  assert.deepEqual(routeOf('/fleet.v1.Boxes/List'), { kind: 'gateway', path: '/fleet.v1.Boxes/List' })
+  assert.deepEqual(routeOf('/fleet.gateway.v1.Boxes/List'), { kind: 'gateway', path: '/fleet.gateway.v1.Boxes/List' })
   assert.equal(routeOf('/services/Notes/x.Y/Z'), undefined)
   assert.equal(routeOf('/boxes/box-1/fleet.box.v1.Box/Exec'), undefined)
   assert.equal(routeOf('/elsewhere'), undefined)

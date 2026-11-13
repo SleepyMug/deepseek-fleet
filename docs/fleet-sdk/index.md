@@ -29,7 +29,7 @@ await fleet.close()                                      // what the client held
 | Member | What it does |
 |---|---|
 | `Fleet.connect({ socket?, log? })` | Connect to the gateway, which must answer now, else `FleetUnreachable`; `log` is told what goes wrong outside a call, as a tunnel lost. |
-| `boxes`, `services` | The gateway's own API, `fleet.v1.Boxes` and `Services`, as Connect clients. |
+| `boxes`, `services` | The gateway's own API, `fleet.gateway.v1.Boxes` and `Services`, as Connect clients. |
 | `create(spec)`, `list(labels?)`, `serviceList()` | `Boxes.Create`, `Boxes.List` and `Services.List`. |
 | `box(id)` | A `FleetBox`, to ask of. |
 | `client(name, Service)` | A service's client, which calls it through the gateway as a client. |
@@ -50,7 +50,7 @@ await fleet.close()                                      // what the client held
 | `put(archive, to)`, `putPath(from, to)` | A tar archive, or a folder's contents or a file on this machine, into a folder of the box. |
 | `get(from)`, `getPath(from, to)`, `getFile(from, to)` | A folder of the box, or a file, as a tar archive, or into a folder or a file here. |
 
-A server reads who calls with `callerOf(ctx)`, a `fleet.v1.Caller`, or
+A server reads who calls with `callerOf(ctx)`, a `fleet.gateway.v1.Caller`, or
 `boxOf(ctx)`, the box's `{ id, labels }`, a call from elsewhere refused.
 The gateway's failures are `ConnectError`s, whose reason `reasonOf(error)`
 gives, a `Reason`: `NO_BOX`, `BOX_GONE`, `NOT_STARTED`, `NO_SERVICE`,

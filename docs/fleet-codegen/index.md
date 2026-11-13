@@ -16,18 +16,18 @@ part of the box's README. Nothing here reads or writes a file.
     for `notes.v1.Notes`, or with its package's name where two share one,
     its methods spelled out with their comments; then the type of each
     message and enum the methods reach, and no other, each with its
-    comments, in the forms fleet-box-client converts
-    (docs/fleet-box-client/index.md);
-  - `index.js`: the clients, made with fleet-box-client from the schema,
+    comments, in the forms fleet-service-client converts
+    (docs/fleet-service-client/index.md);
+  - `index.js`: the clients, made with fleet-service-client from the schema,
     embedded without its comments, each calling `place.path` through
     `place.socket`, or `$FLEET_SERVICES_SOCKET`;
   - `package.json`, and `README.md`, the section.
   A schema that is not whole, or lacks a service it names, is a
   `SchemaError`.
-- `RUNTIME`, what the clients import, `@sleepymug/fleet-box-client`, and
+- `RUNTIME`, what the clients import, `@sleepymug/fleet-service-client`, and
   `runtimeRoots()`, where it is installed beside this package, which the
   gateway stages into each box with what it depends on.
-- `GENERATOR`, this package's version and fleet-box-client's, of which a
+- `GENERATOR`, this package's version and fleet-service-client's, of which a
   client's digest is made, so that a client made by another is another.
 
 What `index.d.ts` says, for a service with a oneof and an enum:
@@ -88,5 +88,5 @@ export type Priority = 'PRIORITY_UNSPECIFIED' | 'PRIORITY_LOW' | 'PRIORITY_HIGH'
 
 - `@bufbuild/protobuf`, for the schema, and `@bufbuild/protoplugin`'s
   `getComments`.
-- fleet-box-client, whose conversions the declarations describe.
+- fleet-service-client, whose conversions the declarations describe.
 - fleet-pack's `locate`, for the runtime.

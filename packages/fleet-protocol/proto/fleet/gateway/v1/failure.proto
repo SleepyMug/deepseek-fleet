@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package fleet.v1;
+package fleet.gateway.v1;
 
 // Why the gateway refused a call, as a detail of its error, beside the
 // error's code.

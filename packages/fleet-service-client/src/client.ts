@@ -2,7 +2,7 @@
  * A service's client in a box: each of a protobuf service's methods, taking
  * and giving plain objects (./plain.ts), calling the service through the
  * box's services socket, in Connect's protocol and protobuf's binary form.
- * @module @sleepymug/fleet-box-client/client
+ * @module @sleepymug/fleet-service-client/client
  */
 
 import { connect } from 'node:net'

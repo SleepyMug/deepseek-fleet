@@ -3,7 +3,7 @@
  * nothing, so that whoever writes a program reads what each method takes
  * and gives there, and nowhere else. Each client is a constant of its
  * methods; each message the methods reach is a plain object's type, each
- * enum a union of its values' names, as fleet-box-client converts them
+ * enum a union of its values' names, as fleet-service-client converts them
  * (its plain.ts); and each carries its comment from the schema.
  * @module @sleepymug/fleet-codegen/declarations
  */
@@ -11,7 +11,7 @@
 import type { DescEnum, DescField, DescMessage, DescMethod, DescOneof, DescService } from '@bufbuild/protobuf'
 import { ScalarType } from '@bufbuild/protobuf'
 import { getComments } from '@bufbuild/protoplugin'
-import { wellKnown } from '@sleepymug/fleet-box-client'
+import { wellKnown } from '@sleepymug/fleet-service-client'
 
 /** What the declarations say of the client as a whole. */
 export interface Heading {

@@ -11,7 +11,7 @@
 
 import type { DescService, MessageInitShape } from '@bufbuild/protobuf'
 import { createClient, type Client } from '@connectrpc/connect'
-import { type Box, Boxes, type CreateBoxRequestSchema, type Service, Services } from '@sleepymug/fleet-protocol/fleet'
+import { type Box, Boxes, type CreateBoxRequestSchema, type Service, Services } from '@sleepymug/fleet-protocol/gateway'
 import { fleetSocket } from '@sleepymug/fleet-protocol/home'
 import { servicePath } from '@sleepymug/fleet-protocol/wire'
 import { connectTransport, dial, type Dialed } from '@sleepymug/fleet-net'

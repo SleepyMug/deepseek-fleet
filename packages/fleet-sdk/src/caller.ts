@@ -7,7 +7,7 @@
  */
 
 import { Code, ConnectError, type HandlerContext } from '@connectrpc/connect'
-import type { Caller } from '@sleepymug/fleet-protocol/fleet'
+import type { Caller } from '@sleepymug/fleet-protocol/gateway'
 import { decodeCaller, HEADERS } from '@sleepymug/fleet-protocol/wire'
 
 /** Who makes the call `ctx` is of. */

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package fleet.v1;
+package fleet.gateway.v1;
 
 // Who a call the gateway carries to a service comes from, as the gateway
 // knows it, never as the caller says: in the `fleet-caller-bin` header of

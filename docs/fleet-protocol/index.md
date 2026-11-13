@@ -9,10 +9,10 @@ are in `proto/`, its code generated from them in `src/gen/`, by `pnpm gen`
 
 ## Provides
 
-- `@sleepymug/fleet-protocol/fleet`: fleet.v1 (`proto/fleet/v1`), the
-  gateway's API: `Boxes`, `Services`, and their messages; `Caller`, who
-  calls a service, as the gateway tells its server; and `Failure`, with
-  its `Reason`, why the gateway refused a call.
+- `@sleepymug/fleet-protocol/gateway`: fleet.gateway.v1
+  (`proto/fleet/gateway/v1`), the gateway's API: `Boxes`, `Services`, and
+  their messages; `Caller`, who calls a service, as the gateway tells its
+  server; and `Failure`, with its `Reason`, why the gateway refused a call.
 - `@sleepymug/fleet-protocol/box`: fleet.box.v1 (`proto/fleet/box/v1`), a
   box's API, which its helper serves: `Box`, its processes, terminals,
   files and trees; and `Provision`, which the gateway alone asks.

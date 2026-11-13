@@ -10,7 +10,7 @@
  */
 
 import { posix } from 'node:path'
-import { BOX_GONE, NO_BOX, type BoxState } from '@sleepymug/fleet-protocol/fleet'
+import { BOX_GONE, NO_BOX, type BoxState } from '@sleepymug/fleet-protocol/gateway'
 import type { Platform } from '../platform.ts'
 import { codeOf, messageOf } from '../util/error.ts'
 import { Queue } from '../util/queue.ts'

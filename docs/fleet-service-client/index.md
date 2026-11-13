@@ -1,6 +1,6 @@
-# fleet-box-client
+# fleet-service-client
 
-What a service's client in a box runs on, `@sleepymug/fleet-box-client`:
+What a service's client in a box runs on, `@sleepymug/fleet-service-client`:
 the gateway stages it into each box's `/fleet/node_modules`, and each
 client fleet-codegen makes imports it (docs/fleet-codegen/index.md). It
 turns the plain objects a program gives into the service's protobuf

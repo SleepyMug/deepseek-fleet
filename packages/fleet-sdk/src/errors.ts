@@ -5,7 +5,7 @@
  */
 
 import { ConnectError } from '@connectrpc/connect'
-import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/fleet'
+import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/gateway'
 
 /** No gateway answers on the socket. */
 export class FleetUnreachable extends Error {

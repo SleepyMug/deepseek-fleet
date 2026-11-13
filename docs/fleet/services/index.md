@@ -51,7 +51,7 @@ What the gateway gives a box made with a service, and no more:
 | What | Where in the box |
 |---|---|
 | its client, `@fleet/<name>`: `index.d.ts`, its methods and the plain objects they take and give, whole in one file; `index.js`; `README.md` | `/fleet/node_modules/@fleet/<name>` |
-| what the clients import: `@sleepymug/fleet-box-client`, with what it depends on | `/fleet/node_modules` |
+| what the clients import: `@sleepymug/fleet-service-client`, with what it depends on | `/fleet/node_modules` |
 | its package, if it has one | `/fleet/services/<name>` |
 | each of the package's commands, its `bin`, a link | `/fleet/bin/<command>`, first on every program's PATH |
 | what the box has, and how a program uses it | `/fleet/README.md` |
@@ -91,7 +91,7 @@ with its request as JSON:
   socket, which the box's helper carries to the gateway, saying which box;
   the gateway carries a call on, at the service's path less its prefix,
   over the service's tunnel, if the box was made with the service, and
-  says who calls in `fleet-caller-bin`, a `fleet.v1.Caller`: the box's id
+  says who calls in `fleet-caller-bin`, a `fleet.gateway.v1.Caller`: the box's id
   and labels, as the gateway knows them, or a client. fleet-sdk's
   `callerOf(ctx)` and `boxOf(ctx)` read it. A client of the gateway calls a
   service at `/services/<name>/` on the clients' socket, as fleet-sdk's

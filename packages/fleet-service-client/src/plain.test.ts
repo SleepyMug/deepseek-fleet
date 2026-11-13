@@ -14,7 +14,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '..', '..')
 
 async function kinds(t: { after: (fn: () => Promise<void>) => void }): Promise<DescMessage> {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-box-client-'))
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-service-client-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   await cp(join(HERE, '..', 'src', 'test-proto'), join(dir, 'proto'), { recursive: true })
   await writeFile(join(dir, 'proto', 'buf.yaml'), 'version: v2\n')

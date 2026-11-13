@@ -11,7 +11,7 @@
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { buildImage } from '@sleepymug/fleet-box/image/build'
-import { BoxState } from '@sleepymug/fleet-protocol/fleet'
+import { BoxState } from '@sleepymug/fleet-protocol/gateway'
 import { fleetHome, fleetSocket } from '@sleepymug/fleet-protocol/home'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
 import { Fleet } from '@sleepymug/fleet-sdk'

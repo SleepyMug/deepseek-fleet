@@ -5,7 +5,7 @@
  *   each of the protobuf services the service serves, named for it,
  *   `notes` for `notes.v1.Notes`, its methods taking and giving plain
  *   objects, and the types of those objects, each with its comments;
- * - `index.js`, which makes those clients with fleet-box-client from the
+ * - `index.js`, which makes those clients with fleet-service-client from the
  *   schema, embedded, each calling the service through the box's services
  *   socket;
  * - `package.json` and `README.md`.
@@ -20,7 +20,7 @@ import { safeIdentifier } from '@bufbuild/protoplugin'
 import { comment, declarations } from './declarations.ts'
 
 /** What the clients import. */
-export const CLIENT_RUNTIME = '@sleepymug/fleet-box-client'
+export const CLIENT_RUNTIME = '@sleepymug/fleet-service-client'
 
 /** What a client is made from: a service's spec, as its server stages it. */
 export interface ClientSpec {

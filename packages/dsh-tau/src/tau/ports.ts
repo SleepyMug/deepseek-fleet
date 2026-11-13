@@ -9,7 +9,7 @@
  * @module @sleepymug/dsh-tau/tau/ports
  */
 
-import type { BoxSpec, BoxState, ServiceInfo } from '@sleepymug/fleet-protocol/fleet'
+import type { BoxSpec, BoxState, ServiceInfo } from '@sleepymug/fleet-protocol/gateway'
 import type { EventOf, Method, Methods } from '@sleepymug/fleet-protocol/helper'
 import type { Result } from '@sleepymug/dsh-tau-box/runs'
 import type { Caller, Entry } from './registry.ts'

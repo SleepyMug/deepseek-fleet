@@ -3,7 +3,7 @@
  * taking HTTP/2 and HTTP/1.1 alike (fleet-net), for two audiences.
  *
  * - Its clients', its owner's alone, as harnesses and services' servers
- *   reach it: the gateway's own API, `fleet.v1.Boxes` and `Services`; a
+ *   reach it: the gateway's own API, `fleet.gateway.v1.Boxes` and `Services`; a
  *   box's API at `/boxes/<id>/`, carried to the box's helper, the box held
  *   while the call lasts unless the call says not to; a service at
  *   `/services/<name>/`, carried to its server, which is told the call is
@@ -25,7 +25,7 @@ import { dirname } from 'node:path'
 import { Code, ConnectError, type ConnectRouter } from '@connectrpc/connect'
 import { connectNodeAdapter } from '@connectrpc/connect-node'
 import { HEADERS, HELPER_PROTOCOL, routeOf, TUNNEL_PATH, TUNNEL_PROTOCOL, encodeCaller, type TunnelKind } from '@sleepymug/fleet-protocol/wire'
-import { Reason } from '@sleepymug/fleet-protocol/fleet'
+import { Reason } from '@sleepymug/fleet-protocol/gateway'
 import { forward, listen, refuse, type Listener, type Request, type Response, type TunnelRequest } from '@sleepymug/fleet-net'
 import { boxesRoutes } from '../api/boxes.ts'
 import { servicesRoutes } from '../api/services.ts'

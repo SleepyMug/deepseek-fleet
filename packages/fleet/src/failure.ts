@@ -1,12 +1,12 @@
 /**
  * The gateway's refusals: each an error with its code, and its reason,
- * fleet.v1's `Failure`, as a detail, which the caller's client reads.
+ * fleet.gateway.v1's `Failure`, as a detail, which the caller's client reads.
  * @module @sleepymug/fleet/failure
  */
 
 import { create } from '@bufbuild/protobuf'
 import { Code, ConnectError } from '@connectrpc/connect'
-import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/fleet'
+import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/gateway'
 
 export function failure(reason: Reason, code: Code, message: string): ConnectError {
   return new ConnectError(message, code, undefined, [{ desc: FailureSchema, value: create(FailureSchema, { reason }) }])

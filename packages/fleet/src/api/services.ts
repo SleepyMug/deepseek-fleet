@@ -1,11 +1,11 @@
 /**
- * fleet.v1's `Services`, served from the gateway's services: a spec
+ * fleet.gateway.v1's `Services`, served from the gateway's services: a spec
  * staged, a package uploaded, and the services registered now.
  * @module @sleepymug/fleet/api/services
  */
 
 import { Code, ConnectError, type ConnectRouter } from '@connectrpc/connect'
-import { Services, type UploadPackageRequest } from '@sleepymug/fleet-protocol/fleet'
+import { Services, type UploadPackageRequest } from '@sleepymug/fleet-protocol/gateway'
 import type { FleetGateway } from '../gateway.ts'
 import { DigestMismatch } from '../store.ts'
 

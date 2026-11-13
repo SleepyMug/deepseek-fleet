@@ -4,9 +4,9 @@
   "description": "fleet's contracts, shared by its ends: the gateway's API and a box's, as protobuf services; the paths and headers of the gateway's HTTP/2 surface; and where things lie in a box",
   "type": "module",
   "exports": {
-    "./fleet": {
-      "types": "./lib/fleet.d.ts",
-      "default": "./lib/fleet.js"
+    "./gateway": {
+      "types": "./lib/gateway.d.ts",
+      "default": "./lib/gateway.js"
     },
     "./box": {
       "types": "./lib/box.d.ts",

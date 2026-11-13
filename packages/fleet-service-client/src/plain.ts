@@ -13,7 +13,7 @@
  * A field left out of a plain object is the field's zero value; one a
  * message lacks, a field with presence that is unset, is left out of its
  * plain object.
- * @module @sleepymug/fleet-box-client/plain
+ * @module @sleepymug/fleet-service-client/plain
  */
 
 import { create, fromJson, isMessage, ScalarType, toJson, type DescEnum, type DescField, type DescMessage, type JsonValue, type Message } from '@bufbuild/protobuf'

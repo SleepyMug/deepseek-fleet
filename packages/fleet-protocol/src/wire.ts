@@ -4,7 +4,7 @@
  * tunnels, the connections a service's server or a box's helper dials and
  * then serves over, the gateway calling it.
  *
- * - `/fleet.v1.<Service>/<Method>`: the gateway's own API.
+ * - `/fleet.gateway.v1.<Service>/<Method>`: the gateway's own API.
  * - `/boxes/<id>/fleet.box.v1.Box/<Method>`: a box's API, which the gateway
  *   carries to the box's helper.
  * - `/services/<name>/<package>.<Service>/<Method>`: a service, which the
@@ -14,7 +14,7 @@
  */
 
 import { create, fromBinary, type MessageInitShape, toBinary } from '@bufbuild/protobuf'
-import { type Caller, CallerSchema } from './fleet.ts'
+import { type Caller, CallerSchema } from './gateway.ts'
 
 /** The version of the helper's side of its tunnel, which the gateway checks. */
 export const HELPER_PROTOCOL = 1
@@ -73,7 +73,7 @@ export type Route =
 /** Where a call to `path` goes, the rest of the path what its server is asked; a service or box not named rightly goes nowhere. */
 export function routeOf(path: string): Route | undefined {
   const match = /^\/(services|boxes)\/([^/]*)(\/.*)$/u.exec(path)
-  if (match === null) return path.startsWith('/fleet.v1.') ? { kind: 'gateway', path } : undefined
+  if (match === null) return path.startsWith('/fleet.gateway.v1.') ? { kind: 'gateway', path } : undefined
   const [, kind, name = '', rest = ''] = match
   if (kind === 'services') return SERVICE_NAME.test(name) ? { kind: 'service', name, path: rest } : undefined
   return BOX_ID.test(name) ? { kind: 'box', box: name, path: rest } : undefined

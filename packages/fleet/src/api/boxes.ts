@@ -1,5 +1,5 @@
 /**
- * fleet.v1's `Boxes`, served from the gateway's boxes: each call as the
+ * fleet.gateway.v1's `Boxes`, served from the gateway's boxes: each call as the
  * gateway does it (../gateway.ts), a watch and a lease as long as their
  * call lasts.
  * @module @sleepymug/fleet/api/boxes
@@ -7,7 +7,7 @@
 
 import { create } from '@bufbuild/protobuf'
 import type { ConnectRouter, HandlerContext } from '@connectrpc/connect'
-import { Boxes, BoxState, type WatchBoxResponse, WatchBoxResponseSchema } from '@sleepymug/fleet-protocol/fleet'
+import { Boxes, BoxState, type WatchBoxResponse, WatchBoxResponseSchema } from '@sleepymug/fleet-protocol/gateway'
 import type { FleetGateway } from '../gateway.ts'
 
 export function boxesRoutes(gateway: FleetGateway): (router: ConnectRouter) => void {
