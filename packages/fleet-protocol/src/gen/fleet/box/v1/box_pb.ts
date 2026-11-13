@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file fleet/box/v1/box.proto.
  */
 export const file_fleet_box_v1_box: GenFile = /*@__PURE__*/
-  fileDesc("ChZmbGVldC9ib3gvdjEvYm94LnByb3RvEgxmbGVldC5ib3gudjEiMgoERXhpdBIRCgRjb2RlGAEgASgFSACIAQESDgoGc2lnbmFsGAIgASgJQgcKBV9jb2RlIpABCgdQcm9ncmFtEgwKBGFyZ3YYASADKAkSCwoDY3dkGAIgASgJEisKA2VudhgDIAMoCzIeLmZsZWV0LmJveC52MS5Qcm9ncmFtLkVudkVudHJ5EhEKCXVuc2V0X2VudhgEIAMoCRoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIlMKC0V4ZWNSZXF1ZXN0EiYKB3Byb2dyYW0YASABKAsyFS5mbGVldC5ib3gudjEuUHJvZ3JhbRISCgVzdGRpbhgCIAEoDEgAiAEBQggKBl9zdGRpbiJQCgxFeGVjUmVzcG9uc2USIAoEZXhpdBgBIAEoCzISLmZsZWV0LmJveC52MS5FeGl0Eg4KBnN0ZG91dBgCIAEoDBIOCgZzdGRlcnIYAyABKAwifgoMU3Bhd25SZXF1ZXN0EikKBXN0YXJ0GAEgASgLMhguZmxlZXQuYm94LnYxLlNwYXduU3RhcnRIABIPCgVzdGRpbhgCIAEoDEgAEhUKC2Nsb3NlX3N0ZGluGAMgASgISAASEAoGc2lnbmFsGAQgASgJSABCCQoHcmVxdWVzdCJVCgpTcGF3blN0YXJ0EiYKB3Byb2dyYW0YASABKAsyFS5mbGVldC5ib3gudjEuUHJvZ3JhbRINCgVzdGRpbhgCIAEoCBIQCghncmFjZV9tcxgDIAEoDSKNAQoNU3Bhd25SZXNwb25zZRIoCgdzdGFydGVkGAEgASgLMhUuZmxlZXQuYm94LnYxLlN0YXJ0ZWRIABIQCgZzdGRvdXQYAiABKAxIABIQCgZzdGRlcnIYAyABKAxIABIiCgRleGl0GAQgASgLMhIuZmxlZXQuYm94LnYxLkV4aXRIAEIKCghyZXNwb25zZSIWCgdTdGFydGVkEgsKA3BpZBgBIAEoBSIfCgxXaGljaFJlcXVlc3QSDwoHY29tbWFuZBgBIAEoCSIdCg1XaGljaFJlc3BvbnNlEgwKBHBhdGgYASABKAki0gEKD1Rlcm1pbmFsUmVxdWVzdBIsCgVzdGFydBgBIAEoCzIbLmZsZWV0LmJveC52MS5UZXJtaW5hbFN0YXJ0SAASDwoFaW5wdXQYAiABKAxIABIsCgZyZXNpemUYAyABKAsyGi5mbGVldC5ib3gudjEuVGVybWluYWxTaXplSAASEAoGc2lnbmFsGAQgASgJSAASNQoGc3RhdHVzGAUgASgLMiMuZmxlZXQuYm94LnYxLlRlcm1pbmFsU3RhdHVzUmVxdWVzdEgAQgkKB3JlcXVlc3QigQEKDVRlcm1pbmFsU3RhcnQSJgoHcHJvZ3JhbRgBIAEoCzIVLmZsZWV0LmJveC52MS5Qcm9ncmFtEigKBHNpemUYAiABKAsyGi5mbGVldC5ib3gudjEuVGVybWluYWxTaXplEgwKBHRlcm0YAyABKAkSEAoIZ3JhY2VfbXMYBCABKA0iKgoMVGVybWluYWxTaXplEgwKBGNvbHMYASABKA0SDAoEcm93cxgCIAEoDSIXChVUZXJtaW5hbFN0YXR1c1JlcXVlc3QirgEKEFRlcm1pbmFsUmVzcG9uc2USKAoHc3RhcnRlZBgBIAEoCzIVLmZsZWV0LmJveC52MS5TdGFydGVkSAASEAoGb3V0cHV0GAIgASgMSAASLgoGc3RhdHVzGAMgASgLMhwuZmxlZXQuYm94LnYxLlRlcm1pbmFsU3RhdHVzSAASIgoEZXhpdBgEIAEoCzISLmZsZWV0LmJveC52MS5FeGl0SABCCgoIcmVzcG9uc2UiMgoOVGVybWluYWxTdGF0dXMSDAoEaWRsZRgBIAEoCBISCgpmb3JlZ3JvdW5kGAIgASgFIooBCghGaWxlSW5mbxIkCgR0eXBlGAEgASgOMhYuZmxlZXQuYm94LnYxLkZpbGVUeXBlEgwKBHNpemUYAiABKAQSDAoEbW9kZRgDIAEoDRIsCghtb2RpZmllZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGdGFyZ2V0GAUgASgJIisKC1N0YXRSZXF1ZXN0EgwKBHBhdGgYASABKAkSDgoGZm9sbG93GAIgASgIIjQKDFN0YXRSZXNwb25zZRIkCgRpbmZvGAEgASgLMhYuZmxlZXQuYm94LnYxLkZpbGVJbmZvIh4KDkxpc3REaXJSZXF1ZXN0EgwKBHBhdGgYASABKAkiOgoPTGlzdERpclJlc3BvbnNlEicKB2VudHJpZXMYASADKAsyFi5mbGVldC5ib3gudjEuRGlyRW50cnkiPgoIRGlyRW50cnkSDAoEbmFtZRgBIAEoCRIkCgRpbmZvGAIgASgLMhYuZmxlZXQuYm94LnYxLkZpbGVJbmZvIk8KD1JlYWRGaWxlUmVxdWVzdBIMCgRwYXRoGAEgASgJEg4KBm9mZnNldBgCIAEoBBITCgZsZW5ndGgYAyABKARIAIgBAUIJCgdfbGVuZ3RoIiEKEFJlYWRGaWxlUmVzcG9uc2USDQoFY2h1bmsYASABKAwiXQoQV3JpdGVGaWxlUmVxdWVzdBItCgVzdGFydBgBIAEoCzIcLmZsZWV0LmJveC52MS5Xcml0ZUZpbGVTdGFydEgAEg8KBWNodW5rGAIgASgMSABCCQoHcmVxdWVzdCJuCg5Xcml0ZUZpbGVTdGFydBIMCgRwYXRoGAEgASgJEhEKBG1vZGUYAiABKA1IAIgBARIPCgdwYXJlbnRzGAMgASgIEhEKCWV4Y2x1c2l2ZRgEIAEoCBIOCgZhcHBlbmQYBSABKAhCBwoFX21vZGUiIQoRV3JpdGVGaWxlUmVzcG9uc2USDAoEc2l6ZRgBIAEoBCIvCg5NYWtlRGlyUmVxdWVzdBIMCgRwYXRoGAEgASgJEg8KB3BhcmVudHMYAiABKAgiEQoPTWFrZURpclJlc3BvbnNlIjAKDVJlbW92ZVJlcXVlc3QSDAoEcGF0aBgBIAEoCRIRCglyZWN1cnNpdmUYAiABKAgiIQoOUmVtb3ZlUmVzcG9uc2USDwoHcmVtb3ZlZBgBIAEoCCIpCg1SZW5hbWVSZXF1ZXN0EgwKBGZyb20YASABKAkSCgoCdG8YAiABKAkiEAoOUmVuYW1lUmVzcG9uc2UiOAoKUHV0UmVxdWVzdBIOCgRwYXRoGAEgASgJSAASDwoFY2h1bmsYAiABKAxIAEIJCgdyZXF1ZXN0Ig0KC1B1dFJlc3BvbnNlIhoKCkdldFJlcXVlc3QSDAoEcGF0aBgBIAEoCSIcCgtHZXRSZXNwb25zZRINCgVjaHVuaxgBIAEoDCp+CghGaWxlVHlwZRIZChVGSUxFX1RZUEVfVU5TUEVDSUZJRUQQABISCg5GSUxFX1RZUEVfRklMRRABEhcKE0ZJTEVfVFlQRV9ESVJFQ1RPUlkQAhIVChFGSUxFX1RZUEVfU1lNTElOSxADEhMKD0ZJTEVfVFlQRV9PVEhFUhAEMo0HCgNCb3gSPQoERXhlYxIZLmZsZWV0LmJveC52MS5FeGVjUmVxdWVzdBoaLmZsZWV0LmJveC52MS5FeGVjUmVzcG9uc2USRAoFU3Bhd24SGi5mbGVldC5ib3gudjEuU3Bhd25SZXF1ZXN0GhsuZmxlZXQuYm94LnYxLlNwYXduUmVzcG9uc2UoATABEkAKBVdoaWNoEhouZmxlZXQuYm94LnYxLldoaWNoUmVxdWVzdBobLmZsZWV0LmJveC52MS5XaGljaFJlc3BvbnNlEk0KCFRlcm1pbmFsEh0uZmxlZXQuYm94LnYxLlRlcm1pbmFsUmVxdWVzdBoeLmZsZWV0LmJveC52MS5UZXJtaW5hbFJlc3BvbnNlKAEwARI9CgRTdGF0EhkuZmxlZXQuYm94LnYxLlN0YXRSZXF1ZXN0GhouZmxlZXQuYm94LnYxLlN0YXRSZXNwb25zZRJGCgdMaXN0RGlyEhwuZmxlZXQuYm94LnYxLkxpc3REaXJSZXF1ZXN0Gh0uZmxlZXQuYm94LnYxLkxpc3REaXJSZXNwb25zZRJLCghSZWFkRmlsZRIdLmZsZWV0LmJveC52MS5SZWFkRmlsZVJlcXVlc3QaHi5mbGVldC5ib3gudjEuUmVhZEZpbGVSZXNwb25zZTABEk4KCVdyaXRlRmlsZRIeLmZsZWV0LmJveC52MS5Xcml0ZUZpbGVSZXF1ZXN0Gh8uZmxlZXQuYm94LnYxLldyaXRlRmlsZVJlc3BvbnNlKAESRgoHTWFrZURpchIcLmZsZWV0LmJveC52MS5NYWtlRGlyUmVxdWVzdBodLmZsZWV0LmJveC52MS5NYWtlRGlyUmVzcG9uc2USQwoGUmVtb3ZlEhsuZmxlZXQuYm94LnYxLlJlbW92ZVJlcXVlc3QaHC5mbGVldC5ib3gudjEuUmVtb3ZlUmVzcG9uc2USQwoGUmVuYW1lEhsuZmxlZXQuYm94LnYxLlJlbmFtZVJlcXVlc3QaHC5mbGVldC5ib3gudjEuUmVuYW1lUmVzcG9uc2USPAoDUHV0EhguZmxlZXQuYm94LnYxLlB1dFJlcXVlc3QaGS5mbGVldC5ib3gudjEuUHV0UmVzcG9uc2UoARI8CgNHZXQSGC5mbGVldC5ib3gudjEuR2V0UmVxdWVzdBoZLmZsZWV0LmJveC52MS5HZXRSZXNwb25zZTABYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("ChZmbGVldC9ib3gvdjEvYm94LnByb3RvEgxmbGVldC5ib3gudjEiMgoERXhpdBIRCgRjb2RlGAEgASgFSACIAQESDgoGc2lnbmFsGAIgASgJQgcKBV9jb2RlIpABCgdQcm9ncmFtEgwKBGFyZ3YYASADKAkSCwoDY3dkGAIgASgJEisKA2VudhgDIAMoCzIeLmZsZWV0LmJveC52MS5Qcm9ncmFtLkVudkVudHJ5EhEKCXVuc2V0X2VudhgEIAMoCRoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIlMKC0V4ZWNSZXF1ZXN0EiYKB3Byb2dyYW0YASABKAsyFS5mbGVldC5ib3gudjEuUHJvZ3JhbRISCgVzdGRpbhgCIAEoDEgAiAEBQggKBl9zdGRpbiJQCgxFeGVjUmVzcG9uc2USIAoEZXhpdBgBIAEoCzISLmZsZWV0LmJveC52MS5FeGl0Eg4KBnN0ZG91dBgCIAEoDBIOCgZzdGRlcnIYAyABKAwifgoMU3Bhd25SZXF1ZXN0EikKBXN0YXJ0GAEgASgLMhguZmxlZXQuYm94LnYxLlNwYXduU3RhcnRIABIPCgVzdGRpbhgCIAEoDEgAEhUKC2Nsb3NlX3N0ZGluGAMgASgISAASEAoGc2lnbmFsGAQgASgJSABCCQoHcmVxdWVzdCJVCgpTcGF3blN0YXJ0EiYKB3Byb2dyYW0YASABKAsyFS5mbGVldC5ib3gudjEuUHJvZ3JhbRINCgVzdGRpbhgCIAEoCBIQCghncmFjZV9tcxgDIAEoDSKNAQoNU3Bhd25SZXNwb25zZRIoCgdzdGFydGVkGAEgASgLMhUuZmxlZXQuYm94LnYxLlN0YXJ0ZWRIABIQCgZzdGRvdXQYAiABKAxIABIQCgZzdGRlcnIYAyABKAxIABIiCgRleGl0GAQgASgLMhIuZmxlZXQuYm94LnYxLkV4aXRIAEIKCghyZXNwb25zZSIWCgdTdGFydGVkEgsKA3BpZBgBIAEoBSIfCgxXaGljaFJlcXVlc3QSDwoHY29tbWFuZBgBIAEoCSIdCg1XaGljaFJlc3BvbnNlEgwKBHBhdGgYASABKAki0gEKD1Rlcm1pbmFsUmVxdWVzdBIsCgVzdGFydBgBIAEoCzIbLmZsZWV0LmJveC52MS5UZXJtaW5hbFN0YXJ0SAASDwoFaW5wdXQYAiABKAxIABIsCgZyZXNpemUYAyABKAsyGi5mbGVldC5ib3gudjEuVGVybWluYWxTaXplSAASEAoGc2lnbmFsGAQgASgJSAASNQoGc3RhdHVzGAUgASgLMiMuZmxlZXQuYm94LnYxLlRlcm1pbmFsU3RhdHVzUmVxdWVzdEgAQgkKB3JlcXVlc3QigQEKDVRlcm1pbmFsU3RhcnQSJgoHcHJvZ3JhbRgBIAEoCzIVLmZsZWV0LmJveC52MS5Qcm9ncmFtEigKBHNpemUYAiABKAsyGi5mbGVldC5ib3gudjEuVGVybWluYWxTaXplEgwKBHRlcm0YAyABKAkSEAoIZ3JhY2VfbXMYBCABKA0iKgoMVGVybWluYWxTaXplEgwKBGNvbHMYASABKA0SDAoEcm93cxgCIAEoDSIXChVUZXJtaW5hbFN0YXR1c1JlcXVlc3QirgEKEFRlcm1pbmFsUmVzcG9uc2USKAoHc3RhcnRlZBgBIAEoCzIVLmZsZWV0LmJveC52MS5TdGFydGVkSAASEAoGb3V0cHV0GAIgASgMSAASLgoGc3RhdHVzGAMgASgLMhwuZmxlZXQuYm94LnYxLlRlcm1pbmFsU3RhdHVzSAASIgoEZXhpdBgEIAEoCzISLmZsZWV0LmJveC52MS5FeGl0SABCCgoIcmVzcG9uc2UiMgoOVGVybWluYWxTdGF0dXMSDAoEaWRsZRgBIAEoCBISCgpmb3JlZ3JvdW5kGAIgASgFIpsBCghGaWxlSW5mbxIkCgR0eXBlGAEgASgOMhYuZmxlZXQuYm94LnYxLkZpbGVUeXBlEgwKBHNpemUYAiABKAQSDAoEbW9kZRgDIAEoDRIsCghtb2RpZmllZBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGdGFyZ2V0GAUgASgJEg8KB3ZlcnNpb24YBiABKAkiKwoLU3RhdFJlcXVlc3QSDAoEcGF0aBgBIAEoCRIOCgZmb2xsb3cYAiABKAgiNAoMU3RhdFJlc3BvbnNlEiQKBGluZm8YASABKAsyFi5mbGVldC5ib3gudjEuRmlsZUluZm8iHgoOUmVzb2x2ZVJlcXVlc3QSDAoEcGF0aBgBIAEoCSIfCg9SZXNvbHZlUmVzcG9uc2USDAoEcGF0aBgBIAEoCSIcCgxXYXRjaFJlcXVlc3QSDAoEcGF0aBgBIAEoCSJxCg1XYXRjaFJlc3BvbnNlEikKBXJlYWR5GAEgASgLMhguZmxlZXQuYm94LnYxLldhdGNoUmVhZHlIABIsCgdjaGFuZ2VkGAIgASgLMhkuZmxlZXQuYm94LnYxLldhdGNoQ2hhbmdlSABCBwoFZXZlbnQiDAoKV2F0Y2hSZWFkeSINCgtXYXRjaENoYW5nZSIeCg5MaXN0RGlyUmVxdWVzdBIMCgRwYXRoGAEgASgJIjoKD0xpc3REaXJSZXNwb25zZRInCgdlbnRyaWVzGAEgAygLMhYuZmxlZXQuYm94LnYxLkRpckVudHJ5Ij4KCERpckVudHJ5EgwKBG5hbWUYASABKAkSJAoEaW5mbxgCIAEoCzIWLmZsZWV0LmJveC52MS5GaWxlSW5mbyJPCg9SZWFkRmlsZVJlcXVlc3QSDAoEcGF0aBgBIAEoCRIOCgZvZmZzZXQYAiABKAQSEwoGbGVuZ3RoGAMgASgESACIAQFCCQoHX2xlbmd0aCIhChBSZWFkRmlsZVJlc3BvbnNlEg0KBWNodW5rGAEgASgMIl0KEFdyaXRlRmlsZVJlcXVlc3QSLQoFc3RhcnQYASABKAsyHC5mbGVldC5ib3gudjEuV3JpdGVGaWxlU3RhcnRIABIPCgVjaHVuaxgCIAEoDEgAQgkKB3JlcXVlc3QilgEKDldyaXRlRmlsZVN0YXJ0EgwKBHBhdGgYASABKAkSEQoEbW9kZRgCIAEoDUgAiAEBEg8KB3BhcmVudHMYAyABKAgSEQoJZXhjbHVzaXZlGAQgASgIEg4KBmFwcGVuZBgFIAEoCBIXCgppZl92ZXJzaW9uGAYgASgJSAGIAQFCBwoFX21vZGVCDQoLX2lmX3ZlcnNpb24iMgoRV3JpdGVGaWxlUmVzcG9uc2USDAoEc2l6ZRgBIAEoBBIPCgd2ZXJzaW9uGAIgASgJIi8KDk1ha2VEaXJSZXF1ZXN0EgwKBHBhdGgYASABKAkSDwoHcGFyZW50cxgCIAEoCCIRCg9NYWtlRGlyUmVzcG9uc2UiMAoNUmVtb3ZlUmVxdWVzdBIMCgRwYXRoGAEgASgJEhEKCXJlY3Vyc2l2ZRgCIAEoCCIhCg5SZW1vdmVSZXNwb25zZRIPCgdyZW1vdmVkGAEgASgIIikKDVJlbmFtZVJlcXVlc3QSDAoEZnJvbRgBIAEoCRIKCgJ0bxgCIAEoCSIQCg5SZW5hbWVSZXNwb25zZSI4CgpQdXRSZXF1ZXN0Eg4KBHBhdGgYASABKAlIABIPCgVjaHVuaxgCIAEoDEgAQgkKB3JlcXVlc3QiDQoLUHV0UmVzcG9uc2UiGgoKR2V0UmVxdWVzdBIMCgRwYXRoGAEgASgJIhwKC0dldFJlc3BvbnNlEg0KBWNodW5rGAEgASgMKn4KCEZpbGVUeXBlEhkKFUZJTEVfVFlQRV9VTlNQRUNJRklFRBAAEhIKDkZJTEVfVFlQRV9GSUxFEAESFwoTRklMRV9UWVBFX0RJUkVDVE9SWRACEhUKEUZJTEVfVFlQRV9TWU1MSU5LEAMSEwoPRklMRV9UWVBFX09USEVSEAQymQgKA0JveBI9CgRFeGVjEhkuZmxlZXQuYm94LnYxLkV4ZWNSZXF1ZXN0GhouZmxlZXQuYm94LnYxLkV4ZWNSZXNwb25zZRJECgVTcGF3bhIaLmZsZWV0LmJveC52MS5TcGF3blJlcXVlc3QaGy5mbGVldC5ib3gudjEuU3Bhd25SZXNwb25zZSgBMAESQAoFV2hpY2gSGi5mbGVldC5ib3gudjEuV2hpY2hSZXF1ZXN0GhsuZmxlZXQuYm94LnYxLldoaWNoUmVzcG9uc2USTQoIVGVybWluYWwSHS5mbGVldC5ib3gudjEuVGVybWluYWxSZXF1ZXN0Gh4uZmxlZXQuYm94LnYxLlRlcm1pbmFsUmVzcG9uc2UoATABEj0KBFN0YXQSGS5mbGVldC5ib3gudjEuU3RhdFJlcXVlc3QaGi5mbGVldC5ib3gudjEuU3RhdFJlc3BvbnNlEkYKB1Jlc29sdmUSHC5mbGVldC5ib3gudjEuUmVzb2x2ZVJlcXVlc3QaHS5mbGVldC5ib3gudjEuUmVzb2x2ZVJlc3BvbnNlEkIKBVdhdGNoEhouZmxlZXQuYm94LnYxLldhdGNoUmVxdWVzdBobLmZsZWV0LmJveC52MS5XYXRjaFJlc3BvbnNlMAESRgoHTGlzdERpchIcLmZsZWV0LmJveC52MS5MaXN0RGlyUmVxdWVzdBodLmZsZWV0LmJveC52MS5MaXN0RGlyUmVzcG9uc2USSwoIUmVhZEZpbGUSHS5mbGVldC5ib3gudjEuUmVhZEZpbGVSZXF1ZXN0Gh4uZmxlZXQuYm94LnYxLlJlYWRGaWxlUmVzcG9uc2UwARJOCglXcml0ZUZpbGUSHi5mbGVldC5ib3gudjEuV3JpdGVGaWxlUmVxdWVzdBofLmZsZWV0LmJveC52MS5Xcml0ZUZpbGVSZXNwb25zZSgBEkYKB01ha2VEaXISHC5mbGVldC5ib3gudjEuTWFrZURpclJlcXVlc3QaHS5mbGVldC5ib3gudjEuTWFrZURpclJlc3BvbnNlEkMKBlJlbW92ZRIbLmZsZWV0LmJveC52MS5SZW1vdmVSZXF1ZXN0GhwuZmxlZXQuYm94LnYxLlJlbW92ZVJlc3BvbnNlEkMKBlJlbmFtZRIbLmZsZWV0LmJveC52MS5SZW5hbWVSZXF1ZXN0GhwuZmxlZXQuYm94LnYxLlJlbmFtZVJlc3BvbnNlEjwKA1B1dBIYLmZsZWV0LmJveC52MS5QdXRSZXF1ZXN0GhkuZmxlZXQuYm94LnYxLlB1dFJlc3BvbnNlKAESPAoDR2V0EhguZmxlZXQuYm94LnYxLkdldFJlcXVlc3QaGS5mbGVldC5ib3gudjEuR2V0UmVzcG9uc2UwAWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * How a program ended.
@@ -550,6 +550,14 @@ export type FileInfo = Message<"fleet.box.v1.FileInfo"> & {
    * @generated from field: string target = 5;
    */
   target: string;
+
+  /**
+   * A token that changes whenever what is at the path does, which a write
+   * can be made to wait on; nothing else is to be read in it.
+   *
+   * @generated from field: string version = 6;
+   */
+  version: string;
 };
 
 /**
@@ -603,6 +611,116 @@ export const StatResponseSchema: GenMessage<StatResponse> = /*@__PURE__*/
   messageDesc(file_fleet_box_v1_box, 18);
 
 /**
+ * @generated from message fleet.box.v1.ResolveRequest
+ */
+export type ResolveRequest = Message<"fleet.box.v1.ResolveRequest"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message fleet.box.v1.ResolveRequest.
+ * Use `create(ResolveRequestSchema)` to create a new message.
+ */
+export const ResolveRequestSchema: GenMessage<ResolveRequest> = /*@__PURE__*/
+  messageDesc(file_fleet_box_v1_box, 19);
+
+/**
+ * @generated from message fleet.box.v1.ResolveResponse
+ */
+export type ResolveResponse = Message<"fleet.box.v1.ResolveResponse"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message fleet.box.v1.ResolveResponse.
+ * Use `create(ResolveResponseSchema)` to create a new message.
+ */
+export const ResolveResponseSchema: GenMessage<ResolveResponse> = /*@__PURE__*/
+  messageDesc(file_fleet_box_v1_box, 20);
+
+/**
+ * @generated from message fleet.box.v1.WatchRequest
+ */
+export type WatchRequest = Message<"fleet.box.v1.WatchRequest"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message fleet.box.v1.WatchRequest.
+ * Use `create(WatchRequestSchema)` to create a new message.
+ */
+export const WatchRequestSchema: GenMessage<WatchRequest> = /*@__PURE__*/
+  messageDesc(file_fleet_box_v1_box, 21);
+
+/**
+ * @generated from message fleet.box.v1.WatchResponse
+ */
+export type WatchResponse = Message<"fleet.box.v1.WatchResponse"> & {
+  /**
+   * @generated from oneof fleet.box.v1.WatchResponse.event
+   */
+  event: {
+    /**
+     * First: the watch is ready.
+     *
+     * @generated from field: fleet.box.v1.WatchReady ready = 1;
+     */
+    value: WatchReady;
+    case: "ready";
+  } | {
+    /**
+     * What is at the path, or what the folder holds, may have changed.
+     *
+     * @generated from field: fleet.box.v1.WatchChange changed = 2;
+     */
+    value: WatchChange;
+    case: "changed";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message fleet.box.v1.WatchResponse.
+ * Use `create(WatchResponseSchema)` to create a new message.
+ */
+export const WatchResponseSchema: GenMessage<WatchResponse> = /*@__PURE__*/
+  messageDesc(file_fleet_box_v1_box, 22);
+
+/**
+ * @generated from message fleet.box.v1.WatchReady
+ */
+export type WatchReady = Message<"fleet.box.v1.WatchReady"> & {
+};
+
+/**
+ * Describes the message fleet.box.v1.WatchReady.
+ * Use `create(WatchReadySchema)` to create a new message.
+ */
+export const WatchReadySchema: GenMessage<WatchReady> = /*@__PURE__*/
+  messageDesc(file_fleet_box_v1_box, 23);
+
+/**
+ * @generated from message fleet.box.v1.WatchChange
+ */
+export type WatchChange = Message<"fleet.box.v1.WatchChange"> & {
+};
+
+/**
+ * Describes the message fleet.box.v1.WatchChange.
+ * Use `create(WatchChangeSchema)` to create a new message.
+ */
+export const WatchChangeSchema: GenMessage<WatchChange> = /*@__PURE__*/
+  messageDesc(file_fleet_box_v1_box, 24);
+
+/**
  * @generated from message fleet.box.v1.ListDirRequest
  */
 export type ListDirRequest = Message<"fleet.box.v1.ListDirRequest"> & {
@@ -617,7 +735,7 @@ export type ListDirRequest = Message<"fleet.box.v1.ListDirRequest"> & {
  * Use `create(ListDirRequestSchema)` to create a new message.
  */
 export const ListDirRequestSchema: GenMessage<ListDirRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 19);
+  messageDesc(file_fleet_box_v1_box, 25);
 
 /**
  * @generated from message fleet.box.v1.ListDirResponse
@@ -634,7 +752,7 @@ export type ListDirResponse = Message<"fleet.box.v1.ListDirResponse"> & {
  * Use `create(ListDirResponseSchema)` to create a new message.
  */
 export const ListDirResponseSchema: GenMessage<ListDirResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 20);
+  messageDesc(file_fleet_box_v1_box, 26);
 
 /**
  * @generated from message fleet.box.v1.DirEntry
@@ -658,7 +776,7 @@ export type DirEntry = Message<"fleet.box.v1.DirEntry"> & {
  * Use `create(DirEntrySchema)` to create a new message.
  */
 export const DirEntrySchema: GenMessage<DirEntry> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 21);
+  messageDesc(file_fleet_box_v1_box, 27);
 
 /**
  * @generated from message fleet.box.v1.ReadFileRequest
@@ -689,7 +807,7 @@ export type ReadFileRequest = Message<"fleet.box.v1.ReadFileRequest"> & {
  * Use `create(ReadFileRequestSchema)` to create a new message.
  */
 export const ReadFileRequestSchema: GenMessage<ReadFileRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 22);
+  messageDesc(file_fleet_box_v1_box, 28);
 
 /**
  * @generated from message fleet.box.v1.ReadFileResponse
@@ -706,7 +824,7 @@ export type ReadFileResponse = Message<"fleet.box.v1.ReadFileResponse"> & {
  * Use `create(ReadFileResponseSchema)` to create a new message.
  */
 export const ReadFileResponseSchema: GenMessage<ReadFileResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 23);
+  messageDesc(file_fleet_box_v1_box, 29);
 
 /**
  * @generated from message fleet.box.v1.WriteFileRequest
@@ -737,7 +855,7 @@ export type WriteFileRequest = Message<"fleet.box.v1.WriteFileRequest"> & {
  * Use `create(WriteFileRequestSchema)` to create a new message.
  */
 export const WriteFileRequestSchema: GenMessage<WriteFileRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 24);
+  messageDesc(file_fleet_box_v1_box, 30);
 
 /**
  * @generated from message fleet.box.v1.WriteFileStart
@@ -775,6 +893,14 @@ export type WriteFileStart = Message<"fleet.box.v1.WriteFileStart"> & {
    * @generated from field: bool append = 5;
    */
   append: boolean;
+
+  /**
+   * Write only if the file is there and its version is this one; fail as a
+   * failed precondition otherwise.
+   *
+   * @generated from field: optional string if_version = 6;
+   */
+  ifVersion?: string | undefined;
 };
 
 /**
@@ -782,7 +908,7 @@ export type WriteFileStart = Message<"fleet.box.v1.WriteFileStart"> & {
  * Use `create(WriteFileStartSchema)` to create a new message.
  */
 export const WriteFileStartSchema: GenMessage<WriteFileStart> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 25);
+  messageDesc(file_fleet_box_v1_box, 31);
 
 /**
  * @generated from message fleet.box.v1.WriteFileResponse
@@ -794,6 +920,13 @@ export type WriteFileResponse = Message<"fleet.box.v1.WriteFileResponse"> & {
    * @generated from field: uint64 size = 1;
    */
   size: bigint;
+
+  /**
+   * Its version once written.
+   *
+   * @generated from field: string version = 2;
+   */
+  version: string;
 };
 
 /**
@@ -801,7 +934,7 @@ export type WriteFileResponse = Message<"fleet.box.v1.WriteFileResponse"> & {
  * Use `create(WriteFileResponseSchema)` to create a new message.
  */
 export const WriteFileResponseSchema: GenMessage<WriteFileResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 26);
+  messageDesc(file_fleet_box_v1_box, 32);
 
 /**
  * @generated from message fleet.box.v1.MakeDirRequest
@@ -825,7 +958,7 @@ export type MakeDirRequest = Message<"fleet.box.v1.MakeDirRequest"> & {
  * Use `create(MakeDirRequestSchema)` to create a new message.
  */
 export const MakeDirRequestSchema: GenMessage<MakeDirRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 27);
+  messageDesc(file_fleet_box_v1_box, 33);
 
 /**
  * @generated from message fleet.box.v1.MakeDirResponse
@@ -838,7 +971,7 @@ export type MakeDirResponse = Message<"fleet.box.v1.MakeDirResponse"> & {
  * Use `create(MakeDirResponseSchema)` to create a new message.
  */
 export const MakeDirResponseSchema: GenMessage<MakeDirResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 28);
+  messageDesc(file_fleet_box_v1_box, 34);
 
 /**
  * @generated from message fleet.box.v1.RemoveRequest
@@ -862,7 +995,7 @@ export type RemoveRequest = Message<"fleet.box.v1.RemoveRequest"> & {
  * Use `create(RemoveRequestSchema)` to create a new message.
  */
 export const RemoveRequestSchema: GenMessage<RemoveRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 29);
+  messageDesc(file_fleet_box_v1_box, 35);
 
 /**
  * @generated from message fleet.box.v1.RemoveResponse
@@ -881,7 +1014,7 @@ export type RemoveResponse = Message<"fleet.box.v1.RemoveResponse"> & {
  * Use `create(RemoveResponseSchema)` to create a new message.
  */
 export const RemoveResponseSchema: GenMessage<RemoveResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 30);
+  messageDesc(file_fleet_box_v1_box, 36);
 
 /**
  * @generated from message fleet.box.v1.RenameRequest
@@ -903,7 +1036,7 @@ export type RenameRequest = Message<"fleet.box.v1.RenameRequest"> & {
  * Use `create(RenameRequestSchema)` to create a new message.
  */
 export const RenameRequestSchema: GenMessage<RenameRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 31);
+  messageDesc(file_fleet_box_v1_box, 37);
 
 /**
  * @generated from message fleet.box.v1.RenameResponse
@@ -916,7 +1049,7 @@ export type RenameResponse = Message<"fleet.box.v1.RenameResponse"> & {
  * Use `create(RenameResponseSchema)` to create a new message.
  */
 export const RenameResponseSchema: GenMessage<RenameResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 32);
+  messageDesc(file_fleet_box_v1_box, 38);
 
 /**
  * @generated from message fleet.box.v1.PutRequest
@@ -947,7 +1080,7 @@ export type PutRequest = Message<"fleet.box.v1.PutRequest"> & {
  * Use `create(PutRequestSchema)` to create a new message.
  */
 export const PutRequestSchema: GenMessage<PutRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 33);
+  messageDesc(file_fleet_box_v1_box, 39);
 
 /**
  * @generated from message fleet.box.v1.PutResponse
@@ -960,7 +1093,7 @@ export type PutResponse = Message<"fleet.box.v1.PutResponse"> & {
  * Use `create(PutResponseSchema)` to create a new message.
  */
 export const PutResponseSchema: GenMessage<PutResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 34);
+  messageDesc(file_fleet_box_v1_box, 40);
 
 /**
  * @generated from message fleet.box.v1.GetRequest
@@ -977,7 +1110,7 @@ export type GetRequest = Message<"fleet.box.v1.GetRequest"> & {
  * Use `create(GetRequestSchema)` to create a new message.
  */
 export const GetRequestSchema: GenMessage<GetRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 35);
+  messageDesc(file_fleet_box_v1_box, 41);
 
 /**
  * @generated from message fleet.box.v1.GetResponse
@@ -994,7 +1127,7 @@ export type GetResponse = Message<"fleet.box.v1.GetResponse"> & {
  * Use `create(GetResponseSchema)` to create a new message.
  */
 export const GetResponseSchema: GenMessage<GetResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_box, 36);
+  messageDesc(file_fleet_box_v1_box, 42);
 
 /**
  * @generated from enum fleet.box.v1.FileType
@@ -1106,6 +1239,31 @@ export const Box: GenService<{
     output: typeof StatResponseSchema;
   },
   /**
+   * A path with every symlink in it followed, as the path the thing it
+   * names is at; for a path to nothing, its nearest folder that is there
+   * so followed, and the rest of the path after it, which may not climb
+   * with `..`.
+   *
+   * @generated from rpc fleet.box.v1.Box.Resolve
+   */
+  resolve: {
+    methodKind: "unary";
+    input: typeof ResolveRequestSchema;
+    output: typeof ResolveResponseSchema;
+  },
+  /**
+   * Watch a file or a folder: the first response says the watch is ready,
+   * and each after it that what is at the path, or what the folder holds,
+   * may have changed. The watch lasts until the call is cancelled.
+   *
+   * @generated from rpc fleet.box.v1.Box.Watch
+   */
+  watch: {
+    methodKind: "server_streaming";
+    input: typeof WatchRequestSchema;
+    output: typeof WatchResponseSchema;
+  },
+  /**
    * What a folder holds, by name.
    *
    * @generated from rpc fleet.box.v1.Box.ListDir
@@ -1127,7 +1285,8 @@ export const Box: GenService<{
   },
   /**
    * Write a file: the first request names it, those after it carry its
-   * bytes.
+   * bytes. A file replaced is replaced whole or not at all, keeping its
+   * permission bits.
    *
    * @generated from rpc fleet.box.v1.Box.WriteFile
    */

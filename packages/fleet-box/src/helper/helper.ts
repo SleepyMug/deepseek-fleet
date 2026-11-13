@@ -55,6 +55,8 @@ export async function startHelper({ gateway, box, layout = BOX_LAYOUT, env = pro
       which: req => processes.which(req),
       terminal: (requests, ctx) => terminals.run(requests, ctx),
       stat: req => files.statOf(req),
+      resolve: req => files.resolvePath(req),
+      watch: (req, ctx) => files.watch(req, ctx.signal),
       listDir: req => files.listDir(req),
       readFile: req => files.readFile(req),
       writeFile: requests => files.writeFile(requests),

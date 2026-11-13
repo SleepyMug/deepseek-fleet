@@ -34,12 +34,22 @@ service Box {
 
   // What is at a path; nothing if nothing is.
   rpc Stat(StatRequest) returns (StatResponse);
+  // A path with every symlink in it followed, as the path the thing it
+  // names is at; for a path to nothing, its nearest folder that is there
+  // so followed, and the rest of the path after it, which may not climb
+  // with `..`.
+  rpc Resolve(ResolveRequest) returns (ResolveResponse);
+  // Watch a file or a folder: the first response says the watch is ready,
+  // and each after it that what is at the path, or what the folder holds,
+  // may have changed. The watch lasts until the call is cancelled.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
   // What a folder holds, by name.
   rpc ListDir(ListDirRequest) returns (ListDirResponse);
   // A file's bytes, or a range of them.
   rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
   // Write a file: the first request names it, those after it carry its
-  // bytes.
+  // bytes. A file replaced is replaced whole or not at all, keeping its
+  // permission bits.
   rpc WriteFile(stream WriteFileRequest) returns (WriteFileResponse);
   // Make a folder.
   rpc MakeDir(MakeDirRequest) returns (MakeDirResponse);
@@ -203,6 +213,9 @@ message FileInfo {
   google.protobuf.Timestamp modified = 4;
   // A symlink's target, as it is written.
   string target = 5;
+  // A token that changes whenever what is at the path does, which a write
+  // can be made to wait on; nothing else is to be read in it.
+  string version = 6;
 }
 
 message StatRequest {
@@ -215,6 +228,31 @@ message StatResponse {
   // Nothing when nothing is at the path.
   FileInfo info = 1;
 }
+
+message ResolveRequest {
+  string path = 1;
+}
+
+message ResolveResponse {
+  string path = 1;
+}
+
+message WatchRequest {
+  string path = 1;
+}
+
+message WatchResponse {
+  oneof event {
+    // First: the watch is ready.
+    WatchReady ready = 1;
+    // What is at the path, or what the folder holds, may have changed.
+    WatchChange changed = 2;
+  }
+}
+
+message WatchReady {}
+
+message WatchChange {}
 
 message ListDirRequest {
   string path = 1;
@@ -260,11 +298,16 @@ message WriteFileStart {
   bool exclusive = 4;
   // Add to the file's end, rather than replace what it holds.
   bool append = 5;
+  // Write only if the file is there and its version is this one; fail as a
+  // failed precondition otherwise.
+  optional string if_version = 6;
 }
 
 message WriteFileResponse {
   // Its size once written.
   uint64 size = 1;
+  // Its version once written.
+  string version = 2;
 }
 
 message MakeDirRequest {
