@@ -1,0 +1,312 @@
+syntax = "proto3";
+
+package fleet.box.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A box's API, which its helper serves, and the gateway carries to it at
+// /boxes/<id>/: the box's processes, terminals and files. Programs run as
+// the container's root, without a shell, in the box's environment; paths
+// are absolute paths in the box.
+service Box {
+  // Run a program to its end, and give back how it ended and all it wrote.
+  // An exit other than 0, or a signal, is a response; a program that cannot
+  // run at all is an error.
+  rpc Exec(ExecRequest) returns (ExecResponse);
+  // Run a program in a process group of its own. The first request starts
+  // it; those after it write to its input, close it, or signal its group.
+  // The first response says it started, those after it carry what it
+  // writes, and the last how it ended, once it exited and its output ended,
+  // or its grace period after its exit, when something it started keeps
+  // the output open. Cancelling the call ends its group: SIGTERM, then
+  // SIGKILL after the grace period.
+  rpc Spawn(stream SpawnRequest) returns (stream SpawnResponse);
+  // Where a program is: an absolute path that is an executable file, or a
+  // bare name on the PATH, the services' commands first.
+  rpc Which(WhichRequest) returns (WhichResponse);
+  // Run a program on a pseudo-terminal, in a session it leads. The first
+  // request starts it; those after it type, resize the terminal, signal its
+  // foreground process group, or ask its status. The responses say it
+  // started, carry what the terminal writes, answer each status asked, and,
+  // last, how the program ended. Every process left in its session is ended
+  // as the call ends, and cancelling the call ends them at once.
+  rpc Terminal(stream TerminalRequest) returns (stream TerminalResponse);
+
+  // What is at a path; nothing if nothing is.
+  rpc Stat(StatRequest) returns (StatResponse);
+  // What a folder holds, by name.
+  rpc ListDir(ListDirRequest) returns (ListDirResponse);
+  // A file's bytes, or a range of them.
+  rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
+  // Write a file: the first request names it, those after it carry its
+  // bytes.
+  rpc WriteFile(stream WriteFileRequest) returns (WriteFileResponse);
+  // Make a folder.
+  rpc MakeDir(MakeDirRequest) returns (MakeDirResponse);
+  // Remove a file, a link, or a folder.
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  // Move a file or a folder.
+  rpc Rename(RenameRequest) returns (RenameResponse);
+  // Unpack a tar archive into a folder, made if it is missing: the first
+  // request names the folder, those after it carry the archive. What is in
+  // the folder already stays, unless the archive replaces it.
+  rpc Put(stream PutRequest) returns (PutResponse);
+  // A folder's contents, or a file under its own name, as a tar archive.
+  rpc Get(GetRequest) returns (stream GetResponse);
+}
+
+// How a program ended.
+message Exit {
+  // Its exit code, unless a signal ended it.
+  optional int32 code = 1;
+  // The signal that ended it, such as SIGTERM, if one did.
+  string signal = 2;
+}
+
+// How a program runs.
+message Program {
+  // The program, then its arguments.
+  repeated string argv = 1;
+  // Its working folder; `/` without it.
+  string cwd = 2;
+  // What it adds to the box's environment.
+  map<string, string> env = 3;
+  // What it removes from the box's environment, by name.
+  repeated string unset_env = 4;
+}
+
+message ExecRequest {
+  Program program = 1;
+  // Its input; none without it.
+  optional bytes stdin = 2;
+}
+
+message ExecResponse {
+  Exit exit = 1;
+  bytes stdout = 2;
+  bytes stderr = 3;
+}
+
+message SpawnRequest {
+  oneof request {
+    // First: what to run.
+    SpawnStart start = 1;
+    // Bytes for its input.
+    bytes stdin = 2;
+    // The end of its input.
+    bool close_stdin = 3;
+    // A signal for its process group, such as SIGINT.
+    string signal = 4;
+  }
+}
+
+message SpawnStart {
+  Program program = 1;
+  // Whether it reads an input the requests write; without it, its input is
+  // empty.
+  bool stdin = 2;
+  // How long its output may stay open after it exits, and how long SIGTERM
+  // has before SIGKILL, in milliseconds; 2000 without it.
+  uint32 grace_ms = 3;
+}
+
+message SpawnResponse {
+  oneof response {
+    // First: it started.
+    Started started = 1;
+    bytes stdout = 2;
+    bytes stderr = 3;
+    // Last: how it ended.
+    Exit exit = 4;
+  }
+}
+
+message Started {
+  int32 pid = 1;
+}
+
+message WhichRequest {
+  string command = 1;
+}
+
+message WhichResponse {
+  // Its absolute path; empty when it is not there.
+  string path = 1;
+}
+
+message TerminalRequest {
+  oneof request {
+    // First: what to run.
+    TerminalStart start = 1;
+    // What is typed.
+    bytes input = 2;
+    TerminalSize resize = 3;
+    // A signal for its foreground process group: SIGINT, SIGTERM, SIGKILL,
+    // SIGTSTP or SIGHUP.
+    string signal = 4;
+    // Ask its status, which a response answers.
+    TerminalStatusRequest status = 5;
+  }
+}
+
+message TerminalStart {
+  Program program = 1;
+  TerminalSize size = 2;
+  // Its TERM; xterm-256color without it.
+  string term = 3;
+  // How long its session's processes have after SIGTERM before SIGKILL, as
+  // it ends, in milliseconds; 2000 without it.
+  uint32 grace_ms = 4;
+}
+
+message TerminalSize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+message TerminalStatusRequest {}
+
+message TerminalResponse {
+  oneof response {
+    Started started = 1;
+    // What the terminal writes.
+    bytes output = 2;
+    TerminalStatus status = 3;
+    // Last: how its program ended.
+    Exit exit = 4;
+  }
+}
+
+message TerminalStatus {
+  // Whether it is idle: no process of its session is left, or its program,
+  // the shell, is its only one, holds the foreground and sleeps, as at its
+  // prompt.
+  bool idle = 1;
+  // Its foreground process group, as the kernel has it; 0 for none.
+  int32 foreground = 2;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_FILE = 1;
+  FILE_TYPE_DIRECTORY = 2;
+  FILE_TYPE_SYMLINK = 3;
+  FILE_TYPE_OTHER = 4;
+}
+
+// What is at a path.
+message FileInfo {
+  FileType type = 1;
+  uint64 size = 2;
+  // Its permission bits.
+  uint32 mode = 3;
+  google.protobuf.Timestamp modified = 4;
+  // A symlink's target, as it is written.
+  string target = 5;
+}
+
+message StatRequest {
+  string path = 1;
+  // Say what a symlink at the path leads to, rather than the link.
+  bool follow = 2;
+}
+
+message StatResponse {
+  // Nothing when nothing is at the path.
+  FileInfo info = 1;
+}
+
+message ListDirRequest {
+  string path = 1;
+}
+
+message ListDirResponse {
+  repeated DirEntry entries = 1;
+}
+
+message DirEntry {
+  string name = 1;
+  // What it is, symlinks not followed.
+  FileInfo info = 2;
+}
+
+message ReadFileRequest {
+  string path = 1;
+  // Where to start, in bytes.
+  uint64 offset = 2;
+  // How many bytes, at most; to the end without it.
+  optional uint64 length = 3;
+}
+
+message ReadFileResponse {
+  bytes chunk = 1;
+}
+
+message WriteFileRequest {
+  oneof request {
+    // First: which file, and how.
+    WriteFileStart start = 1;
+    bytes chunk = 2;
+  }
+}
+
+message WriteFileStart {
+  string path = 1;
+  // Its permission bits, for a file made; 0644 without them.
+  optional uint32 mode = 2;
+  // Make the folders it is in, if they are missing.
+  bool parents = 3;
+  // Fail if the file is there already.
+  bool exclusive = 4;
+  // Add to the file's end, rather than replace what it holds.
+  bool append = 5;
+}
+
+message WriteFileResponse {
+  // Its size once written.
+  uint64 size = 1;
+}
+
+message MakeDirRequest {
+  string path = 1;
+  // Make the folders it is in too, and take one there already as made.
+  bool parents = 2;
+}
+
+message MakeDirResponse {}
+
+message RemoveRequest {
+  string path = 1;
+  // Remove a folder with what it holds.
+  bool recursive = 2;
+}
+
+message RemoveResponse {
+  // Whether something was there.
+  bool removed = 1;
+}
+
+message RenameRequest {
+  string from = 1;
+  string to = 2;
+}
+
+message RenameResponse {}
+
+message PutRequest {
+  oneof request {
+    // First: the folder to unpack into.
+    string path = 1;
+    bytes chunk = 2;
+  }
+}
+
+message PutResponse {}
+
+message GetRequest {
+  string path = 1;
+}
+
+message GetResponse {
+  bytes chunk = 1;
+}

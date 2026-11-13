@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-sdk",
   "version": "0.0.1",
-  "description": "The SDK of fleet's gateway: boxes, their files, processes and terminals, for a harness; and the registration of a service, for its fleet server",
+  "description": "The SDK of fleet's gateway: its boxes, their lives and their API, for a harness; a service served over a tunnel to the gateway, for its server; and who calls a service, as the gateway says",
   "type": "module",
   "exports": {
     ".": {
@@ -22,6 +22,11 @@
     "prepack": "tsc -b"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "2.17.0",
+    "@connectrpc/connect": "2.3.0",
+    "@connectrpc/connect-node": "2.3.0",
+    "@sleepymug/fleet-net": "workspace:*",
+    "@sleepymug/fleet-pack": "workspace:*",
     "@sleepymug/fleet-protocol": "workspace:*"
   }
 }

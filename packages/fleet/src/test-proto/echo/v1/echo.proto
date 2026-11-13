@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package echo.v1;
+
+// Says back what it is told, and who told it.
+service Echo {
+  // Say `text` back, with who said it.
+  rpc Say(SayRequest) returns (SayResponse);
+  // Say `text` back `times` times.
+  rpc Repeat(RepeatRequest) returns (stream SayResponse);
+}
+
+message SayRequest {
+  string text = 1;
+}
+
+message SayResponse {
+  string text = 1;
+  // Who said it: the box's id, or `client`.
+  string from = 2;
+  // The calling box's labels.
+  map<string, string> labels = 3;
+}
+
+message RepeatRequest {
+  string text = 1;
+  uint32 times = 2;
+}

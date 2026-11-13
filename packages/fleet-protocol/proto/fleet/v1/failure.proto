@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package fleet.v1;
+
+// Why the gateway refused a call, as a detail of its error, beside the
+// error's code.
+message Failure {
+  Reason reason = 1;
+}
+
+enum Reason {
+  REASON_UNSPECIFIED = 0;
+  // The gateway knows no box by that id.
+  REASON_NO_BOX = 1;
+  // The box's container was removed by other means: its owner makes
+  // another.
+  REASON_BOX_GONE = 2;
+  // The call needs a started box, and the box is not started.
+  REASON_NOT_STARTED = 3;
+  // No service by that name is registered, or the calling box does not have
+  // it.
+  REASON_NO_SERVICE = 4;
+  // The gateway knows no spec by that digest: stage it.
+  REASON_UNKNOWN_SPEC = 5;
+  // The spec's package has not been uploaded.
+  REASON_NO_PACKAGE = 6;
+  // Another server serves a service by that name now.
+  REASON_NAME_TAKEN = 7;
+}

@@ -13,6 +13,8 @@ packages:
 # links the member, so the members' manifests stay as they are.
 linkWorkspacePackages: true
 allowBuilds:
+  # buf's binary is its platform package, which needs no script.
+  '@bufbuild/buf': false
   # dsh's (the root's dev dependency, for `pnpm exec dsh`).
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true

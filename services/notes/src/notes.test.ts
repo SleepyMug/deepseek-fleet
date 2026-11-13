@@ -1,39 +1,53 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { Notebooks } from './notes.ts'
-import { answer, BOX_PACKAGE } from './service.ts'
+import { FleetGateway, fleetPaths, LocalDriver, serve, systemPlatform } from '@sleepymug/fleet/gateway'
+import { Fleet } from '@sleepymug/fleet-sdk'
+import { Notebooks } from './notebooks.ts'
+import { notesService } from './service.ts'
 
-async function folder(t: { after(fn: () => Promise<void>): void }): Promise<string> {
+test('each box keeps notes in a notebook of its own, through the notes client, or JSON from a shell', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-notes-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
-  return dir
-}
+  const paths = fleetPaths(join(dir, 'home'))
+  const driver = new LocalDriver({ dir: join(dir, 'boxes'), gatewaySocket: paths.gatewaySocket })
+  const gateway = await FleetGateway.open({ paths, driver, platform: systemPlatform(() => {}), image: 'local', idleStopMs: 60_000 })
+  const served = await serve(gateway, { clients: paths.socket, boxes: paths.gatewaySocket })
+  const client = await Fleet.connect({ socket: paths.socket })
+  t.after(async () => {
+    await client.close()
+    await served.close()
+    for (const box of gateway.listBoxes()) await driver.remove(box.id)
+  })
+  await client.serve(notesService(new Notebooks(join(dir, 'notebooks'))))
 
-test('each box has a notebook of its own, found by tag, which persists', async (t) => {
-  const notebooks = new Notebooks(join(await folder(t), 'notes'))
-  const first = answer(notebooks, 'box-a', { op: 'add', text: 'milk', tags: ['shop'] }) as { id: number; written: string }
-  answer(notebooks, 'box-a', { op: 'add', text: 'call mum', tags: [] })
-  answer(notebooks, 'box-b', { op: 'add', text: 'eggs', tags: ['shop'] })
-  assert.equal(first.id, 1)
-  assert.ok(!Number.isNaN(Date.parse(first.written)))
-  assert.deepEqual((answer(notebooks, 'box-a', { op: 'tag', tag: 'shop' }) as { text: string }[]).map(note => note.text), ['milk'])
-  assert.deepEqual(answer(notebooks, 'box-c', { op: 'tag', tag: 'shop' }), [])
-})
+  const program = [
+    "import { notes } from '@fleet/notes'",
+    "const [command, ...rest] = process.argv.slice(2)",
+    "if (command === 'add') console.log(JSON.stringify((await notes.add({ text: rest[0], tags: rest.slice(1) })).id))",
+    "else console.log(JSON.stringify((await notes.tagged({ tag: rest[0] })).notes.map(note => note.text)))",
+  ].join('\n')
+  const boxes = []
+  for (let i = 0; i < 2; i++) {
+    const made = await client.create({ services: ['notes'] })
+    await mkdir(join(driver.root(made.id), 'fleet', 'programs'), { recursive: true })
+    await writeFile(join(driver.root(made.id), 'fleet', 'programs', 'notes.mjs'), program)
+    boxes.push({ box: client.box(made.id), program: join(driver.root(made.id), 'fleet', 'programs', 'notes.mjs') })
+  }
+  const [first, second] = boxes as [typeof boxes[0], typeof boxes[0]]
+  assert.equal(await first.box.output([process.execPath, first.program, 'add', 'buy milk', 'shop']), '1\n')
+  assert.equal(await first.box.output([process.execPath, first.program, 'add', 'call mum']), '2\n')
+  assert.equal(await first.box.output([process.execPath, first.program, 'add', 'buy bread', 'shop']), '3\n')
+  assert.deepEqual(JSON.parse(await first.box.output([process.execPath, first.program, 'tagged', 'shop'])), ['buy milk', 'buy bread'])
+  assert.deepEqual(JSON.parse(await second.box.output([process.execPath, second.program, 'tagged', 'shop'])), [])
 
-test('what the box sends is checked', async (t) => {
-  const notebooks = new Notebooks(await folder(t))
-  assert.throws(() => answer(notebooks, 'box-a', { op: 'add', text: 1 }), /add takes a text/u)
-  assert.throws(() => answer(notebooks, 'box-a', { op: 'add', text: 'x', tags: 'shop' }), /add takes tags/u)
-  assert.throws(() => answer(notebooks, 'box-a', { op: 'tag' }), /tag takes a tag/u)
-  assert.throws(() => answer(notebooks, 'box-a', { op: 'drop' }), /no op drop/u)
-  assert.throws(() => answer(notebooks, '../a', { op: 'tag', tag: 'x' }), /no notebook named/u)
-})
-
-test('the service\'s package is fleet-notes-box, with the notes command', async () => {
-  const { readFile } = await import('node:fs/promises')
-  const manifest = JSON.parse(await readFile(join(BOX_PACKAGE, 'package.json'), 'utf8')) as { name: string; bin: Record<string, string> }
-  assert.deepEqual([manifest.name, manifest.bin], ['@sleepymug/fleet-notes-box', { notes: './lib/notes.js' }])
+  const curl = await first.box.exec(['curl', '-s', '--unix-socket', join(driver.root((await first.box.info()).id), 'run', 'fleet', 'services.sock'),
+    '-H', 'content-type: application/json', '-d', '{"tag":"shop"}', 'http://fleet/services/notes/notes.v1.Notes/Tagged'])
+  if (curl.exit?.code === 0) {
+    assert.deepEqual(JSON.parse(Buffer.from(curl.stdout).toString()).notes.map((note: { text: string }) => note.text), ['buy milk', 'buy bread'])
+  } else {
+    t.diagnostic('no curl here: the shell\'s call is left untried')
+  }
 })

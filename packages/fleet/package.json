@@ -1,19 +1,15 @@
 {
   "name": "@sleepymug/fleet",
   "version": "0.0.1",
-  "description": "fleet's gateway: boxes, Docker containers each with fleet's helper, and their lifetime; and the services that plug into it, each a fleet server, which a box's programs reach through the service's package in the box",
+  "description": "fleet's gateway, the hub everything dials: it keeps boxes, containers each with fleet's helper in it, and their lifetime; takes in services, whose servers serve them over tunnels they open; and carries each call to where it goes, a box's to its helper, a service's to its server",
   "type": "module",
   "bin": {
     "fleet": "./lib/cli/main.js"
   },
   "exports": {
     "./gateway": {
-      "types": "./lib/gateway.d.ts",
-      "default": "./lib/gateway.js"
-    },
-    "./box": {
-      "types": "./lib/box/box.d.ts",
-      "default": "./lib/box/box.js"
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -30,8 +26,14 @@
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dependencies": {
+    "@bufbuild/protobuf": "2.17.0",
+    "@connectrpc/connect": "2.3.0",
+    "@connectrpc/connect-node": "2.3.0",
     "@sleepymug/fleet-box": "workspace:*",
-    "@sleepymug/fleet-sdk": "workspace:*",
-    "@sleepymug/fleet-protocol": "workspace:*"
+    "@sleepymug/fleet-codegen": "workspace:*",
+    "@sleepymug/fleet-net": "workspace:*",
+    "@sleepymug/fleet-pack": "workspace:*",
+    "@sleepymug/fleet-protocol": "workspace:*",
+    "@sleepymug/fleet-sdk": "workspace:*"
   }
 }

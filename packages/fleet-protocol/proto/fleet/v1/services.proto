@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package fleet.v1;
+
+import "google/protobuf/descriptor.proto";
+
+// The services that plug into the gateway. A service's server stages its
+// spec, uploads its package if it has one and the gateway lacks it, then
+// opens a tunnel to the gateway, naming the spec, over which it serves the
+// service's calls: the service is registered for as long as the tunnel
+// lasts. A box's programs call it at /services/<name>/.
+service Services {
+  // Stage a service's spec: check its schema, and make the client the
+  // gateway puts in each box that has the service. Staging the same spec
+  // again changes nothing.
+  rpc Stage(StageServiceRequest) returns (StageServiceResponse);
+  // Upload a service's package: the first request names its digest, each
+  // after it carries a part of the package as a tar archive.
+  rpc Upload(stream UploadPackageRequest) returns (UploadPackageResponse);
+  // The services registered now, by name.
+  rpc List(ListServicesRequest) returns (ListServicesResponse);
+}
+
+message StageServiceRequest {
+  // Its name: lowercase letters, digits and hyphens, a letter first, which
+  // its calls' path and its client's package are named by.
+  string name = 1;
+  // What it is, and how a box's programs use it, in a sentence.
+  string description = 2;
+  // Its schema, with the comments, as `buf build` makes it, and every file
+  // it imports.
+  google.protobuf.FileDescriptorSet schema = 3;
+  // The protobuf services of the schema it serves, by their full names.
+  repeated string services = 4;
+  // The digest of its package, a node package that each box that has the
+  // service gets, its commands on the PATH; empty for none.
+  string package = 5;
+  // What it adds to the environment of every process in a box that has it.
+  map<string, string> env = 6;
+}
+
+message StageServiceResponse {
+  // The spec's digest, which the service's tunnel names.
+  string spec = 1;
+  // Whether the gateway lacks the package, which must be uploaded before
+  // the tunnel opens.
+  bool upload = 2;
+}
+
+message UploadPackageRequest {
+  oneof part {
+    // The package's digest, first.
+    string digest = 1;
+    // A part of the package's tar archive.
+    bytes chunk = 2;
+  }
+}
+
+message UploadPackageResponse {}
+
+message ListServicesRequest {}
+
+message ListServicesResponse {
+  repeated Service services = 1;
+}
+
+// A service, as the gateway has it.
+message Service {
+  string name = 1;
+  string description = 2;
+  // The protobuf services it serves.
+  repeated string services = 3;
+  // Its package's commands, each by its name.
+  repeated string commands = 4;
+  map<string, string> env = 5;
+  // The digest of its spec.
+  string spec = 6;
+}

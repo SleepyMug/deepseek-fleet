@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 /**
- * `fleet-notes`: run the notes service (./service.ts) with fleet's gateway,
- * registered as long as it runs, its notebooks in a folder of its own,
- * until interrupted.
+ * `fleet-notes`: serve the notes service (./service.ts) to fleet's gateway
+ * for as long as it runs, its notebooks in a folder of its own.
  * @module @sleepymug/fleet-notes/main
  */
 
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Fleet, fleetHome } from '@sleepymug/fleet-sdk'
-import { Notebooks } from './notes.ts'
+import { Notebooks } from './notebooks.ts'
 import { notesService } from './service.ts'
 
 const USAGE = `Usage: fleet-notes [--dir <dir>]
 
-Run the notes service with fleet's gateway, at $FLEET_SOCKET, or fleet.sock in
-the fleet home, until interrupted: each box gets the notes command, its notebook
-kept in <dir>, by default notes/ in the fleet home.
+Serve the notes service to fleet's gateway, at $FLEET_SOCKET, or fleet.sock in
+the fleet home, until interrupted: each box made with it has a notebook of its
+own, kept in <dir>, by default notes/ in the fleet home.
 `
 
 try {
@@ -29,8 +28,8 @@ try {
   } else {
     const log = (message: string): void => { process.stderr.write(`fleet-notes: ${message}\n`) }
     const client = await Fleet.connect({ log })
-    await client.register(notesService(new Notebooks(values.dir ?? join(fleetHome(), 'notes'))))
-    log('registered the notes service')
+    await client.serve(notesService(new Notebooks(values.dir ?? join(fleetHome(), 'notes'))))
+    log('serving the notes service')
     await new Promise<void>((resolve) => {
       for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { resolve() })
     })

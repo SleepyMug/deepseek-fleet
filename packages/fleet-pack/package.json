@@ -1,0 +1,25 @@
+{
+  "name": "@sleepymug/fleet-pack",
+  "version": "0.0.1",
+  "description": "Trees of files as fleet moves them: as tar archives, written and read in one pass; a node package as installed, with what it depends on; and a tree's digest",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  }
+}

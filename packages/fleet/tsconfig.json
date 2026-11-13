@@ -5,5 +5,12 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../fleet-protocol" }, { "path": "../fleet-box" }, { "path": "../fleet-sdk" }]
+  "references": [
+    { "path": "../fleet-protocol" },
+    { "path": "../fleet-net" },
+    { "path": "../fleet-pack" },
+    { "path": "../fleet-codegen" },
+    { "path": "../fleet-box" },
+    { "path": "../fleet-sdk" }
+  ]
 }

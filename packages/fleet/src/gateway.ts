@@ -1,333 +1,269 @@
 /**
- * The gateway (docs/fleet/index.md): the boxes it made, each a container
- * with fleet's helper in it while it runs, kept as their creators ask and
- * stopped once idle (./managed.ts); the services registered with it, which
- * it puts in the boxes that have them, and whose connections it passes on
- * from each box's channel (./services.ts, ./channel.ts); and the ops its clients ask of them, as
- * fleet-protocol's fleet wire has them, each a client's, whose leases and
- * services last as long as the client does. It knows nothing of whoever
- * uses its boxes, a harness or a service: a box is its id, its labels, and
- * what is in it.
+ * The gateway (docs/fleet/index.md), put together from what it is given:
+ * the boxes it made (./boxes/), each a container through its driver with
+ * fleet's helper in it while it runs, kept for as long as their creators
+ * want them, and stopped once idle; and the services (./services/), each a
+ * spec staged and a server's tunnel naming it, whose clients and packages
+ * it puts in the boxes made with them. It knows nothing of who uses its
+ * boxes, or of what its services do: a box is its id, its labels and its
+ * services; a service is its name, its schema and its server. Its HTTP/2
+ * surface is ./http/; this is what that surface asks of it.
  * @module @sleepymug/fleet/gateway
  */
 
-import { createReadStream, createWriteStream } from 'node:fs'
-import { chmod, mkdir, rm } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
-import { Writable } from 'node:stream'
-import { type BoxInfo, type BoxSpec, type BoxState, NO_BOX, type Op, type OpEvent, type Ops } from '@sleepymug/fleet-protocol/fleet'
-import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
-import type { Method } from '@sleepymug/fleet-protocol/helper'
-import { Box, METHODS } from './box/box.ts'
-import { Channel } from './channel.ts'
-import { type Boxes, ManagedBox, type RunBox } from './managed.ts'
+import { mkdir } from 'node:fs/promises'
+import { create } from '@bufbuild/protobuf'
+import { timestampFromDate } from '@bufbuild/protobuf/wkt'
+import { Code, ConnectError } from '@connectrpc/connect'
+import { runtimeRoots } from '@sleepymug/fleet-codegen'
+import { type Box, BoxSchema, BoxState, type CreateBoxRequest, type Service, ServiceSchema, type StageServiceRequest } from '@sleepymug/fleet-protocol/fleet'
+import { stageModules } from '@sleepymug/fleet-pack'
+import type { AcceptedTunnel } from '@sleepymug/fleet-net'
+import { contentsOf, type Contents } from './boxes/contents.ts'
+import type { BoxDriver } from './boxes/driver.ts'
+import { helperLink } from './boxes/link.ts'
+import { ManagedBox } from './boxes/managed.ts'
+import { Registry, type BoxRecord } from './boxes/registry.ts'
+import { noBox, noPackage, noService, unknownSpec } from './failure.ts'
+import type { FleetPaths } from './home.ts'
 import type { Platform } from './platform.ts'
-import { BOX_ID, type BoxRecord, Registry } from './registry.ts'
-import { Services } from './services.ts'
-import { messageOf } from './util/error.ts'
+import { Registrations, type Registration } from './services/registrations.ts'
+import { Specs, type Spec } from './services/specs.ts'
+import { Store } from './store.ts'
 
-export { Registry } from './registry.ts'
-export { systemPlatform } from './platform.ts'
-export { listen, serve } from './socket.ts'
-
-/** Docker's containers, through `Box`. */
-export const dockerBoxes: Boxes = {
-  create: (name, { image, env, labels, channel }) => Box.create({ name, image, env, labels, channel }),
-  open: name => Box.open(name),
-  async state(name) {
-    const found = (await Box.list()).find(box => box.name === name)
-    return found === undefined ? 'missing' : found.state === 'running' ? 'running' : 'stopped'
-  },
-}
-
-export interface FleetGatewayDeps {
-  registry: Registry
-  /** Where the services' packages are staged. */
-  cache: string
-  /** Where the boxes' channels are, each in a folder by its box's id. */
-  channels: string
+export interface GatewayDeps {
+  paths: FleetPaths
+  driver: BoxDriver
   platform: Platform
-  /** Docker's, by default. */
-  boxes?: Boxes
-  /** The image of a box made without one; {@link DEFAULT_IMAGE} by default. */
-  image?: string
-  /** How long a box nothing occupies runs before it is stopped; 60 s by default. */
-  idleStopMs?: number
+  /** The image of a box made without one. */
+  image: string
+  /** How long a box made without its own idle time runs while nothing occupies it. */
+  idleStopMs: number
 }
 
-/** A client of the gateway, whose leases and services last while it does. */
-export interface Client {
-  readonly leases: Map<string, { box: string; release: () => void }>
-}
-
-/** What an op is given besides its params: who asks, where its events go, and what gives it up. */
-export interface OpContext<O extends Op> {
-  client: Client
-  emit: (event: OpEvent<O>) => void
-  signal: AbortSignal
-}
-
-type Handler<O extends Op> = (params: Ops[O]['params'], context: OpContext<O>) => Promise<Ops[O]['result']>
-
-interface Kept {
-  record: BoxRecord
-  box: ManagedBox
-  watchers: Set<(state: BoxState | 'removed') => void>
-  channel: Channel
-}
+/** What follows a box's state: told it at each change, and `removed` once it is gone for good. */
+export type BoxListener = (state: BoxState | 'removed') => void
 
 export class FleetGateway {
-  private readonly kept = new Map<string, Kept>()
+  readonly store: Store
+  readonly specs: Specs
+  readonly registrations: Registrations
   private readonly registry: Registry
-  private readonly channels: string
-  private readonly platform: Platform
-  private readonly boxes: Boxes
-  private readonly image: string
-  private readonly idleStopMs: number
-  readonly services: Services
-  private nextLease = 1
+  private readonly boxes = new Map<string, { managed: ManagedBox; record: BoxRecord }>()
+  private readonly listeners = new Map<string, Set<BoxListener>>()
 
-  constructor({ registry, cache, channels, platform, boxes = dockerBoxes, image = DEFAULT_IMAGE, idleStopMs = 60_000 }: FleetGatewayDeps) {
-    this.registry = registry
-    this.channels = channels
-    this.platform = platform
-    this.boxes = boxes
-    this.image = image
-    this.idleStopMs = idleStopMs
-    this.services = new Services({ cache, platform, changed: () => { this.resync() } })
+  private constructor(private readonly deps: GatewayDeps, private readonly runtime: string) {
+    this.store = new Store(deps.paths.store)
+    this.specs = new Specs(deps.paths.specs, this.store)
+    this.registry = new Registry(deps.paths.boxes)
+    this.registrations = new Registrations((name, registration) => {
+      deps.platform.log(registration === undefined ? `the service ${name} is gone` : `registered the service ${name}, its spec ${registration.spec.digest.slice(0, 12)}`)
+    })
   }
 
-  /** Know the boxes the registry has, as a gateway before this one left them: one still running stops once idle. */
-  async load(): Promise<void> {
-    for (const record of await this.registry.list()) {
-      const kept = await this.keep(record)
-      const state = await this.boxes.state(record.id).catch(() => 'stopped' as const)
-      if (state === 'running') kept.box.adopt()
+  /** A gateway in its home: the boxes its records name, and what its services' clients import, staged. */
+  static async open(deps: GatewayDeps): Promise<FleetGateway> {
+    await mkdir(deps.paths.home, { recursive: true, mode: 0o700 })
+    const store = new Store(deps.paths.store)
+    const roots = await runtimeRoots()
+    const runtime = await store.make(dir => stageModules(roots, dir))
+    const gateway = new FleetGateway(deps, runtime)
+    for (const record of await gateway.registry.list()) gateway.keep(record)
+    return gateway
+  }
+
+  // The boxes.
+
+  /** Make a box, stopped, with the services it names, each as registered now. */
+  async createBox(request: CreateBoxRequest): Promise<Box> {
+    const specs = request.services.map((name) => {
+      const registration = this.registrations.get(name)
+      if (registration === undefined) throw noService(`no service ${name} is registered`)
+      return registration.spec
+    })
+    if (new Set(request.services).size !== request.services.length) throw new ConnectError('fleet: a box names each of its services once', Code.InvalidArgument)
+    const commands = new Map<string, string>()
+    const env: Record<string, string> = {}
+    for (const spec of specs) {
+      for (const command of Object.keys(await this.specs.commands(spec))) {
+        const other = commands.get(command)
+        if (other !== undefined) throw new ConnectError(`fleet: ${other} and ${spec.name} both have the command ${command}`, Code.InvalidArgument)
+        commands.set(command, spec.name)
+      }
+      Object.assign(env, spec.env)
     }
-  }
-
-  /** A client, for the ops it asks. */
-  client(): Client {
-    return { leases: new Map() }
-  }
-
-  /** Let a client go: its leases released, and its services unregistered. */
-  leave(client: Client): void {
-    for (const { release } of client.leases.values()) release()
-    client.leases.clear()
-    this.services.unregisterAll(client)
-  }
-
-  /** Ask an op, as a client. */
-  async handle<O extends Op>(op: O, params: Ops[O]['params'], context: OpContext<O>): Promise<Ops[O]['result']> {
-    if (!Object.hasOwn(this.ops, op)) throw new Error(`fleet: no op ${String(op)}`)
-    const handler = this.ops[op] as Handler<O>
-    return await handler(params ?? ({} as Ops[O]['params']), context)
-  }
-
-  /** Stop the boxes started here, and their channels. */
-  async close(): Promise<void> {
-    await Promise.all([...this.kept.values()].map(async (kept) => {
-      await kept.box.close()
-      await kept.channel.close()
-    }))
-  }
-
-  private readonly ops: { [O in Op]: Handler<O> } = {
-    'box.create': async (spec) => await this.create(spec),
-    'box.list': async ({ labels } = {}) => [...this.kept.values()]
-      .filter(({ record }) => Object.entries(labels ?? {}).every(([key, value]) => record.labels[key] === value))
-      .map(kept => infoOf(kept)),
-    'box.get': async ({ box }) => infoOf(this.kept_(box)),
-    'box.start': async ({ box }) => {
-      await this.kept_(box).box.start()
-      return null
-    },
-    'box.stop': async ({ box }) => {
-      await this.kept_(box).box.stop()
-      return null
-    },
-    'box.stopWhenVacant': async ({ box }) => {
-      await this.kept_(box).box.stopWhenVacant()
-      return null
-    },
-    'box.remove': async ({ box }) => {
-      const kept = this.kept_(box)
-      await kept.box.remove(async () => {
-        await this.registry.delete(box)
-        this.kept.delete(box)
-      })
-      await kept.channel.close()
-      await rm(this.channelOf(box), { recursive: true, force: true })
-      for (const watcher of kept.watchers) watcher('removed')
-      this.platform.log(`removed ${box}`)
-      return null
-    },
-    'box.lease': async ({ box, occupant, start = true }, { client }) => {
-      const kept = this.kept_(box)
-      if (typeof occupant?.kind !== 'string' || typeof occupant.id !== 'string') throw new TypeError('fleet: a lease is an occupant\'s, { kind, id }')
-      const lease = `lease-${this.nextLease++}`
-      const release = start ? (await kept.box.hold(occupant)).release : kept.box.occupy(occupant)
-      client.leases.set(lease, { box, release })
-      return { lease }
-    },
-    'box.release': async ({ lease }, { client }) => {
-      client.leases.get(lease)?.release()
-      client.leases.delete(lease)
-      return null
-    },
-    'box.watch': async ({ box }, { emit, signal }) => {
-      const kept = this.kept_(box)
-      const ended = Promise.withResolvers<null>()
-      const watcher = (state: BoxState | 'removed'): void => {
-        emit({ state })
-        if (state === 'removed') ended.resolve(null)
-      }
-      kept.watchers.add(watcher)
-      const stop = (): void => { ended.resolve(null) }
-      signal.addEventListener('abort', stop, { once: true })
-      emit({ state: kept.box.state })
-      try {
-        return await ended.promise
-      } finally {
-        kept.watchers.delete(watcher)
-        signal.removeEventListener('abort', stop)
-      }
-    },
-    'box.request': async ({ box, method, params, hold = true }, { emit }) => {
-      if (!(METHODS as string[]).includes(method)) throw new Error(`fleet: no method ${String(method)}`)
-      if (method === 'hello' || method.startsWith('services.')) throw new Error(`fleet: ${method} is the gateway's own`)
-      const kept = this.kept_(box)
-      const send = (running: RunBox): Promise<unknown> => running.request(method as Method, params as never, emit as never)
-      if (!hold) return await send(await kept.box.started()) as never
-      const held = await kept.box.hold({ kind: 'request', id: `${method}-${this.platform.newId()}` })
-      try {
-        return await send(held.box) as never
-      } finally {
-        held.release()
-      }
-    },
-    'box.copyIn': async ({ box, from, to }) => {
-      if (!isAbsolute(from)) throw new TypeError('fleet: a copy is from an absolute path on the host')
-      const { box: managed } = this.kept_(box)
-      await managed.exclusive(async () => { await (await managed.container()).copyIn(from, to) })
-      return null
-    },
-    'box.copyOut': async ({ box, from, to }) => {
-      if (!isAbsolute(to)) throw new TypeError('fleet: a copy is to an absolute path on the host')
-      const { box: managed } = this.kept_(box)
-      await managed.exclusive(async () => { await (await managed.container()).copyOut(from, to) })
-      return null
-    },
-    'box.pipe': async ({ box, argv, input, output }) => {
-      if (!Array.isArray(argv) || argv.length === 0 || !argv.every(arg => typeof arg === 'string')) throw new TypeError('fleet: a pipe takes an argv, the program first')
-      for (const path of [input, output]) if (path !== undefined && !isAbsolute(path)) throw new TypeError('fleet: a pipe\'s input and output are absolute paths on the host')
-      const held = await this.kept_(box).box.hold({ kind: 'pipe', id: this.platform.newId() })
-      try {
-        let stdout = ''
-        const collect = new Writable({ write(chunk: Buffer, _encoding, done) { stdout += chunk.toString('utf8'); done() } })
-        await held.box.pipe(argv, {
-          ...input === undefined ? {} : { input: createReadStream(input) },
-          output: output === undefined ? collect : createWriteStream(output, { mode: 0o600 }),
-        })
-        return { stdout }
-      } finally {
-        held.release()
-      }
-    },
-    'service.register': async (spec, { client }) => await this.services.register(spec, client),
-    'service.unregister': async ({ name }, { client }) => {
-      this.services.unregister(name, client)
-      return null
-    },
-    'service.list': async () => this.services.list(),
-  }
-
-  /** Make a box, stopped, and keep it. */
-  private async create(spec: BoxSpec = {}): Promise<BoxInfo> {
-    const { image = this.image, labels = {}, env = {}, services, idleStopMs } = spec
-    const strings = (value: unknown): boolean => typeof value === 'object' && value !== null && !Array.isArray(value) && Object.values(value).every(entry => typeof entry === 'string')
-    if (typeof image !== 'string' || image === '') throw new TypeError('fleet: a box\'s image is a name')
-    if (!strings(labels) || !strings(env)) throw new TypeError('fleet: a box\'s labels and env are strings')
-    if (services !== undefined && (!Array.isArray(services) || !services.every(name => typeof name === 'string'))) throw new TypeError('fleet: a box\'s services are names')
-    if (idleStopMs !== undefined && (typeof idleStopMs !== 'number' || !Number.isFinite(idleStopMs) || idleStopMs < 0)) throw new TypeError('fleet: a box\'s idleStopMs is a number of milliseconds, 0 or more')
-    const id = `box-${this.platform.newId()}`
-    if (!BOX_ID.test(id)) throw new Error(`fleet: minted an id that is none: ${id}`)
+    Object.assign(env, request.env)
     const record: BoxRecord = {
-      id, image, labels: { ...labels }, env: { ...env }, services: services === undefined ? null : [...services],
-      ...idleStopMs === undefined ? {} : { idleStopMs }, createdAt: this.platform.now().toISOString(),
+      id: `box-${this.deps.platform.newId()}`,
+      image: request.image === '' ? this.deps.image : request.image,
+      labels: { ...request.labels },
+      env,
+      services: specs.map(spec => ({ name: spec.name, spec: spec.digest })),
+      idleStopMs: request.idleStopMs ?? this.deps.idleStopMs,
+      createdAt: this.deps.platform.now().toISOString(),
     }
-    // The channel's folder first, which the container mounts.
-    const channel = await this.listen(record)
-    let container: RunBox
-    try {
-      container = await this.boxes.create(id, {
-        image, env: record.env, labels: { ...Object.fromEntries(Object.entries(labels).map(([key, value]) => [`fleet.label.${key}`, value])) }, channel: this.channelOf(id),
-      })
-    } catch (error) {
-      await channel.close()
-      await rm(this.channelOf(id), { recursive: true, force: true })
-      throw error
-    }
-    try {
-      await this.registry.put(record)
-    } catch (error) {
-      await container.remove().catch(() => {})
-      await channel.close()
-      await rm(this.channelOf(id), { recursive: true, force: true })
-      throw error
-    }
-    const kept = await this.keep(record, container, channel)
-    this.platform.log(`created ${id}${Object.keys(labels).length === 0 ? '' : `, ${Object.entries(labels).map(([key, value]) => `${key}=${value}`).join(' ')}`}`)
-    return infoOf(kept)
+    await this.deps.driver.create({ id: record.id, image: record.image, env: record.env, labels: record.labels })
+    await this.registry.put(record)
+    this.deps.platform.log(`created ${record.id}${Object.entries(record.labels).map(([key, value]) => ` ${key}=${value}`).join('')}`)
+    return this.infoOf(this.keep(record))
   }
 
-  private async keep(record: BoxRecord, container?: RunBox, channel?: Channel): Promise<Kept> {
-    const watchers = new Set<(state: BoxState | 'removed') => void>()
-    const box = new ManagedBox({
+  /** Every box, oldest first, or those whose labels hold each of `labels`. */
+  listBoxes(labels: Readonly<Record<string, string>> = {}): Box[] {
+    return [...this.boxes.values()]
+      .filter(({ record }) => Object.entries(labels).every(([key, value]) => record.labels[key] === value))
+      .sort((a, b) => (a.record.createdAt < b.record.createdAt ? -1 : a.record.createdAt > b.record.createdAt ? 1 : 0))
+      .map(kept => this.infoOf(kept))
+  }
+
+  getBox(id: string): Box {
+    return this.infoOf(this.find(id))
+  }
+
+  /** The box, as the gateway keeps it. */
+  box(id: string): ManagedBox {
+    return this.find(id).managed
+  }
+
+  /** The services a box was made with, by name. */
+  servicesOf(id: string): readonly string[] {
+    return this.find(id).record.services.map(service => service.name)
+  }
+
+  /** The box's labels. */
+  labelsOf(id: string): Readonly<Record<string, string>> {
+    return this.find(id).record.labels
+  }
+
+  async removeBox(id: string): Promise<void> {
+    const { managed } = this.find(id)
+    await managed.remove(async () => {
+      await this.registry.delete(id)
+      this.boxes.delete(id)
+    })
+    this.deps.platform.log(`removed ${id}`)
+    for (const listener of this.listeners.get(id) ?? []) listener('removed')
+    this.listeners.delete(id)
+  }
+
+  /** Follow a box's state: `listener` is told it now and at each change, until the returned stop, or the box's removal. */
+  watch(id: string, listener: BoxListener): () => void {
+    const { managed } = this.find(id)
+    const listeners = this.listeners.get(id) ?? new Set()
+    this.listeners.set(id, listeners)
+    listeners.add(listener)
+    listener(managed.state)
+    return () => { listeners.delete(listener) }
+  }
+
+  /** The helper of a box has dialed in. */
+  attachHelper(id: string, tunnel: AcceptedTunnel): void {
+    this.find(id).managed.attach(helperLink(tunnel))
+  }
+
+  /** Whether the gateway knows a box. */
+  hasBox(id: string): boolean {
+    return this.boxes.has(id)
+  }
+
+  // The services.
+
+  stage(request: StageServiceRequest): Promise<Spec> {
+    return this.specs.stage(request)
+  }
+
+  /** Take in a package, which must have `digest`. */
+  async upload(digest: string, archive: AsyncIterable<Uint8Array>): Promise<void> {
+    if (await this.store.has(digest)) {
+      // Read, so the uploader is not left waiting, and pass over.
+      for await (const _ of archive) { /* the store has it */ }
+      return
+    }
+    await this.store.receive(digest, archive)
+  }
+
+  /** The spec a tunnel names, checked as one a server may serve now. */
+  async specForTunnel(name: string, digest: string): Promise<Spec> {
+    const spec = await this.specs.get(digest)
+    if (spec === undefined || spec.name !== name) throw unknownSpec(digest)
+    if (spec.package !== '' && !(await this.store.has(spec.package))) throw noPackage(spec.package)
+    return spec
+  }
+
+  /** The services registered now. */
+  async services(): Promise<Service[]> {
+    return await Promise.all(this.registrations.list().map(async ({ spec }) => create(ServiceSchema, {
+      name: spec.name,
+      description: spec.description,
+      services: [...spec.services],
+      commands: Object.keys(await this.specs.commands(spec)).sort(),
+      env: { ...spec.env },
+      spec: spec.digest,
+    })))
+  }
+
+  /** Where a call to service `name` goes, from box `box` or a client: refused for a box that was not made with it. */
+  serviceFor(name: string, box?: string): Registration {
+    if (box !== undefined && !this.find(box).record.services.some(service => service.name === name)) throw noService(`${box} has no service ${name}`)
+    const registration = this.registrations.get(name)
+    if (registration === undefined) throw noService(`no service ${name} is registered now`)
+    return registration
+  }
+
+  /** Stop the boxes it started, as the gateway stops. */
+  async close(): Promise<void> {
+    await Promise.allSettled([...this.boxes.values()].map(({ managed }) => managed.close()))
+  }
+
+  private keep(record: BoxRecord): { managed: ManagedBox; record: BoxRecord } {
+    let contents: Promise<Contents> | undefined
+    const managed = new ManagedBox({
       id: record.id,
-      boxes: this.boxes,
-      platform: this.platform,
-      idleStopMs: record.idleStopMs ?? this.idleStopMs,
-      onStarted: running => this.services.provision(running, record),
-      onState: (state) => { for (const watcher of watchers) watcher(state) },
-    }, container)
-    const kept: Kept = { record, box, watchers, channel: channel ?? await this.listen(record) }
-    this.kept.set(record.id, kept)
+      driver: this.deps.driver,
+      platform: this.deps.platform,
+      idleStopMs: record.idleStopMs,
+      contents: () => {
+        contents ??= this.contentsOf(record).catch((error: unknown) => {
+          contents = undefined
+          throw error
+        })
+        return contents
+      },
+      onState: (state) => {
+        for (const listener of this.listeners.get(record.id) ?? []) listener(state)
+      },
+    })
+    const kept = { managed, record }
+    this.boxes.set(record.id, kept)
     return kept
   }
 
-  /** Listen on a box's channel, its connections passed on to its services. */
-  private async listen(record: BoxRecord): Promise<Channel> {
-    // Only the host's owner reaches the channels but through a box's mount.
-    await mkdir(this.channels, { recursive: true, mode: 0o700 })
-    await chmod(this.channels, 0o700)
-    return await Channel.listen(this.channelOf(record.id), service => this.services.taker(record, service))
+  private async contentsOf(record: BoxRecord): Promise<Contents> {
+    const specs = await Promise.all(record.services.map(async ({ name, spec: digest }) => {
+      const spec = await this.specs.get(digest)
+      if (spec === undefined) throw new ConnectError(`fleet: the spec of ${record.id}'s service ${name} is gone from the gateway's home`, Code.DataLoss)
+      return spec
+    }))
+    return await contentsOf(specs, { store: this.store, specs: this.specs, runtime: this.runtime })
   }
 
-  private channelOf(id: string): string {
-    return join(this.channels, id)
-  }
-
-  /** A box the gateway keeps; another fails. */
-  private kept_(id: string): Kept {
-    const kept = typeof id === 'string' ? this.kept.get(id) : undefined
-    if (kept === undefined) throw Object.assign(new Error(`fleet: no box ${String(id)}`), { code: NO_BOX })
+  private find(id: string): { managed: ManagedBox; record: BoxRecord } {
+    const kept = this.boxes.get(id)
+    if (kept === undefined) throw noBox(id)
     return kept
   }
 
-  /** Give each started box its services as they are now. */
-  private resync(): void {
-    for (const { record, box } of this.kept.values()) {
-      if (box.state !== 'started') continue
-      box.exclusive(async () => {
-        if (box.state !== 'started') return
-        await this.services.provision(await box.started(), record)
-      }).catch((error: unknown) => { this.platform.log(`could not give ${record.id} its services: ${messageOf(error)}`) })
-    }
+  private infoOf({ managed, record }: { managed: ManagedBox; record: BoxRecord }): Box {
+    return create(BoxSchema, {
+      id: record.id,
+      image: record.image,
+      labels: record.labels,
+      env: record.env,
+      services: record.services.map(service => service.name),
+      idleStopMs: record.idleStopMs,
+      createdAt: timestampFromDate(new Date(record.createdAt)),
+      state: managed.state,
+    })
   }
 }
 
-function infoOf({ record, box }: Kept): BoxInfo {
-  return { ...record, labels: { ...record.labels }, env: { ...record.env }, services: record.services === null ? null : [...record.services], state: box.state }
-}

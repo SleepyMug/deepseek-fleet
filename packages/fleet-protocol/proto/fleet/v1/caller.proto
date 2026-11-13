@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package fleet.v1;
+
+// Who a call the gateway carries to a service comes from, as the gateway
+// knows it, never as the caller says: in the `fleet-caller-bin` header of
+// every call a service's tunnel carries.
+message Caller {
+  oneof caller {
+    // A program in a box.
+    BoxCaller box = 1;
+    // A client of the gateway's, such as a harness, or another service.
+    ClientCaller client = 2;
+  }
+}
+
+message BoxCaller {
+  // The box's id.
+  string id = 1;
+  // The labels its creator gave it.
+  map<string, string> labels = 2;
+}
+
+message ClientCaller {}

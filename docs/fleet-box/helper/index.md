@@ -1,129 +1,72 @@
 # fleet-box/helper
 
-The helper is fleet's process inside a box. It does what the gateway asks,
-from inside the container: it serves the box's files and runs its
-processes and terminals, which the gateway's clients ask of the box
-(docs/fleet/index.md), as dsh-tau's world does for a tau's session
-(docs/dsh-tau/world/index.md); and it keeps the box's services: their
-commands on the PATH, their environment, and their sockets, whose
-connections it carries to the gateway over the box's channel, which the
-gateway passes on to each service's fleet server
-(docs/fleet/services/index.md).
+The helper is fleet's process in a box, each box's command. It dials the
+gateway (docs/fleet/index.md) on the socket the box mounts, opens a tunnel
+naming its box, and serves the box's API over it, which the gateway carries
+to it from its clients; and it serves the box's services to the box's
+programs, on one socket, carrying their calls to the gateway on a
+connection of its own. It ends what it started as the box stops.
 
 ## Provides
 
-- `@sleepymug/fleet-protocol/helper`: the wire between the gateway and
-  the helper, shared by both ends (docs/fleet-protocol/index.md). It holds
-  `PROTOCOL_VERSION`, the message types, and `Methods`, which gives each
-  method's params, result and events; and `@sleepymug/fleet-protocol/channel`,
-  the box's channel's (docs/fleet-protocol/index.md).
-- `lib/helper/main.js`: the helper itself. It runs only in the image, at the
-  path `@sleepymug/fleet-protocol/layout` gives, and is not exported. It
-  serves the gateway (`serve.ts`) on its stdin and stdout, in the box's
-  environment and working folder.
-- `@sleepymug/fleet-box/helper/serve`: `serve({ input, output, env, cwd, log, layout? })`,
-  which puts a helper together from what it is given, for a gateway that
-  runs one outside a box, as a test does, its services' folders under
-  `layout`.
+- `@sleepymug/fleet-box/helper`: `startHelper({ gateway, box, layout?, env?,
+  log? })`, a helper put together from what it is given, which settles once
+  its tunnel first opens, and gives back what closes it; for a gateway that
+  runs one outside a box, as fleet's local driver and a test do, its layout
+  rooted elsewhere.
+- `lib/helper/main.js`, the helper's process, the box's command: the
+  gateway's socket in `$FLEET_GATEWAY`, the box's id in `$FLEET_BOX`, and,
+  outside a container, a root in `$FLEET_BOX_ROOT`.
+
+What it serves over its tunnel, fleet.box.v1 (fleet-protocol's box):
+
+| Method | What it does |
+|---|---|
+| `Box.Exec` | Run a program to its end, without a shell, and answer how it ended, its exit code or the signal that ended it, and all it wrote. A program that cannot run is an error. |
+| `Box.Spawn`, both ways a stream | Run a program in a process group of its own: the first request what to run, those after it its input, its input's end, or a signal for its group; the responses its pid, what it writes, and, last, how it ended, once it exited and its output ended, or its grace period after the exit. Cancelling the call ends its group, SIGTERM, then SIGKILL after the grace period. |
+| `Box.Which` | Where a program is: an absolute path that is an executable file, or a bare name on the box's PATH, the services' commands first; empty when it is not there. |
+| `Box.Terminal`, both ways a stream | Run a program on a pseudo-terminal, in a session it leads, through node-pty: the requests what to run, what is typed, the terminal's size, a signal for its foreground group, or its status, which a response answers, whether it is idle and its foreground group; the responses its pid, what it writes, and, last, how its program ended. Every process left in its session ends with the call. |
+| `Box.Stat`, `ListDir`, `ReadFile`, `WriteFile`, `MakeDir`, `Remove`, `Rename` | The box's files, every path absolute: what is at a path, nothing if nothing is; a folder's entries; a file's bytes, or a range, as a stream; a file written from a stream, made with its folders if asked, exclusive or appended; folders made; things removed and moved. A failure's code is its errno's: not found, already there, permission denied, and so on. |
+| `Box.Put`, `Box.Get` | Trees: a tar archive unpacked into a folder, through the box's own symlinks, what is there and not in it kept; a folder's contents, or a file under its own name, as one. |
+| `Provision.Installed`, `Provision.Install` | The digest of the tree the box holds at `/fleet`, and a tree installed in place of it, each of its places, `README.md`, `bin`, `services` and `node_modules`, replaced, and whatever else is in `/fleet`, as the box's programs, kept. The gateway alone asks them. |
 
 ## Design
 
-One JSON message per line over the helper's stdin and stdout:
-
-- gateway to helper: `{ "type": "request", "id": 1, "method": "echo", "params": { "text": "hi" } }`
-- helper to gateway:
-  - `{ "type": "result", "id": 1, "value": { "text": "hi" } }`;
-  - `{ "type": "error", "id": 1, "message": "…", "code": "…" }`, with the
-    code of the failure, such as an `FsError`'s, if it has one;
-  - `{ "type": "event", "id": 1, "value": … }`, any number of them before
-    the request's result, for a method that sends events.
-
-The helper answers every request exactly once, in any order. When its stdin
-ends, it ends the processes and terminals it started, its watches and the
-services' connections, answers what is left, and exits.
-
-| Method | Params | Result | |
-|---|---|---|---|
-| `hello` | `{}` | `{ protocol, methods }` | The handshake: the wire version, and every method the helper serves. The gateway refuses another protocol version, and a helper that lacks a method the gateway uses, or lists none: its box was made from an older image. |
-| `echo` | `{ text }` | `{ text }` | A trivial directive. |
-| `exec` | `{ argv }` | `{ code, signal, stdout, stderr }` | Run a program, as the container's root, without a shell, in the helper's environment, the box's services' with it. An exit other than 0, or a signal, is a result; a program that cannot run is an error. |
-| `fs.resolve`, `fs.stat`, `fs.lstat`, `fs.readText`, `fs.readBytes`, `fs.readRange`, `fs.listDir`, `fs.writeText`, `fs.editText` | as dsh's `FileSystem` methods take them | as they answer; bytes in base64 | The box's files, served by dsh's own local file system (`cmd/fs.ts`). A target is the local one's: its key is the canonical path in the box. |
-| `fs.watch` | `{ watch, target }` | `null` | Watch a target, under the gateway's id `watch`, with dsh's local file system: an event, `{ error }`, each time it may have changed, the error that ended the watching if one did. It answers once `fs.unwatch` ends it. |
-| `fs.unwatch` | `{ watch }` | `null` | End a watch; nothing for a watch not there. |
-| `spawn` | `{ process, argv, cwd, env, stdin, graceMs }` | `{ code, signal }` | Run a program, without a shell, in a session of its own, under the gateway's id `process`, in the folder `cwd`, with `env` added to the helper's environment (`null` removes a name) and `stdin` as its input, or none. It sends what the program writes as events, `{ stream, data }`, the bytes in base64, and answers once the program has exited and its output has ended, or `graceMs` after its exit when something it started keeps the output open (`cmd/spawn.ts`). |
-| `kill` | `{ process }` | `null` | End a process's group: SIGTERM, then SIGKILL after its `graceMs`. |
-| `which` | `{ command, env }` | the program's path | Find a program: an absolute path that is an executable file, or a bare name on the `PATH` of `env`, or the helper's, the services' commands first. One not there fails with the code `EXECUTABLE_NOT_FOUND`. |
-| `terminal` | `{ terminal, argv, cwd, env, cols, rows, term, graceMs }` | `{ code, signal }` | Run a program on a pseudo-terminal in the box, under the gateway's id `terminal`, in a session it leads, its environment as a process's (`cmd/terminal.ts`). It sends `{ kind: 'started', pid }`, then what the terminal writes, `{ kind: 'data', data }`, base64, and answers once the program has exited. |
-| `terminal.write` | `{ terminal, data }` | `null` | Write text to the terminal's input. |
-| `terminal.resize` | `{ terminal, cols, rows }` | `null` | Change its size, which its foreground program is told. |
-| `terminal.foreground` | `{ terminal }` | `{ processGroupId }` or `null` | The terminal's foreground process group, as the kernel has it (`/proc/<pid>/stat`). |
-| `terminal.activity` | `{ terminal }` | `{ idle }` | Whether the terminal is idle: no process of its session is left, or its program, the shell, is the session's only process, holds the foreground and sleeps, as at its prompt. A loop of the shell's builtins that sleeps looks the same. A terminal not there has ended, so it is idle. |
-| `terminal.signal` | `{ terminal, signal }` | the group's id | Signal the foreground process group: `SIGINT`, `SIGTERM`, `SIGKILL`, `SIGTSTP` or `SIGHUP`. |
-| `terminal.end` | `{ terminal }` | `null` | End every process in the terminal's session, background jobs included: SIGHUP and SIGTERM, then SIGKILL after `graceMs`. It answers once none is left. |
-| `services.installed` | `{}` | `{ <name>: [<digest>, …] }` | The services' packages the box holds, `/opt/fleet/services/<name>@<digest>`, by name (`cmd/services.ts`). |
-| `services.sync` | `{ services: [{ name, digest, bins, env }] }` | `null` | Make the box's services these, each of whose packages it holds: `/opt/fleet/services/<name>` a link to the one in use; each command, by its name in `bins`, a link in `/opt/fleet/bin` to its program in the package, made executable; its environment added to the helper's, for every process it starts from then on; and its socket, `/run/fleet/services/<name>.sock`, listened on. A service not listed loses its link, commands, environment and socket, and keeps its package; an older package of one listed is removed. A package the box does not hold fails it. |
-
+- **It dials; nothing dials it.** The tunnel is an upgrade at the gateway's
+  `/fleet/tunnel`, saying the box's id and the helper's protocol, after
+  which the gateway calls the helper over it (docs/fleet-net/index.md).
+  The helper opens it again whenever it closes, after a pause, a tenth of a
+  second at first, up to two seconds, as when the gateway restarts, so a box
+  outlives its gateway.
+- **The services' socket** (`relay.ts`), `/run/fleet/services.sock`, takes
+  HTTP/2 and HTTP/1.1 alike, anyone in the box may open it, and each call
+  to `/services/<name>/` on it is carried to the gateway's boxes' socket,
+  saying the box's id, a program's own `fleet-` headers dropped; whether
+  the box may call the service is the gateway's to say. Anything else is
+  refused.
+- **Environments** (`box/env.ts`). Every program starts from the box's
+  environment, its services' and its creator's, as the container has it,
+  less the helper's own, `$FLEET_GATEWAY` and `$FLEET_BOX_ROOT`; with
+  `/fleet/bin` first on its PATH, once, whatever a call gives, and
+  `$FLEET_SERVICES_SOCKET`; then what the call adds, less what it removes.
 - **Process groups.** A spawned program and what it starts share a process
-  group, except what starts a session of its own. `kill` and the helper's
-  exit end the group; whatever escapes it ends when the box stops. A
-  terminal's program leads a session, whose every process `terminal.end`,
-  and the helper's exit, end.
-- **Environments.** A process's environment, a terminal's, and `exec`'s, is
-  the helper's, which is the box's, with the box's services' added
-  (`cmd/env.ts`), then what the gateway gives it, a name given `null`
-  removed; and, whatever the gateway gives, `/opt/fleet/bin`, the services'
-  commands, first on its PATH, once, since a harness may pass a PATH of its
-  own. `$FLEET_SERVICES` names `/run/fleet/services`, where the services'
-  sockets are.
-- **The services' sockets** (`cmd/services.ts`). Before it reads a request,
-  the helper makes the services' folders and names them in its environment;
-  `services.sync` then listens on each listed service's socket, which anyone
-  in the box may open, since the box is its own. Each connection is a stream
-  of the box's channel (fleet-protocol's channel): the helper makes one
-  HTTP/2 connection to the channel's socket,
-  `/run/fleet/gateway/channel.sock`, as the first program connects, and
-  again once the gateway dropped it, as when it restarts; and sends each
-  connection as a request, `POST /services/<name>`, its body what the
-  program sends, the response's body what the gateway sends back, once the
-  gateway answered `200`. HTTP/2's flow control paces each stream, a
-  mebibyte its window, so a side that reads slowly slows the other, and the
-  channel, sixteen. A program's end of what it sends is a half-close, and
-  the gateway's end of what it sends ends the program's; a stream the
-  gateway cuts, or refuses, is a connection cut in the box, and one the
-  program cuts before its end is a stream cut. Which box a connection comes
-  from is the gateway's to say, by the channel it comes in on, and whether
-  the box may use the service, so the helper checks only that its service is
-  listed. Without the services' folders, only the services fail.
-- **A helper is what it is given.** `serve({ input, output, env, cwd, log })`
-  puts one together: its processes (`cmd/spawn.ts`, `Processes`), its
-  terminals (`cmd/terminal.ts`, `Terminals`), its files and watches
-  (`cmd/fs.ts`, `Files`), and its services (`cmd/services.ts`, `Services`),
-  each an object of its own, which keep what they started, and end it as
-  the helper does; the environment every process starts from, which the
-  services add to; and the folder relative paths are in. Nothing reads the
-  process's own, but `main.ts`, so a test serves a helper in its own
-  process, its services' folders elsewhere.
-- **Back pressure.** While the gateway has not taken what the helper wrote,
-  the helper stops reading every program's output, and goes on once the
-  gateway catches up.
-
-A new method needs three things:
-- an entry in `Methods`, in fleet-protocol's `helper`;
-- a handler in `serve.ts`, or, for a command beyond the handshake, in a
-  module of its own in `helper/cmd/`, as `exec` has, or a method of one of
-  its objects, which `serve.ts` registers;
-- a check of its result, and of its events if it sends any, in the gateway,
-  in fleet's `box/cmd/` beside what the gateway calls it with, which
-  `box/helper.ts` registers.
+  group, but what starts a session of its own; the call's end and the
+  helper's end end it. A terminal's program leads a session, whose every
+  process the call's end ends: SIGHUP and SIGTERM, then SIGKILL.
+- **Back pressure.** A program's output is read only as fast as the call
+  takes it: once enough waits, its streams pause until the caller catches
+  up, as HTTP/2's flow control paces the call.
+- **A helper is what it is given**: its processes (`box/processes.ts`), its
+  terminals (`box/terminal.ts`), its files (`box/files.ts`), its tree
+  (`provision.ts`) and its services' socket (`relay.ts`), so a test serves
+  one in its own process, its layout under a folder of its own.
 
 ## Built on
 
-- Node: `readline` over stdin, JSON lines on stdout, `child_process` for
-  `exec` and `spawn`, and `net` for the services' sockets.
-- `@deepseek-ai/dsh-fs-local`, dsh's local file system, mounted in a cordis
-  context of the helper's own (`@deepseek-ai/cordis`), for the `fs.*`
-  methods.
-- `node-pty`, for terminals, loaded when the first one starts, so a box
+- `@sleepymug/fleet-protocol`, for the API and the layout; fleet-net, for
+  the tunnel, the socket and the carrying of calls; fleet-pack, for trees.
+- `@connectrpc/connect-node`, which serves the API.
+- `node-pty`, for terminals, loaded as the first one starts, so a box
   without it fails only terminals.
 
 The image has these as installed on the host, so the host's Node and the
@@ -132,10 +75,7 @@ native build.
 
 ## How it runs
 
-The gateway starts one helper per started box with
-`docker exec --interactive <container> /usr/local/bin/node /opt/fleet/lib/helper/main.js`.
-The helper runs until the gateway ends its stdin.
-
-Outside a box, `node packages/fleet-box/lib/helper/main.js` runs it on your
-terminal, where you can type requests as JSON lines; it keeps no services
-there, since it cannot make their folders, and says so on stderr.
+The gateway's Docker driver makes each box's container run
+`/usr/local/bin/node /opt/fleet/lib/helper/main.js`, an init first, which
+passes on the SIGTERM of `docker stop`, and the helper runs until the box
+stops.

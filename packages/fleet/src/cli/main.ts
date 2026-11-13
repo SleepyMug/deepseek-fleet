@@ -1,161 +1,202 @@
 #!/usr/bin/env node
 /**
- * `fleet` (docs/fleet/cli/index.md): `fleet serve` runs the gateway on
- * its socket, in its home; the other commands are its clients: they list,
- * make and remove boxes, send methods to a box's helper from a REPL
- * (./repl.ts), and list the services; `fleet image build` builds the box
- * image from fleet-box as installed.
+ * `fleet` (docs/fleet/cli/index.md): `fleet serve` runs the gateway in its
+ * home, on its sockets; the other commands are its clients: they list,
+ * make, start, stop and remove boxes, run programs and shells in them, and
+ * list the services; `fleet image build` builds the box image from
+ * fleet-box as installed.
  * @module @sleepymug/fleet/cli/main
  */
 
+import { join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { Fleet } from '@sleepymug/fleet-sdk'
 import { buildImage } from '@sleepymug/fleet-box/image/build'
+import { BoxState } from '@sleepymug/fleet-protocol/fleet'
+import { fleetHome, fleetSocket } from '@sleepymug/fleet-protocol/home'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
-import { fleetHome, fleetSocket } from '@sleepymug/fleet-protocol/fleet'
+import { Fleet } from '@sleepymug/fleet-sdk'
+import { DockerDriver } from '../boxes/docker.ts'
+import type { BoxDriver } from '../boxes/driver.ts'
+import { LocalDriver } from '../boxes/local.ts'
 import { FleetGateway } from '../gateway.ts'
-import { fleetPaths } from '../paths.ts'
+import { fleetPaths } from '../home.ts'
+import { serve } from '../http/server.ts'
 import { systemPlatform } from '../platform.ts'
-import { Registry } from '../registry.ts'
-import { listen } from '../socket.ts'
 import { messageOf } from '../util/error.ts'
-import { repl } from './repl.ts'
+import { shell } from './shell.ts'
 
 const USAGE = `Usage: fleet <command>
 
 Commands:
-  serve [--image <image>] [--idle-stop <ms>]
+  serve [--image <image>] [--idle-stop <ms>] [--driver docker|local]
                                 run the gateway, until interrupted
-  box list [--json]             list the boxes: id, state, labels
+  box list [--json]             list the boxes: id, state, services, labels
   box create [--image <image>] [--label <key>=<value>]... [--service <name>]...
+             [--env <name>=<value>]... [--idle-stop <ms>]
                                 make a box, stopped, and print its id
+  box start <box>               start a box, which stops once it is idle
+  box stop <box>                stop a box
   box rm <box>...               remove boxes, running or not
-  box repl <box>                send methods to a box's helper from a REPL, the box
-                                occupied, and started, until the REPL is left
+  box exec <box> [--cwd <dir>] -- <program> [<arg>...]
+                                run a program in a box, and exit as it does
+  box sh <box> [-- <program> [<arg>...]]
+                                a terminal in a box, its shell by default
   service list [--json]         list the services: name, commands, what each is
   image build [<tag>]           build the box image, ${DEFAULT_IMAGE} by default, from
                                 fleet-box as installed
 
-The gateway's home is $FLEET_HOME, or ~/.fleet; its socket $FLEET_SOCKET, or
-fleet.sock in its home.
+The gateway's home is $FLEET_HOME, or ~/.fleet; its clients' socket
+$FLEET_SOCKET, or fleet.sock in its home.
 `
 
 /** A mistake in the command line, answered with a pointer to the usage. */
 class UsageError extends Error {}
 
-async function client(): Promise<Fleet> {
-  return await Fleet.connect()
+const STATES: Record<BoxState, string> = {
+  [BoxState.UNSPECIFIED]: '?',
+  [BoxState.STOPPED]: 'stopped',
+  [BoxState.STARTING]: 'starting',
+  [BoxState.STARTED]: 'started',
+  [BoxState.STOPPING]: 'stopping',
+  [BoxState.GONE]: 'gone',
+}
+
+/** Run `use` with a client, closing it after. */
+async function withClient<T>(use: (fleet: Fleet) => Promise<T>): Promise<T> {
+  const fleet = await Fleet.connect()
+  try {
+    return await use(fleet)
+  } finally {
+    await fleet.close()
+  }
+}
+
+/** `<key>=<value>` pairs, as `--label` and `--env` take them. */
+function pairs(given: readonly string[] | undefined, what: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const pair of given ?? []) {
+    const at = pair.indexOf('=')
+    if (at <= 0) throw new UsageError(`${what} is <key>=<value>, not ${pair}`)
+    out[pair.slice(0, at)] = pair.slice(at + 1)
+  }
+  return out
+}
+
+function milliseconds(given: string | undefined, flag: string): number | undefined {
+  if (given === undefined) return undefined
+  const ms = Number(given)
+  if (!Number.isSafeInteger(ms) || ms < 0) throw new UsageError(`${flag} takes milliseconds, 0 or more`)
+  return ms
 }
 
 const commands: Record<string, (args: string[]) => Promise<void>> = {
   async serve(args) {
-    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { image: { type: 'string' }, 'idle-stop': { type: 'string' } } })
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { image: { type: 'string' }, 'idle-stop': { type: 'string' }, driver: { type: 'string' } } })
     if (positionals.length > 0) throw new UsageError('serve takes no arguments')
-    const idleStopMs = values['idle-stop'] === undefined ? undefined : Number(values['idle-stop'])
-    if (idleStopMs !== undefined && (!Number.isFinite(idleStopMs) || idleStopMs < 0)) throw new UsageError('--idle-stop takes milliseconds, 0 or more')
     const paths = fleetPaths(fleetHome(), fleetSocket())
     const platform = systemPlatform()
-    const gateway = new FleetGateway({
-      registry: new Registry(paths.boxes), cache: paths.services, channels: paths.channels, platform,
-      ...values.image === undefined ? {} : { image: values.image },
-      ...idleStopMs === undefined ? {} : { idleStopMs },
-    })
-    await gateway.load()
-    const close = await listen(paths.socket, gateway)
-    platform.log(`serving on ${paths.socket}`)
+    let driver: BoxDriver
+    if (values.driver === undefined || values.driver === 'docker') driver = new DockerDriver({ gatewayDir: paths.gatewayDir })
+    else if (values.driver === 'local') driver = new LocalDriver({ dir: join(paths.home, 'local-boxes'), gatewaySocket: paths.gatewaySocket, log: platform.log })
+    else throw new UsageError('--driver takes docker or local')
+    const gateway = await FleetGateway.open({ paths, driver, platform, image: values.image ?? DEFAULT_IMAGE, idleStopMs: milliseconds(values['idle-stop'], '--idle-stop') ?? 60_000 })
+    const served = await serve(gateway, { clients: paths.socket, boxes: paths.gatewaySocket }, platform.log)
+    platform.log(`serving on ${paths.socket}, and to its boxes on ${paths.gatewaySocket}`)
+    if (values.driver === 'local') platform.log('its boxes are folders here, which nothing isolates')
     await new Promise<void>((resolve) => {
       for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { resolve() })
     })
     platform.log('stopping the boxes started here')
-    await close()
+    await served.close()
     await gateway.close()
   },
 
   async box(args) {
     const [verb, ...rest] = args
-    if (verb === 'list') {
-      const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { json: { type: 'boolean' } } })
-      if (positionals.length > 0) throw new UsageError('box list takes no arguments')
-      const fleet = await client()
-      try {
-        const boxes = await fleet.list()
-        if (values.json === true) {
-          process.stdout.write(`${JSON.stringify(boxes, null, 2)}\n`)
-          return
-        }
-        table([['BOX', 'STATE', 'LABELS'], ...boxes.map(box => [box.id, box.state, Object.entries(box.labels).map(([key, value]) => `${key}=${value}`).join(' ')])])
-      } finally {
-        await fleet.close()
-      }
-      return
-    }
-    if (verb === 'create') {
-      const { values, positionals } = parseArgs({
-        args: rest, allowPositionals: true,
-        options: { image: { type: 'string' }, label: { type: 'string', multiple: true }, service: { type: 'string', multiple: true } },
-      })
-      if (positionals.length > 0) throw new UsageError('box create takes no arguments')
-      const labels: Record<string, string> = {}
-      for (const label of values.label ?? []) {
-        const at = label.indexOf('=')
-        if (at <= 0) throw new UsageError(`a label is <key>=<value>, not ${label}`)
-        labels[label.slice(0, at)] = label.slice(at + 1)
-      }
-      const fleet = await client()
-      try {
-        const box = await fleet.create({ labels, ...values.image === undefined ? {} : { image: values.image }, ...values.service === undefined ? {} : { services: values.service } })
-        process.stdout.write(`${box.id}\n`)
-      } finally {
-        await fleet.close()
-      }
-      return
-    }
-    if (verb === 'rm') {
-      const { positionals } = parseArgs({ args: rest, allowPositionals: true })
-      if (positionals.length === 0) throw new UsageError('box rm takes the boxes to remove')
-      const fleet = await client()
-      try {
-        for (const id of positionals) {
-          try {
-            await fleet.box(id).remove()
-          } catch (error) {
-            process.stderr.write(`fleet: ${messageOf(error)}\n`)
-            process.exitCode = 1
+    switch (verb) {
+      case 'list': {
+        const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { json: { type: 'boolean' } } })
+        if (positionals.length > 0) throw new UsageError('box list takes no arguments')
+        await withClient(async (fleet) => {
+          const boxes = await fleet.list()
+          if (values.json === true) {
+            process.stdout.write(`${JSON.stringify(boxes.map(box => ({ ...box, $typeName: undefined, state: STATES[box.state], createdAt: undefined })), null, 2)}\n`)
+            return
           }
-        }
-      } finally {
-        await fleet.close()
-      }
-      return
-    }
-    if (verb === 'repl') {
-      const { positionals } = parseArgs({ args: rest, allowPositionals: true })
-      if (positionals.length !== 1) throw new UsageError('box repl takes one box')
-      const [id] = positionals as [string]
-      const fleet = await client()
-      const box = fleet.box(id)
-      const release = await box.lease({ kind: 'repl', id: String(process.pid) })
-      const interrupt = new AbortController()
-      const onInterrupt = (): void => { interrupt.abort() }
-      process.on('SIGINT', onInterrupt)
-      try {
-        process.stderr.write(`fleet: ${id} started; .help lists what to send\n`)
-        await repl({ request: (method, params) => box.request(method as never, params as never, { hold: false }) }, {
-          input: process.stdin,
-          output: process.stdout,
-          errors: process.stderr,
-          terminal: process.stdin.isTTY === true && process.stdout.isTTY === true,
-          prompt: `${id}> `,
-          signal: interrupt.signal,
+          table([['BOX', 'STATE', 'SERVICES', 'LABELS'], ...boxes.map(box => [
+            box.id, STATES[box.state], box.services.join(' ') || '-', Object.entries(box.labels).map(([key, value]) => `${key}=${value}`).join(' '),
+          ])])
         })
-      } finally {
-        process.off('SIGINT', onInterrupt)
-        await release()
-        await fleet.close()
+        return
       }
-      return
+      case 'create': {
+        const { values, positionals } = parseArgs({
+          args: rest, allowPositionals: true,
+          options: { image: { type: 'string' }, label: { type: 'string', multiple: true }, service: { type: 'string', multiple: true }, env: { type: 'string', multiple: true }, 'idle-stop': { type: 'string' } },
+        })
+        if (positionals.length > 0) throw new UsageError('box create takes no arguments')
+        const idleStopMs = milliseconds(values['idle-stop'], '--idle-stop')
+        await withClient(async (fleet) => {
+          const box = await fleet.create({
+            image: values.image ?? '',
+            labels: pairs(values.label, 'a label'),
+            env: pairs(values.env, 'an environment variable'),
+            services: values.service ?? [],
+            ...idleStopMs === undefined ? {} : { idleStopMs },
+          })
+          process.stdout.write(`${box.id}\n`)
+        })
+        return
+      }
+      case 'start':
+      case 'stop': {
+        const { positionals } = parseArgs({ args: rest, allowPositionals: true })
+        if (positionals.length !== 1) throw new UsageError(`box ${verb} takes one box`)
+        await withClient(async (fleet) => {
+          const box = fleet.box(positionals[0] as string)
+          await (verb === 'start' ? box.start() : box.stop())
+        })
+        return
+      }
+      case 'rm': {
+        const { positionals } = parseArgs({ args: rest, allowPositionals: true })
+        if (positionals.length === 0) throw new UsageError('box rm takes the boxes to remove')
+        await withClient(async (fleet) => {
+          for (const id of positionals) {
+            try {
+              await fleet.box(id).remove()
+            } catch (error) {
+              process.stderr.write(`fleet: ${messageOf(error)}\n`)
+              process.exitCode = 1
+            }
+          }
+        })
+        return
+      }
+      case 'exec': {
+        const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { cwd: { type: 'string' } } })
+        const [id, ...argv] = positionals
+        if (id === undefined || argv.length === 0) throw new UsageError('box exec takes a box, then --, then a program and its arguments')
+        await withClient(async (fleet) => {
+          const { exit, stdout, stderr } = await fleet.box(id).exec(argv, values.cwd === undefined ? {} : { cwd: values.cwd })
+          process.stdout.write(stdout)
+          process.stderr.write(stderr)
+          process.exitCode = exit?.code ?? 128
+        })
+        return
+      }
+      case 'sh': {
+        const { positionals } = parseArgs({ args: rest, allowPositionals: true })
+        const [id, ...argv] = positionals
+        if (id === undefined) throw new UsageError('box sh takes a box')
+        await withClient(async (fleet) => {
+          process.exitCode = await shell(fleet.box(id), argv.length === 0 ? ['/bin/sh', '-l'] : argv)
+        })
+        return
+      }
+      default:
+        throw new UsageError(verb === undefined ? 'box takes list, create, start, stop, rm, exec or sh' : `no command box ${verb}`)
     }
-    throw new UsageError(verb === undefined ? 'box takes list, create, rm or repl' : `no command box ${verb}`)
   },
 
   async service(args) {
@@ -163,17 +204,14 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     if (verb !== 'list') throw new UsageError(verb === undefined ? 'service takes list' : `no command service ${verb}`)
     const { values, positionals } = parseArgs({ args: rest, allowPositionals: true, options: { json: { type: 'boolean' } } })
     if (positionals.length > 0) throw new UsageError('service list takes no arguments')
-    const fleet = await client()
-    try {
-      const services = await fleet.request('service.list', {})
+    await withClient(async (fleet) => {
+      const services = await fleet.serviceList()
       if (values.json === true) {
-        process.stdout.write(`${JSON.stringify(services, null, 2)}\n`)
+        process.stdout.write(`${JSON.stringify(services.map(service => ({ ...service, $typeName: undefined })), null, 2)}\n`)
         return
       }
-      table([['SERVICE', 'COMMANDS', 'WHAT IT IS'], ...services.map(service => [service.name, Object.keys(service.bins).join(' ') || '-', service.description])])
-    } finally {
-      await fleet.close()
-    }
+      table([['SERVICE', 'COMMANDS', 'WHAT IT IS'], ...services.map(service => [service.name, service.commands.join(' ') || '-', service.description])])
+    })
   },
 
   async image(args) {

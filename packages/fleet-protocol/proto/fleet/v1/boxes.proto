@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+package fleet.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// The gateway's boxes: each a container with fleet's helper in it while it
+// runs, kept for as long as its creator wants it, and stopped once nothing
+// has occupied it for its idle time. A box's own API, its files and
+// processes, is fleet.box.v1.Box, which the gateway carries to the box's
+// helper at /boxes/<id>/.
+service Boxes {
+  // Make a box, stopped, with the services it names, each as registered
+  // now: what a box has is fixed when it is made.
+  rpc Create(CreateBoxRequest) returns (Box);
+  // Every box, oldest first, or those whose labels hold each of the given.
+  rpc List(ListBoxesRequest) returns (ListBoxesResponse);
+  // One box, with its state.
+  rpc Get(GetBoxRequest) returns (Box);
+  // Start a box, without occupying it: it stops once it has been idle for
+  // its idle time.
+  rpc Start(StartBoxRequest) returns (StartBoxResponse);
+  // Stop a box, whatever occupies it.
+  rpc Stop(StopBoxRequest) returns (StopBoxResponse);
+  // Stop a box at once if nothing occupies it, or else as soon as nothing
+  // does.
+  rpc StopWhenVacant(StopWhenVacantRequest) returns (StopWhenVacantResponse);
+  // Remove a box, running or not: its container and its record.
+  rpc Remove(RemoveBoxRequest) returns (RemoveBoxResponse);
+  // A box's state, now and at each change. The stream ends once the box is
+  // removed, or when the call is cancelled.
+  rpc Watch(WatchBoxRequest) returns (stream WatchBoxResponse);
+  // Occupy a box for as long as the call lasts, so that it is not stopped
+  // for being idle: the first response says it is held, and none follows.
+  // Cancelling the call, or losing the connection, releases it.
+  rpc Lease(LeaseBoxRequest) returns (stream LeaseBoxResponse);
+}
+
+// Where a box is in its life.
+enum BoxState {
+  BOX_STATE_UNSPECIFIED = 0;
+  // Its container is there, and does not run.
+  BOX_STATE_STOPPED = 1;
+  // Its container is starting, or its helper has not reached the gateway
+  // yet, or the box is being given its services.
+  BOX_STATE_STARTING = 2;
+  // Its helper is running, and serves the box.
+  BOX_STATE_STARTED = 3;
+  // It is being stopped.
+  BOX_STATE_STOPPING = 4;
+  // Its container was removed by other means: its owner makes another.
+  BOX_STATE_GONE = 5;
+}
+
+// A box, as the gateway keeps it.
+message Box {
+  // Its id, `box-` and 16 hex digits, which names its container.
+  string id = 1;
+  // The image it runs.
+  string image = 2;
+  // What its creator says of it, which the gateway keeps, lists boxes by,
+  // and tells a service each call of the box's comes from.
+  map<string, string> labels = 3;
+  // The environment of every process in it, its services' with it.
+  map<string, string> env = 4;
+  // The services it has, by name.
+  repeated string services = 5;
+  // How long it runs while nothing occupies it, in milliseconds.
+  uint32 idle_stop_ms = 6;
+  google.protobuf.Timestamp created_at = 7;
+  BoxState state = 8;
+}
+
+message CreateBoxRequest {
+  // The image; the gateway's own without it.
+  string image = 1;
+  map<string, string> labels = 2;
+  // The environment of every process in the box, over its services'.
+  map<string, string> env = 3;
+  // The services the box has, by name, each registered now.
+  repeated string services = 4;
+  // How long it runs while nothing occupies it, in milliseconds; the
+  // gateway's own without it.
+  optional uint32 idle_stop_ms = 5;
+}
+
+message ListBoxesRequest {
+  // Only the boxes whose labels hold each of these.
+  map<string, string> labels = 1;
+}
+
+message ListBoxesResponse {
+  repeated Box boxes = 1;
+}
+
+message GetBoxRequest {
+  string box = 1;
+}
+
+message StartBoxRequest {
+  string box = 1;
+}
+
+message StartBoxResponse {}
+
+message StopBoxRequest {
+  string box = 1;
+}
+
+message StopBoxResponse {}
+
+message StopWhenVacantRequest {
+  string box = 1;
+}
+
+message StopWhenVacantResponse {}
+
+message RemoveBoxRequest {
+  string box = 1;
+}
+
+message RemoveBoxResponse {}
+
+message WatchBoxRequest {
+  string box = 1;
+}
+
+message WatchBoxResponse {
+  BoxState state = 1;
+}
+
+// What occupies a box: its kind and its own id, both its holder's to
+// choose, such as `turn` and an agent's id.
+message Occupant {
+  string kind = 1;
+  string id = 2;
+}
+
+message LeaseBoxRequest {
+  string box = 1;
+  Occupant occupant = 2;
+  // Start the box, if it is not started, and answer once it is; without
+  // it, occupy the box as it is.
+  bool start = 3;
+}
+
+message LeaseBoxResponse {}

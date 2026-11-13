@@ -1,7 +1,7 @@
 /**
  * Building the box image: this package's Dockerfile, with the package
  * staged beside it as it would be packed, with every package it depends on
- * as installed here (./stage.ts). Build the package first.
+ * as installed here (fleet-pack's stage). Build the package first.
  * @module @sleepymug/fleet-box/image/build
  */
 
@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
-import { stagePackage } from './stage.ts'
+import { stagePackage } from '@sleepymug/fleet-pack'
 
 /** This package's folder. */
 const PACKAGE_DIR = fileURLToPath(new URL('../../', import.meta.url))

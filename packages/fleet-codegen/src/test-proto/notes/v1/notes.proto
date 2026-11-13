@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package notes.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A notebook of short notes, each box its own.
+service Notes {
+  // Keep a note, and give it back with its number.
+  rpc Add(AddRequest) returns (Note);
+  // Every note with the tag, oldest first.
+  rpc Tagged(TaggedRequest) returns (stream Note);
+}
+
+// One note.
+message Note {
+  // Its number in its notebook.
+  uint32 id = 1;
+  // What it says.
+  string text = 2;
+  repeated string tags = 3;
+  google.protobuf.Timestamp written = 4;
+}
+
+message AddRequest {
+  string text = 1;
+  repeated string tags = 2;
+}
+
+message TaggedRequest {
+  string tag = 1;
+}

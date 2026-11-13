@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package notes.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A notebook of short notes, each with tags to find it by later. Each box
+// has a notebook of its own, kept outside the box, so that its notes outlast
+// the box's processes; a box made later has a notebook of its own.
+service Notes {
+  // Keep a note in this box's notebook, and give it back with its number.
+  rpc Add(AddRequest) returns (Note);
+  // The notes of this box's notebook with a tag, oldest first.
+  rpc Tagged(TaggedRequest) returns (TaggedResponse);
+}
+
+// A note.
+message Note {
+  // Its number, which no other note of its notebook has, counting from 1.
+  uint32 id = 1;
+  // What it says.
+  string text = 2;
+  // What it is found by.
+  repeated string tags = 3;
+  // When it was kept.
+  google.protobuf.Timestamp written = 4;
+}
+
+message AddRequest {
+  // What the note says.
+  string text = 1;
+  // What it is found by.
+  repeated string tags = 2;
+}
+
+message TaggedRequest {
+  // The tag the notes have.
+  string tag = 1;
+}
+
+message TaggedResponse {
+  // The notes with the tag, oldest first.
+  repeated Note notes = 1;
+}

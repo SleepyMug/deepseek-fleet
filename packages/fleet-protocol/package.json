@@ -1,36 +1,46 @@
 {
   "name": "@sleepymug/fleet-protocol",
   "version": "0.0.1",
-  "description": "The wires of fleet's gateway, shared by its ends: to its clients, harnesses and fleet servers, to the helper in each box, and its channel; and where things lie in a box",
+  "description": "fleet's contracts, shared by its ends: the gateway's API and a box's, as protobuf services; the paths and headers of the gateway's HTTP/2 surface; and where things lie in a box",
   "type": "module",
   "exports": {
-    "./channel": {
-      "types": "./lib/channel.d.ts",
-      "default": "./lib/channel.js"
-    },
     "./fleet": {
       "types": "./lib/fleet.d.ts",
       "default": "./lib/fleet.js"
     },
-    "./helper": {
-      "types": "./lib/helper.d.ts",
-      "default": "./lib/helper.js"
+    "./box": {
+      "types": "./lib/box.d.ts",
+      "default": "./lib/box.js"
+    },
+    "./wire": {
+      "types": "./lib/wire.d.ts",
+      "default": "./lib/wire.js"
     },
     "./layout": {
       "types": "./lib/layout.d.ts",
       "default": "./lib/layout.js"
     },
+    "./home": {
+      "types": "./lib/home.d.ts",
+      "default": "./lib/home.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "proto",
     "!lib/**/*.test.*"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "gen": "node ../../scripts/gen.mjs",
     "build": "tsc -b",
-    "prepack": "tsc -b"
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.17.0"
   }
 }

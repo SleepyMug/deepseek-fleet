@@ -5,5 +5,5 @@
     "outDir": "lib"
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/fleet-sdk" }, { "path": "box" }]
+  "references": [{ "path": "../../packages/fleet-sdk" }, { "path": "../../packages/fleet" }, { "path": "../../packages/fleet-protocol" }]
 }

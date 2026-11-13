@@ -1,130 +1,113 @@
 # fleet/services
 
-Services of the gateway (docs/fleet/index.md). A service is two halves:
+Services of the gateway (docs/fleet/index.md). A service is:
 
-- **its fleet server**, a process on the host with a socket of its own, its
-  endpoint, which the gateway opens a connection to for each one a program
-  in a box opens to the service, and which reaches whatever the service
-  serves: a notebook kept on the host, a backend that runs agents,
-  credentials a box must not hold;
-- **its package**, a node package, which the gateway installs in each box
-  that has the service, and whose code talks to the fleet server through
-  the service's socket in the box: commands, a module programs
-  import, or both, as the service has it, and says in its description.
+- **its schema**, protobuf services and their messages, with their
+  comments, as `buf build` makes it, every file it imports with it;
+- **its fleet server**, a process anywhere that can dial the gateway, which
+  stages the service's spec and opens a tunnel to the gateway naming it,
+  then serves the service's calls over that tunnel as any Connect server
+  does, each told who calls: a box, with its labels, or a client;
+- **its client**, which the gateway makes from its schema
+  (docs/fleet-codegen/index.md) and puts in each box made with the service,
+  `@fleet/<name>`, whose methods call the service, and whose declarations
+  say what each means;
+- and, if it has one, **its package**, a node package of its own, which
+  each box made with the service gets in `/fleet/services/<name>`, its
+  commands on the PATH.
 
-A service plugs in by registering, through fleet-sdk
-(docs/fleet-sdk/index.md), from any process of the host's owner, for as
-long as its connection lasts. The gateway knows nothing of what a service
-does: it stages its package, puts it in the boxes, and relays the bytes.
-dsh-tau's `tau` service, whose `tau` command runs taus as the box's run's,
-is one (docs/dsh-tau/tau/index.md); fleet-notes is the example
-(docs/fleet-notes/index.md).
+The gateway knows nothing of what a service does: it checks its spec,
+makes its client, puts it in the boxes, and carries its calls, never
+decoding them.
 
 ## Provides
 
-What the gateway guarantees of a service, in a box that has it, and no more:
-its package installed, with its dependencies, in its directory; its
-package's commands, if it declares any, on the PATH; and its socket, and
-the environment it gives, each place as `@sleepymug/fleet-protocol/layout`
-gives it. How a box's programs use the service, by a command, or by
-importing its code from its directory, is the service's to say, in its
-description, the sentence a harness shows the model beside its directory
-and commands, and in what its package holds, such as docs of its own:
+A service registers with fleet-sdk's `serve` (docs/fleet-sdk/index.md), its
+schema and routes those of its generated code:
+
+```ts
+import { Fleet, boxOf } from '@sleepymug/fleet-sdk'
+import { descriptors } from './gen/descriptors.ts'      // its schema, as buf build makes it
+import { Notes } from './gen/notes/v1/notes_pb.ts'       // protoc-gen-es's
+
+const fleet = await Fleet.connect()                      // $FLEET_SOCKET, or ~/.fleet/fleet.sock
+const registration = await fleet.serve({
+  name: 'notes',                                         // its path, /services/notes/, and its client, @fleet/notes
+  description: 'A notebook of short notes for this box.',
+  schema: descriptors(),
+  services: [Notes],
+  package: '/…/node_modules/some-box-package',           // optional: a package of its own, for its commands
+  env: { NOTES_STYLE: 'terse' },                         // optional: for every process in a box made with it
+  routes: router => router.service(Notes, {
+    add: (req, ctx) => notebooks.add(boxOf(ctx).id, req.text, req.tags),
+    tagged: (req, ctx) => ({ notes: notebooks.tagged(boxOf(ctx).id, req.tag) }),
+  }),
+})
+registration.close()                                     // or the client's end does it
+```
+
+What the gateway gives a box made with a service, and no more:
 
 | What | Where in the box |
 |---|---|
-| the service's package, as the gateway staged it | `/opt/fleet/services/<name>@<digest>` |
-| the one in use, a link to it | `/opt/fleet/services/<name>` |
-| each of its commands, its `bin`, a link into the package through the one in use | `/opt/fleet/bin/<command>` |
-| its socket, which the helper listens on, and carries to the gateway over the box's channel | `/run/fleet/services/<name>.sock` |
+| its client, `@fleet/<name>`: `index.js`, `index.d.ts`, protoc-gen-es's files, `README.md` | `/fleet/node_modules/@fleet/<name>` |
+| what the clients import: `@bufbuild/protobuf`, `@connectrpc/connect`, `@connectrpc/connect-node` | `/fleet/node_modules` |
+| its package, if it has one | `/fleet/services/<name>` |
+| each of the package's commands, its `bin`, a link | `/fleet/bin/<command>`, first on every program's PATH |
+| what the box has, and how a program uses it | `/fleet/README.md` |
+| the one socket every service is reached on, which the helper relays to the gateway | `/run/fleet/services.sock`, `$FLEET_SERVICES_SOCKET` |
+| what its spec adds to the environment | every process's environment |
 
-- `/opt/fleet/bin` is first on the PATH of every process the helper starts,
-  whatever environment the gateway gives the process, and
-  `$FLEET_SERVICES`, `/run/fleet/services`, names the sockets' folder.
-- What the service's spec adds to the environment, every process the
-  helper starts from then on has.
-
-A service registers with fleet-sdk's `register`:
-
-```ts
-import { Fleet } from '@sleepymug/fleet-sdk'
-
-const fleet = await Fleet.connect()                    // $FLEET_SOCKET, or ~/.fleet/fleet.sock
-const registration = await fleet.register({
-  name: 'notes',                                             // its socket's name in a box
-  description: 'A notebook of short notes, …',               // what it is, for whoever lists the services
-  package: '/…/node_modules/@sleepymug/fleet-notes-box',     // a node package installed on this host, with its `bin`
-  env: { NOTES_STYLE: 'terse' },                             // optional: for every process in a box that has it
-  serve(connection, { box, labels }) {                       // each connection a box's program opens, a socket
-    connection.on('data', …)                                 // the program's bytes, as it sent them
-  },
-})
-await registration.unregister()                              // or the connection's end does it
-```
+A program below `/fleet`, such as `/fleet/programs/shop.mts`, imports the
+clients as Node finds them, `import { notes } from '@fleet/notes'`, and
+runs with `node`; one elsewhere links `/fleet/node_modules/@fleet` into a
+`node_modules` above it first. A shell calls a method that answers once
+with its request as JSON:
+`curl -s --unix-socket /run/fleet/services.sock -H 'content-type: application/json' -d '{"tag":"shop"}' http://fleet/services/notes/notes.v1.Notes/Tagged`.
 
 ## Design
 
-- **The package is staged as installed.** The gateway copies it as `pnpm
-  pack` would pack it, with every package it depends on as installed on the
-  host, in pnpm's layout, as the image takes fleet-box
-  (docs/fleet-box/image/index.md), into its home's `services/`, under the
-  digest of what it staged. Nothing is installed or built for a box, so a
-  service's package runs on the box's Node exactly what is installed on the
-  host; a native one must be built for linux on the host's architecture.
-  Its commands are its `package.json`'s `bin`, as npm reads it; a command
-  is made executable in the box, whatever its mode on the host.
-- **A box gets its services as it starts**, before anything else uses it:
-  the helper says which packages it holds, by digest; the gateway copies in
-  each it lacks; and the helper makes those listed its services
-  (`services.sync`, docs/fleet-box/helper/index.md). A service registered,
-  or unregistered, while boxes run reaches each started box as soon as the
-  gateway has staged it.
-- **Which boxes have which services** is each box's spec: the services it
-  names, or, without a list, every one registered (docs/fleet/index.md). A
-  connection to a service a box does not have, or that is not registered
-  now, is cut.
-- **Unregistering**, by `unregister` or the end of the connection the
-  service registered on, takes the service's commands, socket and
-  environment from every box; its package stays, so the box gets it back at
-  once when the service registers again, as after its fleet server restarts.
-  Only an older package of a service still registered is removed.
-- **One service a name, one command a service.** A name registered by
-  another client is refused, and so is a command another service has. A
-  client that registers a name again replaces what it registered.
-- **The fleet server is told the box.** For each connection, the gateway
-  opens a connection to the service's endpoint, writes one line of JSON
-  first, the `Preamble`, `{ "box", "labels" }`, the box it comes from, as
-  the gateway knows it, from which box's channel it came in on, never as the
-  box says, with the labels its creator gave it; then it passes the bytes
-  both ways, each end a half-close, a cut connection cut on both sides.
-  fleet-sdk reads that line, and gives `serve` the rest of the connection,
-  which flows once `serve` reads it. The bytes are the service's own
-  protocol: one line of JSON each way, as fleet-notes has it, or tau's
-  socket wire, as the tau service has it.
-- **The threat model.** The model controls everything in a box, its
-  service's commands included, so a service checks what a box sends, and
-  decides what a box may do by the box the gateway says it is, and its
-  labels: the tau service runs a box's runs as its run's session, which
-  reaches only the runs it started; fleet-notes gives each box a notebook of
-  its own. Nothing restricts a box to the services a tau names, since a tau
-  names none: every box that has a service can call it. The endpoint is a
-  socket of the owner's on the host, which no box reaches but through the
-  gateway; the host's owner can open it, as the owner can everything the
-  gateway does.
-- **Writing a service**: a package for the boxes, whose code, commands or
-  modules, is node programs, self-contained or with what they import as
-  their dependencies, each finding its socket in `$FLEET_SERVICES`; a
-  description, one sentence saying what it is and how a program uses it;
-  and a fleet server, a process on the host that registers it with
-  fleet-sdk, as `services/notes` does, with `fleet-notes` and its box
-  package, `services/notes/box`.
+- **Staging and the tunnel.** A server stages its spec, `Services.Stage`:
+  its name, description, schema, the protobuf services it serves, its
+  package's digest, and its environment. The gateway checks it, a name of
+  lowercase letters, digits and hyphens, a schema whole, each service named
+  in it, and makes its client, keeping both under the spec's digest; the
+  same spec staged again is the one kept, so staging is not registering. If
+  the gateway lacks the package, the server uploads it, `Services.Upload`,
+  checked to have its digest. Then the server opens its tunnel, an upgrade
+  to `fleet-tunnel` at `/fleet/tunnel` naming the service and the spec,
+  after which the connection carries HTTP/2, the gateway the client and the
+  server the server (docs/fleet-net/index.md). The service is registered
+  for as long as the tunnel lasts.
+- **One server a name.** A tunnel for a name another server serves now is
+  refused, `NAME_TAKEN`, which fleet-sdk does not wait out. A spec the
+  gateway does not know, as after it lost its home, is refused,
+  `UNKNOWN_SPEC`, or its package, `NO_PACKAGE`, which fleet-sdk stages and
+  uploads again before it opens the tunnel again.
+- **A tunnel lost is opened again**, after a pause, a tenth of a second at
+  first, twice as long each time, up to two seconds, as when the gateway
+  restarts; meanwhile the service's calls fail, `NO_SERVICE`.
+- **The calls.** A box's programs call the service on the box's services'
+  socket, which the box's helper carries to the gateway, saying which box;
+  the gateway carries a call on, at the service's path less its prefix,
+  over the service's tunnel, if the box was made with the service, and
+  says who calls in `fleet-caller-bin`, a `fleet.v1.Caller`: the box's id
+  and labels, as the gateway knows them, or a client. fleet-sdk's
+  `callerOf(ctx)` and `boxOf(ctx)` read it. A client of the gateway calls a
+  service at `/services/<name>/` on the clients' socket, as fleet-sdk's
+  `client(name, Service)` does.
+- **A box's services are fixed when it is made**, each with its spec as it
+  was then; its client is that spec's, whichever spec the service's server
+  serves since, so a server keeps its schema compatible, as protobuf has
+  it, while boxes made with an older one run.
+- **The threat model.** The model controls everything in a box, so a
+  service checks what a box sends, and decides what it may do by the box
+  the gateway says it is, and its labels: fleet-notes gives each box a
+  notebook of its own. Every box made with a service can call it.
 
 ## Built on
 
-- fleet-box's `image/stage`, for staging a package as installed.
-- The helper's `services.installed` and `services.sync`, and its carrying
-  of the services' sockets' connections over the box's channel
-  (docs/fleet-box/helper/index.md, docs/fleet/index.md).
-- `Box.copyIn` (docs/fleet/box/index.md), for the packages.
-- fleet-sdk's `register` and endpoints, for a fleet server
+- fleet-codegen, for the clients; fleet-pack, for the packages and the
+  trees; fleet-net, for the tunnels and the carrying of calls.
+- fleet-sdk's `serve`, `callerOf` and `boxOf`, for a server
   (docs/fleet-sdk/index.md).

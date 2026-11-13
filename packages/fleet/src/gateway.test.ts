@@ -1,217 +1,203 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { createConnection } from 'node:net'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { setTimeout as delay } from 'node:timers/promises'
-import { Fleet, type BoxState } from '@sleepymug/fleet-sdk'
-import { FLEET_PROTOCOL } from '@sleepymug/fleet-protocol/fleet'
-import { FleetGateway } from './gateway.ts'
-import { LocalBoxes } from './local-boxes.test.util.ts'
-import { systemPlatform } from './platform.ts'
-import { Registry } from './registry.ts'
-import { listen } from './socket.ts'
+import { create } from '@bufbuild/protobuf'
+import { Code, ConnectError } from '@connectrpc/connect'
+import { SpawnRequestSchema, TerminalRequestSchema, WriteFileRequestSchema, FileType } from '@sleepymug/fleet-protocol/box'
+import { BoxState } from '@sleepymug/fleet-protocol/fleet'
+import { Reason, reasonOf } from '@sleepymug/fleet-sdk'
+import { writeTar, bytesEntry } from '@sleepymug/fleet-pack'
+import { echoRoutes, echoSchema, serving, until } from './test.util.ts'
 
-/** A gateway of the test's, on a socket of its own, its boxes local ones (./local-boxes.test.util.ts). */
-async function serving(t: { after: (fn: () => Promise<void>) => void }, idleStopMs = 60_000): Promise<{ dir: string; socket: string; boxes: LocalBoxes; client: Fleet; gateway: FleetGateway }> {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-gateway-'))
-  const boxes = new LocalBoxes(join(dir, 'boxes'))
-  const gateway = new FleetGateway({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes, idleStopMs })
-  await gateway.load()
-  const socket = join(dir, 'fleet.sock')
-  const close = await listen(socket, gateway)
-  const client = await Fleet.connect({ socket })
-  t.after(async () => {
-    await client.close()
-    await close()
-    await gateway.close()
-    await rm(dir, { recursive: true, force: true })
-  })
-  return { dir, socket, boxes, client, gateway }
-}
-
-/** A service's package, whose command `shout` sends its words to the service, and prints the answer. */
-async function shoutPackage(dir: string): Promise<string> {
-  const root = join(dir, 'shout-box')
-  await mkdir(join(root, 'bin'), { recursive: true })
-  await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'shout-box', version: '1.0.0', type: 'module', files: ['bin'], bin: { shout: 'bin/shout.js' } }))
-  await writeFile(join(root, 'bin', 'shout.js'), [
-    '#!/usr/bin/env node',
-    'import { createConnection } from "node:net"',
-    'const socket = createConnection(`${process.env.FLEET_SERVICES}/shout.sock`)',
-    'let answer = ""',
-    'socket.on("data", (chunk) => { answer += chunk })',
-    'socket.on("end", () => { process.stdout.write(`${answer} (${process.env.SHOUT_LOUDNESS})`) })',
-    'socket.end(process.argv.slice(2).join(" "))',
+test('a box made with a service has its client, which a program below /fleet imports, and the service is told the box', async (t) => {
+  const { dir, client, driver } = await serving(t)
+  const { schema, Echo } = await echoSchema(dir)
+  await client.serve({ name: 'echo', description: 'Says back what it is told.', schema, services: [Echo], routes: echoRoutes(Echo) })
+  const made = await client.create({ labels: { who: 'test' }, services: ['echo'] })
+  assert.deepEqual(made.services, ['echo'])
+  assert.equal(made.state, BoxState.STOPPED)
+  const box = client.box(made.id)
+  const root = driver.root(made.id)
+  await mkdir(join(root, 'fleet', 'programs'), { recursive: true })
+  await writeFile(join(root, 'fleet', 'programs', 'say.mjs'), [
+    "import { echo } from '@fleet/echo'",
+    "const said = await echo.say({ text: 'hello' })",
+    'const repeated = []',
+    "for await (const each of echo.repeat({ text: 'again', times: 2 })) repeated.push(each.text)",
+    'console.log(JSON.stringify({ text: said.text, from: said.from, labels: said.labels, repeated }))',
   ].join('\n'))
-  await chmod(join(root, 'bin', 'shout.js'), 0o644)
-  return root
-}
+  const out = await box.output([process.execPath, join(root, 'fleet', 'programs', 'say.mjs')])
+  assert.deepEqual(JSON.parse(out), { text: 'hello', from: made.id, labels: { who: 'test' }, repeated: ['again 1', 'again 2'] })
+  const readme = await readFile(join(root, 'fleet', 'README.md'), 'utf8')
+  assert.match(readme, /## echo/u)
+  assert.match(readme, /`echo.say\(request\)`, answers a `SayResponse`: Say `text` back, with who said it\./u)
+  assert.match(await readFile(join(root, 'fleet', 'node_modules', '@fleet', 'echo', 'index.d.ts'), 'utf8'), /Says back what it is told, and who told it\./u)
+  assert.equal((await box.info()).state, BoxState.STARTED)
+})
 
-test('a service registered is put in each box that has it: its command on the PATH, which reaches the service, told the box', async (t) => {
+test('a client calls a service through the gateway as a client; a box not made with it is refused', async (t) => {
   const { dir, client } = await serving(t)
-  const shouted: string[] = []
-  const registration = await client.register({
-    name: 'shout',
-    description: 'Shouts.',
-    package: await shoutPackage(dir),
-    env: { SHOUT_LOUDNESS: 'loud' },
-    serve(connection, from) {
-      let text = ''
-      connection.on('data', (chunk: Buffer) => { text += chunk.toString('utf8') })
-      connection.on('end', () => {
-        shouted.push(from.labels.who ?? '')
-        connection.end(`${text.toUpperCase()} from ${from.box}`)
-      })
-    },
-  })
-  assert.deepEqual(registration.info.bins, { shout: 'bin/shout.js' })
-  assert.deepEqual((await client.request('service.list', {})).map(({ name, description }) => [name, description]), [['shout', 'Shouts.']])
+  const { schema, Echo } = await echoSchema(dir)
+  await client.serve({ name: 'echo', description: 'Says back.', schema, services: [Echo], routes: echoRoutes(Echo) })
+  const echo = client.client('echo', Echo) as unknown as { say(req: { text: string }): Promise<{ text: string; from: string }> }
+  assert.equal((await echo.say({ text: 'hi' })).from, 'client')
 
-  const { id } = await client.create({ labels: { who: 'tester' } })
-  const box = client.box(id)
-  assert.equal(await box.exec(['sh', '-c', 'shout hello there']), `HELLO THERE from ${id} (loud)`)
-  assert.deepEqual(shouted, ['tester'])
-  const other = await client.create({ services: [] })
-  await assert.rejects(client.box(other.id).exec(['sh', '-c', 'shout hi']), /shout: not found/u)
-
-  // Unregistered, the started box loses its command, and a box made later never gets it.
-  await registration.unregister()
-  for (let tries = 0; ; tries++) {
-    const which = await box.request('exec', { argv: ['sh', '-c', 'command -v shout || echo none'] })
-    if (which.stdout.trim() === 'none') break
-    assert.ok(tries < 50, 'the command is gone')
-    await delay(20)
-  }
+  const bare = await client.create({})
+  const program = [
+    "import { request } from 'node:http'",
+    "const call = request({ socketPath: process.env.FLEET_SERVICES_SOCKET, path: '/services/echo/echo.v1.Echo/Say', method: 'POST', headers: { 'content-type': 'application/json' } }, (res) => {",
+    "  let body = ''; res.on('data', (c) => { body += c }); res.on('end', () => { console.log(JSON.stringify({ status: res.statusCode, body: JSON.parse(body) })) })",
+    '})',
+    "call.end(JSON.stringify({ text: 'hi' }))",
+  ].join('\n')
+  const refused = JSON.parse(await client.box(bare.id).output([process.execPath, '--input-type=module', '--eval', program]))
+  assert.equal(refused.status, 404)
+  assert.equal(refused.body.code, 'not_found')
+  assert.match(refused.body.message, /has no service echo/u)
 })
 
-test('a box started for its lease stops once nothing has occupied it for its idle time, and its state is followed', async (t) => {
-  const { client } = await serving(t, 100)
-  const { id } = await client.create()
-  const box = client.box(id)
+test('a box\'s API: files written and read, folders listed, trees put and got, programs spawned with their input, and which', async (t) => {
+  const { dir, client, driver } = await serving(t)
+  const made = await client.create({})
+  const box = client.box(made.id)
+  const root = driver.root(made.id)
+  const file = join(root, 'work', 'notes.txt')
+  async function* write() {
+    yield create(WriteFileRequestSchema, { request: { case: 'start', value: { path: file, parents: true } } })
+    yield create(WriteFileRequestSchema, { request: { case: 'chunk', value: Buffer.from('one\n') } })
+    yield create(WriteFileRequestSchema, { request: { case: 'chunk', value: Buffer.from('two\n') } })
+  }
+  assert.equal((await box.api.writeFile(write())).size, 8n)
+  const read: Buffer[] = []
+  for await (const { chunk } of box.api.readFile({ path: file, offset: 4n })) read.push(Buffer.from(chunk))
+  assert.equal(Buffer.concat(read).toString(), 'two\n')
+  const stat = await box.api.stat({ path: file })
+  assert.equal(stat.info?.type, FileType.FILE)
+  assert.equal(stat.info?.size, 8n)
+  assert.equal((await box.api.stat({ path: join(root, 'nothing') })).info, undefined)
+  await box.put(writeTar([bytesEntry('a/b.txt', 'b'), bytesEntry('c.txt', 'c')]), join(root, 'tree'))
+  const listed = await box.api.listDir({ path: join(root, 'tree') })
+  assert.deepEqual(listed.entries.map(entry => [entry.name, entry.info?.type]), [['a', FileType.DIRECTORY], ['c.txt', FileType.FILE]])
+  await box.getPath(join(root, 'tree'), join(dir, 'got'))
+  assert.equal(await readFile(join(dir, 'got', 'a', 'b.txt'), 'utf8'), 'b')
+  assert.deepEqual(await box.api.remove({ path: join(root, 'tree'), recursive: true }), { $typeName: 'fleet.box.v1.RemoveResponse', removed: true })
+  await assert.rejects(box.api.readFile({ path: join(root, 'nothing') })[Symbol.asyncIterator]().next(), (error: unknown) => ConnectError.from(error).code === Code.NotFound)
+
+  async function* spawn() {
+    yield create(SpawnRequestSchema, { request: { case: 'start', value: { program: { argv: ['sh', '-c', 'read line; echo "got $line"; echo oops >&2; exit 3'] }, stdin: true } } })
+    yield create(SpawnRequestSchema, { request: { case: 'stdin', value: Buffer.from('milk\n') } })
+    yield create(SpawnRequestSchema, { request: { case: 'closeStdin', value: true } })
+  }
+  const seen: string[] = []
+  for await (const { response } of box.api.spawn(spawn())) {
+    if (response.case === 'started') seen.push('started')
+    else if (response.case === 'stdout') seen.push(`out ${Buffer.from(response.value).toString().trim()}`)
+    else if (response.case === 'stderr') seen.push(`err ${Buffer.from(response.value).toString().trim()}`)
+    else if (response.case === 'exit') seen.push(`exit ${String(response.value.code)}`)
+  }
+  assert.deepEqual(seen.sort(), ['err oops', 'exit 3', 'out got milk', 'started'])
+  assert.notEqual((await box.api.which({ command: 'sh' })).path, '')
+  assert.equal((await box.api.which({ command: 'no-such-program' })).path, '')
+})
+
+test('a spawned program is ended, its group with it, when its call is cancelled', async (t) => {
+  const { client } = await serving(t)
+  const box = client.box((await client.create({})).id)
+  const controller = new AbortController()
+  async function* spawn() {
+    yield create(SpawnRequestSchema, { request: { case: 'start', value: { program: { argv: ['sh', '-c', 'sleep 30 & echo $!; wait'] }, graceMs: 200 } } })
+    await new Promise(() => {})
+  }
+  let child = 0
+  await assert.rejects((async () => {
+    for await (const { response } of box.api.spawn(spawn(), { signal: controller.signal })) {
+      if (response.case === 'stdout') {
+        child = Number(Buffer.from(response.value).toString().trim())
+        controller.abort()
+      }
+    }
+  })())
+  assert.ok(child > 0)
+  await until(() => { try { process.kill(child, 0); return false } catch { return true } }, 5000, 'the spawned group to end')
+})
+
+test('a terminal runs a program, takes what is typed, and says how it ended', async (t) => {
+  const { client } = await serving(t)
+  const box = client.box((await client.create({})).id)
+  const typed = Promise.withResolvers<void>()
+  async function* terminal() {
+    yield create(TerminalRequestSchema, { request: { case: 'start', value: { program: { argv: ['sh'] }, size: { cols: 80, rows: 24 } } } })
+    await typed.promise
+    yield create(TerminalRequestSchema, { request: { case: 'input', value: Buffer.from('echo hel""lo; exit 4\n') } })
+  }
+  let output = ''
+  let exit: number | undefined
+  for await (const { response } of box.api.terminal(terminal())) {
+    if (response.case === 'started') typed.resolve()
+    if (response.case === 'output') output += Buffer.from(response.value).toString()
+    if (response.case === 'exit') exit = response.value.code
+  }
+  assert.match(output, /hello/u)
+  assert.equal(exit, 4)
+})
+
+test('a box nothing occupies stops after its idle time; a lease keeps it, and its watch follows it', async (t) => {
+  const { client } = await serving(t, { idleStopMs: 300 })
+  const made = await client.create({})
+  const box = client.box(made.id)
   const states: (BoxState | 'removed')[] = []
-  const unwatch = box.watch((state) => { states.push(state) })
-  const release = await box.lease({ kind: 'test', id: 'one' })
-  assert.equal((await box.get()).state, 'started')
-  await delay(250)
-  assert.equal((await box.get()).state, 'started', 'a box occupied is not stopped')
+  const stop = box.watch((state) => { states.push(state) })
+  const release = await box.lease({ kind: 'test', id: '1' })
+  assert.equal((await box.info()).state, BoxState.STARTED)
+  await new Promise(resolve => setTimeout(resolve, 600))
+  assert.equal((await box.info()).state, BoxState.STARTED, 'held, it is not stopped')
   await release()
-  await delay(300)
-  assert.equal((await box.get()).state, 'stopped')
-  // Occupied without starting it, it starts for a request, and stays up after it.
-  const occupied = await box.lease({ kind: 'test', id: 'two' }, { start: false })
-  assert.equal((await box.get()).state, 'stopped')
-  assert.deepEqual(await box.request('echo', { text: 'up' }), { text: 'up' })
-  await delay(250)
-  assert.equal((await box.get()).state, 'started')
-  await occupied()
+  await until(async () => (await box.info()).state === BoxState.STOPPED, 5000, 'the idle box to stop')
   await box.remove()
-  await delay(50)
-  unwatch()
-  assert.deepEqual(states, ['stopped', 'started', 'stopping', 'stopped', 'started', 'removed'])
+  await until(() => states.at(-1) === 'removed', 5000, 'the watch to see the removal')
+  stop()
+  assert.deepEqual(states, [BoxState.STOPPED, BoxState.STARTING, BoxState.STARTED, BoxState.STOPPING, BoxState.STOPPED, 'removed'])
 })
 
-test('a box whose container was removed by other means is gone, and its owner makes another', async (t) => {
-  const { client, boxes } = await serving(t)
-  const { id } = await client.create()
-  await boxes.lose(id)
-  await assert.rejects(client.box(id).lease({ kind: 'test', id: 'gone' }), (error: Error & { code?: string }) => error.code === 'BOX_GONE')
-  assert.equal((await client.box(id).get()).state, 'gone')
-  await assert.rejects(client.box('box-0000000000000000').get(), (error: Error & { code?: string }) => error.code === 'NO_BOX')
-  // A request of a box that is not started, without holding it, fails as such.
-  const { id: other } = await client.create()
-  await assert.rejects(client.box(other).request('echo', { text: 'x' }, { hold: false }), (error: Error & { code?: string }) => error.code === 'NOT_STARTED')
+test('a call of a box without holding it needs it started', async (t) => {
+  const { client } = await serving(t)
+  const box = client.box((await client.create({})).id)
+  await assert.rejects(box.started.which({ command: 'sh' }), (error: unknown) => reasonOf(error) === Reason.NOT_STARTED)
+  await box.start()
+  assert.notEqual((await box.started.which({ command: 'sh' })).path, '')
 })
 
-test('a client whose connection is reset, as by a process killed with the gateway\'s answers unread, leaves the gateway serving the others', async (t) => {
-  const { socket, client } = await serving(t)
-  const raw = createConnection(socket)
-  raw.on('error', () => {})
-  // Never read, so that closing it with the gateway's answers unread resets it.
-  raw.pause()
-  raw.write(`${JSON.stringify({ type: 'hello', protocol: FLEET_PROTOCOL })}\n`)
-  for (let id = 1; id <= 50; id++) raw.write(`${JSON.stringify({ type: 'request', id, op: 'box.list', params: {} })}\n`)
-  await delay(200)
-  raw.destroy()
-  await delay(200)
-  assert.deepEqual(await client.list(), [])
+test('a service gone fails its calls, and the box\'s client calls it again once it is back; a name served by another is refused', async (t) => {
+  const { dir, client, driver } = await serving(t)
+  const { schema, Echo } = await echoSchema(dir)
+  const definition = { name: 'echo', description: 'Says back.', schema, services: [Echo], routes: echoRoutes(Echo) }
+  const first = await client.serve(definition)
+  await assert.rejects(client.serve(definition), (error: unknown) => /another server serves echo/u.test(String(error)))
+  const made = await client.create({ services: ['echo'] })
+  const box = client.box(made.id)
+  const program = join(driver.root(made.id), 'fleet', 'programs', 'say.mjs')
+  await box.start()
+  await mkdir(join(driver.root(made.id), 'fleet', 'programs'), { recursive: true })
+  await writeFile(program, "import { echo } from '@fleet/echo'\ntry { console.log((await echo.say({ text: 'x' })).from) } catch (error) { console.log(error.code === 5 ? 'not found' : String(error)) }\n")
+  assert.equal((await box.output([process.execPath, program])).trim(), made.id)
+  first.close()
+  await until(() => client.serviceList().then(list => list.length === 0), 5000, 'the service to be gone')
+  assert.equal((await box.output([process.execPath, program])).trim(), 'not found')
+  await client.serve(definition)
+  assert.equal((await box.output([process.execPath, program])).trim(), made.id)
 })
 
-test('a client\'s leases go with its connection, so a box it held stops once idle', async (t) => {
-  const { socket, client } = await serving(t, 100)
-  const { id } = await client.create()
-  const other = await Fleet.connect({ socket })
-  await other.box(id).lease({ kind: 'test', id: 'held' })
-  await delay(200)
-  assert.equal((await client.box(id).get()).state, 'started')
-  await other.close()
-  await delay(300)
-  assert.equal((await client.box(id).get()).state, 'stopped')
-})
-
-test('a gateway started later knows the boxes made before, and a client takes its service and leases back from it', async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-gateway-again-'))
-  t.after(() => rm(dir, { recursive: true, force: true }))
-  const boxes = new LocalBoxes(join(dir, 'boxes'))
-  const socket = join(dir, 'fleet.sock')
-  const start = async (): Promise<{ gateway: FleetGateway; close: () => Promise<void> }> => {
-    const gateway = new FleetGateway({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes })
-    await gateway.load()
-    return { gateway, close: await listen(socket, gateway) }
-  }
-  let first = await start()
-  const logged: string[] = []
-  const client = await Fleet.connect({ socket, log: (message) => { logged.push(message) } })
-  t.after(() => client.close())
-  await client.register({ name: 'shout', description: 'Shouts.', package: await shoutPackage(dir), serve: connection => connection.end('HI') })
-  const { id } = await client.create()
-  await client.box(id).lease({ kind: 'test', id: 'kept' })
-  await first.close()
-  await first.gateway.close()
-  first = await start()
-  t.after(async () => {
-    await first.close()
-    await first.gateway.close()
-  })
-  for (let tries = 0; first.gateway.services.list().length === 0; tries++) {
-    assert.ok(tries < 100, 'the service is registered again')
-    await delay(50)
-  }
-  assert.equal((await client.box(id).get()).id, id)
-  assert.equal(await client.box(id).exec(['sh', '-c', 'shout']), 'HI (undefined)')
-  assert.ok(logged.some(message => message.startsWith('connected again')))
-})
-
-/** The image the Docker tests' boxes run: $FLEET_TEST_IMAGE, or the default. */
-const IMAGE = process.env.FLEET_TEST_IMAGE ?? 'fleet:local'
-const noImage = await new Promise<string | false>((resolve) => {
-  execFile('docker', ['image', 'inspect', IMAGE], (error) => { resolve(error === null ? false : `no Docker image ${IMAGE}; build it with \`pnpm image\``) })
-})
-
-test('in a Docker box, a service\'s package is copied in, its command runs on the box\'s Node, and its connections reach the service', { skip: noImage }, async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-gateway-docker-'))
-  const gateway = new FleetGateway({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), image: IMAGE })
-  const socket = join(dir, 'fleet.sock')
-  const close = await listen(socket, gateway)
-  const client = await Fleet.connect({ socket })
-  let id: string | undefined
-  t.after(async () => {
-    if (id !== undefined) await client.box(id).remove().catch(() => {})
-    await client.close()
-    await close()
-    await gateway.close()
-    await rm(dir, { recursive: true, force: true })
-  })
-  await client.register({
-    name: 'shout', description: 'Shouts.', package: await shoutPackage(dir), env: { SHOUT_LOUDNESS: 'very' },
-    serve(connection, from) {
-      let text = ''
-      connection.on('data', (chunk: Buffer) => { text += chunk.toString('utf8') })
-      connection.on('end', () => { connection.end(`${text.toUpperCase()} from ${from.box}`) })
-    },
-  })
-  id = (await client.create()).id
-  assert.equal(await client.box(id).exec(['sh', '-c', 'shout from docker']), `FROM DOCKER from ${id} (very)`)
+test('the gateway restarted, a running box\'s helper dials it again, and a service\'s server opens its tunnel again', async (t) => {
+  const server = await serving(t)
+  const { dir, client } = server
+  const { schema, Echo } = await echoSchema(dir)
+  await client.serve({ name: 'echo', description: 'Says back.', schema, services: [Echo], routes: echoRoutes(Echo) })
+  const made = await client.create({ services: ['echo'] })
+  const box = client.box(made.id)
+  await box.start()
+  await server.restart()
+  await until(() => client.serviceList().then(list => list.length === 1, () => false), 10_000, 'the service to register again')
+  await until(async () => (await box.info().catch(() => undefined))?.state === BoxState.STARTED, 10_000, 'the box to be taken as started')
+  assert.notEqual((await box.started.which({ command: 'sh' })).path, '')
 })

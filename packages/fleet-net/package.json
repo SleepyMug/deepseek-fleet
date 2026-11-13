@@ -1,0 +1,33 @@
+{
+  "name": "@sleepymug/fleet-net",
+  "version": "0.0.1",
+  "description": "How fleet's ends reach one another over HTTP/2, knowing nothing of boxes or services: sockets that take HTTP/1.1 and HTTP/2 alike, connections dialed and kept, tunnels a dialer serves over, calls carried through, and calls refused as each protocol has it",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.test.*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.17.0",
+    "@connectrpc/connect": "2.3.0",
+    "@connectrpc/connect-node": "2.3.0"
+  },
+  "devDependencies": {
+    "@sleepymug/fleet-protocol": "workspace:*"
+  }
+}
