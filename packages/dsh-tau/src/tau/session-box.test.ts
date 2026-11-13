@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -9,12 +9,15 @@ import { SessionBox } from './session-box.ts'
 
 const SESSION = 'session-11111111-1111-4111-8111-111111111111'
 
+/** A box's spec, as the runs make one. */
+const SPEC = { labels: {}, env: {}, services: [] }
+
 /** A session's box on the fake gateway; set up again, its box gone, by making another. */
 async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box: SessionBox; fleet: FakeFleet; work: string; rebuilt: () => number }> {
   const work = await mkdtemp(join(tmpdir(), 'dsh-tau-session-box-'))
   t.after(() => rm(work, { recursive: true, force: true }))
   const fleet = new FakeFleet(work)
-  const first = await fleet.create({})
+  const first = await fleet.create(SPEC)
   let rebuilds = 0
   const box = new SessionBox({
     sessionId: SESSION,
@@ -23,7 +26,7 @@ async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box:
     platform: manualPlatform(),
     rebuild: async () => {
       rebuilds += 1
-      const made = await fleet.create({})
+      const made = await fleet.create(SPEC)
       await fleet.box(made).start()
       return made
     },
@@ -83,20 +86,22 @@ test('waiting for a box to be started starts nothing, wakes once something start
 test('a host file is copied into a box once, before its next use, and again after a failure', async (t) => {
   const { box, fleet, work } = await make(t)
   await writeFile(join(work, 'notes.csv'), 'a,b\n')
-  box.copyInOnce(join(work, 'notes.csv'), '/fleet/attachments/notes.csv')
-  box.copyInOnce(join(work, 'notes.csv'), '/fleet/attachments/notes.csv')
+  box.copyInOnce(join(work, 'notes.csv'), '/tau/attachments/notes.csv')
+  box.copyInOnce(join(work, 'notes.csv'), '/tau/attachments/notes.csv')
   await box.hold({ kind: 'file', id: 'after' })
-  assert.deepEqual(fleet.calls, [
-    'start', 'exec mkdir -p /fleet/attachments', `copyIn ${join(work, 'notes.csv')} /fleet/attachments/notes.csv`, 'exec chmod a=r /fleet/attachments/notes.csv',
-  ])
-  fleet.failing = 'copyIn'
-  box.copyInOnce(join(work, 'notes.csv'), '/fleet/attachments/other.csv')
+  assert.deepEqual(fleet.calls, ['start', 'put /tau/attachments'])
+  // Readable by all, and writable by none.
+  const copied = join(fleet.root(box.box), 'tau/attachments/notes.csv')
+  assert.equal(await readFile(copied, 'utf8'), 'a,b\n')
+  assert.equal((await stat(copied)).mode & 0o777, 0o444)
+  fleet.failing = 'put'
+  box.copyInOnce(join(work, 'notes.csv'), '/tau/attachments/other.csv')
   await box.hold({ kind: 'file', id: 'after' }).catch(() => {})
   fleet.failing = undefined
   fleet.calls.length = 0
-  box.copyInOnce(join(work, 'notes.csv'), '/fleet/attachments/other.csv')
+  box.copyInOnce(join(work, 'notes.csv'), '/tau/attachments/other.csv')
   await box.hold({ kind: 'file', id: 'again' })
-  assert.deepEqual(fleet.calls.filter(call => call.startsWith('copyIn')), [`copyIn ${join(work, 'notes.csv')} /fleet/attachments/other.csv`])
+  assert.deepEqual(fleet.calls.filter(call => call.startsWith('put')), ['put /tau/attachments'])
 })
 
 test('an archived box is removed, and none is had until it is unarchived; then it is set up again', async (t) => {

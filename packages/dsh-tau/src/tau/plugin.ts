@@ -3,21 +3,18 @@
  * cordis.patch.yml mounts it in the profile it is installed in. It puts the
  * backend together from the runs of taus and their boxes, `ctx.fleetTauRuns`
  * (./runs-plugin.ts), and dsh's sessions (../dsh/sessions.ts), made with the
- * `tau` agent preset; serves it on its socket in the dsh home, as tau's
- * `listenSocket` does, for the host's `tau --adaptor socket`; registers its
- * tau service with fleet's gateway, whose package, dsh-tau-box, puts the
- * `tau` command in every box, its runs those of the run the box is, through
- * the service's connections, which the gateway relays; and has it follow which
- * sessions dsh archives, whose runs have no box (../dsh/archive.ts), and a
- * tau's session's agent occupy its box while it runs (../dsh/turns.ts). Its
- * config names the dsh home, where it serves its socket. It provides the
+ * `tau` agent preset; serves it as the tau service through fleet's gateway
+ * (./tau-service.ts), for a box's `tau` command, whose runs are those of the
+ * run the box is, and the host's `tau` command, as a client of the gateway;
+ * and has it follow which sessions dsh archives, whose runs have no box
+ * (../dsh/archive.ts), and a tau's session's agent occupy its box while it
+ * runs (../dsh/turns.ts). Its config names the dsh home. It provides the
  * backend as `ctx.fleetTau`, for `tau_run` (../tools/tau.ts), with which
  * another session submits runs.
  * @module @sleepymug/dsh-tau/tau/plugin
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { listenSocket } from '@sleepymug/tau/adaptors'
 import { followArchived } from '../dsh/archive.ts'
 import { dshSessions } from '../dsh/sessions.ts'
 import { followTurns } from '../dsh/turns.ts'
@@ -25,9 +22,8 @@ import { tauPaths } from '../paths.ts'
 import { systemPlatform } from '../platform.ts'
 import type {} from '../services.ts'
 import { messageOf } from '../util/error.ts'
-import { tauService } from './box-service.ts'
-import { HOST } from './registry.ts'
 import { TauService } from './service.ts'
+import { tauService } from './tau-service.ts'
 
 export const name = 'fleet-tau'
 export const inject = ['fleetTauRuns', 'fleet', 'sessionController', 'workspaceRegistry', 'agents']
@@ -41,22 +37,19 @@ export interface Config {
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  const paths = tauPaths(config?.dshHome, name)
+  tauPaths(config?.dshHome, name)
   const platform = systemPlatform()
   const runs = ctx.fleetTauRuns
   const service = new TauService({ runs, sessions: dshSessions(ctx, { preset: PRESET, log: platform.log }), platform })
-  // The tau service first, whose package every run's box sets itself up with.
-  const registration = await ctx.fleet.register(tauService(box => runs.sessionOfBox(box), caller => service.handlerFor(caller)))
-  ctx.effect(() => () => registration.unregister(), 'fleet-tau service')
-  // Then the socket: a backend that does not get it, as when another serves this dsh home, watches no runs.
-  const closeSocket = await listenSocket(paths.socket, service.handlerFor(HOST))
+  // The service first, whose package every run's box is made with; a backend whose service another serves watches no runs.
+  const registration = await ctx.fleet.serve(tauService(box => runs.sessionOfBox(box), caller => service.backendFor(caller)))
   const close = async (): Promise<void> => {
-    await closeSocket()
+    registration.close()
     await service.close()
   }
   try {
     await service.load()
-    ctx.effect(() => close, 'fleet-tau socket')
+    ctx.effect(() => close, 'fleet-tau service')
     ctx.provide('fleetTau', service)
     followArchived(ctx, (archived) => {
       service.followArchive(archived).catch((error: unknown) => {
@@ -65,7 +58,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     })
     followTurns(ctx, runs)
   } catch (error) {
-    // Unloaded while it started, so nothing else would close the socket.
+    // Unloaded while it started, so nothing else would close the service.
     await close()
     throw error
   }

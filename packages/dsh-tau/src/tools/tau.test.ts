@@ -15,7 +15,7 @@ import { decodeCall, packResult } from '@sleepymug/tau/wire-tar'
 import type { About, Started } from '../tau/ports.ts'
 import type { Caller } from '../tau/registry.ts'
 import { abortable } from '../util/abort.ts'
-import { serveFor } from '../tau/wire.ts'
+import { backendFor } from '../tau/backend.ts'
 import { SECTION, apply } from './tau.ts'
 
 const SESSION = 'session-00000000-0000-4000-8000-000000000000'
@@ -48,7 +48,7 @@ function who(caller: Caller, sessionId: string): string {
 }
 
 /**
- * The tau service, as the tool uses it, through its requests (../tau/wire.ts):
+ * The tau service, as the tool uses it, through its backend (../tau/backend.ts):
  * it reads the call it is submitted, and has the run end once {@link end}
  * is called, its result one that left `Milk.` at the file `report`.
  */
@@ -61,8 +61,8 @@ class FakeTau {
 
   constructor(private readonly work: string) {}
 
-  handlerFor(caller: Caller): ReturnType<typeof serveFor> {
-    return serveFor(this as unknown as Parameters<typeof serveFor>[0], caller)
+  backendFor(caller: Caller): ReturnType<typeof backendFor> {
+    return backendFor(this, caller)
   }
 
   async submit(caller: Caller, about: About, archive: AsyncIterable<Uint8Array>): Promise<Started> {
@@ -84,10 +84,10 @@ class FakeTau {
     return { state: 'ended', result: 1, ok: true }
   }
 
-  async result(caller: Caller, sessionId: string): Promise<{ value: { result: number }; body: AsyncIterable<Uint8Array> }> {
+  async result(caller: Caller, sessionId: string): Promise<{ result: number; archive: AsyncIterable<Uint8Array> }> {
     this.calls.push(`result ${who(caller, sessionId)}`)
     await writeFile(join(this.work, 'left.md'), 'Milk.\n')
-    return { value: { result: 1 }, body: packResult({ ok: true, text: 'Done.', outputs: { report: { kind: 'file' } } }, { report: join(this.work, 'left.md') }) }
+    return { result: 1, archive: packResult({ ok: true, text: 'Done.', outputs: { report: { kind: 'file' } } }, { report: join(this.work, 'left.md') }) }
   }
 
   async trace(caller: Caller, sessionId: string): Promise<Trace> {

@@ -9,10 +9,10 @@ them:
   installed;
 - dsh-tau, a dsh bundle in a profile with dsh's web app, such as dsh's
   own `web` profile, whose sessions stay as dsh has them: the tau backend,
-  each run of a tau a dsh session in a box of the gateway's
-  (docs/dsh-tau/index.md);
-- tau's command, `tau`, whose socket adaptor runs taus on dsh-tau's
-  backend, and `fleet`, the gateway's own command.
+  each run of a tau a dsh session in a box of the gateway's, served as the
+  gateway's tau service (docs/dsh-tau/index.md);
+- tau's command, `tau`, whose rpc adaptor runs taus on dsh-tau's backend,
+  through the gateway, and `fleet`, the gateway's own command.
 
 Each package is published as `@sleepymug/<name>`, all but fleet-trace,
 which runs on a checkout only (docs/fleet-trace/index.md).
@@ -80,12 +80,14 @@ On linux, with Docker and pnpm on the PATH:
 
 6. tau's config file, `~/.config/tau/config.yaml` (tau's
    docs/spec/client.md#the-config-file), so that `tau` runs taus on
-   dsh-tau's backend, on its socket in the dsh home:
+   dsh-tau's backend, through the gateway: the tau service, at
+   `/services/tau` on the gateway's clients' socket, `fleet.sock` in the
+   fleet home:
 
    ```yaml
-   adaptor: socket
+   adaptor: rpc
    adaptors:
-     socket: { path: ~/.dsh/tau/tau.sock }
+     rpc: { socket: ~/.fleet/fleet.sock, path: /services/tau }
    ```
 
 7. Signing in to a model provider from a terminal, if wanted, is a profile
@@ -98,12 +100,13 @@ On linux, with Docker and pnpm on the PATH:
 
 Then, with `fleet serve` running, `dsh web` starts dsh with the web UI and
 the tau backend, and `tau run <tau-dir> --call <call.json>` runs a tau,
-as tau's config file says, or with `--adaptor socket` and `$TAU_SOCKET`.
-Each session the web UI makes has `tau_run`, which runs one too, where its
-sandbox lets it write (docs/dsh-tau/tools/index.md); and in each tau's box,
-the `tau` command runs one, as the box's run's.
+as tau's config file says, or with `--adaptor rpc`, `$TAU_RPC_SOCKET` and
+`$TAU_RPC_PATH`. Each session the web UI makes has `tau_run`, which runs
+one too, where its sandbox lets it write (docs/dsh-tau/tools/index.md); and
+in each tau's box, the `tau` command, of the tau dsh-tau is installed with,
+runs one, as the box's run's.
 
-dsh-tau finds the gateway on its socket, `$FLEET_SOCKET`, or
+dsh-tau finds the gateway on its clients' socket, `$FLEET_SOCKET`, or
 `fleet.sock` in the fleet home; a profile names another, and the image of
 a run's box, with a row of its own for `fleet-tau-runs` in its
 `cordis.patch.yml`, `~/.dsh/profiles/web/cordis.patch.yml` for the `web`
@@ -138,9 +141,10 @@ prompt, and runs only where the gateway has the service registered
 - The image holds the packages as installed on the host, and so does
   each service's package as the gateway copies it into a box, so the host
   must be linux, on the architecture of Docker's server; and each box
-  mounts a folder of the host's, its channel to the gateway's services
-  (docs/fleet/index.md), so Docker's server must be the host's own, not a
-  remote one or Docker Desktop's VM.
+  mounts a folder of the host's, `gateway/` in the fleet home, the
+  gateway's boxes' socket, which its helper dials (docs/fleet/index.md),
+  so Docker's server must be the host's own, not a remote one or Docker
+  Desktop's VM.
 - dsh's sandbox, which confines the sessions the web UI makes, needs
   bubblewrap or Landlock on linux (dsh's sandbox-local).
 
@@ -182,11 +186,12 @@ pins, run as `pnpm exec dsh` in place of `dsh`.
    builds and tests (dsh's docs/user/develop/basic/publish.md).
 
 4. Link the `tau`, `fleet` and `fleet-notes` commands, which follow the
-   checkout's builds, and have `tau` run on dsh-tau's backend by default:
+   checkout's builds, and have `tau` run on dsh-tau's backend, through the
+   gateway, by default:
 
    ```
    pnpm add --global "link:$PWD/tau" "link:$PWD/packages/fleet" "link:$PWD/services/notes"
-   mkdir -p ~/.config/tau && printf 'adaptor: socket\nadaptors:\n  socket: { path: ~/.dsh/tau/tau.sock }\n' > ~/.config/tau/config.yaml
+   mkdir -p ~/.config/tau && printf 'adaptor: rpc\nadaptors:\n  rpc: { socket: ~/.fleet/fleet.sock, path: /services/tau }\n' > ~/.config/tau/config.yaml
    ```
 
 5. Run the gateway, the notes service, and dsh, each in a terminal of

@@ -25,9 +25,9 @@
     "test": "node -e \"for (const path of ['lib', 'tsconfig.tsbuildinfo']) require('node:fs').rmSync(path, { recursive: true, force: true })\" && tsc -b && node --test \"lib/**/*.test.js\""
   },
   "dependencies": {
-    "@sleepymug/dsh-tau-box": "workspace:*",
-    "@sleepymug/fleet-sdk": "workspace:*",
+    "@sleepymug/dsh-tau": "workspace:*",
     "@sleepymug/fleet-protocol": "workspace:*",
+    "@sleepymug/fleet-sdk": "workspace:*",
     "@sleepymug/tau": "0.1.0"
   }
 }

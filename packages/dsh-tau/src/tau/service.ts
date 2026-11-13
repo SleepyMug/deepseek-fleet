@@ -1,7 +1,7 @@
 /**
- * The tau backend (docs/dsh-tau/tau/index.md), the backend of tau's
- * socket adaptor (tau's docs/spec/socket.md), which its requests reach
- * through ./wire.ts: it submits a run of a call, tau's archive of a run,
+ * The tau backend (docs/dsh-tau/tau/index.md), the backend of tau's rpc
+ * adaptor (tau's docs/spec/rpc.md), which its calls reach through
+ * ./backend.ts: it submits a run of a call, tau's archive of a run,
  * with its box (./runs.ts) and its dsh session, in the caller's folder as
  * its workspace, which it gives the prompt, once the tau's init, if it has
  * one, asks for the agent (./init.ts); watches the run until its agent is
@@ -18,17 +18,43 @@
  * @module @sleepymug/dsh-tau/tau/service
  */
 
-import type { RequestHandler } from '@sleepymug/tau/adaptors'
-import type { Status, Trace } from '@sleepymug/tau/core'
-import type { Result, RunStatus } from '@sleepymug/dsh-tau-box/runs'
+import { Code, ConnectError } from '@connectrpc/connect'
+import type { Outcome, Status, Trace } from '@sleepymug/tau/core'
+import type { RunBackend } from '@sleepymug/tau/rpc'
 import type { Platform } from '../platform.ts'
 import { abortable } from '../util/abort.ts'
 import { messageOf } from '../util/error.ts'
 import { KeyedQueue } from '../util/queue.ts'
 import { fellBack, nextOf } from './init.ts'
+import { backendFor, noRun } from './backend.ts'
 import type { About, RunLifecycle, Started } from './ports.ts'
 import { HOST, type Caller, type Entry } from './registry.ts'
-import { serveFor } from './wire.ts'
+
+/**
+ * Where a run is: `running` until its agent is done, `ended` once it is,
+ * with its result, and `finished` once its result was first given back.
+ */
+export type RunState = 'running' | 'ended' | 'finished'
+
+/** A run, as {@link TauService.list} gives it. */
+export interface RunStatus {
+  /** The run's id, its session's. */
+  sessionId: string
+  /** The run that started this one from its box, or with `tau_run`, if one did. */
+  parent?: string
+  /** What names the run, as its caller gave it. */
+  title: string
+  /** The caller's folder, the dsh workspace the session is in. */
+  project: string
+  /** The tau's prompt, expanded with where the box has each file. */
+  prompt: string
+  state: RunState
+  createdAt: string
+  /** When the run ended, once it did. */
+  endedAt?: string
+  /** How it ended, once it did. */
+  result?: Outcome
+}
 
 /** The format of a run's trace: its dsh session's events, oldest first, as dsh logs them, which dsh, not tau, defines. */
 export const TRACE_FORMAT = 'dsh-session-events'
@@ -51,7 +77,7 @@ export interface Sessions {
    * wrote, and why not otherwise.
    * @param signal - gives up the wait.
    */
-  settled(sessionId: string, signal: AbortSignal): Promise<Result>
+  settled(sessionId: string, signal: AbortSignal): Promise<Outcome>
   /** A session's events, oldest first, as dsh logs them. */
   history(sessionId: string, signal: AbortSignal): Promise<unknown[]>
 }
@@ -85,12 +111,9 @@ export class TauService {
     this.log = platform.log
   }
 
-  /**
-   * The backend's requests, as tau's socket adaptor and dsh-tau-box's runs
-   * have them, made by `caller`, whom the way in names (./wire.ts).
-   */
-  handlerFor(caller: Caller): RequestHandler {
-    return serveFor(this, caller)
+  /** The backend, as tau's rpc adaptor reaches it, for `caller`, whom the way in names (./backend.ts). */
+  backendFor(caller: Caller): RunBackend {
+    return backendFor(this, caller)
   }
 
   /** Watch the runs the registry has that have not ended, as a service started later does. */
@@ -147,7 +170,7 @@ export class TauService {
     return failure === undefined ? { state: 'ended', result: 1, ok } : { state: 'ended', result: 1, ok, failure }
   }
 
-  /** Every run the caller reaches, oldest first. */
+  /** Every run the caller reaches, oldest first, as the backend lists them for whoever looks into them here. */
   async list(caller: Caller): Promise<RunStatus[]> {
     return (await this.runs.list()).filter(entry => reaches(caller, entry)).map(listed)
   }
@@ -157,14 +180,14 @@ export class TauService {
    * archive, how it ended, and what it gave back for its `out` and `inout`
    * files, the same each time. A run that has not ended has none yet.
    */
-  async result(caller: Caller, sessionId: string): Promise<{ value: { result: number }; body: AsyncIterable<Uint8Array> }> {
+  async result(caller: Caller, sessionId: string): Promise<{ result: number; archive: AsyncIterable<Uint8Array> }> {
     await this.reach(caller, sessionId)
     return await this.serial(sessionId, async () => {
       const { ended, finishedAt } = await this.runs.entry(sessionId)
-      if (ended === undefined) throw new Error(`dsh-tau: ${sessionId} has no result yet: it is running`)
+      if (ended === undefined) throw new ConnectError(`dsh-tau: ${sessionId} has no result yet: it is running`, Code.FailedPrecondition)
       const archive = await this.runs.result(sessionId)
       if (finishedAt === undefined) await this.runs.finished(sessionId)
-      return { value: { result: 1 }, body: archive }
+      return { result: 1, archive }
     })
   }
 
@@ -204,8 +227,13 @@ export class TauService {
    * tau's session the runs it started. Another is as if it were not there.
    */
   private async reach(caller: Caller, sessionId: string): Promise<Entry> {
-    const entry = await this.runs.entry(sessionId)
-    if (!reaches(caller, entry)) throw new Error(`dsh-tau: no tau session ${sessionId}`)
+    let entry: Entry
+    try {
+      entry = await this.runs.entry(sessionId)
+    } catch {
+      throw noRun(sessionId)
+    }
+    if (!reaches(caller, entry)) throw noRun(sessionId)
     return entry
   }
 
@@ -283,7 +311,7 @@ export class TauService {
     const prompted = await this.serial(sessionId, async () => (await this.runs.entry(sessionId)).promptedAt !== undefined)
     // A run its start just set up runs its init first, which ends the run without its agent, or prompts it.
     const initialized = !prompted && init ? await this.initialize(sessionId) : undefined
-    let result: Result
+    let result: Outcome
     if (initialized !== undefined) {
       result = initialized
     } else if (!prompted && !init) {
@@ -315,10 +343,10 @@ export class TauService {
    * service that closes meanwhile throws, and leaves the run unprompted.
    * @returns how the run ended without its agent: init did the run, could not run, or the run was released; undefined once the agent has its prompt.
    */
-  private async initialize(sessionId: string): Promise<Result | undefined> {
+  private async initialize(sessionId: string): Promise<Outcome | undefined> {
     const cancel = new AbortController()
     this.inits.set(sessionId, cancel)
-    const cancelled: Result = { ok: false, text: '', failure: 'the run was released while its init ran' }
+    const cancelled: Outcome = { ok: false, text: '', failure: 'the run was released while its init ran' }
     try {
       let end
       try {
@@ -351,7 +379,7 @@ export class TauService {
   }
 }
 
-/** A run, as the backend's own `list` gives it, from its registry entry. */
+/** A run, as {@link TauService.list} gives it, from its registry entry. */
 function listed(entry: Entry): RunStatus {
   const state = entry.finishedAt !== undefined ? 'finished' : entry.ended !== undefined ? 'ended' : 'running'
   return {

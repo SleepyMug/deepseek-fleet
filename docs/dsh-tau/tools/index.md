@@ -2,7 +2,7 @@
 
 dsh-tau's model tools. Every session that works on the host, such as the
 web UI's, whatever its agent preset, has `tau_run`, which runs a tau as
-`tau run --adaptor socket` does. A tau's session has none of dsh-tau's
+`tau run --adaptor rpc` does. A tau's session has none of dsh-tau's
 own: it runs its programs with bash's `node`, and taus with the `tau`
 command in its box (docs/dsh-tau/tau/index.md).
 
@@ -26,13 +26,14 @@ to load `tau` before running one and `tau-dev` before making one:
 ### tau_run
 
 - **A run is the session's,** as one from the host's `tau` is the host's:
-  the tool runs it with tau's client and its socket adaptor, over a
-  transport in this process, `loopbackTransport`, to the tau backend's
-  requests as the session makes them, `ctx.fleetTau.handlerFor`
-  (docs/dsh-tau/tau/index.md), so `list` gives the session as the
-  run's `parent`, and the session reaches only the runs it started. The
-  run's own session is in the session's working directory, its project,
-  and the web UI lists it there.
+  the tool runs it with tau's client and its rpc adaptor, over a transport
+  in this process, Connect's `createRouterTransport`, to the tau backend's
+  routes, tau's `runsRoutes`, for the backend as the session reaches it,
+  `ctx.fleetTau.backendFor` (docs/dsh-tau/tau/index.md), so the run's
+  `parent` is the session, and the session reaches only the runs it
+  started. A run's id is `rpc:` and its session's id. The run's own session
+  is in the session's working directory, its project, and the web UI lists
+  it there.
 - **Its files are the session's,** on the host: tau's client packs the
   run's call from the session's working directory, where `tau` and
   relative paths in `files` resolve, as the `tau` command does from its
@@ -95,9 +96,10 @@ to load `tau` before running one and `tau-dev` before making one:
 
 ## Built on
 
-- `@sleepymug/tau`, for `tau_run`: its client, `createClient`, and its
-  socket adaptor, `createSocketAdaptor` and `loopbackTransport`.
-- `ctx.fleetTau` (dsh-tau/tau), for `tau_run`'s runs: `handlerFor`,
+- `@sleepymug/tau`, for `tau_run`: its client, `createClient` and
+  `traceLines`, and its rpc adaptor, `createRpcAdaptor` and `runsRoutes`;
+  and `@connectrpc/connect`'s `createRouterTransport`.
+- `ctx.fleetTau` (dsh-tau/tau), for `tau_run`'s runs: `backendFor`,
   and `untilEnded`, the backend's own, which waits for the run's end in this
   process rather than asking its status.
 - `ctx.fleetTauRuns` (dsh-tau/tau), for which sessions are a tau's.

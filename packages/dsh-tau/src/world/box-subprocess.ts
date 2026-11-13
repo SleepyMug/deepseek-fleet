@@ -4,14 +4,16 @@
  * (./subprocess.ts), the host's, builds on.
  *
  * A process is a tau's session's when that session's turn starts it, or it
- * comes through that session's agent's context (./caller.ts). Its box's
- * helper runs it in a process group of its own (fleet-box's
- * helper/cmd/spawn.ts), in the folder dsh names, and sends what it writes,
- * which is collected here into dsh's in-memory tails, as dsh's bash asks:
- * stdin ignored or given as data, stdout and stderr collected. Collected
- * output has no spill file, since a spill would sit on the host, where the
+ * comes through that session's agent's context (./caller.ts). Its box runs
+ * it in a process group of its own, `Box.Spawn`, one call for as long as it
+ * runs, in the folder dsh names, and sends what it writes, which is
+ * collected here into dsh's in-memory tails, as dsh's bash asks: stdin
+ * ignored or given as data, stdout and stderr collected. Collected output
+ * has no spill file, since a spill would sit on the host, where the
  * session's file tools do not look. Terminating it, or aborting its signal,
- * ends its group: SIGTERM, then SIGKILL after its grace period. Its
+ * ends its group: SIGTERM, as a request, so that its exit is still told;
+ * then, after its grace period, the call is cancelled, which has the box
+ * end the group, SIGKILL after SIGTERM. Its
  * environment is what dsh gives it, but dsh's own variables, `DSH_*`, which
  * tell of the host, such as its dsh home and its web UI's URL, and are
  * false in a box.
@@ -29,6 +31,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { create } from '@bufbuild/protobuf'
 import type { Context } from '@deepseek-ai/cordis'
 import { SubprocessExecutableNotFoundError, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type {
@@ -36,12 +39,12 @@ import type {
   SubprocessTerminalEnvironment, SubprocessTerminalHandle, SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
 import { OutputCollector } from '@deepseek-ai/dsh-subprocess-local/output'
-import { EXECUTABLE_NOT_FOUND } from '@sleepymug/fleet-protocol/helper'
-import { codeOf } from '../util/error.ts'
-import type { Held, Occupant, RunBox, TauBoxes } from '../tau/ports.ts'
+import { type SpawnRequest, SpawnRequestSchema } from '@sleepymug/fleet-protocol/box'
+import type { Held, Occupant, TauBoxes } from '../tau/ports.ts'
 import type {} from '../services.ts'
+import { Pushed } from '../util/stream.ts'
 import { callerSession } from './caller.ts'
-import { BoxTerminal, boxEnv } from './terminal.ts'
+import { BoxTerminal, programOf } from './terminal.ts'
 
 export class BoxSubprocessRuntime extends SubprocessRuntime {
   static inject = ['fleetTauRuns', 'agents']
@@ -81,10 +84,9 @@ export class BoxSubprocessRuntime extends SubprocessRuntime {
     if (session === undefined) return (await this.host()).resolveExecutable(command, env, signal)
     const { box, release } = await holdBox(this.runs, session, { kind: 'call', id: randomUUID() })
     try {
-      return await box.request('which', { command, env: env === undefined ? null : { ...env } })
-    } catch (error) {
-      if (codeOf(error) === EXECUTABLE_NOT_FOUND) throw new SubprocessExecutableNotFoundError((error as Error).message, { cause: error })
-      throw error
+      const { path } = await box.api.which({ command }, signal === undefined ? {} : { signal })
+      if (path === '') throw new SubprocessExecutableNotFoundError(`${command} is not on the box's PATH`)
+      return path
     } finally {
       release()
     }
@@ -154,7 +156,7 @@ async function holdBox(runs: TauBoxes, session: string, occupant: Occupant): Pro
   return held
 }
 
-/** One process in a tau's box. */
+/** One process in a tau's box: one `Box.Spawn` call, for as long as it runs. */
 class BoxProcess implements SubprocessHandle {
   readonly stdin = undefined
   readonly stdout = undefined
@@ -163,25 +165,42 @@ class BoxProcess implements SubprocessHandle {
   readonly collected: SubprocessCollectedOutputs
   readonly done: Promise<SubprocessOutcome>
 
-  private readonly id = randomUUID()
-  /** The box the process started in, once it has. */
-  private readonly started: Promise<RunBox | undefined>
+  private readonly requests = new Pushed<SpawnRequest>()
+  /** Cancels the call, which has the box end the process's group: SIGTERM, then SIGKILL after its grace period. */
+  private readonly cancel = new AbortController()
   private terminated = false
 
-  constructor(runs: TauBoxes, session: string, spec: SubprocessSpawnSpec, stdout: SubprocessCollect, stderr: SubprocessCollect) {
+  constructor(runs: TauBoxes, session: string, private readonly spec: SubprocessSpawnSpec, stdout: SubprocessCollect, stderr: SubprocessCollect) {
     const out = new OutputCollector(stdout.maxBytes, 'stdout', undefined)
     const err = new OutputCollector(stderr.maxBytes, 'stderr', undefined)
     this.collected = { stdout: out, stderr: err }
-    const env = boxEnv(spec.env)
     const stdin = spec.stdio.stdin
+    this.requests.push(create(SpawnRequestSchema, {
+      request: { case: 'start', value: { program: programOf(spec.argv, spec.cwd, spec.env), stdin: typeof stdin === 'object', graceMs: spec.graceMs } },
+    }))
+    if (typeof stdin === 'object') {
+      this.requests.push(create(SpawnRequestSchema, { request: { case: 'stdin', value: Buffer.from(stdin.data) } }))
+      this.requests.push(create(SpawnRequestSchema, { request: { case: 'closeStdin', value: true } }))
+    }
     // The process occupies its box until it exits.
-    const held = holdBox(runs, session, { kind: 'process', id: this.id })
-    this.started = held.then(({ box }) => box, () => undefined)
-    this.done = held.then(({ box, release }) => box.request('spawn', {
-      process: this.id, argv: [...spec.argv], cwd: spec.cwd, env,
-      stdin: typeof stdin === 'object' ? stdin.data : null, graceMs: spec.graceMs,
-    }, (event) => { (event.stream === 'stdout' ? out : err).push(Buffer.from(event.data, 'base64')) }).finally(release))
-      .then(({ code, signal }) => ({ exitCode: code, signal: signal as NodeJS.Signals | null }))
+    const held = holdBox(runs, session, { kind: 'process', id: randomUUID() })
+    this.done = held.then(async ({ box, release }) => {
+      try {
+        let outcome: SubprocessOutcome | undefined
+        for await (const { response } of box.api.spawn(this.requests, { signal: this.cancel.signal })) {
+          if (response.case === 'stdout') out.push(Buffer.from(response.value))
+          else if (response.case === 'stderr') err.push(Buffer.from(response.value))
+          else if (response.case === 'exit') {
+            outcome = { exitCode: response.value.code ?? null, signal: (response.value.signal === '' ? null : response.value.signal) as NodeJS.Signals | null }
+          }
+        }
+        if (outcome === undefined) throw new Error('fleet: the box said nothing of how the process ended')
+        return outcome
+      } finally {
+        this.requests.end()
+        release()
+      }
+    })
     void this.done.catch(() => {})
     const signal = spec.signal
     if (signal !== undefined) {
@@ -191,14 +210,16 @@ class BoxProcess implements SubprocessHandle {
     }
   }
 
+  /** End the process's group: SIGTERM, and, once its grace period is over, the call cancelled, which has the box SIGKILL what is left. */
   terminate(): void {
     if (this.terminated) return
     this.terminated = true
-    // Sent once the process has a box; a box lost with it takes the process along.
-    void this.started.then(box => box?.request('kill', { process: this.id })).catch(() => {})
+    this.requests.push(create(SpawnRequestSchema, { request: { case: 'signal', value: 'SIGTERM' } }))
+    const timer = setTimeout(() => { this.cancel.abort() }, this.spec.graceMs)
+    void this.done.finally(() => { clearTimeout(timer) }).catch(() => {})
   }
 
-  /** The helper answers a process once its group is done with its output, so its end is its exit. */
+  /** The box answers a process once its group is done with its output, so its end is its exit. */
   async waitForExit(signal?: AbortSignal): Promise<boolean> {
     const ended = this.done.then(() => true, () => true)
     if (signal === undefined) return ended

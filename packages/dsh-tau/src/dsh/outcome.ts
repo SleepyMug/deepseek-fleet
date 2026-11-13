@@ -6,7 +6,7 @@
  * @module @sleepymug/dsh-tau/dsh/outcome
  */
 
-import type { Result } from '@sleepymug/dsh-tau-box/runs'
+import type { Outcome as Result } from '@sleepymug/tau/core'
 
 /** An event of a session's log, as far as an outcome reads it. */
 export type LoggedEvent =

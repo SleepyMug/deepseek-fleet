@@ -17,7 +17,7 @@ import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { FOLDERS, SELF } from '@sleepymug/dsh-tau-box/layout'
+import { FOLDERS, SELF } from '../tau/layout.ts'
 import { z } from 'zod'
 import type {} from '../services.ts'
 import type { TauBoxes } from '../tau/ports.ts'
@@ -52,7 +52,7 @@ export const NOTICE = `Your container was set up again, as it was when your run 
 
 
 /** Why the step of a session that is not a tau's fails, as of one a person gave this preset. */
-export const NOT_A_TAU = 'This session is no run of a TAU, which the `tau` agent preset is for: `tau run --adaptor socket` and tau_run start those. '
+export const NOT_A_TAU = 'This session is no run of a TAU, which the `tau` agent preset is for: the `tau` command and tau_run start those. '
   + 'Start a session with another preset.'
 
 export function apply(ctx: Context): void {

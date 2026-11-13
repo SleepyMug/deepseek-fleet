@@ -1,9 +1,9 @@
 /**
  * fleet-tau-tools, `tau_run`, as a dsh plugin that dsh-tau's
  * cordis.patch.yml mounts for every session (docs/dsh-tau/tools/index.md):
- * a session that works on the host runs a tau as `tau run --adaptor socket`
- * does, with tau's client and its socket adaptor, on the tau backend,
- * `ctx.fleetTau`, in this process, as the run's caller. Its call is packed
+ * a session that works on the host runs a tau as `tau run --adaptor rpc`
+ * does, with tau's client and its rpc adaptor, on the tau backend,
+ * `ctx.fleetTau`, its routes in this process, as the run's caller. Its call is packed
  * here, from the session's files, relative paths its working directory's,
  * and the run's result put at its paths, once the run ends, and its trace,
  * if asked for, as `tau trace` prints it; then the run is released. The tool waits
@@ -33,7 +33,8 @@ import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createClient, traceLines } from '@sleepymug/tau'
-import { createSocketAdaptor, loopbackTransport } from '@sleepymug/tau/adaptors'
+import { createRouterTransport } from '@connectrpc/connect'
+import { createRpcAdaptor, runsRoutes } from '@sleepymug/tau/rpc'
 import type { TauBoxes } from '../tau/ports.ts'
 import type { Caller } from '../tau/registry.ts'
 import type {} from '../services.ts'
@@ -114,8 +115,9 @@ export function apply(ctx: Context): void {
       if (session === undefined || cwd === undefined) throw new Error('tau_run works only in a session with a working directory')
       if (runs.isTau(session.header.id)) throw new Error('a TAU\'s session runs TAUs with the tau command in its box, not tau_run')
       const caller: Caller = { kind: 'session', sessionId: session.header.id }
-      const socket = createSocketAdaptor({ transport: loopbackTransport(ctx.fleetTau.handlerFor(caller)), project: cwd })
-      const client = createClient({ adaptors: { socket } })
+      // The backend's own routes, in this process, as the session reaches them.
+      const transport = createRouterTransport(runsRoutes(() => ctx.fleetTau.backendFor(caller)))
+      const client = createClient({ adaptors: { rpc: createRpcAdaptor({ transport, project: cwd }) } })
       const tauDir = resolve(cwd, args.tau)
       const call = { files: args.files ?? {}, args: args.args ?? {} }
       const { call: resolved } = client.check(tauDir, call, cwd)
@@ -123,7 +125,7 @@ export function apply(ctx: Context): void {
       const written = [...targets, ...args.trace === undefined ? [] : [resolve(cwd, args.trace)]]
       checkWritable(ctx, session, written)
       const run = await client.start(tauDir, call, { cwd, signal: exec.signal })
-      const sessionId = run.slice('socket:'.length)
+      const sessionId = run.slice('rpc:'.length)
       try {
         await ctx.fleetTau.untilEnded(caller, sessionId, exec.signal)
         // Its sandbox, or what is at its paths, may have changed while the run ran.

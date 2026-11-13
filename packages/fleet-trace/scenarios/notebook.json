@@ -16,28 +16,28 @@
     {
       "tool": "bash",
       "args": {
-        "command": "notes --help",
-        "description": "See what the notes command does"
+        "command": "cat /fleet/node_modules/@fleet/notes/index.d.ts",
+        "description": "See what the notes service's client does"
       }
     },
     {
       "tool": "bash",
       "args": {
-        "command": "node - /tau/in/list.txt <<'EOF'\nimport { execFileSync } from 'node:child_process'\nimport { readFileSync } from 'node:fs'\n\nconst ids: number[] = []\nfor (const line of readFileSync(process.argv[2] ?? '', 'utf8').split('\\n').filter(Boolean)) {\n  const [text = '', tags = ''] = line.split('#')\n  const tagged = tags.split(',').map(tag => tag.trim()).filter(Boolean).flatMap(tag => ['--tag', tag])\n  ids.push(JSON.parse(execFileSync('notes', ['add', text.trim(), ...tagged], { encoding: 'utf8' })).id)\n}\nconsole.log(JSON.stringify(ids))\nEOF",
+        "command": "node - /tau/in/list.txt <<'EOF'\nimport { readFileSync } from 'node:fs'\nimport { notes } from '@fleet/notes'\n\nconst ids: number[] = []\nfor (const line of readFileSync(process.argv[2] ?? '', 'utf8').split('\\n').filter(Boolean)) {\n  const [text = '', tags = ''] = line.split('#')\n  ids.push((await notes.add({ text: text.trim(), tags: tags.split(',').map(tag => tag.trim()).filter(Boolean) })).id)\n}\nconsole.log(JSON.stringify(ids))\nEOF",
         "description": "Save each line as a note"
       }
     },
     {
       "tool": "bash",
       "args": {
-        "command": "notes tag",
-        "description": "Find the notes with no tag given"
+        "command": "node - <<'EOF'\nimport { notes } from '@fleet/notes'\n\ntry {\n  await notes.add({ txt: 'no such field' } as never)\n} catch (error) {\n  console.log((error as Error).message)\n}\nEOF",
+        "description": "See how the client refuses a request that does not fit"
       }
     },
     {
       "tool": "bash",
       "args": {
-        "command": "notes tag shop > /tmp/shop.json && node - <<'EOF'\nimport { readFileSync, writeFileSync } from 'node:fs'\n\nconst texts = (JSON.parse(readFileSync('/tmp/shop.json', 'utf8')) as { text: string }[]).map(note => note.text)\nwriteFileSync('/tau/out/report.txt', texts.join('\\n') + '\\n')\nconsole.log(JSON.stringify(texts))\nEOF",
+        "command": "node - <<'EOF'\nimport { writeFileSync } from 'node:fs'\nimport { notes } from '@fleet/notes'\n\nconst texts = (await notes.tagged({ tag: 'shop' })).notes.map(note => note.text)\nwriteFileSync('/tau/out/report.txt', texts.join('\\n') + '\\n')\nconsole.log(JSON.stringify(texts))\nEOF",
         "description": "Write the shop notes to the report"
       }
     }

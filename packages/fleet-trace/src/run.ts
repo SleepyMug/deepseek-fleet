@@ -5,8 +5,9 @@
  * links this checkout's dsh-tau, and fleet-trace's driver (./driver.ts), and
  * routes the model to the scripted one (./model.ts); dsh itself, the
  * workspace's, started on a free port; there, a run of the tau, through the
- * tau backend's socket, as `tau run --adaptor socket` does it, or a session
- * given a prompt, as the web UI makes one, through the driver's; and, once
+ * gateway's tau service, which dsh-tau serves, as `tau run --adaptor rpc`
+ * does it on the host, or a session given a prompt, as the web UI makes
+ * one, through the driver's; and, once
  * it has ended, every run released, every box removed, dsh and the gateway
  * stopped and the temporary folder removed. What the model was sent is
  * left in the output folder: every request, and the last of the scenario's
@@ -23,9 +24,9 @@ import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { createClient } from '@sleepymug/tau'
-import { createSocketAdaptor, socketTransport } from '@sleepymug/tau/adaptors'
-import { socketPath, type Answers, type Request as ServiceRequest } from '@sleepymug/dsh-tau-box/runs'
+import { createClient, type WireAdaptor } from '@sleepymug/tau'
+import { createRpcAdaptor, rpcTransport } from '@sleepymug/tau/rpc'
+import { tauPaths } from '@sleepymug/dsh-tau/paths'
 import { Fleet } from '@sleepymug/fleet-sdk'
 import type { Request, Settled } from './driver.ts'
 import { ScriptedModel, type Script, type Step } from './model.ts'
@@ -97,10 +98,11 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     const log = createWriteStream(join(out, 'dsh.log'))
     dsh.stdout?.pipe(log, { end: false })
     dsh.stderr?.pipe(log, { end: false })
-    const socket = socketPath(home)
     const running = dsh
-    const ready = (): boolean => existsSync(socket) && existsSync(driverSocket(home))
-    await Promise.race([until(() => ready() || running.exitCode !== null || signal?.aborted === true), exited, interrupted])
+    // dsh is ready once its tau service is registered with the gateway, and its driver listens.
+    const ready = async (): Promise<boolean> => existsSync(driverSocket(home)) && (await services(fleetSock)).includes('tau')
+    await Promise.race([untilAsync(async () => await ready() || running.exitCode !== null || signal?.aborted === true), exited, interrupted])
+    const runs = createRpcAdaptor({ transport: rpcTransport({ socket: fleetSock, path: '/services/tau' }), project: work })
     for (const [path, text] of Object.entries(scenario.files ?? {})) {
       mkdirSync(dirname(join(work, path)), { recursive: true })
       writeFileSync(join(work, path), text)
@@ -111,10 +113,10 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
       // The folder of each file's path, where an `out` goes.
       const paths = Object.values(call.files ?? {}).flatMap(file => typeof file === 'object' && !Array.isArray(file) ? file.path : file)
       for (const path of paths) mkdirSync(dirname(resolve(work, path)), { recursive: true })
-      const client = createClient({ adaptors: { socket: createSocketAdaptor({ transport: socketTransport(socket), project: work }) } })
+      const client = createClient({ adaptors: { rpc: runs } })
       const run = await failing('start', client.start(resolve(dirname(scenarioFile), scenario.tau), call, { cwd: work }))
-      const id = run.slice('socket:'.length)
-      model.prompt = String((await ask(socket, { op: 'list' })).find(listed => listed.sessionId === id)?.prompt).trim()
+      const id = run.slice('rpc:'.length)
+      model.prompt = promptOf(home, id).trim()
       // The run is released with the others, once its caller's folder is kept.
       const ended = await Promise.race([failing('finish', client.finish(run)), exited, interrupted])
       if (!ended.ok) process.stderr.write(`fleet-trace: the run failed: ${String(ended.failure)}\n`)
@@ -126,10 +128,10 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
     // How it ended, and the caller's folder with what it gave back.
     writeFileSync(join(out, 'result.json'), `${JSON.stringify(result, null, 2)}\n`)
     cpSync(work, join(out, 'work'), { recursive: true, verbatimSymlinks: true })
-    await releaseRuns(socket)
+    await releaseRuns(fleetSock, runs)
     released = true
   } finally {
-    if (!released && dsh?.exitCode === null) await releaseRuns(socketPath(home)).catch(() => {})
+    if (!released && dsh?.exitCode === null) await releaseRuns(fleetSock, createRpcAdaptor({ transport: rpcTransport({ socket: fleetSock, path: '/services/tau' }) })).catch(() => {})
     if (dsh !== undefined) await stop(dsh)
     if (fleet?.exitCode === null) await removeBoxes(fleetSock).catch(() => {})
     if (notes !== undefined) await stop(notes)
@@ -255,18 +257,40 @@ function drive(socket: string, request: Request): Promise<Settled> {
   })
 }
 
-/** Release every run, each with the runs it started. */
-async function releaseRuns(socket: string): Promise<void> {
-  const runs = await ask(socket, { op: 'list' })
-  const known = new Set(runs.map(run => run.sessionId))
-  for (const run of runs) {
-    if (run.parent === undefined || !known.has(run.parent)) await failing('release', socketTransport(socket).exchange({ op: 'release', id: run.sessionId }))
+/**
+ * Release every run, each with the runs it started: each run's box says
+ * its session, and the run that started it, in its labels.
+ */
+async function releaseRuns(fleetSock: string, runs: WireAdaptor): Promise<void> {
+  const client = await Fleet.connect({ socket: fleetSock })
+  try {
+    const sessions = (await client.list()).flatMap(({ labels }) => labels['dsh.session'] === undefined ? [] : [{ id: labels['dsh.session'], parent: labels['tau.parent'] }])
+    const known = new Set(sessions.map(session => session.id))
+    for (const { id, parent } of sessions) {
+      if (parent === undefined || !known.has(parent)) await failing('release', runs.release(id))
+    }
+  } finally {
+    await client.close()
   }
 }
 
-/** One of the tau backend's own requests, whose failure throws. */
-async function ask<O extends ServiceRequest['op']>(socket: string, request: ServiceRequest & { op: O }): Promise<Answers[O]> {
-  return (await failing(request.op, socketTransport(socket).exchange(request))).value as Answers[O]
+/** The names of the services the gateway at `fleetSock` has registered now; none if it does not answer. */
+async function services(fleetSock: string): Promise<string[]> {
+  try {
+    const client = await Fleet.connect({ socket: fleetSock })
+    try {
+      return (await client.serviceList()).map(service => service.name)
+    } finally {
+      await client.close()
+    }
+  } catch {
+    return []
+  }
+}
+
+/** A run's prompt, as dsh-tau's registry in the dsh home has it. */
+function promptOf(home: string, sessionId: string): string {
+  return String((JSON.parse(readFileSync(join(tauPaths(home, 'fleet-trace').runs, `${sessionId}.json`), 'utf8')) as { prompt?: unknown }).prompt)
 }
 
 /** What an op gives, its failure named. */
@@ -279,4 +303,9 @@ async function failing<T>(op: string, answer: Promise<T>): Promise<T> {
 /** Once `found` holds, checking every 200 ms. */
 async function until(found: () => boolean): Promise<void> {
   while (!found()) await delay(200)
+}
+
+/** Once `found` holds, checking every 200 ms. */
+async function untilAsync(found: () => Promise<boolean>): Promise<void> {
+  while (!await found()) await delay(200)
 }

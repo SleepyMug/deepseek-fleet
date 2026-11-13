@@ -17,7 +17,7 @@
  * dsh asks where a host file is in the world of the session it works for,
  * to tell its model where a stored attachment is: an image it was shown, or
  * a file uploaded to it. For a tau's session, a file of dsh's attachment
- * store is at its place under /fleet/attachments in its box, which the runs
+ * store is at its place under /tau/attachments in its box, which the runs
  * copy it to as it is asked for; there the store's files never change. Any
  * other host file is not in its world.
  * @module @sleepymug/dsh-tau/world/fs
@@ -40,7 +40,7 @@ import { BoxFileSystem, KEY_PREFIX } from './box-fs.ts'
 const VIEWED = '/tau'
 
 /** Where a box has the files of dsh's attachment store, as they are in the store. */
-const ATTACHMENTS = '/fleet/attachments'
+const ATTACHMENTS = '/tau/attachments'
 
 export interface Config {
   /** The dsh home, absolute, whose attachments/ is dsh's attachment store. */

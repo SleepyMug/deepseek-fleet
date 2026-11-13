@@ -3,7 +3,7 @@
  * docs/spec/backend.md): its tau, which comes first, read into a folder of
  * its own, the call checked against it, and then every content read, and so
  * the whole call checked, before anything is made of it. Where the box
- * places each file is its own (./box-setup.ts); here, only whether the call
+ * places each file is its layout's (./placement.ts); here, only whether the call
  * fits.
  * @module @sleepymug/dsh-tau/tau/admission
  */

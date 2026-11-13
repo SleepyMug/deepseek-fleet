@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "gen": "pnpm -r gen",
-    "build": "pnpm --filter \"@sleepymug/fleet*\" --filter \"!@sleepymug/fleet-trace\" build",
+    "build": "pnpm --filter \"@sleepymug/fleet*\" --filter \"@sleepymug/tau\" --filter \"@sleepymug/dsh-tau\" build",
     "watch": "tsc -b --watch",
     "clean": "tsc -b --clean",
-    "test": "pnpm --filter \"@sleepymug/fleet*\" --filter \"!@sleepymug/fleet-trace\" test",
+    "test": "pnpm --filter \"@sleepymug/fleet*\" --filter \"@sleepymug/tau\" --filter \"@sleepymug/dsh-tau\" test",
     "image": "pnpm build && node packages/fleet/lib/cli/main.js image build"
   },
   "devEngines": {

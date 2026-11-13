@@ -35,7 +35,7 @@ A scenario is JSON, its paths relative to its file, such as
   "tau": "../../../examples/notebook",
   "files": { "list.txt": "buy milk #shop\n" },
   "call": { "files": { "list": "list.txt", "report": "out/report.txt" }, "args": { "tag": "shop" } },
-  "steps": [{ "tool": "bash", "args": { "command": "notes --help" } }],
+  "steps": [{ "tool": "bash", "args": { "command": "cat /fleet/node_modules/@fleet/notes/index.d.ts" } }],
   "final": "Done."
 }
 ```
@@ -61,7 +61,8 @@ A scenario is JSON, its paths relative to its file, such as
   once with `tau run`, each run with an `out` of its own, and keeps one;
   the call's `$${out}` reaches each shout as its own place.
   `scenarios/notebook.json` runs `examples/notebook`, whose agent saves its
-  list with the notes service's `notes` command, and reports a tag's notes.
+  list with programs that import the notes service's client, `@fleet/notes`,
+  and reports a tag's notes.
 
 `scenarios/glossary.json` runs `examples/glossary`, whose init defines a
 term its glossary has without the model; `scenarios/glossary-broken.json`
@@ -83,12 +84,14 @@ told so after the prompt, defines the term.
   and routes the model to the scripted one; dsh's own `plugin install`
   installs it. It runs the workspace's dsh, on a free port, with
   `$FLEET_SOCKET` naming the scratch gateway's socket, so dsh-tau's boxes are
-  the scratch gateway's, and its tau service registers there.
-- **The run** is started and finished through the tau backend's socket, as
-  `tau start --adaptor socket` and `tau finish` do it, with tau's client
-  and its socket adaptor, which pack the call and put the result at the
-  caller's paths, the scripted model told the run's prompt by the
-  backend's `list`, with the caller's folder made from `files`, and the
+  the scratch gateway's, and its tau service registers there; dsh is ready
+  once the gateway lists the tau service, and the driver listens.
+- **The run** is started and finished through the gateway's tau service,
+  as `tau start --adaptor rpc` and `tau finish` do it on the host, with
+  tau's client and its rpc adaptor at `/services/tau` on the scratch
+  gateway's socket, which pack the call and put the result at the caller's
+  paths, the scripted model told the run's prompt by dsh-tau's registry in
+  the scratch home, with the caller's folder made from `files`, and the
   folder of each file's path in `call`, where an `out` goes.
 - **A session** is made through the driver (`driver.ts`), a dsh plugin of
   this package on a socket in the scratch home, as the web UI makes one: in
@@ -109,7 +112,8 @@ told so after the prompt, defines the term.
 - **The end.** Once the run has ended, as `finish` says, and what it gave
   back is put at the caller's paths, or the session's agent is done, the
   result and the caller's folder are kept, and every run is released, with
-  its box; a run that failed says why on stderr. dsh is stopped, its whole
+  its box, the runs found by the labels of the scratch gateway's boxes, each
+  run with those it started; a run that failed says why on stderr. dsh is stopped, its whole
   process group; every box the scratch gateway still has is removed, whatever
   a run left; the notes service and the gateway are stopped; and the
   temporary folder removed. A run that stops when dsh exits says so, with its log. An
@@ -118,10 +122,11 @@ told so after the prompt, defines the term.
 
 ## Built on
 
-- tau's client and its socket adaptor, `createSocketAdaptor` and
-  `socketTransport`, and `@sleepymug/dsh-tau-box/runs`, for the tau
-  backend and its own `list`.
-- `@sleepymug/fleet-sdk`, for the boxes left at the end.
+- tau's client and its rpc adaptor, `createRpcAdaptor` and
+  `rpcTransport`, for the runs; and `@sleepymug/dsh-tau/paths`, for where
+  dsh-tau's registry keeps a run's prompt.
+- `@sleepymug/fleet-sdk`, for the services registered, the runs' boxes, and
+  the boxes left at the end.
 - The checkout's `fleet` and `fleet-notes`, run on this Node.
 - dsh's workspace registry, session controller and agents, for the
   driver, whose types it writes out, so it imports nothing of dsh's.

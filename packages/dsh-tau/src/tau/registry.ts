@@ -11,14 +11,15 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { Envelope } from '@sleepymug/tau/core'
-import { FOLDERS, PROGRAMS } from '@sleepymug/dsh-tau-box/layout'
-import type { Result } from '@sleepymug/dsh-tau-box/runs'
+import type { Outcome } from '@sleepymug/tau/core'
+import { FOLDERS, PROGRAMS } from './layout.ts'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 
 /**
- * Who started a run: the host's `tau` command, on the backend's socket; or a
+ * Who started a run: the host, as the host's `tau` command, a client of
+ * fleet's gateway; or a
  * session: a tau's, from its box, or another, with `tau_run`
  * (../tools/tau.ts).
  */
@@ -61,7 +62,7 @@ export interface Entry {
   /** When the session was given its prompt, which starts the run. */
   promptedAt?: string
   /** When the run ended, its agent done, and how. */
-  ended?: { at: string; result: Result }
+  ended?: { at: string; result: Outcome }
   /** When the run's result was first given back. */
   finishedAt?: string
   /** When the box was last set up again from the call, its box having gone, which the agent is told of once (./reset.ts). */
@@ -69,12 +70,12 @@ export interface Entry {
   /**
    * Each file of the run, by name, as the call has it, checked against the tau: its mode, its
    * kind, and its base name; what `tau.json` says it is, for a file it declares; and where the
-   * box has it, as the box's half reported it, which an entry written before it did lacks.
+   * box has it, as its layout placed it, which an entry written before it did lacks.
    */
   files: { [name: string]: Envelope['files'][string] & { description?: string; place?: string } }
-  /** The agent's working directory in the box, as the box's half reported it. */
+  /** The agent's working directory in the box, as its layout placed it. */
   cwd: string
-  /** The program directory in the box, below which the agent's programs import the tau's packages, as the box's half reported it. */
+  /** The program directory in the box, below which the agent's programs import the tau's packages, as its layout placed it. */
   programs: string
   /** The packages of the tau's own it exposes to its programs, each by the name they import it as, with where the box has it, and what it says it is. */
   exposed: readonly { specifier: string; dir: string; description?: string }[]
@@ -114,7 +115,7 @@ export class Registry {
     if (!SESSION_ID.test(sessionId)) return undefined
     try {
       const entry = JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Omit<Entry, 'cwd' | 'programs' | 'title'> & Partial<Entry> & { tauDir?: string }
-      // What an entry written before the box's half reported them, or before runs had titles, has.
+      // What an entry written before the layout reported them, or before runs had titles, has.
       return { ...entry, title: entry.title ?? basename(entry.tauDir ?? 'tau'), cwd: entry.cwd ?? FOLDERS.inout, programs: entry.programs ?? PROGRAMS }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined

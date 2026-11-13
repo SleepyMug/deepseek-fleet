@@ -68,17 +68,39 @@ added.
   done, so the gateway does not stop the box for being idle under it
   (docs/dsh-tau/tau/index.md): a file call while it runs, `which` while it
   runs, a process until it exits, and a terminal until it ends. Each
-  request goes to its helper (docs/fleet-box/helper/index.md) through the
-  gateway's `box.request`, made with `hold: false`, since the lease
-  holds the box started (docs/fleet-sdk/index.md).
+  call is one of the box API's, `fleet.box.v1.Box`, which the gateway
+  carries to the box's helper (docs/fleet-box/helper/index.md), made on the
+  box's `started` client, which neither holds nor starts it, since the
+  lease holds the box started (docs/fleet-sdk/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
-  or else to the box of the session it is for, if a tau's. The targets a box
-  gives are keyed the same way, with the plain path in the box as their
-  display and process paths, so a call that takes a target goes where its
-  key says, whoever makes it. A box's text streams in one chunk. Its
-  failures are `FsError`s: the helper's code, which the gateway passes
-  on as the failure's `code`, or `FS_IO_ERROR`.
+  or else to the box of the session it is for, if a tau's; a relative path
+  without a `cwd` is the agent's working directory's, `/tau/workspace`. The
+  targets a box gives are keyed the same way, with the plain path in the
+  box as their display and process paths, so a call that takes a target
+  goes where its key says, whoever makes it. The box's files are served
+  over its API as dsh's local file system has files on the host
+  (`box-files.ts`): `resolve` is `Box.Resolve`, a target's key where its
+  path leads, every symlink followed, or, for a path to nothing, its
+  nearest folder that is there, and its display path the path as named;
+  `stat` and `lstat` are `Box.Stat`, following the last symlink or not,
+  and a version is the box's, `FileInfo.version`, which changes whenever
+  the file does; `readText` is the file whole, UTF-8, a NUL in its first
+  8 KiB making it binary, `FS_NOT_TEXT`, and its text streams in one chunk;
+  `readBytes` and `readByteRange` are `Box.ReadFile`, and `listDir`
+  `Box.ListDir`. Its failures are `FsError`s, by the call's code:
+  `not_found` is `FS_NOT_FOUND`, `permission_denied`
+  `FS_PERMISSION_DENIED`, `aborted` `FS_STALE_VERSION`, `canceled`
+  `FS_ABORTED`, and any other `FS_IO_ERROR`.
+- **Writes and edits.** `writeText` is `Box.WriteFile`, which replaces the
+  file whole, through its symlinks, keeping its permission bits, its
+  folders made if missing. Its guard is checked by the box as it puts the
+  file in place, so a file changed since it was read is not overwritten:
+  `createIfAbsent` writes exclusively, a file there `FS_NOT_OBSERVED`;
+  `replaceIfVersion` writes only if the file is still at the version,
+  else `FS_STALE_VERSION`. `editText` reads the file, replaces literal
+  text, keeping its line endings, CRLF or LF, and writes it guarded by the
+  version it read.
 - **One box per session.** A tau's session's own work may name only its own
   box; another's is `FS_PERMISSION_DENIED`, so a model in a box never
   reaches another box. Any other caller may read any box, as every
@@ -99,21 +121,22 @@ added.
   `read_image` once the image is left out of a request, or a file uploaded
   to it, which it reads only there. For a tau's session, a file of the
   store, `$DSH_HOME/attachments/`, is at the same place under
-  `/fleet/attachments` in its box, such as
-  `/fleet/attachments/v1/files/49/<sha256>/notes.csv`; the store's files
+  `/tau/attachments` in its box, such as
+  `/tau/attachments/v1/files/49/<sha256>/notes.csv`; the store's files
   never change, so a copy stays the same file. The answer comes at once,
-  and the runs copy the file in then, through the gateway's
-  `box.copyIn`, once per session, readable by all and writable by none
-  (`copyInOnce`, docs/dsh-tau/tau/index.md). The
+  and the runs copy the file in then, `Box.Put`, once per session,
+  readable by all and writable by none (`copyInOnce`,
+  docs/dsh-tau/tau/index.md). The
   copy is one of the session's operations on its box, so the box's next
   use, which every file call, process and terminal waits for, comes after
   it; and the model acts on the answer only after the request it is in.
   Any other host file is not in a tau's session's world. Every other
   session gets dsh's own answer, the host path. The service's config names
   the dsh home, as `dshHomePath()` in the patch.
-- **Watching** a box's target asks its helper (`fs.watch`), which watches
-  with dsh's local file system and sends an event for each change, until
-  the watch's stop or signal ends it (`fs.unwatch`). So the sidebar
+- **Watching** a box's target is one `Box.Watch` call, of the started box,
+  which says first that the watch is ready, then each time what is at the
+  path, or what the folder holds, may have changed, until the watch's stop
+  or signal cancels it. So the sidebar
   refreshes live. A watch neither starts the box nor leases it, since the
   file viewer holds one for as long as it shows a folder: if it did, an
   open browser tab would keep the box running; and if a watch failed as its
@@ -128,29 +151,34 @@ added.
   group of its own, in the folder dsh names, the session's project, a host
   folder, put in `/tau/workspace` in the box (`ctx.fleetTauRuns.boxPath`,
   docs/dsh-tau/tau/index.md), as is a terminal's, and a file call's path
-  or `cwd` in the project. It serves what dsh's bash asks: stdin
-  ignored or given as data, and stdout and stderr collected into dsh's own
-  in-memory tails (`OutputCollector`) as the helper sends them. Its
+  or `cwd` in the project. It is one `Box.Spawn` call, for as long as it
+  runs, and serves what dsh's bash asks: stdin ignored or given as data,
+  then closed, and stdout and stderr collected into dsh's own in-memory
+  tails (`OutputCollector`) as the box sends them. Its
   environment, and a terminal's, is the box's, with its run's context and
   its services', and what dsh gives it, but dsh's own variables, `DSH_*`,
   which tell of the host, such as the dsh home and the web UI's URL, and
   the host's `PATH` and `HOME`, which are false in a box, so the box's own
-  stand: its PATH has the services' commands first, then the image's. Terminating
-  it, or aborting its signal, ends its group, and so does this service's
-  unloading. `resolveExecutable` asks the box's helper (`which`), whose
-  answer for a program not there, `EXECUTABLE_NOT_FOUND`, comes as the
-  failure's `code`.
+  stand: its PATH has the services' commands first, then the image's; the
+  call gives what dsh adds as its environment, and what dsh unsets as its
+  `unset_env`. Terminating it, or aborting its signal, sends its group
+  SIGTERM, and, after its grace period, cancels the call, which has the box
+  end the group; so does this service's unloading. `resolveExecutable` is
+  `Box.Which`, whose empty answer, for a program not there, is dsh's
+  `SubprocessExecutableNotFoundError`.
 - **Terminals** (`terminal.ts`). dsh's terminal controller reaches
   `ctx.subprocess` through the session's agent, so a tau's session's
-  sidebar terminal opens in its box: the helper runs the shell, the image's
-  bash, on a pseudo-terminal there, and relays input, output and size. It
-  reads the terminal's foreground process group from the kernel, which it
-  signals, and ends the terminal's whole session, background jobs included,
-  SIGHUP and SIGTERM, then SIGKILL after the grace period. Its activity is
-  the helper's `terminal.activity`: `idle` when no process of its session
-  is left, or the shell is the only one, in the foreground and asleep, as
-  at its prompt; `busy` otherwise, a background job included; `unknown`
-  while it ends, or when the helper cannot tell. So dsh's terminal
+  sidebar terminal opens in its box, one `Box.Terminal` call for as long as
+  it runs: the box runs the shell, the image's bash, on a pseudo-terminal
+  there; input, a resize and a signal are requests of the call, and the
+  output comes back on it. The terminal's foreground process group, which
+  a signal goes to, and its activity, are the box's status, a request
+  answered in order. Ending the terminal ends the call, which ends every
+  process of its session, background jobs included. Its activity is
+  `idle` when the box finds no process of its session left, or the shell
+  the only one, in the foreground and asleep, as at its prompt; `busy`
+  otherwise, a background job included; `unknown` while it ends, or when
+  the box cannot tell. So dsh's terminal
   controller reclaims a terminal no window has held for
   `unattendedTimeoutMs`, two hours by default, while it was idle, which
   ends its lease of the box, and the gateway stops the box once nothing
@@ -190,8 +218,9 @@ added.
 - `@deepseek-ai/dsh-api-workspace-files` and `@deepseek-ai/dsh-typert-protocol`,
   for the `workspaceFileScope` lookup.
 - `ctx.fleetTauRuns` (dsh-tau/tau), and the boxes of fleet's gateway
-  through it, with `@sleepymug/fleet-protocol/helper`'s types of their
-  helper's methods.
+  through it, with their API, `fleet.box.v1.Box`, of
+  `@sleepymug/fleet-protocol/box`, over `@connectrpc/connect` and
+  `@bufbuild/protobuf`.
 - dsh's attachment store's layout, `$DSH_HOME/attachments/`, whose files
   `@deepseek-ai/dsh-attachment-local` names.
 
@@ -201,7 +230,7 @@ loaded: run the workspace's dsh, `pnpm exec dsh`.
 ## How it runs
 
 With dsh-tau in the `web` profile's bundles, and `fleet serve` running,
-`pnpm exec dsh web` mounts the services. After `tau start --adaptor socket`
+`pnpm exec dsh web` mounts the services. After `tau start --adaptor rpc`
 (tau's docs/spec/client.md), the session's bash and file tools work in its
 box:
 
@@ -214,6 +243,6 @@ A file uploaded to the session in the web UI, and an image its model was
 shown, are in its box where dsh tells the model they are:
 
 ```
-$ docker exec box-5f1e… ls -l /fleet/attachments/v1/files/49/492d…/
+$ docker exec box-5f1e… ls -l /tau/attachments/v1/files/49/492d…/
 -r--r--r-- 1 node node 8 Oct  4 18:47 notes.csv
 ```

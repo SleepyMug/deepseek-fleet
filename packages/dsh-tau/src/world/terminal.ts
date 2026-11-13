@@ -1,24 +1,27 @@
 /**
  * A terminal in a tau's box, such as the web UI's sidebar terminal of the
- * session: the box's helper runs the shell on a pseudo-terminal there
- * (fleet-box's helper/cmd/terminal.ts), and this handle relays its
- * input, output and size, and asks the helper for its foreground process
- * group, which it signals, and to end its whole session, background jobs
- * included. It reports the terminal idle when the helper finds no process
- * of it left, or its shell alone at its prompt, so dsh's terminal
- * controller reclaims one nobody has open after a while, which ends its
- * hold on the box (./subprocess.ts). Its environment, as a process's in a
- * box, leaves out dsh's own variables, which tell of the host.
+ * session: the box runs the shell on a pseudo-terminal there, one
+ * `Box.Terminal` call for as long as it runs, and this handle relays its
+ * input, output and size, asks the box its status, its foreground process
+ * group, which it signals, and whether it is idle, and ends it, background
+ * jobs included, by ending the call. It reports the terminal idle when the
+ * box finds no process of it left, or its shell alone at its prompt, so
+ * dsh's terminal controller reclaims one nobody has open after a while,
+ * which ends its hold on the box (./box-subprocess.ts). Its environment, as
+ * a process's in a box, leaves out dsh's own variables, which tell of the
+ * host.
  * @module @sleepymug/dsh-tau/world/terminal
  */
 
-import { randomUUID } from 'node:crypto'
 import { PassThrough } from 'node:stream'
+import { create, type MessageInitShape } from '@bufbuild/protobuf'
 import type {
   SubprocessOutcome, SubprocessTerminalActivity, SubprocessTerminalForeground, SubprocessTerminalHandle, SubprocessTerminalSignal,
   SubprocessTerminalSpawnSpec,
 } from '@deepseek-ai/dsh-subprocess'
+import { type ProgramSchema, type TerminalRequest, TerminalRequestSchema, type TerminalStatus } from '@sleepymug/fleet-protocol/box'
 import type { RunBox } from '../tau/ports.ts'
+import { Pushed } from '../util/stream.ts'
 
 /** What dsh gives a process that tells of the host, and is false in a box, whose own the box keeps: where its programs are, and its home. */
 const HOST_ONLY: ReadonlySet<string> = new Set(['PATH', 'HOME'])
@@ -32,22 +35,38 @@ export function boxEnv(env: Readonly<Record<string, string | null | undefined>> 
   return Object.fromEntries(Object.entries(env ?? {}).filter(([key]) => !key.startsWith('DSH_') && !HOST_ONLY.has(key)).map(([key, value]) => [key, value ?? null]))
 }
 
+/** A program as a box runs it: its environment what dsh gives it, as {@link boxEnv} keeps it, added to the box's, a name given null removed. */
+export function programOf(argv: readonly string[], cwd: string, env: Readonly<Record<string, string | null | undefined>> | undefined): MessageInitShape<typeof ProgramSchema> {
+  const kept = Object.entries(boxEnv(env))
+  return {
+    argv: [...argv],
+    cwd,
+    env: Object.fromEntries(kept.filter((entry): entry is [string, string] => entry[1] !== null)),
+    unsetEnv: kept.filter(([, value]) => value === null).map(([key]) => key),
+  }
+}
+
 export class BoxTerminal implements SubprocessTerminalHandle {
   /** Changes with input, and with the activity reported, so an idle time is counted from either. */
   private revision = 0
   private activity: SubprocessTerminalActivity['state'] | undefined
   private ending: Promise<void> | undefined
   private gone = false
+  /** What waits for each status asked, in order, as the box answers them. */
+  private readonly asked: ((status: TerminalStatus | undefined) => void)[] = []
 
   private constructor(
-    private readonly box: RunBox,
-    /** The helper's id of the terminal. */
-    private readonly id: string,
+    private readonly requests: Pushed<TerminalRequest>,
+    /** Ends the call, which ends every process of the terminal's session. */
+    private readonly cancel: AbortController,
     readonly pid: number,
     readonly output: PassThrough,
     readonly done: Promise<SubprocessOutcome>,
   ) {
-    void done.finally(() => { this.gone = true }).catch(() => {})
+    void done.finally(() => {
+      this.gone = true
+      for (const answer of this.asked.splice(0)) answer(undefined)
+    }).catch(() => {})
   }
 
   /**
@@ -56,52 +75,67 @@ export class BoxTerminal implements SubprocessTerminalHandle {
    */
   static async start(box: RunBox, spec: SubprocessTerminalSpawnSpec): Promise<BoxTerminal> {
     spec.signal?.throwIfAborted()
-    const env = boxEnv(spec.env)
     const started = Promise.withResolvers<number>()
     const output = new PassThrough()
-    const id = randomUUID()
-    const done = box.request('terminal', {
-      terminal: id, argv: [...spec.argv], cwd: spec.cwd, env, cols: spec.cols, rows: spec.rows, term: spec.terminalType, graceMs: spec.graceMs,
-    }, (event) => {
-      if (event.kind === 'started') started.resolve(event.pid)
-      else output.write(Buffer.from(event.data, 'base64'))
-    }).then(({ code, signal }) => ({ exitCode: code, signal: signal as NodeJS.Signals | null }))
-    // The output ends after what the shell wrote, whether it exited or the box was lost.
-    void done.finally(() => { output.end() }).catch(() => {})
+    const requests = new Pushed<TerminalRequest>()
+    const cancel = new AbortController()
+    requests.push(create(TerminalRequestSchema, {
+      request: {
+        case: 'start',
+        value: { program: programOf(spec.argv, spec.cwd, spec.env), size: { cols: spec.cols, rows: spec.rows }, term: spec.terminalType ?? '', graceMs: spec.graceMs },
+      },
+    }))
+    let terminal: BoxTerminal | undefined
+    const done = (async (): Promise<SubprocessOutcome> => {
+      try {
+        for await (const { response } of box.api.terminal(requests, { signal: cancel.signal })) {
+          switch (response.case) {
+            case 'started': started.resolve(response.value.pid); break
+            case 'output': output.write(Buffer.from(response.value)); break
+            case 'status': terminal?.asked.shift()?.(response.value); break
+            case 'exit': return { exitCode: response.value.code ?? null, signal: (response.value.signal === '' ? null : response.value.signal) as NodeJS.Signals | null }
+            default: break
+          }
+        }
+        throw new Error('fleet: the box said nothing of how the terminal\'s program ended')
+      } finally {
+        requests.end()
+        // The output ends after what the shell wrote, whether it exited or the box was lost.
+        output.end()
+      }
+    })()
     done.catch((error: unknown) => { started.reject(error) })
-    return new BoxTerminal(box, id, await started.promise, output, done)
+    terminal = new BoxTerminal(requests, cancel, await started.promise, output, done)
+    return terminal
   }
 
   async write(data: string): Promise<void> {
     this.revision++
-    await this.box.request('terminal.write', { terminal: this.id, data })
+    this.requests.push(create(TerminalRequestSchema, { request: { case: 'input', value: Buffer.from(data) } }))
   }
 
   async resize(cols: number, rows: number): Promise<void> {
-    await this.box.request('terminal.resize', { terminal: this.id, cols, rows })
+    this.requests.push(create(TerminalRequestSchema, { request: { case: 'resize', value: { cols, rows } } }))
   }
 
-  /** The helper cannot tell whether the group waits for input, so it never says it does. */
+  /** The box cannot tell whether the group waits for input, so it never says it does. */
   async inspectForeground(): Promise<SubprocessTerminalForeground | undefined> {
-    const foreground = await this.box.request('terminal.foreground', { terminal: this.id })
-    return foreground === null ? undefined : { processGroupId: foreground.processGroupId, inputWaiting: false }
+    const status = await this.status()
+    return status === undefined || status.foreground === 0 ? undefined : { processGroupId: status.foreground, inputWaiting: false }
   }
 
   /**
-   * Idle once the terminal has ended, or when the box's helper finds no
-   * process of it left, or its shell alone at its prompt; busy otherwise;
-   * unknown while it ends, or when the helper cannot tell.
+   * Idle once the terminal has ended, or when the box finds no process of
+   * it left, or its shell alone at its prompt; busy otherwise; unknown
+   * while it ends, or when the box cannot tell.
    */
   async inspectActivity(): Promise<SubprocessTerminalActivity> {
     let state: SubprocessTerminalActivity['state']
     if (this.gone) state = 'idle'
     else if (this.ending !== undefined) state = 'unknown'
     else {
-      try {
-        state = (await this.box.request('terminal.activity', { terminal: this.id })).idle ? 'idle' : 'busy'
-      } catch {
-        state = 'unknown'
-      }
+      const status = await this.status()
+      state = status === undefined ? 'unknown' : status.idle ? 'idle' : 'busy'
     }
     if (state !== this.activity) {
       this.activity = state
@@ -110,13 +144,28 @@ export class BoxTerminal implements SubprocessTerminalHandle {
     return { state, revision: this.revision }
   }
 
-  signalForeground(signal: SubprocessTerminalSignal): Promise<number> {
-    return this.box.request('terminal.signal', { terminal: this.id, signal })
+  /** Signal the terminal's foreground process group; its id, as the box last said it, or 0. */
+  async signalForeground(signal: SubprocessTerminalSignal): Promise<number> {
+    const status = await this.status()
+    this.requests.push(create(TerminalRequestSchema, { request: { case: 'signal', value: signal } }))
+    return status?.foreground ?? 0
   }
 
-  /** End every process of the terminal's session, and wait until none is left; a box lost takes them along. */
+  /** End every process of the terminal's session, by ending its call, and wait until it ended; a box lost takes them along. */
   terminate(): Promise<void> {
-    this.ending ??= this.box.request('terminal.end', { terminal: this.id }).then(() => {}, () => {})
+    this.ending ??= (async () => {
+      this.cancel.abort()
+      await this.done.then(() => {}, () => {})
+    })()
     return this.ending
+  }
+
+  /** The terminal's status, as the box answers it next; undefined once it has ended. */
+  private status(): Promise<TerminalStatus | undefined> {
+    if (this.gone) return Promise.resolve(undefined)
+    return new Promise((resolve) => {
+      this.asked.push(resolve)
+      this.requests.push(create(TerminalRequestSchema, { request: { case: 'status', value: {} } }))
+    })
   }
 }

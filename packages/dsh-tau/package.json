@@ -1,6 +1,6 @@
 {
   "name": "@sleepymug/dsh-tau",
-  "description": "The tau backend on dsh: each run of a tau a dsh session in a box of its own, which fleet's gateway keeps; its tau service, which puts the tau command in every box, so that a tau's agent runs taus; and tau_run, with which any session runs one",
+  "description": "The tau backend on dsh: each run of a tau a dsh session in a box of its own, which fleet's gateway keeps, laid out from the run's call and its result got back from the box here; its tau service, served through the gateway, whose package, tau, puts the tau command in every box, so that a tau's agent runs taus; and tau_run, with which any session runs one",
   "version": "0.0.1",
   "type": "module",
   "exports": {
@@ -110,9 +110,11 @@
     }
   },
   "dependencies": {
-    "@sleepymug/dsh-tau-box": "workspace:*",
-    "@sleepymug/fleet-sdk": "workspace:*",
+    "@bufbuild/protobuf": "2.17.0",
+    "@connectrpc/connect": "2.3.0",
+    "@sleepymug/fleet-pack": "workspace:*",
     "@sleepymug/fleet-protocol": "workspace:*",
+    "@sleepymug/fleet-sdk": "workspace:*",
     "@sleepymug/tau": "0.1.0",
     "zod": "4.4.3"
   },

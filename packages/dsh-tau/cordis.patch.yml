@@ -96,16 +96,17 @@
     - id: fleet-tau-lanes
       name: '@sleepymug/dsh-tau/tau/lanes-plugin'
 
-    # The tau backend's socket, $DSH_HOME/tau/tau.sock, which the host's `tau
-    # --adaptor socket` talks to, and the tau service, which the gateway
-    # relays a box's `tau` to; each makes a run's session through dsh's
-    # session controller.
+    # The tau backend, served as the gateway's tau service, tau.v1.Runs, which
+    # a box's `tau` command calls through the box's services socket, as the
+    # box's run's, and the host's `tau --adaptor rpc` through the gateway's
+    # socket, as the host's; each run's session is made through dsh's session
+    # controller.
     - id: fleet-tau
       name: '@sleepymug/dsh-tau/tau/plugin'
       config:
         dshHome: !!js dshHomePath()
 
-    # tau_run: run a tau, as `tau run --adaptor socket` does, as this
+    # tau_run: run a tau, as `tau run --adaptor rpc` does, as this
     # session's child (docs/dsh-tau/tools/index.md), for every session,
     # whatever its agent preset, writing only where its sandbox lets it. The
     # `tau` preset hides it from a tau's session, which runs taus with the

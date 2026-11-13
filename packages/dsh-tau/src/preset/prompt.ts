@@ -3,7 +3,7 @@
  * that dsh-tau's `tau` agent preset mounts, so it shapes only the prompts
  * of the sessions that preset makes. It tells the model where it works: its
  * box, its working directory there, /tau/workspace, and the tau's own
- * directory, /tau/self (dsh-tau-box's layout); how its run ends, and what
+ * directory, /tau/self (../tau/layout.ts); how its run ends, and what
  * its caller gets; and where tau's TAU.md and TAU_DEV.md are. For each
  * session, as its registry entry has it, it lists the run's files, each
  * with its mode, its kind, where the box has it and what `tau.json` says
@@ -32,9 +32,9 @@ import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-skill'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { AssembledSection, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
-import type { ServiceInfo } from '@sleepymug/fleet-protocol/gateway'
-import { serviceDir } from '@sleepymug/fleet-protocol/layout'
-import { DEV_PRIMER, FOLDERS, PRIMER, PROGRAMS, SELF } from '@sleepymug/dsh-tau-box/layout'
+import { BOX_LAYOUT, clientPackage } from '@sleepymug/fleet-protocol/layout'
+import { DEV_PRIMER, FOLDERS, PRIMER, PROGRAMS, SELF } from '../tau/layout.ts'
+import type { ServiceInfo } from '../tau/ports.ts'
 import type {} from '../services.ts'
 import type { TauBoxes } from '../tau/ports.ts'
 import type { Entry } from '../tau/registry.ts'
@@ -123,18 +123,22 @@ export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
   ].join('\n')
 }
 
-/** The box's services, each with where its code is, its commands, if any, and what it says it is; nothing for a box without any. */
-export function services(listed: readonly Pick<ServiceInfo, 'name' | 'description' | 'bins'>[]): string {
+/**
+ * The box's services, each with its client, its commands, if any, and what
+ * it says it is, and where the box says how to call them; nothing for a box
+ * without any.
+ */
+export function services(listed: readonly ServiceInfo[]): string {
   if (listed.length === 0) return ''
-  const commands = (bins: ServiceInfo['bins']): string => {
-    const names = Object.keys(bins).map(bin => `\`${bin}\``)
-    return names.length === 0 ? '' : `, with ${names.length === 1 ? 'the command' : 'the commands'} ${names.join(', ')}`
-  }
+  const commands = (names: readonly string[]): string =>
+    names.length === 0 ? '' : `, with ${names.length === 1 ? 'the command' : 'the commands'} ${names.map(command => `\`${command}\``).join(', ')}`
   return [
-    'Your container\'s services, each reaching what it serves outside your container, its code installed in its directory, '
-      + 'and its commands, if any, on your PATH:',
+    'Your container\'s services, each reaching what it serves outside your container. A program anywhere in your container imports '
+      + 'a service\'s client by its name, as `import { notes } from \'@fleet/notes\'`, whose methods take and give plain objects, and '
+      + `whose index.d.ts, in ${BOX_LAYOUT.modules}/@fleet/<name>, says what each does; ${BOX_LAYOUT.readme} says how to call them, `
+      + 'with curl too. A service\'s commands, if it has any, are on your PATH:',
     '',
-    ...listed.map(({ name, description, bins }) => `- \`${name}\`, in ${serviceDir(name)}${commands(bins)}: ${description}`),
+    ...listed.map(({ name, description, commands: named }) => `- \`${name}\`, its client \`${clientPackage(name)}\`${commands(named)}: ${description}`),
   ].join('\n')
 }
 
@@ -145,7 +149,7 @@ export function services(listed: readonly Pick<ServiceInfo, 'name' | 'descriptio
 export function boxed(
   assembly: PromptAssembly,
   entry: Pick<Entry, 'files' | 'exposed' | 'skills'> | undefined,
-  listed: readonly Pick<ServiceInfo, 'name' | 'description' | 'bins'>[] = [],
+  listed: readonly ServiceInfo[] = [],
 ): PromptAssembly {
   const added: AssembledSection[] = entry === undefined ? [] : [
     // The tau's descriptions are its author's, and the services' theirs, not prompt variables.

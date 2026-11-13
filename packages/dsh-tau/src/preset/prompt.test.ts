@@ -15,7 +15,7 @@ const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 type Run = Pick<Entry, 'files' | 'exposed' | 'skills'>
 
 /** A service of a box's, as fleet's gateway lists it. */
-type Service = { name: string; description: string; bins: Record<string, string> }
+type Service = { name: string; description: string; commands: string[] }
 
 /** A context with the prompt plugin, and the one tau's session `SESSION`, whose run `run` has, its box's services `services`. */
 async function prompted(run: Partial<Run> = {}, services: Service[] = []): Promise<Context> {
@@ -102,19 +102,22 @@ test('a tau\'s prompt says how the model runs its programs, below the program di
   assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))
 })
 
-test('a tau\'s prompt lists its box\'s services, each with where its code is, its commands, if any, and what it says it is', async () => {
+test('a tau\'s prompt lists its box\'s services, each with its client, its commands, if any, and what it says it is, and where the box says how to call them', async () => {
   const ctx = await prompted({}, [
-    { name: 'tau', description: 'Runs TAUs.', bins: { tau: 'lib/tau.js' } },
-    { name: 'notes', description: 'A notebook, {{kept}}.', bins: { notes: 'lib/notes.js', 'notes-dump': 'lib/dump.js' } },
-    { name: 'quiet', description: 'Nothing to run.', bins: {} },
+    { name: 'tau', description: 'Runs TAUs.', commands: ['tau'] },
+    { name: 'notes', description: 'A notebook, {{kept}}.', commands: ['notes', 'notes-dump'] },
+    { name: 'quiet', description: 'Nothing to run.', commands: [] },
   ])
   const text = (await ctx.systemPrompt.assemble(forSession(SESSION))).sections.find(section => section.name === 'fleet:tau-services')?.text ?? ''
   assert.equal(text, [
-    'Your container\'s services, each reaching what it serves outside your container, its code installed in its directory, and its commands, if any, on your PATH:',
+    'Your container\'s services, each reaching what it serves outside your container. A program anywhere in your container imports '
+      + 'a service\'s client by its name, as `import { notes } from \'@fleet/notes\'`, whose methods take and give plain objects, and '
+      + 'whose index.d.ts, in /fleet/node_modules/@fleet/<name>, says what each does; /fleet/README.md says how to call them, with curl too. '
+      + 'A service\'s commands, if it has any, are on your PATH:',
     '',
-    '- `tau`, in /opt/fleet/services/tau, with the command `tau`: Runs TAUs.',
-    '- `notes`, in /opt/fleet/services/notes, with the commands `notes`, `notes-dump`: A notebook, {{kept}}.',
-    '- `quiet`, in /opt/fleet/services/quiet: Nothing to run.',
+    '- `tau`, its client `@fleet/tau`, with the command `tau`: Runs TAUs.',
+    '- `notes`, its client `@fleet/notes`, with the commands `notes`, `notes-dump`: A notebook, {{kept}}.',
+    '- `quiet`, its client `@fleet/quiet`: Nothing to run.',
   ].join('\n'))
   assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-services'))
 })

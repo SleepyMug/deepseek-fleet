@@ -1,13 +1,14 @@
 /**
- * The runs of taus, and their boxes (docs/dsh-tau/tau/index.md), the
- * backend of tau's socket adaptor: a run's call, tau's archive of the run's
+ * The runs of taus, and their boxes (docs/dsh-tau/tau/index.md), which the
+ * tau backend (./service.ts) serves to tau's rpc adaptor: a run's call, tau's archive of the run's
  * envelope with the content of its files, and the tau (tau's
  * docs/spec/serialization.md), is admitted (./admission.ts) and kept in the
- * session's folder; a box is made for it by fleet's gateway, which dsh-tau's
- * half there sets up from the call (./box-setup.ts); the session is
- * registered (./registry.ts); and its box is kept (./session-box.ts),
- * started, stopped, removed and set up again, with the tau's init run in
- * it. Once the run ended, its box packs its result, which is kept, checked.
+ * session's folder; a box is made for it by fleet's gateway, with every
+ * service registered then, which dsh-tau lays out from the call
+ * (./placement.ts); the session is registered (./registry.ts); and its box
+ * is kept (./session-box.ts), started, stopped, removed and set up again,
+ * with the tau's init run in it. Once the run ended, what its agent left is
+ * got back from its box, and packed as its result, which is kept, checked.
  * It never learns a caller's paths: the caller's adaptor packs the call, and
  * puts the result at them. It uses nothing of dsh's, so both dsh-tau's world
  * (../world/), which serves a tau's session from its box, through
@@ -18,16 +19,18 @@
 
 import { createReadStream } from 'node:fs'
 import { mkdir, open, realpath, rm } from 'node:fs/promises'
-import { posix } from 'node:path'
-import { CONTEXT, CONTEXT_VARIABLE } from '@sleepymug/dsh-tau-box/layout'
-import type { ServiceInfo } from '@sleepymug/fleet-protocol/gateway'
-import type { Result } from '@sleepymug/dsh-tau-box/runs'
+import { join, posix } from 'node:path'
+import { create } from '@bufbuild/protobuf'
+import { Code, ConnectError } from '@connectrpc/connect'
+import { SpawnRequestSchema } from '@sleepymug/fleet-protocol/box'
+import type { Outcome } from '@sleepymug/tau/core'
 import type { Platform } from '../platform.ts'
 import { messageOf } from '../util/error.ts'
-import { spool } from '../util/stream.ts'
+import { spool, streamOf } from '../util/stream.ts'
 import { admit, type Accepted } from './admission.ts'
-import { exposedIn, furnish, packIn, placed } from './box-setup.ts'
-import type { About, FleetPort, Held, InitEnd, Occupant, RunBox, RunLifecycle, Started, TauBoxes } from './ports.ts'
+import { CONTEXT, CONTEXT_VARIABLE } from './layout.ts'
+import { exposedIn, furnish, packIn, placed } from './placement.ts'
+import type { About, FleetPort, Held, InitEnd, Occupant, RunBox, RunLifecycle, ServiceInfo, Started, TauBoxes } from './ports.ts'
 import { HOST, type Caller, type Entry, type Registry } from './registry.ts'
 import { SessionBox } from './session-box.ts'
 
@@ -91,8 +94,8 @@ export class TauRuns implements TauBoxes, RunLifecycle {
   /**
    * Set up a box for a run of a call. First the call is admitted as it
    * comes, and kept in the session's folder. Then the box is made by the
-   * gateway and started, and dsh-tau's half there sets it up from the
-   * call, and reports the prompt, the files and where things are; and the
+   * gateway, with every service registered now, and laid out from the
+   * call, which says the prompt, the files and where things are; and the
    * session is registered. The box then stops once it is idle, unless the
    * run's start uses it first. A failure removes the box and the session's
    * folder.
@@ -105,7 +108,13 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     const files = this.registry.files(sessionId)
     await mkdir(files.folder, { recursive: true, mode: 0o700 })
     try {
-      const accepted = await admit(spool(call, files.call), { scratch: files.tau, title: about.title })
+      let accepted
+      try {
+        accepted = await admit(spool(call, files.call), { scratch: files.tau, title: about.title })
+      } catch (error) {
+        // A call that does not fit its tau, or breaks the spec, is its caller's to change.
+        throw new ConnectError(messageOf(error), Code.InvalidArgument, undefined, undefined, error)
+      }
       return await this.setUp(sessionId, accepted, about, project, caller)
     } catch (error) {
       await rm(files.folder, { recursive: true, force: true })
@@ -119,7 +128,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     const box = this.fleet.box(id)
     let setup
     try {
-      setup = await furnish(box, this.registry.files(sessionId).call)
+      setup = await furnish(box, this.registry.files(sessionId).call, this.scratch(sessionId))
       await this.registry.put({
         sessionId,
         caller,
@@ -145,11 +154,12 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     return { sessionId, box: id, prompt: setup.prompt }
   }
 
-  /** Make a session's box with the gateway, its labels naming the session, and give its id. */
+  /** Make a session's box with the gateway, its labels naming the session, with every service registered now, and give its id. */
   private async makeBox(sessionId: string, labels: Record<string, string>): Promise<string> {
     return await this.fleet.create({
       labels: { 'dsh.session': sessionId, ...labels },
       env: BOX_ENV,
+      services: (await this.fleet.services()).map(service => service.name),
       ...this.image === undefined ? {} : { image: this.image },
       ...this.idleStopMs === undefined ? {} : { idleStopMs: this.idleStopMs },
     })
@@ -170,7 +180,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
       const accepted = await admit(createReadStream(files.call), { scratch: files.tau, title: entry.title })
       const parent: Record<string, string> = entry.caller?.kind === 'session' ? { 'tau.parent': entry.caller.sessionId } : {}
       id = await this.makeBox(sessionId, { 'tau.title': entry.title, ...parent })
-      const setup = await furnish(this.fleet.box(id), files.call)
+      const setup = await furnish(this.fleet.box(id), files.call, this.scratch(sessionId))
       await this.registry.put({
         ...entry,
         box: id,
@@ -199,7 +209,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
   private async projectFor(caller: Caller, about: About): Promise<string> {
     const own = caller.kind === 'session' ? this.runs.get(caller.sessionId)?.project : undefined
     if (own !== undefined) return own
-    if (about.project === undefined || !posix.isAbsolute(about.project)) throw new Error('dsh-tau: a run from outside a box names its project, an absolute path')
+    if (about.project === undefined || !posix.isAbsolute(about.project)) throw new ConnectError('dsh-tau: a run from outside a box names its project, an absolute path', Code.InvalidArgument)
     return await realpath(about.project)
   }
 
@@ -220,22 +230,32 @@ export class TauRuns implements TauBoxes, RunLifecycle {
   async init(sessionId: string, signal: AbortSignal): Promise<InitEnd> {
     const { init } = await this.registry.get(sessionId)
     if (init === undefined) throw new Error(`dsh-tau: the tau of ${sessionId} has no init`)
-    const process = this.platform.newId()
-    const held = await this.hold(sessionId, { kind: 'process', id: process })
+    const held = await this.hold(sessionId, { kind: 'process', id: this.platform.newId() })
     if (held === undefined) throw new Error(`dsh-tau: no tau session ${sessionId}`)
     const { box, release } = held
-    const kill = (): void => { void box.request('kill', { process }).catch(() => {}) }
-    signal.addEventListener('abort', kill, { once: true })
     try {
       signal.throwIfAborted()
       const stdout: Buffer[] = []
       const stderr: Buffer[] = []
-      const { code, signal: killed } = await box.request('spawn', {
-        process, argv: ['sh', '-c', init.command], cwd: init.dir, env: {}, stdin: null, graceMs: INIT_GRACE_MS,
-      }, (event) => { (event.stream === 'stdout' ? stdout : stderr).push(Buffer.from(event.data, 'base64')) })
-      return { code, signal: killed, stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') }
+      let end: InitEnd | undefined
+      // Cancelling the call, as the signal does, ends the command's process group.
+      for await (const { response } of box.api.spawn(streamOf(create(SpawnRequestSchema, {
+        request: { case: 'start', value: { program: { argv: ['sh', '-c', init.command], cwd: init.dir }, graceMs: INIT_GRACE_MS } },
+      })), { signal })) {
+        if (response.case === 'stdout') stdout.push(Buffer.from(response.value))
+        else if (response.case === 'stderr') stderr.push(Buffer.from(response.value))
+        else if (response.case === 'exit') {
+          end = {
+            code: response.value.code ?? null,
+            signal: response.value.signal === '' ? null : response.value.signal,
+            stdout: Buffer.concat(stdout).toString('utf8'),
+            stderr: Buffer.concat(stderr).toString('utf8'),
+          }
+        }
+      }
+      if (end === undefined) throw new Error('the box said nothing of how the init ended')
+      return end
     } finally {
-      signal.removeEventListener('abort', kill)
       release()
     }
   }
@@ -244,24 +264,24 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     await this.registry.update(sessionId, { promptedAt: this.platform.now().toISOString() })
   }
 
-  async ended(sessionId: string, result: Result): Promise<void> {
+  async ended(sessionId: string, result: Outcome): Promise<void> {
     await this.registry.update(sessionId, { ended: { at: this.platform.now().toISOString(), result } })
   }
 
   /**
    * Keep the result of a session's run, which ended as `outcome` says, in
-   * the session's folder: for a run that succeeded, as its box packs it from
-   * what the agent left at the places of its `out` and `inout` files,
-   * checked against the run (./box-setup.ts); a run that failed gives back
+   * the session's folder: for a run that succeeded, what the agent left at
+   * the places of its `out` and `inout` files, got back from its box and
+   * checked against the run (./placement.ts); a run that failed gives back
    * nothing.
    * @returns how the run ended, as its result has it.
    */
-  async pack(sessionId: string, outcome: Result): Promise<Result> {
+  async pack(sessionId: string, outcome: Outcome): Promise<Outcome> {
     return await this.run(sessionId).box.exclusive(async (running) => {
       const { files } = await this.registry.get(sessionId)
       const kept = this.registry.files(sessionId)
       await mkdir(kept.folder, { recursive: true, mode: 0o700 })
-      return await packIn(running, outcome, files, kept.result)
+      return await packIn(running, outcome, files, kept.result, this.scratch(sessionId))
     })
   }
 
@@ -280,9 +300,10 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     return this.runs.has(sessionId)
   }
 
+  /** The services a session's box was made with, each as registered now; one no longer registered is left out. */
   async services(sessionId: string): Promise<ServiceInfo[]> {
-    this.run(sessionId)
-    return await this.fleet.services()
+    const has = new Set(await this.fleet.box(this.run(sessionId).box.box).services())
+    return (await this.fleet.services()).filter(service => has.has(service.name))
   }
 
   /**
@@ -369,6 +390,11 @@ export class TauRuns implements TauBoxes, RunLifecycle {
   /** Stop following the boxes; the gateway stops each once nothing occupies it. */
   close(): void {
     for (const run of this.runs.values()) run.box.close()
+  }
+
+  /** A folder of a session's, where its box is laid out, and its result got back, while it is. */
+  private scratch(sessionId: string): string {
+    return join(this.registry.files(sessionId).folder, `box-${this.platform.newId()}`)
   }
 
   /** A tau's session; another fails. */

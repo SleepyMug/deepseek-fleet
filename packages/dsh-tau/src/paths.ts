@@ -5,7 +5,6 @@
  */
 
 import { isAbsolute, join, resolve } from 'node:path'
-import { socketPath } from '@sleepymug/dsh-tau-box/runs'
 
 export interface TauPaths {
   /** The dsh home, absolute. */
@@ -14,8 +13,6 @@ export interface TauPaths {
   tau: string
   /** The registry of the runs of taus, with a folder for each. */
   runs: string
-  /** The tau backend's socket, for the host's `tau` command. */
-  socket: string
   /** dsh's attachment store. */
   attachments: string
 }
@@ -28,5 +25,5 @@ export function tauPaths(dshHome: unknown, plugin: string): TauPaths {
   if (typeof dshHome !== 'string' || !isAbsolute(dshHome)) throw new Error(`${plugin}: its config names dshHome, the dsh home, an absolute path`)
   const home = resolve(dshHome)
   const tau = join(home, 'tau')
-  return { home, tau, runs: join(tau, 'runs'), socket: socketPath(home), attachments: join(home, 'attachments') }
+  return { home, tau, runs: join(tau, 'runs'), attachments: join(home, 'attachments') }
 }

@@ -214,9 +214,15 @@ importers:
 
   packages/dsh-tau:
     dependencies:
-      '@sleepymug/dsh-tau-box':
+      '@bufbuild/protobuf':
+        specifier: 2.17.0
+        version: 2.17.0
+      '@connectrpc/connect':
+        specifier: 2.3.0
+        version: 2.3.0(@bufbuild/protobuf@2.17.0)
+      '@sleepymug/fleet-pack':
         specifier: workspace:*
-        version: link:../dsh-tau-box
+        version: link:../fleet-pack
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
@@ -337,15 +343,6 @@ importers:
         version: 0.28.2
 
   packages/dsh-tau-basic: {}
-
-  packages/dsh-tau-box:
-    dependencies:
-      '@sleepymug/fleet-protocol':
-        specifier: workspace:*
-        version: link:../fleet-protocol
-      '@sleepymug/tau':
-        specifier: 0.1.0
-        version: link:../../tau
 
   packages/fleet:
     dependencies:
@@ -482,9 +479,9 @@ importers:
 
   packages/fleet-trace:
     dependencies:
-      '@sleepymug/dsh-tau-box':
+      '@sleepymug/dsh-tau':
         specifier: workspace:*
-        version: link:../dsh-tau-box
+        version: link:../dsh-tau
       '@sleepymug/fleet-protocol':
         specifier: workspace:*
         version: link:../fleet-protocol
@@ -516,6 +513,15 @@ importers:
 
   tau:
     dependencies:
+      '@bufbuild/protobuf':
+        specifier: 2.17.0
+        version: 2.17.0
+      '@connectrpc/connect':
+        specifier: 2.3.0
+        version: 2.3.0(@bufbuild/protobuf@2.17.0)
+      '@connectrpc/connect-node':
+        specifier: 2.3.0
+        version: 2.3.0(@bufbuild/protobuf@2.17.0)(@connectrpc/connect@2.3.0(@bufbuild/protobuf@2.17.0))
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
@@ -523,6 +529,12 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
     devDependencies:
+      '@bufbuild/buf':
+        specifier: 1.75.0
+        version: 1.75.0
+      '@bufbuild/protoc-gen-es':
+        specifier: 2.17.0
+        version: 2.17.0(@bufbuild/protobuf@2.17.0)
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.1

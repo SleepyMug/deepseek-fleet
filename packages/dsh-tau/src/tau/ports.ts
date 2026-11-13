@@ -4,29 +4,55 @@
  * which ask which sessions are a tau's and use their boxes
  * ({@link TauBoxes}); and the tau backend, which submits, watches,
  * finishes and releases runs ({@link RunLifecycle}); and what the runs
- * build on of fleet's gateway ({@link FleetPort}), its client's, as a test
+ * build on of fleet's gateway ({@link FleetPort}), fleet-sdk's, as a test
  * stands in for it.
  * @module @sleepymug/dsh-tau/tau/ports
  */
 
-import type { BoxSpec, BoxState, ServiceInfo } from '@sleepymug/fleet-protocol/gateway'
-import type { EventOf, Method, Methods } from '@sleepymug/fleet-protocol/helper'
-import type { Result } from '@sleepymug/dsh-tau-box/runs'
+import type { Client } from '@connectrpc/connect'
+import type { Box } from '@sleepymug/fleet-protocol/box'
+import type { Outcome } from '@sleepymug/tau/core'
 import type { Caller, Entry } from './registry.ts'
+
+/** A box's API, `fleet.box.v1.Box`, as a Connect client. */
+export type BoxApi = Client<typeof Box>
+
+/** What a run's box is made with. */
+export interface BoxSpec {
+  labels: Record<string, string>
+  env: Record<string, string>
+  /** The services it has, fixed once it is made. */
+  services: string[]
+  image?: string
+  idleStopMs?: number
+}
+
+/** A service registered with the gateway, as a tau's session's prompt tells of it. */
+export interface ServiceInfo {
+  name: string
+  description: string
+  /** Its package's commands, on the PATH in a box that has it. */
+  commands: string[]
+}
 
 /** What the runs use of fleet's gateway: its boxes. */
 export interface FleetPort {
   /** Make a box, stopped, and give its id. */
   create(spec: BoxSpec): Promise<string>
   box(id: string): FleetBoxPort
-  /** The services registered, which every run's box has. */
+  /** The services registered now, which a run's box is made with. */
   services(): Promise<ServiceInfo[]>
 }
 
 /** A box of the gateway's, as fleet-sdk's `FleetBox` is. */
 export interface FleetBoxPort {
   readonly id: string
-  request<M extends Method>(method: M, params: Methods[M]['params'], options?: { onEvent?: (event: EventOf<M>) => void; hold?: boolean }): Promise<Methods[M]['result']>
+  /** Its API, the box held while each call lasts, started first if it is not. */
+  readonly api: BoxApi
+  /** Its API, of the box started, which a call neither holds nor starts. */
+  readonly started: BoxApi
+  /** The services it was made with. */
+  services(): Promise<string[]>
   /** Occupy the box until the returned release; with `start`, the default, once it is started. */
   lease(occupant: Occupant, options?: { start?: boolean }): Promise<() => Promise<void>>
   /** Follow its state, until the returned stop. */
@@ -35,18 +61,20 @@ export interface FleetBoxPort {
   stop(): Promise<void>
   stopWhenVacant(): Promise<void>
   remove(): Promise<void>
-  copyIn(from: string, to: string): Promise<void>
-  /** Run a program for bytes: `input`, a host file, its stdin; its stdout to `output`, a host file, or given back. */
-  pipe(argv: string[], io?: { input?: string; output?: string }): Promise<string>
-  /** Run a program in the started box, and give back what it wrote to stdout; an exit other than 0 fails. */
-  exec(argv: string[]): Promise<string>
+  /** Unpack a tar archive into a folder of the box's. */
+  put(archive: AsyncIterable<Uint8Array>, to: string): Promise<void>
+  /** A folder's contents, or a file under its own name, as a tar archive. */
+  get(from: string): AsyncIterable<Uint8Array>
 }
 
-/** A session's box, as the world asks of it: its helper's requests, of the box started. */
+/** A box's state, as the gateway tells it. */
+export type BoxState = 'stopped' | 'starting' | 'started' | 'stopping' | 'gone'
+
+/** A session's box, as the world asks of it: its API, of the box started, which a call neither holds nor starts. */
 export interface RunBox {
   /** Its id, the gateway's. */
   readonly id: string
-  request<M extends Method>(method: M, params: Methods[M]['params'], onEvent?: (event: EventOf<M>) => void): Promise<Methods[M]['result']>
+  readonly api: BoxApi
 }
 
 /** Something that needs a session's box running now. */
@@ -100,7 +128,7 @@ export interface InitEnd {
 export interface TauBoxes {
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */
   isTau(sessionId: string): boolean
-  /** The services of a tau's session's box, as the gateway has them, each with its commands. */
+  /** The services of a tau's session's box, each as registered now, with its commands. */
   services(sessionId: string): Promise<ServiceInfo[]>
   /** A tau's session's registry entry; a session that is not a tau's fails. */
   entry(sessionId: string): Promise<Entry>
@@ -164,9 +192,9 @@ export interface RunLifecycle {
   /** Record that a session was given its prompt. */
   prompted(sessionId: string): Promise<void>
   /** Keep the result of a session's run, which ended as `outcome` says, and give back how it ended, as the result has it. */
-  pack(sessionId: string, outcome: Result): Promise<Result>
+  pack(sessionId: string, outcome: Outcome): Promise<Outcome>
   /** Record that a session's run ended, and how. */
-  ended(sessionId: string, result: Result): Promise<void>
+  ended(sessionId: string, result: Outcome): Promise<void>
   /** The result of a session's run that ended, as {@link pack} kept it. */
   result(sessionId: string): Promise<AsyncIterable<Uint8Array>>
   /** Record that a session's run's result was first given back. */

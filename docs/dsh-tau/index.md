@@ -3,13 +3,15 @@
 The tau backend on dsh: its dsh bundle runs each run of a tau as a dsh
 session in a box of its own, which fleet's gateway keeps
 (docs/fleet/index.md). It has the tau backend and the runs of taus with
-their boxes (docs/dsh-tau/tau/index.md), the tau service it registers with
-the gateway, which puts the `tau` command in every box; the world that
-serves a tau's session from its box (docs/dsh-tau/world/index.md);
-`tau_run` (docs/dsh-tau/tools/index.md); and the web client's tau model
-and tau lanes pages (docs/dsh-tau/client/index.md). What it puts in each
-box is a package of its own, dsh-tau-box (docs/dsh-tau-box/index.md). This
-page is how its parts are put together; each part's page is what it does.
+their boxes (docs/dsh-tau/tau/index.md), the tau service it serves
+through the gateway, whose package, tau, puts the `tau` command in every
+box; the world that serves a tau's session from its box
+(docs/dsh-tau/world/index.md); `tau_run` (docs/dsh-tau/tools/index.md);
+and the web client's tau model and tau lanes pages
+(docs/dsh-tau/client/index.md). Nothing of dsh-tau's runs in a box: it
+lays out a run's box, and gets back what the run gave, from the host,
+through the box API. This page is how its parts are put together; each
+part's page is what it does.
 
 dsh-tau is one of the gateway's clients, and the fleet server of one of
 its services: it knows boxes by the gateway's ids and labels, and the
@@ -29,8 +31,8 @@ gateway knows nothing of dsh or of tau.
   reach fleet's gateway through its `FleetPort`, its boxes as
   fleet-sdk's `FleetBox` is (`tau/fleet.ts` gives one of the client's).
   A test gives a fake of it, such as `tau/fake-fleet.test.util.ts`, whose
-  boxes are folders, or a gateway in the test's own process, its boxes
-  Docker's.
+  boxes are folders, each serving the box API in the test's own process,
+  or a gateway in the test's own process, its boxes Docker's.
 - **The platform** (`platform.ts`) is what the runs and the backend take
   of the process: `log`, where they say what they do, `now`, `newId` and
   `after`, a timer that keeps nothing alive. `systemPlatform()` is the
@@ -47,10 +49,10 @@ gateway knows nothing of dsh or of tau.
   the browser and reach dsh, and nothing of dsh-tau's host half, through
   the web client's services.
 - **The gateway is reached through its client.** `fleet-tau-runs`
-  connects one client, `ctx.fleet`, on the gateway's socket, which
-  every lease of a run's box, and the tau service, are held on; the
-  client makes its connection again when the gateway loses it, and takes them
-  back (docs/fleet-sdk/index.md).
+  connects one client, `ctx.fleet`, on the gateway's clients' socket,
+  which every lease of a run's box, and the tau service's tunnel, are held
+  on; the client makes its connection again when the gateway loses it, and
+  takes them back (docs/fleet-sdk/index.md).
 - **The plugins put the parts together.** Each dsh plugin checks its
   config, builds its parts on the services it injects, and provides them;
   `services.ts` declares every service dsh-tau provides on dsh's context,
@@ -62,14 +64,14 @@ gateway knows nothing of dsh or of tau.
   by.
 - **One dsh home.** A plugin's config names the dsh home, and `paths.ts`
   gives every place in it: dsh-tau's own folder, `tau/`; the registry of
-  the runs, `tau/runs/`; the backend's socket, `tau/tau.sock`; and dsh's
-  attachment store, `attachments/`.
+  the runs, `tau/runs/`; and dsh's attachment store, `attachments/`.
 - **Shared helpers** are in `util/`: `Queue` and `KeyedQueue`, which run
   operations one after another, for each key, such as a session;
   `abortable`, which stops waiting for a promise when a signal aborts;
-  `messageOf`, what a thrown value says, and `codeOf`, a failure's code,
-  such as the gateway's `BOX_GONE` or an `FsError`'s; and `spool`, bytes
-  written to a file as they are read. A test's platform is
+  `messageOf`, what a thrown value says; `spool`, bytes
+  written to a file as they are read; and `streamOf` and `Pushed`, a
+  call's requests as a stream, known at once or pushed while the call
+  lasts. A test's platform is
   `manualPlatform()` (`platform.test.util.ts`), whose time moves, and
   timers run, as the test advances it.
 
@@ -85,8 +87,12 @@ Beside each part's own modules:
 ## Built on
 
 - fleet's gateway, `fleet serve`, which must be running (docs/fleet/index.md),
-  through `@sleepymug/fleet-sdk` and the wire's types,
-  `@sleepymug/fleet-protocol`.
-- dsh-tau-box (docs/dsh-tau-box/index.md), for what goes in the boxes.
-- `@sleepymug/tau`, for the backend SDK, the socket adaptor's transports,
-  and tau's client, which `tau_run` runs taus with.
+  through `@sleepymug/fleet-sdk`, the box API's and the gateway API's
+  types, `@sleepymug/fleet-protocol`, and fleet-pack's trees,
+  `@sleepymug/fleet-pack`.
+- `@sleepymug/tau`, for the backend SDK, the rpc adaptor's service,
+  `tau.v1.Runs`, and tau's client, which `tau_run` runs taus with; and
+  tau's package itself, the tau service's, for the `tau` command in the
+  boxes.
+- `@connectrpc/connect` and `@bufbuild/protobuf`, for the box API's calls
+  and the tau service's.

@@ -1,6 +1,6 @@
 /**
- * Where a run of a tau has its things in its box, which dsh-tau's half in
- * the box (./box/endpoint.ts) owns, and reports to dsh-tau: each `in` file
+ * Where a run of a tau has its things in its box, which dsh-tau lays out
+ * (./placement.ts): each `in` file
  * in /tau/in, each `inout` file in /tau/workspace, the working directory,
  * and each `out` file in /tau/out, under the base name its place keeps, as
  * tau's backend SDK asks, and the tau's own directory at /tau/self. A file
@@ -10,10 +10,12 @@
  * docs/spec/runtimes.md): /tau/node_modules is a link to the tau's own, so a
  * program anywhere below /tau imports the tau's packages. The run's
  * context is /tau/context.json, which `TAU_CONTEXT` names for every process
- * in the box (tau's docs/spec/context.md); what dsh-tau keeps of the run
- * beside it, /tau/.run.json; and tau's TAU.md, what a tau is, and
- * TAU_DEV.md, how to make one, for the agent to read, in /tau.
- * @module @sleepymug/dsh-tau-box/layout
+ * in the box (tau's docs/spec/context.md); and tau's TAU.md, what a tau is, and
+ * TAU_DEV.md, how to make one, for the agent to read, in /tau. And the
+ * clients of the box's services, which fleet's gateway puts in
+ * /fleet/node_modules/@fleet, are linked at /node_modules/@fleet, so that a
+ * program anywhere in the box imports them.
+ * @module @sleepymug/dsh-tau/tau/layout
  */
 
 import { posix } from 'node:path'
@@ -37,17 +39,14 @@ export const CONTEXT = '/tau/context.json'
 /** Names {@link CONTEXT} for every process in the box. */
 export const CONTEXT_VARIABLE = 'TAU_CONTEXT'
 
-/** What dsh-tau keeps of a run beside its context: each file as the call has it. */
-export const RUN = '/tau/.run.json'
-
 /** tau's TAU.md, what a tau is, and what a run of one promises, for the agent to read. */
 export const PRIMER = '/tau/TAU.md'
 
 /** tau's TAU_DEV.md, how to make a tau, for the agent to read. */
 export const DEV_PRIMER = '/tau/TAU_DEV.md'
 
-/** The name dsh-tau registers its tau service with fleet's gateway under, and so where this package is in a box. */
-export const SERVICE = 'tau'
+/** Where the clients of the box's services are linked, for a program anywhere in the box, and where the link leads. */
+export const CLIENTS = { link: '/node_modules/@fleet', to: '/fleet/node_modules/@fleet' } as const
 
 /** Where each file of one run is in its box, by its name, asked for each in turn. */
 export function placer(): (name: string, file: Pick<CallFile, 'mode' | 'base'>) => string {

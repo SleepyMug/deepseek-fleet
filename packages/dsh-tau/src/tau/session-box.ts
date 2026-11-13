@@ -10,11 +10,12 @@
  */
 
 import { posix } from 'node:path'
-import { BOX_GONE, NO_BOX, type BoxState } from '@sleepymug/fleet-protocol/gateway'
+import { pathEntry, writeTar } from '@sleepymug/fleet-pack'
+import { Reason, reasonOf } from '@sleepymug/fleet-sdk'
 import type { Platform } from '../platform.ts'
-import { codeOf, messageOf } from '../util/error.ts'
+import { messageOf } from '../util/error.ts'
 import { Queue } from '../util/queue.ts'
-import type { FleetBoxPort, FleetPort, Held, Occupant, RunBox } from './ports.ts'
+import type { BoxState, FleetBoxPort, FleetPort, Held, Occupant, RunBox } from './ports.ts'
 
 export interface SessionBoxDeps {
   sessionId: string
@@ -128,9 +129,9 @@ export class SessionBox {
     const copying = this.exclusive(async (running) => {
       if (this.gone) return
       const box = await running()
-      await box.exec(['mkdir', '-p', posix.dirname(to)])
-      await box.copyIn(from, to)
-      await box.exec(['chmod', 'a=r', to])
+      const entry = await pathEntry(from, posix.basename(to))
+      if (entry?.type !== 'file') throw new Error(`${from} is not a file`)
+      await box.put(writeTar([{ ...entry, mode: 0o444 }]), posix.dirname(to))
     })
     this.copies.set(to, copying)
     copying.catch((error: unknown) => {
@@ -139,7 +140,7 @@ export class SessionBox {
     })
   }
 
-  /** Start the box, and a new helper in it, set up again if it is gone. */
+  /** Start the box, set up again if it is gone. */
   async start(): Promise<void> {
     await this.exclusive(async (running) => {
       if (this.gone) throw this.unknown()
@@ -216,7 +217,8 @@ export class SessionBox {
     try {
       return { port, release: await port.lease(occupant) }
     } catch (error) {
-      if (codeOf(error) !== BOX_GONE && codeOf(error) !== NO_BOX) throw error
+      const reason = reasonOf(error)
+      if (reason !== Reason.BOX_GONE && reason !== Reason.NO_BOX) throw error
     }
     this.copies.clear()
     this.id = await this.deps.rebuild()
@@ -258,12 +260,9 @@ export class SessionBox {
   }
 }
 
-/** A box as the world uses it: its requests, of the box started. */
+/** A box as the world uses it: its API, of the box started, which the world's own leases hold. */
 export function runBox(port: FleetBoxPort): RunBox {
-  return {
-    id: port.id,
-    request: (method, params, onEvent) => port.request(method, params, { ...onEvent === undefined ? {} : { onEvent }, hold: false }),
-  }
+  return { id: port.id, api: port.started }
 }
 
 /** Remove a box, unless the gateway has forgotten it already; whether it removed it. */
@@ -272,7 +271,7 @@ async function removed(box: FleetBoxPort): Promise<boolean> {
     await box.remove()
     return true
   } catch (error) {
-    if (codeOf(error) === NO_BOX) return false
+    if (reasonOf(error) === Reason.NO_BOX) return false
     throw error
   }
 }
