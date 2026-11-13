@@ -32,7 +32,7 @@ What it serves over its tunnel, fleet.box.v1 (fleet-protocol's box):
 
 ## Design
 
-- **It dials; nothing dials it.** The tunnel is an upgrade at the gateway's
+- **It dials; nothing dials it.** The tunnel is a WebSocket at the gateway's
   `/fleet/tunnel`, saying the box's id and the helper's protocol, after
   which the gateway calls the helper over it (docs/fleet-net/index.md).
   The helper opens it again whenever it closes, after a pause, a tenth of a

@@ -9,7 +9,7 @@
  *   carries to the box's helper.
  * - `/services/<name>/<package>.<Service>/<Method>`: a service, which the
  *   gateway carries to its server, saying who calls in {@link HEADERS}.caller.
- * - {@link TUNNEL_PATH}: a tunnel, an HTTP/1.1 upgrade.
+ * - {@link TUNNEL_PATH}: a tunnel, a WebSocket speaking {@link TUNNEL_PROTOCOL}.
  * @module @sleepymug/fleet-protocol/wire
  */
 
@@ -19,10 +19,10 @@ import { type Caller, CallerSchema } from './fleet.ts'
 /** The version of the helper's side of its tunnel, which the gateway checks. */
 export const HELPER_PROTOCOL = 1
 
-/** Where a tunnel is opened, with an upgrade to {@link TUNNEL_PROTOCOL}. */
+/** Where a tunnel is opened: a WebSocket, by an HTTP/1.1 upgrade or an HTTP/2 extended CONNECT. */
 export const TUNNEL_PATH = '/fleet/tunnel'
 
-/** The protocol a tunnel upgrades to: HTTP/2, the dialer serving it. */
+/** The WebSocket subprotocol a tunnel speaks: HTTP/2, the dialer serving it. */
 export const TUNNEL_PROTOCOL = 'fleet-tunnel'
 
 /** What a tunnel serves: a service's calls, or a box's. */

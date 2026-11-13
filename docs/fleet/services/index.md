@@ -74,9 +74,9 @@ with its request as JSON:
   in it, and makes its client, keeping both under the spec's digest; the
   same spec staged again is the one kept, so staging is not registering. If
   the gateway lacks the package, the server uploads it, `Services.Upload`,
-  checked to have its digest. Then the server opens its tunnel, an upgrade
-  to `fleet-tunnel` at `/fleet/tunnel` naming the service and the spec,
-  after which the connection carries HTTP/2, the gateway the client and the
+  checked to have its digest. Then the server opens its tunnel, a
+  WebSocket at `/fleet/tunnel`, its subprotocol `fleet-tunnel`, naming the
+  service and the spec, after which the WebSocket carries HTTP/2, the gateway the client and the
   server the server (docs/fleet-net/index.md). The service is registered
   for as long as the tunnel lasts.
 - **One server a name.** A tunnel for a name another server serves now is

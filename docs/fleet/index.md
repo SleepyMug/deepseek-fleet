@@ -43,8 +43,8 @@ a call that answers once. What is where is fleet-protocol's wire
 | clients' | `/fleet.v1.Boxes/*`, `/fleet.v1.Services/*` | The gateway's own API (below). |
 | clients' | `/boxes/<id>/fleet.box.v1.Box/*` | A box's API, carried to its helper, the box held while the call lasts and started if it is not, or, with `fleet-hold: false`, of a started box alone. |
 | clients' | `/services/<name>/<package>.<Service>/*` | A service, carried to its server, told the call is a client's. |
-| clients' | `/fleet/tunnel`, an upgrade | A service's server's tunnel, naming the service and its spec. |
-| boxes' | `/fleet/tunnel`, an upgrade | A box's helper's tunnel, naming its box. |
+| clients' | `/fleet/tunnel`, a WebSocket | A service's server's tunnel, naming the service and its spec. |
+| boxes' | `/fleet/tunnel`, a WebSocket | A box's helper's tunnel, naming its box. |
 | boxes' | `/services/<name>/<package>.<Service>/*` | A service, called by a box's program, which the box's helper carries saying which box; carried to the service's server, told the box and its labels, if the box was made with the service. |
 
 A call is carried as it came, its headers, body and trailers, both ways as

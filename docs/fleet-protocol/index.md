@@ -20,7 +20,7 @@ are in `proto/`, its code generated from them in `src/gen/`, by `pnpm gen`
   where a call goes, `{ kind: 'gateway' }`, `{ kind: 'service', name,
   path }` or `{ kind: 'box', box, path }`; `servicePath(name)` and
   `boxPath(id)`; `TUNNEL_PATH`, `/fleet/tunnel`, and `TUNNEL_PROTOCOL`,
-  `fleet-tunnel`; `HEADERS`, fleet's own, below; `HELPER_PROTOCOL`, the
+  `fleet-tunnel`, a tunnel's WebSocket subprotocol; `HEADERS`, fleet's own, below; `HELPER_PROTOCOL`, the
   helper's tunnel's version; `SERVICE_NAME` and `BOX_ID`; and
   `encodeCaller` and `decodeCaller`.
 - `@sleepymug/fleet-protocol/layout`: where things lie in a box, which the
@@ -46,7 +46,7 @@ are in `proto/`, its code generated from them in `src/gen/`, by `pnpm gen`
 
 | Header | On | What it says |
 |---|---|---|
-| `fleet-tunnel` | a tunnel's upgrade | Its kind: `service` or `box`. |
+| `fleet-tunnel` | a tunnel's opening | Its kind: `service` or `box`. |
 | `fleet-service`, `fleet-spec` | a service's tunnel | The service's name, and the digest of the spec it serves. |
 | `fleet-box` | a box's tunnel, and the calls its helper carries | The box's id. |
 | `fleet-helper-protocol` | a box's tunnel | `HELPER_PROTOCOL`. |

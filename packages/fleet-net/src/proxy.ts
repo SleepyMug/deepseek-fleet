@@ -58,22 +58,25 @@ export function forward(req: Request, response: Response, upstream: Upstream, ca
     req.on('error', () => { stream.close(constants.NGHTTP2_CANCEL) })
     req.pipe(stream)
     stream.once('response', (answer) => {
+      if (settled || res.headersSent) return
       const status = Number(answer[':status'] ?? 502)
       const out: OutgoingHttpHeaders = {}
       for (const [name, value] of Object.entries(answer)) {
         if (!name.startsWith(':') && !HOP_BY_HOP.has(name) && value !== undefined) out[name] = value
       }
       res.writeHead(status, out)
+      // Its body is read only once its head is written: Node gives a stream's
+      // data as it comes, but its response a tick later.
+      stream.on('data', (chunk: Buffer) => {
+        upstream.notifyResponseByteRead(stream)
+        if (!res.write(chunk)) {
+          stream.pause()
+          res.once('drain', () => { stream.resume() })
+        }
+      })
     })
     let trailers: IncomingHttpHeaders | undefined
     stream.once('trailers', (received) => { trailers = received })
-    stream.on('data', (chunk: Buffer) => {
-      upstream.notifyResponseByteRead(stream)
-      if (!res.write(chunk)) {
-        stream.pause()
-        res.once('drain', () => { stream.resume() })
-      }
-    })
     stream.once('end', () => {
       settled = true
       if (!res.headersSent) res.writeHead(502)

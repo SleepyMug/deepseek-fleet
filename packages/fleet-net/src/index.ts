@@ -3,7 +3,8 @@
  * knowing nothing of boxes or services.
  * - {@link listen}: a Unix socket that takes HTTP/1.1 and HTTP/2 alike.
  * - {@link dial} and {@link sessionUpstream}: where calls go.
- * - {@link openTunnel} and {@link acceptTunnel}: a connection its dialer serves over.
+ * - {@link openTunnel} and {@link TunnelRequest}: a WebSocket its dialer serves HTTP/2 over.
+ * - {@link webSocketStream}: WebSocket as a byte stream.
  * - {@link forward}: a call carried through to an upstream.
  * - {@link refuse}: a call refused as its protocol has it.
  * - {@link connectTransport}: Connect's calls through an upstream.
@@ -14,9 +15,10 @@ import { createConnectTransport } from '@connectrpc/connect-node'
 import type { Interceptor, Transport } from '@connectrpc/connect'
 import { AUTHORITY, type Upstream } from './upstream.ts'
 
-export { listen, type Handler, type Listener, type ListenOptions, type Request, type Response, type UpgradeHandler } from './listen.ts'
+export { listen, type Handler, type Listener, type ListenOptions, type Request, type Response } from './listen.ts'
 export { AUTHORITY, dial, sessionUpstream, type Dialed, type Upstream } from './upstream.ts'
-export { acceptTunnel, keepTunnel, openTunnel, refuseTunnel, TunnelRefused, type AcceptedTunnel, type KeepTunnel, type KeptTunnel, type OpenTunnel, type Tunnel } from './tunnel.ts'
+export { keepTunnel, openTunnel, TunnelRefused, type AcceptedTunnel, type KeepTunnel, type KeptTunnel, type OpenTunnel, type Tunnel, type TunnelHandler, type TunnelRequest, type TunnelVia } from './tunnel.ts'
+export { webSocketStream } from './websocket.ts'
 export { forward, type Carry } from './proxy.ts'
 export { refuse } from './refuse.ts'
 

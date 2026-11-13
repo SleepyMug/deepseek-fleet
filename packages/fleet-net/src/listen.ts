@@ -1,9 +1,10 @@
 /**
  * A Unix socket that takes HTTP/1.1 and HTTP/2 alike: each connection is
  * HTTP/2 when it opens with HTTP/2's preface, as a Connect or gRPC client's
- * does, and HTTP/1.1 otherwise, as curl's and a tunnel's upgrade are. Both
- * are handed to one handler, as Node's servers give them, so a Connect
- * router serves either.
+ * does, and HTTP/1.1 otherwise, as curl's is. Both are handed to one
+ * handler, as Node's servers give them, so a Connect router serves either;
+ * and a tunnel is taken over either, a WebSocket's upgrade or its extended
+ * CONNECT.
  * @module @sleepymug/fleet-net/listen
  */
 
@@ -12,6 +13,7 @@ import { createServer as createHttp1Server, type IncomingMessage, type ServerRes
 import { createServer as createHttp2Server, type Http2ServerRequest, type Http2ServerResponse } from 'node:http2'
 import { connect, createServer, type Socket } from 'node:net'
 import type { Duplex } from 'node:stream'
+import { connectRequest, upgradeRequest, type TunnelHandler } from './tunnel.ts'
 
 export type Request = IncomingMessage | Http2ServerRequest
 export type Response = ServerResponse | Http2ServerResponse
@@ -19,14 +21,11 @@ export type Response = ServerResponse | Http2ServerResponse
 /** Serves a request, HTTP/1.1 or HTTP/2. */
 export type Handler = (req: Request, res: Response) => void
 
-/** Takes an HTTP/1.1 upgrade: the request, its connection, and what came after the request on it. */
-export type UpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer) => void
-
 export interface ListenOptions {
   /** Every request, HTTP/1.1 or HTTP/2. */
   request: Handler
-  /** Every HTTP/1.1 upgrade; without it, an upgrade's connection is closed. */
-  upgrade?: UpgradeHandler
+  /** Every tunnel asked for; without it, none is taken. */
+  tunnel?: TunnelHandler
   /** The socket's permission bits; 0600, its owner's alone, without them. */
   mode?: number
 }
@@ -47,9 +46,26 @@ const PREFACE = Buffer.from('PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n', 'latin1')
  */
 export async function listen(path: string, options: ListenOptions): Promise<Listener> {
   await claim(path)
-  const http2 = createHttp2Server({}, options.request)
+  const { tunnel } = options
+  const http2 = createHttp2Server({ settings: { enableConnectProtocol: tunnel !== undefined } }, options.request)
   const http1 = createHttp1Server(options.request)
-  http1.on('upgrade', options.upgrade ?? ((_req: IncomingMessage, socket: Duplex) => { socket.destroy() }))
+  http1.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (tunnel === undefined) {
+      socket.destroy()
+      return
+    }
+    const request = upgradeRequest(req, socket, head)
+    if (request !== undefined) tunnel(request)
+  })
+  // A CONNECT is a tunnel's, or refused.
+  http2.on('connect', (req: Http2ServerRequest, res: Http2ServerResponse) => {
+    if (tunnel === undefined) {
+      res.writeHead(405).end()
+      return
+    }
+    const request = connectRequest(req.stream, req.headers)
+    if (request !== undefined) tunnel(request)
+  })
   // A client that breaks its protocol loses its connection, not the listener.
   http2.on('sessionError', () => {})
   http1.on('clientError', (_error, socket: Duplex) => { socket.destroy() })
