@@ -48,6 +48,15 @@ export interface Serving {
 /** Serve `gateway` on its sockets. */
 export async function serve(gateway: FleetGateway, sockets: Sockets, log: (message: string) => void = () => {}): Promise<Serving> {
   const api = connectNodeAdapter({
+    // A failure that is no ConnectError is the gateway's own bug, which its caller sees only as internal.
+    interceptors: [next => async (req) => {
+      try {
+        return await next(req)
+      } catch (error) {
+        if (!(error instanceof ConnectError)) log(`${req.method.name} failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`)
+        throw error
+      }
+    }],
     routes: (router: ConnectRouter) => {
       boxesRoutes(gateway)(router)
       servicesRoutes(gateway)(router)

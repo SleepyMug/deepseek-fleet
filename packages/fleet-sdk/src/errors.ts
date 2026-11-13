@@ -10,7 +10,7 @@ import { FailureSchema, Reason } from '@sleepymug/fleet-protocol/fleet'
 /** No gateway answers on the socket. */
 export class FleetUnreachable extends Error {
   constructor(readonly socket: string, cause?: unknown) {
-    super(`fleet: no gateway answers on ${socket}; start one with \`fleet serve\``, { cause })
+    super(`no gateway answers on ${socket}; start one with \`fleet serve\``, { cause })
   }
 }
 
