@@ -50,8 +50,8 @@ What the gateway gives a box made with a service, and no more:
 
 | What | Where in the box |
 |---|---|
-| its client, `@fleet/<name>`: `index.js`, `index.d.ts`, protoc-gen-es's files, `README.md` | `/fleet/node_modules/@fleet/<name>` |
-| what the clients import: `@bufbuild/protobuf`, `@connectrpc/connect`, `@connectrpc/connect-node` | `/fleet/node_modules` |
+| its client, `@fleet/<name>`: `index.d.ts`, its methods and the plain objects they take and give, whole in one file; `index.js`; `README.md` | `/fleet/node_modules/@fleet/<name>` |
+| what the clients import: `@sleepymug/fleet-box-client`, with what it depends on | `/fleet/node_modules` |
 | its package, if it has one | `/fleet/services/<name>` |
 | each of the package's commands, its `bin`, a link | `/fleet/bin/<command>`, first on every program's PATH |
 | what the box has, and how a program uses it | `/fleet/README.md` |

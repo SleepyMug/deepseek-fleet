@@ -401,15 +401,9 @@ importers:
         specifier: 1.2.0-beta.15
         version: 1.2.0-beta.15
 
-  packages/fleet-codegen:
+  packages/fleet-box-client:
     dependencies:
       '@bufbuild/protobuf':
-        specifier: 2.17.0
-        version: 2.17.0
-      '@bufbuild/protoc-gen-es':
-        specifier: 2.17.0
-        version: 2.17.0(@bufbuild/protobuf@2.17.0)
-      '@bufbuild/protoplugin':
         specifier: 2.17.0
         version: 2.17.0
       '@connectrpc/connect':
@@ -418,9 +412,28 @@ importers:
       '@connectrpc/connect-node':
         specifier: 2.3.0
         version: 2.3.0(@bufbuild/protobuf@2.17.0)(@connectrpc/connect@2.3.0(@bufbuild/protobuf@2.17.0))
+
+  packages/fleet-codegen:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: 2.17.0
+        version: 2.17.0
+      '@bufbuild/protoplugin':
+        specifier: 2.17.0
+        version: 2.17.0
+      '@sleepymug/fleet-box-client':
+        specifier: workspace:*
+        version: link:../fleet-box-client
       '@sleepymug/fleet-pack':
         specifier: workspace:*
         version: link:../fleet-pack
+    devDependencies:
+      '@connectrpc/connect':
+        specifier: 2.3.0
+        version: 2.3.0(@bufbuild/protobuf@2.17.0)
+      '@connectrpc/connect-node':
+        specifier: 2.3.0
+        version: 2.3.0(@bufbuild/protobuf@2.17.0)(@connectrpc/connect@2.3.0(@bufbuild/protobuf@2.17.0))
 
   packages/fleet-net:
     dependencies:

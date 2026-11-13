@@ -179,7 +179,7 @@ test('a service gone fails its calls, and the box\'s client calls it again once 
   const program = join(driver.root(made.id), 'fleet', 'programs', 'say.mjs')
   await box.start()
   await mkdir(join(driver.root(made.id), 'fleet', 'programs'), { recursive: true })
-  await writeFile(program, "import { echo } from '@fleet/echo'\ntry { console.log((await echo.say({ text: 'x' })).from) } catch (error) { console.log(error.code === 5 ? 'not found' : String(error)) }\n")
+  await writeFile(program, "import { echo } from '@fleet/echo'\ntry { console.log((await echo.say({ text: 'x' })).from) } catch (error) { console.log(error.code === 'not_found' ? 'not found' : String(error)) }\n")
   assert.equal((await box.output([process.execPath, program])).trim(), made.id)
   first.close()
   await until(() => client.serviceList().then(list => list.length === 0), 5000, 'the service to be gone')

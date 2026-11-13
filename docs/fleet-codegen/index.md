@@ -2,47 +2,91 @@
 
 A service's client, made from its schema, `@sleepymug/fleet-codegen`: the
 node package that the gateway puts in each box made with the service,
-`@fleet/<name>`, whose methods call the service from the box, and whose
-declarations carry the schema's comments, for whoever writes a program to
-read; and the service's part of the box's README. Nothing here reads or
-writes a file.
+`@fleet/<name>`, whose methods call the service from the box, taking and
+giving plain objects, and whose declarations, whole in one file, carry the
+schema's comments, for whoever writes a program to read; and the service's
+part of the box's README. Nothing here reads or writes a file.
 
 ## Provides
 
 - `generateClient({ name, description, schema, services }, place)`: the
   client's files, by their path in its package, and its README section:
-  - each file of the schema, as protoc-gen-es writes it, JavaScript with its
-    declarations, the comments as JSDoc, but the well-known types, which
-    `@bufbuild/protobuf` has;
-  - `index.js` and `index.d.ts`: one client for each protobuf service the
-    service serves, named for it, `notes` for `notes.v1.Notes`, or with its
-    package's name where two share one, its methods declared one by one,
-    each with its comment: a unary method answers a `Promise` of its
-    message, a streaming one an `AsyncIterable`, and a request is its
-    message's init shape, a plain object; every client calls through one
-    connection to `place.socket`, or `$FLEET_SERVICES_SOCKET`, at
-    `place.path`;
+  - `index.d.ts` (`declarations.ts`), importing nothing: one client for each
+    protobuf service the service serves, a constant named for it, `notes`
+    for `notes.v1.Notes`, or with its package's name where two share one,
+    its methods spelled out with their comments; then the type of each
+    message and enum the methods reach, and no other, each with its
+    comments, in the forms fleet-box-client converts
+    (docs/fleet-box-client/index.md);
+  - `index.js`: the clients, made with fleet-box-client from the schema,
+    embedded without its comments, each calling `place.path` through
+    `place.socket`, or `$FLEET_SERVICES_SOCKET`;
   - `package.json`, and `README.md`, the section.
   A schema that is not whole, or lacks a service it names, is a
   `SchemaError`.
-- `RUNTIME`, what the clients import, `@bufbuild/protobuf`,
-  `@connectrpc/connect` and `@connectrpc/connect-node`, at the versions this
-  package pins with protoc-gen-es, and `runtimeRoots()`, where they are
-  installed beside it, which the gateway stages into each box.
-- `GENERATOR`, this package's version and protoc-gen-es's, of which a
+- `RUNTIME`, what the clients import, `@sleepymug/fleet-box-client`, and
+  `runtimeRoots()`, where it is installed beside this package, which the
+  gateway stages into each box with what it depends on.
+- `GENERATOR`, this package's version and fleet-box-client's, of which a
   client's digest is made, so that a client made by another is another.
+
+What `index.d.ts` says, for a service with a oneof and an enum:
+
+```ts
+/** A notebook of short notes, each box its own. */
+export declare const notes: {
+  /** Keep a note, and give it back with its number. */
+  add(request: AddRequest): Promise<Note>
+  /** Every note with the tag, oldest first. */
+  tagged(request: TaggedRequest): AsyncIterable<Note>
+  /** Keep many notes at once. */
+  addAll(requests: Iterable<AddRequest> | AsyncIterable<AddRequest>): Promise<Total>
+  /** How many notes there are. */
+  count(request?: CountRequest): Promise<Total>
+}
+
+/** One note. */
+export type Note = {
+  /** Its number in its notebook. */
+  id: number
+  written?: Date
+  priority: Priority
+  /** A file kept with it. */
+  attachment: Uint8Array
+  /** How long it is kept. In milliseconds. */
+  kept?: number
+} & (
+  // Where it came from.
+  | { /** Fetched from here. */ url: string; box?: never }
+  | { /** Copied from this box. */ box: string; url?: never }
+  | { url?: never; box?: never }
+)
+
+/**
+ * How soon a note matters.
+ * - `'PRIORITY_LOW'`: Whenever.
+ * - `'PRIORITY_HIGH'`: Now.
+ */
+export type Priority = 'PRIORITY_UNSPECIFIED' | 'PRIORITY_LOW' | 'PRIORITY_HIGH'
+```
 
 ## Design
 
-- **protoc-gen-es runs here**, as a function of the request protoc would
-  give it, built from the schema, so the gateway needs neither protoc nor
-  buf; a server's schema is buf's, with its comments, since what generated
-  code embeds has none.
-- **The declarations are for reading**: each method spelled out with its
-  comment, rather than a type that maps the service, so that an agent that
-  reads `index.d.ts` finds every call and what it means.
+- **The declarations are for reading.** An agent reads `index.d.ts` and
+  nothing else: every call, what it takes and gives, and what each means,
+  in TypeScript's plainest forms, with no protobuf in sight. A field whose
+  presence a message keeps, a message's or an `optional` one, may be
+  missing; every other is there; a oneof is a union of its fields, one
+  given or none; a method whose request is empty may be called without it.
+- **Names**: a nested message is `Outer_Inner`; a type whose name another
+  shares, or TypeScript has, as `Date`, takes its package's, `NotesV1Note`.
+- **What a box imports comes from the gateway**: the clients' runtime is
+  staged from the gateway's own install, so a client and what it imports
+  never drift apart, and no image holds them.
 
 ## Built on
 
-- `@bufbuild/protoplugin` and `@bufbuild/protoc-gen-es`.
-- fleet-pack's `locate`, for the runtime's packages.
+- `@bufbuild/protobuf`, for the schema, and `@bufbuild/protoplugin`'s
+  `getComments`.
+- fleet-box-client, whose conversions the declarations describe.
+- fleet-pack's `locate`, for the runtime.

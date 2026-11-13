@@ -93,8 +93,8 @@ The gateway's API, `fleet.v1` (packages/fleet-protocol/proto/fleet/v1):
 - **A box's services are fixed when it is made**: each name, as registered
   then, with its spec. Its tree (`boxes/contents.ts`) is made from them, so
   it is fixed too, and named by the digest of what it is made from: each
-  client in `node_modules/@fleet/<name>`, with what the clients import, the
-  packages fleet-codegen pins, staged from the gateway's own install, so
+  client in `node_modules/@fleet/<name>`, with what the clients import,
+  fleet-box-client, staged from the gateway's own install, so
   the clients and what they import never drift apart and no image holds
   them; each service's own package in `services/<name>`, its commands linked
   in `bin`, made executable; and the box's README, `README.md`. The helper

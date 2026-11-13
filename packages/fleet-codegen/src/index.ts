@@ -8,20 +8,21 @@ import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { locate } from '@sleepymug/fleet-pack'
+import { CLIENT_RUNTIME } from './generate.ts'
 
-export { generateClient, SchemaError, type ClientPlace, type ClientSpec, type GeneratedClient } from './generate.ts'
+export { CLIENT_RUNTIME, generateClient, SchemaError, type ClientPlace, type ClientSpec, type GeneratedClient } from './generate.ts'
 
-/** What a client imports, which the box needs beside it: the packages this one depends on, at the versions its code is made for. */
-export const RUNTIME = ['@bufbuild/protobuf', '@connectrpc/connect', '@connectrpc/connect-node'] as const
+/** What a client imports, which the box needs beside it, with what it depends on: fleet-box-client, at the version its code is made for. */
+export const RUNTIME = [CLIENT_RUNTIME] as const
 
 const PACKAGE_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
-/** Who makes the clients, so that a client made by another is another: this package's version, and protoc-gen-es's. */
+/** Who makes the clients, so that a client made by another is another: this package's version, and fleet-box-client's. */
 export const GENERATOR = (() => {
   const require = createRequire(import.meta.url)
   const own = require('../package.json') as { version: string }
-  const es = require('@bufbuild/protoc-gen-es/package.json') as { version: string }
-  return `fleet-codegen ${own.version}, protoc-gen-es ${es.version}`
+  const runtime = require(`${CLIENT_RUNTIME}/package.json`) as { version: string }
+  return `fleet-codegen ${own.version}, fleet-box-client ${runtime.version}`
 })()
 
 /** Where the runtime's packages are installed beside this one, for the gateway to stage. */

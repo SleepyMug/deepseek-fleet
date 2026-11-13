@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-codegen",
   "version": "0.0.1",
-  "description": "A service's client, made from its schema: a node package whose methods call the service from a box, with declarations that carry the schema's comments, and the service's part of the box's README; and the packages that client imports, at the versions it was made for",
+  "description": "A service's client, made from its schema: a node package whose methods call the service from a box, taking and giving plain objects, with declarations whole in one file that carry the schema's comments, and the service's part of the box's README",
   "type": "module",
   "exports": {
     ".": {
@@ -24,10 +24,12 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "2.17.0",
-    "@bufbuild/protoc-gen-es": "2.17.0",
     "@bufbuild/protoplugin": "2.17.0",
-    "@connectrpc/connect": "2.3.0",
-    "@connectrpc/connect-node": "2.3.0",
+    "@sleepymug/fleet-box-client": "workspace:*",
     "@sleepymug/fleet-pack": "workspace:*"
+  },
+  "devDependencies": {
+    "@connectrpc/connect": "2.3.0",
+    "@connectrpc/connect-node": "2.3.0"
   }
 }

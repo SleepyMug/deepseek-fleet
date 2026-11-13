@@ -4,6 +4,7 @@
     { "path": "packages/fleet-protocol" },
     { "path": "packages/fleet-net" },
     { "path": "packages/fleet-pack" },
+    { "path": "packages/fleet-box-client" },
     { "path": "packages/fleet-codegen" },
     { "path": "packages/fleet-box" },
     { "path": "packages/fleet-sdk" },

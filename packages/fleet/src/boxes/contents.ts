@@ -68,7 +68,7 @@ async function readmeOf(specs: readonly Spec[], commands: readonly Record<string
     '',
     specs.length === 0
       ? 'This box has no services.'
-      : `Each service is a node package, \`@fleet/<name>\`, in ${layout.modules}, whose \`index.d.ts\` declares every method it takes, with its messages, and says what each means. Node finds those packages from a program below ${layout.fleet}: write one as \`${layout.fleet}/programs/<name>.mts\`, or \`.mjs\`, and run it with \`node\`. A program elsewhere links them into a \`node_modules\` above it first: \`mkdir -p node_modules && ln -s ${layout.modules}/@fleet node_modules/@fleet\`.`,
+      : `Each service is a node package, \`@fleet/<name>\`, in ${layout.modules}, whose \`index.d.ts\`, whole in one file, declares each of its methods, the plain objects each takes and gives, and what each means. Node finds those packages from a program below ${layout.fleet}: write one as \`${layout.fleet}/programs/<name>.mts\`, or \`.mjs\`, and run it with \`node\`. A program elsewhere links them into a \`node_modules\` above it first: \`mkdir -p node_modules && ln -s ${layout.modules}/@fleet node_modules/@fleet\`.`,
     '',
     `Every program in the box reaches the services on one socket, ${layout.servicesSocket}, which \`$FLEET_SERVICES_SOCKET\` names too.`,
   ]

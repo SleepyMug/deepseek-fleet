@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package notes.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
 // A notebook of short notes, each box its own.
@@ -10,6 +11,10 @@ service Notes {
   rpc Add(AddRequest) returns (Note);
   // Every note with the tag, oldest first.
   rpc Tagged(TaggedRequest) returns (stream Note);
+  // Keep many notes at once.
+  rpc AddAll(stream AddRequest) returns (Total);
+  // How many notes there are.
+  rpc Count(CountRequest) returns (Total);
 }
 
 // One note.
@@ -20,13 +25,48 @@ message Note {
   string text = 2;
   repeated string tags = 3;
   google.protobuf.Timestamp written = 4;
+  Priority priority = 5;
+  // A file kept with it.
+  bytes attachment = 6;
+  // Its size in bytes.
+  int64 size = 7;
+  // Where it came from.
+  oneof origin {
+    // Fetched from here.
+    string url = 8;
+    // Copied from this box.
+    string box = 9;
+  }
+  // How long it is kept.
+  google.protobuf.Duration kept = 10;
+}
+
+// How soon a note matters.
+enum Priority {
+  PRIORITY_UNSPECIFIED = 0;
+  // Whenever.
+  PRIORITY_LOW = 1;
+  // Now.
+  PRIORITY_HIGH = 2;
 }
 
 message AddRequest {
   string text = 1;
   repeated string tags = 2;
+  Priority priority = 3;
+  bytes attachment = 4;
+  oneof origin {
+    string url = 5;
+    string box = 6;
+  }
 }
 
 message TaggedRequest {
   string tag = 1;
+}
+
+message CountRequest {}
+
+message Total {
+  int64 count = 1;
 }

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package kinds.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// Every kind of field a plain object has a form for.
+message Kinds {
+  string text = 1;
+  bool flag = 2;
+  double ratio = 3;
+  int64 count = 4;
+  bytes content = 5;
+  Level level = 6;
+  optional string maybe = 7;
+  repeated int64 counts = 8;
+  map<string, Inner> inners = 9;
+  Inner inner = 10;
+  oneof source {
+    string url = 11;
+    Inner box = 12;
+  }
+  google.protobuf.Timestamp made = 13;
+  google.protobuf.Duration took = 14;
+  google.protobuf.Struct meta = 15;
+  google.protobuf.Value any = 16;
+  google.protobuf.ListValue list = 17;
+  google.protobuf.Int64Value wrapped = 18;
+  repeated google.protobuf.StringValue names = 19;
+  repeated bytes chunks = 20;
+}
+
+message Inner {
+  string name = 1;
+}
+
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_HIGH = 2;
+}
