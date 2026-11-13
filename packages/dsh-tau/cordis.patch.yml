@@ -1,12 +1,12 @@
 # dsh-tau's bundle patch: list dsh-tau after @deepseek-ai/dsh-base and
 # @deepseek-ai/dsh-web-app in a profile's bundles, as in dsh's own `web`
 # profile, which dsh-tau is installed in as it is (docs/install.md). It needs
-# the fleet host running, `fleet serve`, whose boxes the runs of taus are in.
+# fleet's gateway running, `fleet serve`, whose boxes the runs of taus are in.
 # Every session the web UI makes stays as dsh has it, with its sandbox, its
 # permission presets and its agent presets; dsh-tau adds fleet-tau, the tau
 # backend (docs/dsh-tau/tau/index.md), which makes each tau's session through
 # dsh's session controller, with the `tau` agent preset below, and registers
-# the tau service with the fleet host, which puts the `tau` command in every
+# the tau service with the gateway, which puts the `tau` command in every
 # box; tau_run, with which any session runs a tau; and the world
 # (docs/dsh-tau/world/index.md): in place of dsh-base's `fs-sandbox`,
 # `subprocess` and `spill-local`, services that serve a tau's session from
@@ -18,8 +18,8 @@
 # ═══ The runs of taus with their boxes ═══
 
 # `ctx.fleetTauRuns`: which sessions are a tau's, and their boxes, which the
-# fleet host keeps, in the registry $DSH_HOME/tau/runs/; and `ctx.fleet`,
-# the fleet host's client, on its socket, $FLEET_SOCKET or fleet.sock in the
+# gateway keeps, in the registry $DSH_HOME/tau/runs/; and `ctx.fleet`,
+# the gateway's client, on its socket, $FLEET_SOCKET or fleet.sock in the
 # fleet home, unless `fleetSocket` names another. It needs nothing of dsh's,
 # so the world below builds on it, and dsh's session controller on the world.
 - insert:
@@ -28,7 +28,7 @@
       config:
         dshHome: !!js dshHomePath()
         # A box nothing uses, no turn, terminal, process or file call, is
-        # stopped by the fleet host after this long, and started again on its
+        # stopped by the gateway after this long, and started again on its
         # next use.
         idleStopMs: 60000
 
@@ -97,7 +97,7 @@
       name: '@sleepymug/dsh-tau/tau/lanes-plugin'
 
     # The tau backend's socket, $DSH_HOME/tau/tau.sock, which the host's `tau
-    # --adaptor socket` talks to, and the tau service, which the fleet host
+    # --adaptor socket` talks to, and the tau service, which the gateway
     # relays a box's `tau` to; each makes a run's session through dsh's
     # session controller.
     - id: fleet-tau

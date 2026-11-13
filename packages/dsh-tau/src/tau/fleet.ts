@@ -1,5 +1,5 @@
 /**
- * The fleet host, as the runs build on it ({@link FleetPort}), through its
+ * fleet's gateway, as the runs build on it ({@link FleetPort}), through its
  * client: its boxes, each made with what a run's box needs, and asked of as
  * fleet-sdk's `FleetBox`.
  * @module @sleepymug/dsh-tau/tau/fleet

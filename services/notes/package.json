@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-notes",
   "version": "0.0.1",
-  "description": "A service of the fleet host, and the example of one: a notebook of short notes for each box, kept on the host, which the notes command it puts in each box reaches",
+  "description": "A service of fleet's gateway, and the example of one: a notebook of short notes for each box, kept on the host, which the notes command it puts in each box reaches",
   "type": "module",
   "bin": {
     "fleet-notes": "./lib/main.js"

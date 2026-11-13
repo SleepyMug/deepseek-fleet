@@ -1,5 +1,5 @@
 /**
- * The processes the helper runs for the host, such as a harness's bash
+ * The processes the helper runs for the gateway, such as a harness's bash
  * commands. Each starts in a session of its own, so its process
  * group holds it and whatever it starts, except what starts a session of its
  * own; `kill` ends that group, and so does the helper's exit. Whatever
@@ -23,11 +23,11 @@ type Result = Methods['spawn']['result']
 /** How often a process group is checked for members left. */
 const POLL_MS = 100
 
-/** Where the helper's events go, and when the host has caught up with them. */
+/** Where the helper's events go, and when the gateway has caught up with them. */
 export interface Output {
-  /** Send an event; false when the host has fallen behind. */
+  /** Send an event; false when the gateway has fallen behind. */
   send(event: EventOf<'spawn'>): boolean
-  /** Run a listener each time the host catches up. */
+  /** Run a listener each time the gateway catches up. */
   onDrain(listener: () => void): void
 }
 
@@ -42,7 +42,7 @@ interface Running {
 /** The processes of one helper, which end with it. */
 export class Processes {
   private readonly running = new Map<string, Running>()
-  /** Output streams being forwarded, paused together while the host is behind. */
+  /** Output streams being forwarded, paused together while the gateway is behind. */
   private readonly streams = new Set<Readable>()
   private paused = false
   private draining = false
@@ -136,7 +136,7 @@ export class Processes {
     throw notFound(name)
   }
 
-  /** Send a stream's bytes as they come, pausing every stream while the host is behind. */
+  /** Send a stream's bytes as they come, pausing every stream while the gateway is behind. */
   private forward(stream: Readable, name: 'stdout' | 'stderr', output: Output): [Readable, Promise<void>] {
     this.streams.add(stream)
     if (this.paused) stream.pause()

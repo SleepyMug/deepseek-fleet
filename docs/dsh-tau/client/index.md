@@ -16,7 +16,7 @@ which sets how many of the taus' model calls stream at once,
   for, which does nothing on the host: dsh loads a package's `./client`
   only for a row that names the package itself, and every other row of
   dsh-tau's names one of its modules. Its id is older than the package's
-  name; it is no client of the fleet host's.
+  name; it is no client of fleet's gateway.
 
 The tau model page is the `fleet-tau-model` row's, on dsh-tau's page in
 the Plugins page, titled "Tau model" (`locale/tau/model-plugin/`, the

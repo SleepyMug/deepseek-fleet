@@ -1,5 +1,5 @@
 /**
- * The host's side of the helper's processes
+ * The gateway's side of the helper's processes
  * (fleet-box's helper/cmd/spawn): the checks of its answers and events,
  * which the helper connection registers (../helper.ts).
  * @module @sleepymug/fleet/box/cmd/spawn

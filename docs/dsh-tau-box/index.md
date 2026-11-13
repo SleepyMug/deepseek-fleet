@@ -1,7 +1,7 @@
 # dsh-tau-box
 
 What dsh-tau puts in every box, as the package of its tau service
-(docs/dsh-tau/tau/index.md), which the fleet host stages with the packages
+(docs/dsh-tau/tau/index.md), which fleet's gateway stages with the packages
 it depends on, and copies into each box at `/opt/fleet/services/tau`
 (docs/fleet/services/index.md): the `tau` command, whose runs go to
 dsh-tau as the box's run's, and dsh-tau's half of a run's box, which sets
@@ -12,15 +12,15 @@ for whoever asks them.
 ## Provides
 
 - The bin `tau` (`lib/tau.js`): tau's command, `@sleepymug/tau/cli`, as
-  tau has it (tau's docs/spec/client.md#the-tau-command), which the fleet
-  host links on every box's PATH. The tau service's environment,
+  tau has it (tau's docs/spec/client.md#the-tau-command), which fleet's
+  gateway links on every box's PATH. The tau service's environment,
   `TAU_ADAPTOR=socket` and `TAU_SOCKET=/run/fleet/services/tau.sock`, has
   it run taus through its socket adaptor on the service's socket in the
-  box, which the host relays to dsh-tau, so each run is the box's run's,
+  box, which the gateway relays to dsh-tau, so each run is the box's run's,
   its paths the box's: `tau run <dir> --call-json '<call>' --json`, `tau
   start`, `tau finish`, and the rest.
 - `lib/box/main.js`, dsh-tau's half of a run's box (`box/endpoint.ts`), on
-  tau's backend SDK, which dsh-tau runs through the fleet host's
+  tau's backend SDK, which dsh-tau runs through the gateway's
   `box.pipe`, before the agent does, and which runs no code of the tau's:
   - `setup`, the run's call on its stdin, places the tau at `/tau/self`,
     admits the call against it, places each file, checks them, expands the
@@ -49,7 +49,7 @@ for whoever asks them.
   `tauArgv(command)`, each command's line, on the box's Node, and
   `readTauCommand`, as the half reads it back; `requestSetup(pipe, call)`
   and `requestPack(pipe, outcome, output)`, which run a command through a
-  `Pipe`, as the fleet host's `box.pipe` runs a program, with host files
+  `Pipe`, as the gateway's `box.pipe` runs a program, with host files
   for its stdin and its stdout; `readSetup`, which takes the half's report
   once it has the shape of a `Setup`, `{ prompt, cwd, places, self,
   programs, init?, packages }`, every path absolute, each package of the
@@ -66,7 +66,7 @@ for whoever asks them.
 
 - **One package for the box.** Whatever dsh-tau needs in a box is here,
   so the box image holds nothing of tau's or dsh-tau's, and a box gets
-  the version of the package dsh-tau runs with, as the fleet host copies
+  the version of the package dsh-tau runs with, as fleet's gateway copies
   it in when the box starts; a newer one reaches the boxes started after
   dsh-tau registers it again.
 - **The half owns the layout.** dsh-tau takes where things are from the
@@ -79,7 +79,7 @@ for whoever asks them.
   its, runs taus as any caller does, and so does a tau's init.
 - **Self-contained as installed.** The package and what it depends on,
   tau and its own dependencies, and fleet-protocol, are pure JavaScript,
-  which the fleet host stages as installed, so a box runs what the host
+  which the gateway stages as installed, so a box runs what the host
   has.
 
 ## Built on
@@ -88,5 +88,5 @@ for whoever asks them.
   `createBackendSdk`; the core's `checkOutputs` and `kindAt`; `wire-tar`'s
   `unpackCall` and `packResult`; and its primers, `TAU.md` and
   `TAU_DEV.md`.
-- `@sleepymug/fleet-protocol/layout`, for the helper's Node and where the
-  fleet host puts a service's package in a box.
+- `@sleepymug/fleet-protocol/layout`, for the helper's Node and where
+  fleet's gateway puts a service's package in a box.

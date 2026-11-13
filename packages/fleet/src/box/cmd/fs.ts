@@ -1,5 +1,5 @@
 /**
- * The host's side of the helper's file system
+ * The gateway's side of the helper's file system
  * (fleet-box's helper/cmd/fs): the checks of its answers, which the
  * helper connection registers (../helper.ts). Whatever runs in the box can
  * answer in the helper's name, so a target must name an absolute path, and

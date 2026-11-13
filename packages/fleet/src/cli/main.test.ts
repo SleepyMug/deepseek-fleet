@@ -20,7 +20,7 @@ interface Run {
   stderr: string
 }
 
-/** Run `fleet` with `input` piped to it, on the host whose home is `home`. */
+/** Run `fleet` with `input` piped to it, on the gateway whose home is `home`. */
 function fleet(home: string, args: string[], input = ''): Promise<Run> {
   return new Promise((resolve) => {
     const child = execFile(process.execPath, [MAIN, ...args], { env: { ...process.env, FLEET_HOME: home, FLEET_SOCKET: '' } }, (error, stdout, stderr) => {
@@ -41,12 +41,12 @@ const missing = await new Promise<boolean>((resolve) => {
   execFile('docker', ['image', 'inspect', IMAGE], (error) => { resolve(error !== null) })
 })
 
-test('fleet makes, lists, repls in and removes a box, on the host it serves', { skip: missing && `no Docker image ${IMAGE}; build it with \`pnpm image\`` }, async (t) => {
+test('fleet makes, lists, repls in and removes a box, on the gateway it serves', { skip: missing && `no Docker image ${IMAGE}; build it with \`pnpm image\`` }, async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'fleet-cli-'))
-  const host = await serving(home)
+  const gateway = await serving(home)
   t.after(async () => {
-    host.kill('SIGTERM')
-    await new Promise((resolve) => { host.once('exit', resolve) })
+    gateway.kill('SIGTERM')
+    await new Promise((resolve) => { gateway.once('exit', resolve) })
     await rm(home, { recursive: true, force: true })
   })
   const created = await fleet(home, ['box', 'create', '--label', 'test=cli'])
@@ -68,12 +68,12 @@ test('fleet makes, lists, repls in and removes a box, on the host it serves', { 
   assert.match((await fleet(home, ['box', 'rm', id])).stderr, /no box/u)
 })
 
-test('fleet without a host says so', async () => {
+test('fleet without a gateway says so', async () => {
   const home = await mkdtemp(join(tmpdir(), 'fleet-cli-none-'))
   try {
     const run = await fleet(home, ['box', 'list'])
     assert.equal(run.code, 1)
-    assert.match(run.stderr, /no fleet host at \S+fleet\.sock: is `fleet serve` running\?/u)
+    assert.match(run.stderr, /no gateway at \S+fleet\.sock: is `fleet serve` running\?/u)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

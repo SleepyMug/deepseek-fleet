@@ -1,5 +1,5 @@
 /**
- * One box as the fleet host keeps it: its container, opened once, so that
+ * One box as the gateway keeps it: its container, opened once, so that
  * its verbs run in order; its operations, one after another; whether it was
  * started here; what occupies it, and the stop of the box once nothing has
  * for a while; and what follows its state. A box whose container is gone is
@@ -13,12 +13,12 @@ import type { Platform } from './platform.ts'
 import { messageOf } from './util/error.ts'
 import { Queue } from './util/queue.ts'
 
-/** What the host uses of a box's container. */
+/** What the gateway uses of a box's container. */
 export type RunBox = Pick<Box, 'container' | 'start' | 'stop' | 'remove' | 'copyIn' | 'copyOut' | 'pipe' | 'request'>
 
-/** Where the host gets the boxes' containers: Docker's, through `Box`, unless a test stands in. */
+/** Where the gateway gets the boxes' containers: Docker's, through `Box`, unless a test stands in. */
 export interface Boxes {
-  /** @param options.channel - the host's folder of the box's channel, which the box has mounted. */
+  /** @param options.channel - the host folder of the box's channel, which the box has mounted. */
   create(name: string, options: { image: string; env: Readonly<Record<string, string>>; labels: Readonly<Record<string, string>>; channel: string }): Promise<RunBox>
   open(name: string): Promise<RunBox>
   /** Whether a container is there, and whether it runs. */
@@ -62,7 +62,7 @@ export class ManagedBox {
   private cancelIdle: (() => void) | undefined
   /** To stop as soon as nothing occupies it. */
   private soon = false
-  /** Running, as a host before this one left it, though not started here. */
+  /** Running, as a gateway before this one left it, though not started here. */
   private adopted = false
   /** Removed, and forgotten. */
   private removed = false
@@ -148,7 +148,7 @@ export class ManagedBox {
     await this.exclusive(() => this.stopVacant(true))
   }
 
-  /** A box a host before this one left running, which stops once it has been idle long enough, as one started here does. */
+  /** A box a gateway before this one left running, which stops once it has been idle long enough, as one started here does. */
   adopt(): void {
     this.adopted = true
     this.vacated()
@@ -172,7 +172,7 @@ export class ManagedBox {
     })
   }
 
-  /** Stop the box, if it was started here, as the host closes. */
+  /** Stop the box, if it was started here, as the gateway closes. */
   async close(): Promise<void> {
     this.disarm()
     if (this.current !== 'started') return
@@ -228,7 +228,7 @@ export class ManagedBox {
 
   /**
    * Stop the box, in one of its operations, if nothing occupies it: one
-   * started here, or, with `any`, one started by anyone, as by a host that
+   * started here, or, with `any`, one started by anyone, as by a gateway that
    * stopped before it was done with it.
    */
   private async stopVacant(any: boolean): Promise<void> {

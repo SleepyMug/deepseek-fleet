@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `fleet-notes`: run the notes service (./service.ts) on the fleet host,
+ * `fleet-notes`: run the notes service (./service.ts) with fleet's gateway,
  * registered as long as it runs, its notebooks in a folder of its own,
  * until interrupted.
  * @module @sleepymug/fleet-notes/main
@@ -14,8 +14,8 @@ import { notesService } from './service.ts'
 
 const USAGE = `Usage: fleet-notes [--dir <dir>]
 
-Run the notes service on the fleet host, at $FLEET_SOCKET, or fleet.sock in the
-fleet home, until interrupted: each box gets the notes command, its notebook
+Run the notes service with fleet's gateway, at $FLEET_SOCKET, or fleet.sock in
+the fleet home, until interrupted: each box gets the notes command, its notebook
 kept in <dir>, by default notes/ in the fleet home.
 `
 

@@ -46,7 +46,7 @@ export const PRIMER = '/tau/TAU.md'
 /** tau's TAU_DEV.md, how to make a tau, for the agent to read. */
 export const DEV_PRIMER = '/tau/TAU_DEV.md'
 
-/** The name dsh-tau registers its tau service with the fleet host under, and so where this package is in a box. */
+/** The name dsh-tau registers its tau service with fleet's gateway under, and so where this package is in a box. */
 export const SERVICE = 'tau'
 
 /** Where each file of one run is in its box, by its name, asked for each in turn. */

@@ -1,12 +1,12 @@
 /**
- * The host's end of a box's channel (fleet-protocol's channel): an HTTP/2
+ * The gateway's end of a box's channel (fleet-protocol's channel): an HTTP/2
  * server on a socket in a folder of the box's own, which the box has
  * mounted at the layout's `CHANNEL_DIR`, so that only that box reaches it,
  * and a stream that comes in on it is that box's. Each stream is a
  * connection a program in the box opened to a service's socket: one the
- * host takes is answered as opened and given to its taker as a stream, its
+ * gateway takes is answered as opened and given to its taker as a stream, its
  * end a half-close either way, its destruction a cut; one it does not take
- * is refused. The folder outlives the server, so a host that listens again,
+ * is refused. The folder outlives the server, so a gateway that listens again,
  * after a restart, reaches a box that runs already.
  * @module @sleepymug/fleet/channel
  */
@@ -18,7 +18,7 @@ import type { Duplex } from 'node:stream'
 import { CHANNEL_WINDOW, CONNECTION_WINDOW, NO_SERVICE, OPENED, serviceOf } from '@sleepymug/fleet-protocol/channel'
 import { CHANNEL } from '@sleepymug/fleet-protocol/layout'
 
-/** The channel's socket in a box's folder of the host's, as the layout's `CHANNEL` is in the box. */
+/** The channel's socket in a box's folder on the host, as the layout's `CHANNEL` is in the box. */
 export function channelSocket(dir: string): string {
   return join(dir, basename(CHANNEL))
 }
@@ -42,7 +42,7 @@ export class Channel {
     await mkdir(dir, { recursive: true })
     await chmod(dir, 0o711)
     const path = channelSocket(dir)
-    // One left by a host before this one.
+    // One left by a gateway before this one.
     await rm(path, { force: true })
     const sessions = new Set<Http2Session>()
     const server = createServer({ settings: { initialWindowSize: CONNECTION_WINDOW } })

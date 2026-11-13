@@ -1,7 +1,7 @@
 /**
  * How dsh-tau and its half in a box (./box/endpoint.ts) talk, which both
  * import, so that each command is made, read and answered in one place.
- * dsh-tau runs the half in a run's box with the fleet host's `box.pipe`,
+ * dsh-tau runs the half in a run's box with the `box.pipe` of fleet's gateway,
  * since the helper's lines of JSON would carry the archives only as text:
  * `node main.js setup`, with the run's call on stdin, which writes its
  * {@link Setup} as JSON to stdout; and `node main.js pack '{"outcome"}'`,
@@ -43,11 +43,11 @@ export type TauCommand =
 /**
  * What runs a program in a started box, without a shell: `input`, a host
  * file, its stdin, and its stdout written to `output`, a host file, or else
- * given back, as the fleet host's `box.pipe` does.
+ * given back, as the gateway's `box.pipe` does.
  */
 export type Pipe = (argv: string[], io: { input?: string; output?: string }) => Promise<string>
 
-/** The half's entry in a box, where the fleet host puts the tau service's package. */
+/** The half's entry in a box, where the gateway puts the tau service's package. */
 export const BOX_ENTRY = posix.join(serviceDir(SERVICE), 'lib', 'box', 'main.js')
 
 /** The command line dsh-tau runs a command with in the box. */

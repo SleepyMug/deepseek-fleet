@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `fleet` (docs/fleet/cli/index.md): `fleet serve` runs the fleet host on
+ * `fleet` (docs/fleet/cli/index.md): `fleet serve` runs the gateway on
  * its socket, in its home; the other commands are its clients: they list,
  * make and remove boxes, send methods to a box's helper from a REPL
  * (./repl.ts), and list the services; `fleet image build` builds the box
@@ -13,11 +13,11 @@ import { Fleet } from '@sleepymug/fleet-sdk'
 import { buildImage } from '@sleepymug/fleet-box/image/build'
 import { DEFAULT_IMAGE } from '@sleepymug/fleet-protocol/layout'
 import { fleetHome, fleetSocket } from '@sleepymug/fleet-protocol/fleet'
-import { FleetHost } from '../host.ts'
+import { FleetGateway } from '../gateway.ts'
 import { fleetPaths } from '../paths.ts'
 import { systemPlatform } from '../platform.ts'
 import { Registry } from '../registry.ts'
-import { listen } from '../server.ts'
+import { listen } from '../socket.ts'
 import { messageOf } from '../util/error.ts'
 import { repl } from './repl.ts'
 
@@ -25,7 +25,7 @@ const USAGE = `Usage: fleet <command>
 
 Commands:
   serve [--image <image>] [--idle-stop <ms>]
-                                run the fleet host, until interrupted
+                                run the gateway, until interrupted
   box list [--json]             list the boxes: id, state, labels
   box create [--image <image>] [--label <key>=<value>]... [--service <name>]...
                                 make a box, stopped, and print its id
@@ -36,7 +36,7 @@ Commands:
   image build [<tag>]           build the box image, ${DEFAULT_IMAGE} by default, from
                                 fleet-box as installed
 
-The host's home is $FLEET_HOME, or ~/.fleet; its socket $FLEET_SOCKET, or
+The gateway's home is $FLEET_HOME, or ~/.fleet; its socket $FLEET_SOCKET, or
 fleet.sock in its home.
 `
 
@@ -55,20 +55,20 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     if (idleStopMs !== undefined && (!Number.isFinite(idleStopMs) || idleStopMs < 0)) throw new UsageError('--idle-stop takes milliseconds, 0 or more')
     const paths = fleetPaths(fleetHome(), fleetSocket())
     const platform = systemPlatform()
-    const host = new FleetHost({
+    const gateway = new FleetGateway({
       registry: new Registry(paths.boxes), cache: paths.services, channels: paths.channels, platform,
       ...values.image === undefined ? {} : { image: values.image },
       ...idleStopMs === undefined ? {} : { idleStopMs },
     })
-    await host.load()
-    const close = await listen(paths.socket, host)
+    await gateway.load()
+    const close = await listen(paths.socket, gateway)
     platform.log(`serving on ${paths.socket}`)
     await new Promise<void>((resolve) => {
       for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { resolve() })
     })
     platform.log('stopping the boxes started here')
     await close()
-    await host.close()
+    await gateway.close()
   },
 
   async box(args) {

@@ -1,6 +1,6 @@
 /**
- * The boxes the fleet host made, one JSON file each in its home's
- * `boxes/`, so that a host started later knows them: what each was made
+ * The boxes the gateway made, one JSON file each in its home's
+ * `boxes/`, so that a gateway started later knows them: what each was made
  * with, which its container keeps, and its labels, which its creator gave.
  * Whether its container is there, and runs, is Docker's to say.
  * @module @sleepymug/fleet/registry
@@ -9,7 +9,7 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-/** A box, as the host made it. */
+/** A box, as the gateway made it. */
 export interface BoxRecord {
   /** Its id, which names its container. */
   id: string
@@ -22,7 +22,7 @@ export interface BoxRecord {
   createdAt: string
 }
 
-/** The ids the host mints: `box-` and 16 hex digits, which are file names too. */
+/** The ids the gateway mints: `box-` and 16 hex digits, which are file names too. */
 export const BOX_ID = /^box-[0-9a-f]{16}$/u
 
 export class Registry {

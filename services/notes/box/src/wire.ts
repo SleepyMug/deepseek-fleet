@@ -1,6 +1,6 @@
 /**
  * How the notes command in a box (./notes.ts) and fleet-notes on the host
- * talk, over the service's socket in the box, which the fleet host relays:
+ * talk, over the service's socket in the box, which fleet's gateway relays:
  * one request a connection, a line of JSON, and one answer, a line of JSON.
  * Shared by both ends, so it holds only types.
  * @module @sleepymug/fleet-notes-box/wire

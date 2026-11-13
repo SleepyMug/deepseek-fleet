@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-sdk",
   "version": "0.0.1",
-  "description": "The fleet host's SDK: boxes, their files, processes and terminals, for a harness; and the registration of a service, for its gateway",
+  "description": "The SDK of fleet's gateway: boxes, their files, processes and terminals, for a harness; and the registration of a service, for its fleet server",
   "type": "module",
   "exports": {
     ".": {

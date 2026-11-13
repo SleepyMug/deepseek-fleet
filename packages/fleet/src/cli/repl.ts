@@ -1,6 +1,6 @@
 /**
  * The REPL of `fleet box repl`. Each line sends one method to the box's
- * helper, through the fleet host, as `<method> [<params as JSON>]`, and
+ * helper, through the gateway, as `<method> [<params as JSON>]`, and
  * prints its result as one line of JSON; a line that starts with a dot is
  * one of the REPL's own commands. Results go to the output, errors to the
  * error stream, so piped input gives clean output.
@@ -82,7 +82,7 @@ export async function repl(box: Answering, options: ReplOptions): Promise<void> 
         return
       case 'request':
         try {
-          // The host refuses a method it does not know, which is the check for a typed name.
+          // The gateway refuses a method it does not know, which is the check for a typed name.
           const value = await box.request(line.method, line.params)
           output.write(`${JSON.stringify(value)}\n`)
         } catch (error) {

@@ -5,9 +5,9 @@
  * (./runs-plugin.ts), and dsh's sessions (../dsh/sessions.ts), made with the
  * `tau` agent preset; serves it on its socket in the dsh home, as tau's
  * `listenSocket` does, for the host's `tau --adaptor socket`; registers its
- * tau service with the fleet host, whose package, dsh-tau-box, puts the
+ * tau service with fleet's gateway, whose package, dsh-tau-box, puts the
  * `tau` command in every box, its runs those of the run the box is, through
- * the service's connections, which the host relays; and has it follow which
+ * the service's connections, which the gateway relays; and has it follow which
  * sessions dsh archives, whose runs have no box (../dsh/archive.ts), and a
  * tau's session's agent occupy its box while it runs (../dsh/turns.ts). Its
  * config names the dsh home, where it serves its socket. It provides the

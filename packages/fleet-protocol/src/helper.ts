@@ -1,18 +1,18 @@
 /**
- * The wire between the fleet host and the helper in a box: one JSON message
+ * The wire between the gateway and the helper in a box: one JSON message
  * per line over the stdin and stdout of the `docker exec` that runs the
- * helper. The host sends requests; the helper answers each exactly once, in
+ * helper. The gateway sends requests; the helper answers each exactly once, in
  * any order, and may send events for a request before it answers it. The
  * connections to the box's services cross the box's channel, not this wire
  * (./channel.ts). The helper exits when its stdin
  * ends, and ends the processes it started first. Shared by both ends, so it
  * holds only types and constants. The methods but `hello`, `echo` and
- * `services.*` are the box's API, which a harness reaches through the fleet
- * host (./fleet.ts).
+ * `services.*` are the box's API, which a harness reaches through the
+ * gateway (./fleet.ts).
  * @module @sleepymug/fleet-protocol/helper
  */
 
-/** Wire version; the host refuses a helper that answers `hello` with another. */
+/** Wire version; the gateway refuses a helper that answers `hello` with another. */
 export const PROTOCOL_VERSION = 1
 
 /** The error code of a `which` for a program that is not there. */
@@ -73,7 +73,7 @@ export interface EditOutcome {
 export interface Methods {
   /**
    * The handshake: the wire version, and every method the helper serves, so
-   * a host can tell a box made from an older image, whose helper may not
+   * a gateway can tell a box made from an older image, whose helper may not
    * list them at all.
    */
   hello: { params: Record<string, never>; result: { protocol: number; methods?: string[] } }
@@ -101,7 +101,7 @@ export interface Methods {
   'fs.writeText': { params: { target: Target; content: string; expected?: WriteIntent }; result: WriteOutcome }
   'fs.editText': { params: { target: Target; edit: EditRequest; expected?: { version: string } }; result: EditOutcome }
   /**
-   * Watches a target, under the host's id `watch`, and sends an event each
+   * Watches a target, under the gateway's id `watch`, and sends an event each
    * time it may have changed, with the error that ended the watching, if
    * one did; answers once `fs.unwatch` ends it.
    */
@@ -111,7 +111,7 @@ export interface Methods {
 
   /**
    * Runs a program, without a shell, in a process group of its own, under
-   * the id the host gives it, and answers how it ended once it has, after
+   * the id the gateway gives it, and answers how it ended once it has, after
    * sending what it writes, base64, as events (fleet-box's helper/cmd/spawn.ts). `env` adds
    * to the helper's environment, and removes a name given `null`.
    */
@@ -127,7 +127,7 @@ export interface Methods {
 
   /**
    * Runs a program on a terminal of its own, a pseudo-terminal in the box,
-   * under the host's id `terminal` (fleet-box's helper/cmd/terminal.ts): it sends `started`
+   * under the gateway's id `terminal` (fleet-box's helper/cmd/terminal.ts): it sends `started`
    * with the program's pid, then what the terminal writes, base64, and
    * answers how the program ended once it has and the output is sent.
    */
@@ -187,10 +187,10 @@ export type Method = keyof Methods
 /** What a method sends before its result, or never for a method without events. */
 export type EventOf<M extends Method> = Methods[M] extends { event: infer E } ? E : never
 
-/** Host to helper: a request. */
-export type HostMessage = { type: 'request'; id: number; method: string; params: unknown }
+/** Gateway to helper: a request. */
+export type GatewayMessage = { type: 'request'; id: number; method: string; params: unknown }
 
-/** Helper to host: a request's answer, or its event. */
+/** Helper to gateway: a request's answer, or its event. */
 export type HelperMessage =
   | { type: 'result'; id: number; value: unknown }
   | { type: 'event'; id: number; value: unknown }

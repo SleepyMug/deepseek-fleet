@@ -17,7 +17,7 @@ import { Helper } from './box/helper.ts'
 import { channelSocket } from './channel.ts'
 import type { Boxes, RunBox } from './managed.ts'
 
-/** The helper as built, served on this Node, its services' things under `root`, its channel the host's in `channel`. */
+/** The helper as built, served on this Node, its services' things under `root`, its channel the gateway's in `channel`. */
 export function localHelper(root: string, channel: string): readonly [string, ...string[]] {
   const layout = { services: join(root, 'services'), bin: join(root, 'bin'), sockets: join(root, 'sockets'), channel: channelSocket(channel) }
   const serve = JSON.stringify(import.meta.resolve('@sleepymug/fleet-box/helper/serve'))
@@ -83,7 +83,7 @@ export class LocalBoxes implements Boxes {
 
   constructor(private readonly root: string) {}
 
-  /** As if the box had the channel's folder mounted: its helper connects to the host's socket there. */
+  /** As if the box had the channel's folder mounted: its helper connects to the gateway's socket there. */
   async create(name: string, { channel }: { channel: string }): Promise<RunBox> {
     const box = new LocalBox(name, join(this.root, name), channel, this)
     await mkdir(box.root, { recursive: true })

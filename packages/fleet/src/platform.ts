@@ -1,5 +1,5 @@
 /**
- * What the fleet host takes of the process it runs in, so that each part is
+ * What the gateway takes of the process it runs in, so that each part is
  * given it, and a test gives its own: where it says what it does, the time,
  * new ids, and timers.
  * @module @sleepymug/fleet/platform
@@ -8,7 +8,7 @@
 import { randomBytes } from 'node:crypto'
 
 export interface Platform {
-  /** Say what was done, or what went wrong, to whoever runs the fleet host. */
+  /** Say what was done, or what went wrong, to whoever runs the gateway. */
   log(message: string): void
   now(): Date
   /** A new id: 16 hex digits. */

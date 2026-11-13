@@ -1,5 +1,5 @@
 /**
- * The host's side of the helper's terminals
+ * The gateway's side of the helper's terminals
  * (fleet-box's helper/cmd/terminal): the checks of their answers and
  * events, which the helper connection registers (../helper.ts).
  * @module @sleepymug/fleet/box/cmd/terminal

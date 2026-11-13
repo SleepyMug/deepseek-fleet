@@ -42,7 +42,7 @@ export interface Entry {
    * an entry written before callers were.
    */
   caller?: Caller
-  /** The session's box, the fleet host's id of it, which a box set up again changes. */
+  /** The session's box, the gateway's id of it, which a box set up again changes. */
   box: string
   /** What names the run, as its caller gave it. */
   title: string

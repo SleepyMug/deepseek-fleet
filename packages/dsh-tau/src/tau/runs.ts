@@ -3,7 +3,7 @@
  * backend of tau's socket adaptor: a run's call, tau's archive of the run's
  * envelope with the content of its files, and the tau (tau's
  * docs/spec/serialization.md), is admitted (./admission.ts) and kept in the
- * session's folder; a box is made for it on the fleet host, which dsh-tau's
+ * session's folder; a box is made for it by fleet's gateway, which dsh-tau's
  * half there sets up from the call (./box-setup.ts); the session is
  * registered (./registry.ts); and its box is kept (./session-box.ts),
  * started, stopped, removed and set up again, with the tau's init run in
@@ -42,12 +42,12 @@ export const BOX_ENV: Record<string, string> = {
 /** What the runs are built on. */
 export interface TauRunsDeps {
   registry: Registry
-  /** The fleet host, which keeps the boxes. */
+  /** fleet's gateway, which keeps the boxes. */
   fleet: FleetPort
   platform: Platform
-  /** How long a box nothing occupies runs before it is stopped; the fleet host's default without it. */
+  /** How long a box nothing occupies runs before it is stopped; the gateway's default without it. */
   idleStopMs?: number
-  /** The image a box runs; the fleet host's default without it. */
+  /** The image a box runs; the gateway's default without it. */
   image?: string
 }
 
@@ -90,8 +90,8 @@ export class TauRuns implements TauBoxes, RunLifecycle {
 
   /**
    * Set up a box for a run of a call. First the call is admitted as it
-   * comes, and kept in the session's folder. Then the box is made on the
-   * fleet host and started, and dsh-tau's half there sets it up from the
+   * comes, and kept in the session's folder. Then the box is made by the
+   * gateway and started, and dsh-tau's half there sets it up from the
    * call, and reports the prompt, the files and where things are; and the
    * session is registered. The box then stops once it is idle, unless the
    * run's start uses it first. A failure removes the box and the session's
@@ -145,7 +145,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     return { sessionId, box: id, prompt: setup.prompt }
   }
 
-  /** Make a session's box on the fleet host, its labels naming the session, and give its id. */
+  /** Make a session's box with the gateway, its labels naming the session, and give its id. */
   private async makeBox(sessionId: string, labels: Record<string, string>): Promise<string> {
     return await this.fleet.create({
       labels: { 'dsh.session': sessionId, ...labels },
@@ -366,7 +366,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     })
   }
 
-  /** Stop following the boxes; the fleet host stops each once nothing occupies it. */
+  /** Stop following the boxes; the gateway stops each once nothing occupies it. */
   close(): void {
     for (const run of this.runs.values()) run.box.close()
   }

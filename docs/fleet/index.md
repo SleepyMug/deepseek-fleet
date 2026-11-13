@@ -1,36 +1,36 @@
 # fleet
 
-The fleet host, `@sleepymug/fleet`: a service of its own, `fleet serve`,
+fleet's gateway, `@sleepymug/fleet`: a process of its own, `fleet serve`,
 that keeps boxes, each a Docker container with fleet's helper in it while it
 runs (docs/fleet/box/index.md), for as long as their creators want them,
 and stops each once nothing has used it for a while; and that takes
-services, each a gateway on the host that plugs in, whose means of calling
-it, a node package of commands, it puts in the boxes
-(docs/fleet/services/index.md). Its clients, a harness such as dsh's
-dsh-tau, or a service, reach it on its socket, through fleet-sdk
-(docs/fleet-sdk/index.md), and ask a box's files, processes and terminals
-of its helper through it. It knows nothing of tau or dsh: a box is its id,
-its labels, and what is in it.
+services, each plugged in by its fleet server on the host, whose package,
+of node commands, it puts in the boxes (docs/fleet/services/index.md). Its
+clients, a harness such as dsh's dsh-tau, or a fleet server, reach it on
+its socket, through fleet-sdk (docs/fleet-sdk/index.md), and ask a box's
+files, processes and terminals of its helper through it. It knows nothing
+of tau or dsh: a box is its id, its labels, and what is in it. The names
+fleet gives things are docs/VOCAB.md's.
 
 ## Provides
 
 - `fleet` (docs/fleet/cli/index.md), the command: `fleet serve` runs the
-  host; the others are its clients.
-- `@sleepymug/fleet/host`: `FleetHost`, the host, with the `Registry` of its
-  boxes and `systemPlatform`, for a host in a process of its own choosing,
-  as a test runs one.
-- `@sleepymug/fleet/server`: `listen(socket, host)`, which serves a host on
-  its socket, and `serve(connection, host)`, one client's connection.
+  gateway; the others are its clients.
+- `@sleepymug/fleet/gateway`: `FleetGateway`, the gateway, with the
+  `Registry` of its boxes and `systemPlatform`, for a gateway in a process
+  of its own choosing, as a test runs one; and `listen(socket, gateway)`,
+  which serves a gateway on its socket, and `serve(connection, gateway)`,
+  one client's connection.
 - `@sleepymug/fleet/box`: `Box`, one container (docs/fleet/box/index.md).
 
-The host's **home** is `$FLEET_HOME`, or `~/.fleet`:
+The gateway's **home** is `$FLEET_HOME`, or `~/.fleet`:
 
 | Place | What it holds |
 |---|---|
 | `fleet.sock` | The socket, unless `$FLEET_SOCKET` names another. |
-| `boxes/<id>.json` | Each box the host made, as it made it: its id, image, labels, environment, services, idle time, and when (`registry.ts`). |
-| `services/<name>@<digest>` | Each service's package, as the host staged it (docs/fleet/services/index.md). |
-| `channels/<id>/channel.sock` | Each box's channel, the socket its helper reaches the host's services on, the folder mounted in the box (below). |
+| `boxes/<id>.json` | Each box the gateway made, as it made it: its id, image, labels, environment, services, idle time, and when (`registry.ts`). |
+| `services/<name>@<digest>` | Each service's package, as the gateway staged it (docs/fleet/services/index.md). |
+| `channels/<id>/channel.sock` | Each box's channel, the socket its helper reaches the gateway's services on, the folder mounted in the box (below). |
 
 What its clients ask, the ops of its wire, each answered once, with events
 before the answer for an op that sends them; the wire itself is
@@ -59,22 +59,23 @@ docs/fleet-protocol/index.md:
 ## Design
 
 - **Parts are given what they use**, as one object of named dependencies:
-  `FleetHost` its `Registry`, the folder it stages services in, its
+  `FleetGateway` its `Registry`, the folder it stages services in, its
   `Platform` (`platform.ts`: `log`, `now`, `newId` and `after`, a timer
   that keeps nothing alive) and its `Boxes`, Docker's containers through
   `Box` unless a test gives local ones; each box is a `ManagedBox`
   (`managed.ts`), with its `Channel` (`channel.ts`); the services are
-  `Services` (`services.ts`); and the socket is `server.ts`'s. A test serves a host in its own process, its
-  boxes folders with the helper as built running in each.
-- **A box** is made with a spec: its image, the host's default without one,
-  `fleet:local` unless `fleet serve --image` names another; its labels, its
-  creator's, which the host keeps, lists, puts on the container as
-  `fleet.label.<key>`, and tells each service a connection of the box's
-  goes to; its environment, that of every process in it; the services it
+  `Services` (`services.ts`); and the socket is `socket.ts`'s. A test
+  serves a gateway in its own process, its boxes folders with the helper as
+  built running in each.
+- **A box** is made with a spec: its image, the gateway's default without
+  one, `fleet:local` unless `fleet serve --image` names another; its labels,
+  its creator's, which the gateway keeps, lists, puts on the container as
+  `fleet.label.<key>`, and tells each fleet server a connection of the
+  box's goes to; its environment, that of every process in it; the services it
   has, by name, every one registered without them; and how long it runs
   idle, 60 s by default, `fleet serve --idle-stop` otherwise. Its id,
   `box-` and 16 hex digits, names its container. Its record is written once
-  its container is made, so a host started later knows it.
+  its container is made, so a gateway started later knows it.
 - **Its state** is `stopped`, `started`, its helper running, `stopping`, or
   `gone`, its container removed by other means. `box.watch` follows it, and
   `removed` ends the watch.
@@ -92,40 +93,40 @@ docs/fleet-protocol/index.md:
   box's services in it (docs/fleet/services/index.md) before anything else
   uses it; a start that fails leaves it stopped.
 - **A box gone.** A box whose container is not there when it is asked to
-  start fails with `BOX_GONE`, and is `gone`: the host does not make it
+  start fails with `BOX_GONE`, and is `gone`: the gateway does not make it
   again, since only its owner knows what was in it; the owner makes another.
-  A box the host does not know fails with `NO_BOX`, and a request without
+  A box the gateway does not know fails with `NO_BOX`, and a request without
   `hold` of a box that is not started with `NOT_STARTED`. A helper's own
   failure keeps its code, such as an `FsError`'s.
 - **The box's API** is its helper's methods, but `hello`, `echo` and
-  `services.*`, which are the host's own: files, processes and terminals,
+  `services.*`, which are the gateway's own: files, processes and terminals,
   as a harness serves its agent's tools from them. What the box sends is
   checked as the helper connection checks it (docs/fleet/box/index.md).
-- **Copies and pipes name host paths**, since the host and its clients are
-  on one machine, and its socket is its owner's alone; `copyIn` and
+- **Copies and pipes name host paths**, since the gateway and its clients
+  are on one machine, and its socket is its owner's alone; `copyIn` and
   `copyOut` work whether the box runs or not.
-- **A host started later** knows the boxes its registry has; one whose
-  container still runs, as a host that stopped left it, without a helper,
+- **A gateway started later** knows the boxes its registry has; one whose
+  container still runs, as a gateway that stopped left it, without a helper,
   stops once it has been idle long enough, as one started here does.
-- **When the host stops**, it stops the boxes it started; their helpers end
+- **When the gateway stops**, it stops the boxes it started; their helpers end
   with it, and with them the processes they ran.
 - **The socket** has mode 0600, its folder made with mode 0700, so only its
-  owner can open it, which is its authentication; the host takes it over
-  only if no host answers on it.
-- **Each box has a channel**, the one way from the box to the host: a
-  socket the host listens on in a folder of the box's own,
+  owner can open it, which is its authentication; the gateway takes it over
+  only if no gateway answers on it.
+- **Each box has a channel**, the one way from the box to the gateway: a
+  socket the gateway listens on in a folder of the box's own,
   `channels/<id>/`, which the box's container mounts at
-  `/run/fleet/host`, as a box in the cloud would have one connection to its
-  gateway. The helper makes one HTTP/2 connection to it, and each
+  `/run/fleet/gateway`, as a box in the cloud would have one connection to
+  its gateway. The helper makes one HTTP/2 connection to it, and each
   connection a program in the box opens to a service's socket is a stream
-  of it, which the host passes on to the service
+  of it, which the gateway passes on to the service
   (docs/fleet/services/index.md). A stream that comes in on a box's channel
   is that box's, so the box never says who it is. `channels/` has mode
   0700, so no one else on the host reaches a channel; a box's folder, mode
   0711, and its socket, 0666, let the box's root reach it whatever its user
-  is on the host. The host listens on a box's channel as it makes the box,
-  or knows it from its registry, and removes the folder with the box; a box
-  made by a host before channels has none, and reaches no service.
+  is on the host. The gateway listens on a box's channel as it makes the
+  box, or knows it from its registry, and removes the folder with the box; a
+  box made by a gateway before channels has none, and reaches no service.
 
 ## Not yet
 
@@ -144,7 +145,7 @@ docs/fleet-protocol/index.md:
 
 ## How it runs
 
-After `pnpm build` and `pnpm image`, `fleet serve` serves the host on
+After `pnpm build` and `pnpm image`, `fleet serve` serves the gateway on
 `~/.fleet/fleet.sock`, and prints what it does on stderr:
 
 ```

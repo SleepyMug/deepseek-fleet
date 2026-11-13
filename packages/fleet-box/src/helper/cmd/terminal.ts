@@ -1,5 +1,5 @@
 /**
- * The terminals the helper runs for the host, such as a harness's terminal
+ * The terminals the helper runs for the gateway, such as a harness's terminal
  * for a person, as dsh's web UI's sidebar has it: a program on a
  * pseudo-terminal in the box, through node-pty, in a session of its own,
  * which it leads. The kernel tells which process group is in the terminal's

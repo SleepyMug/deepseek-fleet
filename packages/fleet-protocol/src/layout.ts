@@ -1,5 +1,5 @@
 /**
- * Where fleet's things lie in a box, which the host, the helper, and the
+ * Where fleet's things lie in a box, which the gateway, the helper, and the
  * services and harnesses that use a box agree on. It holds constants only.
  * @module @sleepymug/fleet-protocol/layout
  */
@@ -35,12 +35,12 @@ export function socketOf(name: string): string {
 }
 
 /**
- * Where the box's channel to the host is, a folder of the host's mounted in
- * the box, the one thing of the host's it has (./channel.ts).
+ * Where the box's channel to the gateway is, a folder of the gateway's mounted
+ * in the box, the one thing of the gateway's it has (./channel.ts).
  */
-export const CHANNEL_DIR = '/run/fleet/host'
+export const CHANNEL_DIR = '/run/fleet/gateway'
 
-/** The channel's socket, which the host listens on, and the helper connects to. */
+/** The channel's socket, which the gateway listens on, and the helper connects to. */
 export const CHANNEL = `${CHANNEL_DIR}/channel.sock`
 
 /** Names {@link SOCKETS_DIR} for every process the helper starts, so that a service's command finds its socket. */

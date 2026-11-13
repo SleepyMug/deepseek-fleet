@@ -2,7 +2,7 @@
   "name": "@sleepymug/fleet-trace",
   "version": "0.0.1",
   "private": true,
-  "description": "Run a tau against a scripted model on a scratch fleet host and dsh, and dump what the model was sent",
+  "description": "Run a tau against a scripted model on a scratch gateway and dsh, and dump what the model was sent",
   "type": "module",
   "bin": {
     "fleet-trace": "./lib/cli.js"

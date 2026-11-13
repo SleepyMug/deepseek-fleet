@@ -1,6 +1,6 @@
 # fleet/cli
 
-`fleet`, the fleet host's command: `fleet serve` runs the host
+`fleet`, the gateway's command: `fleet serve` runs the gateway
 (docs/fleet/index.md); the others are its clients, which show its boxes and
 services, make and remove boxes, and send methods to a box's helper by
 hand; and `fleet image build` builds the box image.
@@ -9,7 +9,7 @@ hand; and `fleet image build` builds the box image.
 
 ```
 fleet serve [--image <image>] [--idle-stop <ms>]
-                              run the fleet host, until interrupted
+                              run the gateway, until interrupted
 fleet box list [--json]       list the boxes: id, state, labels
 fleet box create [--image <image>] [--label <key>=<value>]... [--service <name>]...
                               make a box, stopped, and print its id
@@ -21,7 +21,7 @@ fleet image build [<tag>]     build the box image, fleet:local by default, from
                               fleet-box as installed
 ```
 
-- The host's home is `$FLEET_HOME`, or `~/.fleet`; its socket
+- The gateway's home is `$FLEET_HOME`, or `~/.fleet`; its socket
   `$FLEET_SOCKET`, or `fleet.sock` in its home.
 - `serve` makes each box without an image of its own from `--image`, and
   stops each nothing occupies after `--idle-stop` milliseconds, 60 000 by
@@ -29,10 +29,10 @@ fleet image build [<tag>]     build the box image, fleet:local by default, from
 - `box create` gives the box its labels, and, with `--service`, the services
   it has; without any, it has every one registered
   (docs/fleet/services/index.md).
-- `--json` prints what the host answers, as JSON, in place of the table.
+- `--json` prints what the gateway answers, as JSON, in place of the table.
 - Exit codes:
   - `0` on success;
-  - `1` when an operation fails, or no host answers on the socket;
+  - `1` when an operation fails, or no gateway answers on the socket;
   - `2` on a mistaken command line, with a pointer to `--help`.
 
 ## The REPL
@@ -40,10 +40,10 @@ fleet image build [<tag>]     build the box image, fleet:local by default, from
 `box repl` leases the box, which starts it, and reads one line at a time:
 
 - `<method> [<params as a JSON object>]` sends a method to the box's helper,
-  through the host, such as `echo {"text":"hi"}` or
+  through the gateway, such as `echo {"text":"hi"}` or
   `exec {"argv":["ls","/"]}`. The result is printed as one line of JSON on
-  stdout. Errors go to stderr as `error: …`; the host refuses a method its
-  boxes do not take, and the host's own, `hello` and `services.*`.
+  stdout. Errors go to stderr as `error: …`; the gateway refuses a method
+  its boxes do not take, and the gateway's own, `hello` and `services.*`.
 - `.help` lists the methods and commands. `.exit` leaves.
 - Ctrl+D on an empty line types `.exit`, which waits behind a request in
   progress. Ctrl+C leaves at once.
@@ -55,7 +55,7 @@ piped input, it prints no prompt, so a script gets results alone on stdout.
 
 ## Built on
 
-- `FleetHost` and its socket, for `serve`; `@sleepymug/fleet-sdk`, for
+- `FleetGateway` and its socket, for `serve`; `@sleepymug/fleet-sdk`, for
   the others (docs/fleet-sdk/index.md).
 - `@sleepymug/fleet-box/image/build`, for `image build`
   (docs/fleet-box/image/index.md).

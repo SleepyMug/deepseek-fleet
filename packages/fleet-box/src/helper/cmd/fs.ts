@@ -4,7 +4,7 @@
  * in a cordis context of the helper's own, so the model's file tools behave
  * in the box as they do on a local machine. A target is the local one's:
  * its key is the canonical path in the box. A failure keeps the `FsError`
- * code, which the host gives back to dsh. Each helper has its own
+ * code, which the gateway gives back to dsh. Each helper has its own
  * {@link Files}.
  * @module @sleepymug/fleet-box/helper/cmd/fs
  */
@@ -25,7 +25,7 @@ interface Watching {
 /** The files of the box as one helper serves them, and its watches, which end with it. */
 export class Files {
   private mounted: Promise<FileSystem> | undefined
-  /** Watches running, by the host's id. */
+  /** Watches running, by the gateway's id. */
   private readonly watches = new Map<string, Watching>()
 
   /** @param cwd - the folder relative paths without a `cwd` are in. */

@@ -25,8 +25,7 @@ import { FakeFleet } from './fake-fleet.test.util.ts'
 import { tauService } from './box-service.ts'
 import { fleetOf } from './fleet.ts'
 import { Fleet } from '@sleepymug/fleet-sdk'
-import { FleetHost, Registry as FleetRegistry, systemPlatform as fleetPlatform } from '@sleepymug/fleet/host'
-import { listen } from '@sleepymug/fleet/server'
+import { FleetGateway, listen, Registry as FleetRegistry, systemPlatform as fleetPlatform } from '@sleepymug/fleet/gateway'
 import { TauService, TRACE_FORMAT, type Sessions } from './service.ts'
 
 const run = promisify(execFile)
@@ -78,7 +77,7 @@ const LEFT: Left = {
   '/tau/out/pages/a.md': 'A\n',
 }
 
-/** The tau backend on runs in `work`, with the runs at hand, its boxes the fake fleet host's, or `fleet`. */
+/** The tau backend on runs in `work`, with the runs at hand, its boxes the fake gateway's, or `fleet`. */
 function make(work: string, log: (message: string) => void, sessions: Sessions, fleet: FleetPort = new FakeFleet(work, LEFT)): TauService & { tauRuns: TauRuns } {
   const platform = systemPlatform(log)
   const runs = new TauRuns({ registry: new Registry(join(work, 'taus')), fleet, platform })
@@ -222,7 +221,7 @@ class FakeSessions implements Sessions {
   }
 }
 
-test('setting up a run\'s box makes it on the fleet host, has the box\'s half place the files, and registers the session', async (t) => {
+test('setting up a run\'s box makes it with the gateway, has the box\'s half place the files, and registers the session', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   const fleet = new FakeFleet(work, LEFT)
   const logged: string[] = []
@@ -618,12 +617,12 @@ test('a service started later watches the runs that had not ended, and fails one
 
   // dsh closes a turn a stop cut short as interrupted.
   const sessions = new FakeSessions()
-  sessions.end(running, { ok: false, text: '', failure: 'the fleet host stopped during the run' })
+  sessions.end(running, { ok: false, text: '', failure: 'dsh stopped during the run' })
   const later = make(work, () => {}, sessions, new FakeFleet(work, LEFT))
   // As fleet-tau-runs loads them, before the service.
   await later.tauRuns.load()
   await later.load()
-  assert.deepEqual(await finish(later, HOST, running), { ok: false, text: '', failure: 'the fleet host stopped during the run' })
+  assert.deepEqual(await finish(later, HOST, running), { ok: false, text: '', failure: 'dsh stopped during the run' })
   assert.deepEqual(await finish(later, HOST, unprompted), { ok: false, text: '', failure: 'dsh stopped before the run got its prompt' })
   assert.deepEqual((await later.list(HOST)).map(status => status.sessionId), [running, unprompted])
 })
@@ -738,7 +737,7 @@ test('a tau session\'s box is started for its files and processes once, and agai
   assert.equal(service.tauRuns.isStarted(sessionId), false)
   assert.equal((await service.tauRuns.boxFor(sessionId))?.id, box)
   assert.deepEqual(boxes.calls, ['start', 'stop', 'start'])
-  // Closing leaves the boxes to the fleet host, which stops each once it is idle.
+  // Closing leaves the boxes to the gateway, which stops each once it is idle.
   service.tauRuns.close()
   assert.deepEqual(boxes.calls, ['start', 'stop', 'start'])
 
@@ -789,7 +788,7 @@ test('archiving a run\'s session removes its box once the run ended, keeping the
   await service.tauRuns.boxFor(sessionId)
   assert.deepEqual(boxes.calls, [])
 
-  // And so with a box removed by other means, which the fleet host says is gone.
+  // And so with a box removed by other means, which the gateway says is gone.
   const { resetAt } = await new Registry(join(work, 'taus')).get(sessionId)
   await service.tauRuns.stop(sessionId)
   boxes.lose(rebuilt)
@@ -882,20 +881,20 @@ async function absent(image: string): Promise<string | false> {
 }
 
 /**
- * A fleet host in this process, on a socket of the test's, its boxes
+ * A gateway in this process, on a socket of the test's, its boxes
  * Docker's, with the tau service registered, as dsh-tau registers it, its
  * connections served by whichever backend `served` names.
  */
 async function realFleet(t: { after(fn: () => Promise<void>): void }, work: string, served: () => TauService & { tauRuns: TauRuns }): Promise<FleetPort> {
   const home = join(work, 'fleet')
-  const host = new FleetHost({ registry: new FleetRegistry(join(home, 'boxes')), cache: join(home, 'services'), channels: join(home, 'channels'), platform: fleetPlatform(() => {}), image: IMAGE })
-  const close = await listen(join(home, 'fleet.sock'), host)
+  const gateway = new FleetGateway({ registry: new FleetRegistry(join(home, 'boxes')), cache: join(home, 'services'), channels: join(home, 'channels'), platform: fleetPlatform(() => {}), image: IMAGE })
+  const close = await listen(join(home, 'fleet.sock'), gateway)
   const client = await Fleet.connect({ socket: join(home, 'fleet.sock') })
   await client.register(tauService(box => served().tauRuns.sessionOfBox(box), caller => served().handlerFor(caller)))
   t.after(async () => {
     await client.close()
     await close()
-    await host.close()
+    await gateway.close()
   })
   return fleetOf(client)
 }

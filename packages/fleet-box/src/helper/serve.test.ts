@@ -9,14 +9,14 @@ import { PassThrough } from 'node:stream'
 import { test } from 'node:test'
 import { NO_SERVICE, OPENED, serviceOf } from '@sleepymug/fleet-protocol/channel'
 import { SERVICES_VARIABLE } from '@sleepymug/fleet-protocol/layout'
-import type { HelperMessage, HostMessage, ServiceInBox } from '@sleepymug/fleet-protocol/helper'
+import type { HelperMessage, GatewayMessage, ServiceInBox } from '@sleepymug/fleet-protocol/helper'
 import type { ServicesLayout } from './cmd/services.ts'
 import { serve } from './serve.ts'
 
 /** A request's answer, with the events before it. */
 type Answer = Extract<HelperMessage, { id: number }> & { value?: unknown; events: unknown[] }
 
-/** A helper served in this process, as the host talks to it: requests answered by id, and what else it sends, kept. */
+/** A helper served in this process, as the gateway talks to it: requests answered by id, and what else it sends, kept. */
 class Served {
   readonly input = new PassThrough()
   readonly output = new PassThrough()
@@ -48,7 +48,7 @@ class Served {
     return await answered
   }
 
-  write(message: HostMessage | string): void {
+  write(message: GatewayMessage | string): void {
     this.input.write(`${typeof message === 'string' ? message : JSON.stringify(message)}\n`)
   }
 
@@ -86,8 +86,8 @@ async function scratch(t: { after: (fn: () => Promise<void>) => void }): Promise
   return { work, layout: { services: join(work, 'services'), bin: join(work, 'bin'), sockets: join(work, 'sockets'), channel: join(work, 'channel.sock') } }
 }
 
-/** The host's end of the box's channel, as a test has it: each stream taken by `take`, by its service, or refused. */
-async function hostChannel(t: { after: (fn: () => Promise<void>) => void }, path: string, take: (service: string, stream: ServerHttp2Stream) => boolean): Promise<void> {
+/** The gateway's end of the box's channel, as a test has it: each stream taken by `take`, by its service, or refused. */
+async function gatewayChannel(t: { after: (fn: () => Promise<void>) => void }, path: string, take: (service: string, stream: ServerHttp2Stream) => boolean): Promise<void> {
   const server = createChannel()
   server.on('stream', (stream: ServerHttp2Stream, headers) => {
     const service = serviceOf(headers[':path'])
@@ -135,7 +135,7 @@ test('a service the box holds is synced in: its commands on the PATH, its enviro
   const { work, layout } = await scratch(t)
   const helper = new Served({ PATH: process.env.PATH }, work, layout)
   t.after(() => helper.close())
-  // As the host copies a service's package in.
+  // As the gateway copies a service's package in.
   const pkg = join(layout.services, 'notes@0123456789abcdef')
   await mkdir(join(pkg, 'bin'), { recursive: true })
   await writeFile(join(pkg, 'bin', 'notes.mjs'), '#!/usr/bin/env node\nconsole.log(`notes at ${process.env.NOTES_AT}`)\n')
@@ -148,9 +148,9 @@ test('a service the box holds is synced in: its commands on the PATH, its enviro
   assert.equal(stdout(ran), 'notes at the socket\n')
   assert.deepEqual((await helper.request('which', { command: 'notes', env: { PATH: '/bin' } })).value, join(layout.bin, 'notes'))
 
-  // A program in the box opens the service's socket; the host answers for the service, on the box's channel.
+  // A program in the box opens the service's socket; the gateway answers for the service, on the box's channel.
   const streams: Array<{ service: string; stream: ServerHttp2Stream }> = []
-  await hostChannel(t, layout.channel, (service, stream) => {
+  await gatewayChannel(t, layout.channel, (service, stream) => {
     streams.push({ service, stream })
     return true
   })
@@ -164,7 +164,7 @@ test('a service the box holds is synced in: its commands on the PATH, its enviro
   socket.end()
   const { service, stream } = await until(() => streams[0])
   assert.equal(service, 'notes')
-  // The program's end is the request's, a half-close: the host answers after it.
+  // The program's end is the request's, a half-close: the gateway answers after it.
   assert.equal(await received(stream), `add ${big}\n`)
   stream.end('added\n')
   await closed
@@ -181,7 +181,7 @@ test('a service the box holds is synced in: its commands on the PATH, its enviro
   assert.equal((await helper.request('services.sync', { services: [{ ...notes, digest: 'fedcba9876543210' }] })).type, 'error')
 })
 
-test('a connection the box\'s side closes is ended on the host\'s, and one the host cuts, or refuses, is cut in the box', async (t) => {
+test('a connection the box\'s side closes is ended on the gateway\'s, and one the gateway cuts, or refuses, is cut in the box', async (t) => {
   const { work, layout } = await scratch(t)
   const helper = new Served({ PATH: process.env.PATH }, work, layout)
   t.after(() => helper.close())
@@ -189,7 +189,7 @@ test('a connection the box\'s side closes is ended on the host\'s, and one the h
   await mkdir(join(layout.services, 'gone@bbbbbbbb'), { recursive: true })
   await helper.request('services.sync', { services: [{ name: 'echo', digest: 'aaaaaaaa', bins: {}, env: {} }, { name: 'gone', digest: 'bbbbbbbb', bins: {}, env: {} }] })
   const streams: ServerHttp2Stream[] = []
-  await hostChannel(t, layout.channel, (service, stream) => {
+  await gatewayChannel(t, layout.channel, (service, stream) => {
     if (service !== 'echo') return false
     streams.push(stream)
     return true

@@ -1,5 +1,5 @@
 /**
- * One run of a scenario on a scratch fleet host and dsh: a fleet home of its
+ * One run of a scenario on a scratch gateway and dsh: a fleet home of its
  * own in a temporary folder, the checkout's `fleet serve` on it, with the
  * checkout's notes service registered; a dsh home of its own, whose profile
  * links this checkout's dsh-tau, and fleet-trace's driver (./driver.ts), and
@@ -7,8 +7,8 @@
  * workspace's, started on a free port; there, a run of the tau, through the
  * tau backend's socket, as `tau run --adaptor socket` does it, or a session
  * given a prompt, as the web UI makes one, through the driver's; and, once
- * it has ended, every run released, every box removed, dsh and the fleet
- * host stopped and the temporary folder removed. What the model was sent is
+ * it has ended, every run released, every box removed, dsh and the gateway
+ * stopped and the temporary folder removed. What the model was sent is
  * left in the output folder: every request, and the last of the scenario's
  * conversation rendered (./render.ts); and how it ended, and the caller's
  * folder after it.
@@ -52,7 +52,7 @@ export interface Scenario {
 /** This checkout. */
 const CHECKOUT = fileURLToPath(new URL('../../../', import.meta.url))
 
-/** The image the boxes run: $FLEET_TRACE_IMAGE, or the fleet host's default. */
+/** The image the boxes run: $FLEET_TRACE_IMAGE, or the gateway's default. */
 const IMAGE = process.env.FLEET_TRACE_IMAGE
 
 /**
@@ -77,13 +77,13 @@ export async function runScenario(scenarioFile: string, out: string, signal?: Ab
   let released = false
   try {
     await profile(home, model.port)
-    const hostLog = createWriteStream(join(out, 'fleet.log'))
+    const fleetLog = createWriteStream(join(out, 'fleet.log'))
     fleet = startNode(['packages/fleet/lib/cli/main.js', 'serve', ...IMAGE === undefined ? [] : ['--image', IMAGE]], fleetHome, fleetSock)
-    fleet.stderr?.pipe(hostLog, { end: false })
+    fleet.stderr?.pipe(fleetLog, { end: false })
     await until(() => existsSync(fleetSock) || fleet?.exitCode !== null)
     if (!existsSync(fleetSock)) throw new Error(`fleet-trace: fleet serve exited; see ${join(out, 'fleet.log')}`)
     notes = startNode(['services/notes/lib/main.js', '--dir', join(fleetHome, 'notes')], fleetHome, fleetSock)
-    notes.stderr?.pipe(hostLog, { end: false })
+    notes.stderr?.pipe(fleetLog, { end: false })
     dsh = startDsh(home, fleetSock)
     const exited = new Promise<never>((_, reject) => {
       dsh?.once('exit', (code, signal) => { reject(new Error(`fleet-trace: dsh exited (${signal ?? `exit ${String(code)}`}); see ${join(out, 'dsh.log')}`)) })
@@ -192,7 +192,7 @@ function packageName(path: string): string {
   return (JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')) as { name: string }).name
 }
 
-/** The workspace's dsh, in a process group of its own, so that stopping it stops pnpm and dsh both, on the fleet host at `fleetSock`. */
+/** The workspace's dsh, in a process group of its own, so that stopping it stops pnpm and dsh both, on the gateway at `fleetSock`. */
 function startDsh(home: string, fleetSock: string): ChildProcess {
   return spawn('pnpm', ['exec', 'dsh', '--profile', 'fleet', '--no-open', '--port', '0'], {
     cwd: CHECKOUT,
@@ -212,7 +212,7 @@ function startNode(argv: string[], fleetHome: string, fleetSock: string): ChildP
   })
 }
 
-/** Remove every box of the scratch fleet host, whatever a run left. */
+/** Remove every box of the scratch gateway, whatever a run left. */
 async function removeBoxes(fleetSock: string): Promise<void> {
   const client = await Fleet.connect({ socket: fleetSock })
   try {

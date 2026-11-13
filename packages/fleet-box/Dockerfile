@@ -8,5 +8,5 @@ FROM ${NODE_IMAGE}
 # The package and its node_modules at once; the links between packages in
 # node_modules are relative, and stay links.
 COPY fleet/ /opt/fleet/
-# The fleet host runs `sleep infinity` in every box, and the helper with `docker exec`.
+# The gateway runs `sleep infinity` in every box, and the helper with `docker exec`.
 ENTRYPOINT []

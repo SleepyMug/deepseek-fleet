@@ -1,31 +1,33 @@
 # fleet-protocol
 
-The fleet host's wires, shared by their ends, and where things lie in a
-box: a package of its own, of types and constants, so that no end imports
-another, and a harness or a service imports none of the host's code.
+The gateway's wires, shared by their ends, and where things lie in a box:
+a package of its own, of types and constants, so that no end imports
+another, and a harness or a fleet server imports none of the gateway's
+code.
 
 ## Provides
 
-- `@sleepymug/fleet-protocol/fleet`: the wire between the fleet host and its
+- `@sleepymug/fleet-protocol/fleet`: the wire between the gateway and its
   clients (below): `FLEET_PROTOCOL`, the message types, `Ops`, each op's
   params, result and events, the box's and the service's types, `BoxSpec`,
   `BoxInfo`, `BoxState`, `Occupant`, `ServiceSpec`, `ServiceInfo` and
   `Preamble`, the codes `BOX_GONE`, `NO_BOX` and `NOT_STARTED`, and
   `fleetHome(env)` and `fleetSocket(env)`: `$FLEET_HOME`, or `~/.fleet`, and
   `$FLEET_SOCKET`, or `fleet.sock` in the home.
-- `@sleepymug/fleet-protocol/helper`: the wire between the host and the
+- `@sleepymug/fleet-protocol/helper`: the wire between the gateway and the
   helper in a box, whose methods are docs/fleet-box/helper/index.md's:
   `PROTOCOL_VERSION`, the message types, `Methods` and `ServiceInBox`.
-- `@sleepymug/fleet-protocol/channel`: the box's channel to the host, one
-  HTTP/2 connection the helper makes to the host's socket, each connection
-  to a service's socket in the box a stream of it (docs/fleet/index.md,
-  docs/fleet-box/helper/index.md): `servicePath(name)`, `/services/<name>`,
-  the path of a service's streams, and `serviceOf(path)`; `OPENED`, `200`,
-  the status of a stream the host passes on, and `NO_SERVICE`, `404`, of
-  one it refuses; and `CONNECTION_WINDOW`, a stream's window, a mebibyte,
-  and `CHANNEL_WINDOW`, the connection's, sixteen.
+- `@sleepymug/fleet-protocol/channel`: the box's channel to the gateway, one
+  HTTP/2 connection the helper makes to the gateway's socket, each
+  connection to a service's socket in the box a stream of it
+  (docs/fleet/index.md, docs/fleet-box/helper/index.md):
+  `servicePath(name)`, `/services/<name>`, the path of a service's streams,
+  and `serviceOf(path)`; `OPENED`, `200`, the status of a stream the gateway
+  passes on, and `NO_SERVICE`, `404`, of one it refuses; and
+  `CONNECTION_WINDOW`, a stream's window, a mebibyte, and `CHANNEL_WINDOW`,
+  the connection's, sixteen.
 - `@sleepymug/fleet-protocol/layout`: where things lie in a box, which the
-  host, the helper and the services agree on:
+  gateway, the helper and the services agree on:
 
   | Constant | Value |
   |---|---|
@@ -35,23 +37,23 @@ another, and a harness or a service imports none of the host's code.
   | `BIN_DIR` | `/opt/fleet/bin`, the services' commands |
   | `SOCKETS_DIR`, `socketOf(name)` | `/run/fleet/services`, and `/run/fleet/services/<name>.sock` |
   | `SERVICES_VARIABLE` | `FLEET_SERVICES`, which names `SOCKETS_DIR` for every process |
-  | `CHANNEL_DIR`, `CHANNEL` | `/run/fleet/host`, the host's folder of the box's channel, mounted, and `/run/fleet/host/channel.sock`, its socket |
+  | `CHANNEL_DIR`, `CHANNEL` | `/run/fleet/gateway`, the gateway's folder of the box's channel, mounted, and `/run/fleet/gateway/channel.sock`, its socket |
   | `DEFAULT_IMAGE` | `fleet:local` |
 
 ## Design
 
-The host's socket is a Unix socket only its owner can open, its
+The gateway's socket is a Unix socket only its owner can open, its
 authentication. A client opens one connection and sends one JSON message a
-line, as the host does back:
+line, as the gateway does back:
 
-- client: `{ "type": "hello", "protocol": 1 }` first; the host answers
+- client: `{ "type": "hello", "protocol": 1 }` first; the gateway answers
   `{ "type": "hello", "protocol": 1 }`, or refuses another version with
   `{ "type": "error", "id": 0, "message" }` and closes.
 - client: `{ "type": "request", "id": 1, "op": "box.get", "params": { "box": "box-…" } }`,
   any number at once, each under an id of the client's;
-  `{ "type": "cancel", "id": 1 }` gives one up, its signal aborted on the
-  host, as a watch ends.
-- host: `{ "type": "event", "id": 1, "value" }`, any number before a
+  `{ "type": "cancel", "id": 1 }` gives one up, its signal aborted in the
+  gateway, as a watch ends.
+- gateway: `{ "type": "event", "id": 1, "value" }`, any number before a
   request's answer, for an op that sends them; then
   `{ "type": "result", "id": 1, "value" }`, or
   `{ "type": "error", "id": 1, "message", "code"? }`, once.
@@ -78,13 +80,13 @@ lasts.
 
 What each op does is docs/fleet/index.md's. A failure's `code` is
 `BOX_GONE`, for a box whose container was removed by other means, which its
-owner makes again; `NO_BOX`, for a box the host does not know;
+owner makes again; `NO_BOX`, for a box the gateway does not know;
 `NOT_STARTED`, for a request without `hold` of a box that is not started;
 or the helper's own, such as an `FsError`'s.
 
-A service's endpoint reads one line first of each connection the host
+A service's endpoint reads one line first of each connection the gateway
 opens to it, the `Preamble`, `{ "box", "labels" }`, the box the connection
-comes from, as the host knows it, and its labels; then the box's program's
+comes from, as the gateway knows it, and its labels; then the box's program's
 bytes, both ways (docs/fleet/services/index.md).
 
 ## Built on

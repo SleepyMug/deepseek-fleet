@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-protocol",
   "version": "0.0.1",
-  "description": "The fleet host's wires, shared by its ends: to its clients, harnesses and services, to the helper in each box, and its channel; and where things lie in a box",
+  "description": "The wires of fleet's gateway, shared by its ends: to its clients, harnesses and fleet servers, to the helper in each box, and its channel; and where things lie in a box",
   "type": "module",
   "exports": {
     "./channel": {

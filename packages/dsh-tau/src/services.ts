@@ -1,7 +1,7 @@
 /**
  * The services dsh-tau's plugins provide on dsh's context, as a plugin that
  * uses one declares it: `import type {} from '@sleepymug/dsh-tau/services'`.
- * - `ctx.fleet`: the fleet host's client (./tau/runs-plugin.ts), whose
+ * - `ctx.fleet`: the client of fleet's gateway (./tau/runs-plugin.ts), whose
  *   connection the runs' boxes, and the tau service, are held on.
  * - `ctx.fleetTauRuns`: the runs of taus and their boxes (./tau/runs-plugin.ts),
  *   as the world uses them and as the tau backend does (./tau/ports.ts).

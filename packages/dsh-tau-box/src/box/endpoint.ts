@@ -9,7 +9,7 @@
  * beside them, and reports what dsh-tau needs: the prompt, and where things
  * are. Once the run ended, dsh-tau has it pack the run's result, which
  * dsh-tau reads and checks again, since by then the box is the agent's.
- * Each runs as ./main.ts, through the fleet host's `box.pipe`, before the
+ * Each runs as ./main.ts, through the `box.pipe` of fleet's gateway, before the
  * agent does, and runs no code of the tau's, as ../protocol.ts has the
  * commands.
  * @module @sleepymug/dsh-tau-box/box/endpoint

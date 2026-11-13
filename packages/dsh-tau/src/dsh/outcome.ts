@@ -55,11 +55,11 @@ function failureOf(end: TurnEnd | undefined): string | undefined {
     case 'completed':
       return undefined
     case 'aborted':
-      if (end.reason?.kind === 'disposed') return 'the fleet host stopped during the run'
+      if (end.reason?.kind === 'disposed') return 'dsh stopped during the run'
       if (end.reason?.kind === 'hook') return `a hook cancelled the run: ${end.reason.reason ?? 'no reason given'}`
       return 'the run was cancelled'
     case 'interrupted':
-      return 'the fleet host stopped during the run'
+      return 'dsh stopped during the run'
     case 'error':
       return `the run failed: ${end.error?.message ?? 'no reason given'}`
     case 'max-tokens':

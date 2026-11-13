@@ -2,7 +2,7 @@
 
 A box is one Docker container, with fleet's helper running in it while the
 box is started. The container stays until it is removed, and keeps what is
-in it through any number of starts and stops. The fleet host keeps each box
+in it through any number of starts and stops. The gateway keeps each box
 as a `Box` (docs/fleet/index.md); this is the container and its helper alone.
 
 ## Provides
@@ -11,7 +11,7 @@ as a `Box` (docs/fleet/index.md); this is the container and its helper alone.
 
 | Verb | What it does | Using |
 |---|---|---|
-| `Box.create({ image?, name?, env?, labels?, channel? })` | Create the container, stopped, with `env` the environment of every process in it, `labels` beside its own, and the host's folder `channel`, the box's channel (docs/fleet/index.md), mounted at `/run/fleet/host`. | `docker create --init --pull never --label fleet.box --mount type=bind,… sleep infinity` |
+| `Box.create({ image?, name?, env?, labels?, channel? })` | Create the container, stopped, with `env` the environment of every process in it, `labels` beside its own, and the host folder `channel`, the box's channel (docs/fleet/index.md), mounted at `/run/fleet/gateway`. | `docker create --init --pull never --label fleet.box --mount type=bind,… sleep infinity` |
 | `Box.open(name)` | Take a box that exists already, running or not. | `docker container inspect`, which must show the label |
 | `Box.list()` | List every box, with its state. | `docker container ls --all --filter label=fleet.box` |
 | `box.start()` | Start the container, then a new helper in it, and do the handshake. | `docker start`, `docker exec --interactive` |
@@ -47,19 +47,19 @@ It also exports:
   connection.
 - **The services' connections** do not cross the helper connection: they
   come over the box's channel (`channel.ts`, docs/fleet/index.md), the
-  host's to listen on.
+  gateway's to listen on.
 - **When the helper exits on its own,** every pending and later request
   fails, and its channel's streams are cut. The container stays, and `start()`
   starts a new helper.
 - **A box keeps the image it was made from,** so a rebuilt image reaches
   only boxes made after it. The handshake refuses a helper that lacks a
-  method the host uses, or does not list its methods, and says so, rather
+  method the gateway uses, or does not list its methods, and says so, rather
   than letting each method fail on its own; `start()` then leaves the
   container stopped.
 - **Commands** of the helper's beyond the handshake have a module each in
   `box/cmd/`, beside their handler in fleet-box's `helper/cmd/`: the check
-  of the command's result, which `box/helper.ts` registers, and what the host
-  calls it with, such as `exec`.
+  of the command's result, which `box/helper.ts` registers, and what the
+  gateway calls it with, such as `exec`.
 - **Copies** work whether the box runs or not. A file goes to the path it is
   given, and a folder's contents into the folder it is given, which is made
   if it is missing. The parent must exist. A folder's copy merges into what

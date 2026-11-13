@@ -1,5 +1,5 @@
 /**
- * The host's side of the helper's `exec` (fleet-box's helper/cmd/exec):
+ * The gateway's side of the helper's `exec` (fleet-box's helper/cmd/exec):
  * the check of its answer, which the helper connection registers
  * (../helper.ts), and `exec`, which runs a program in a started box and fails
  * unless it exits with 0.

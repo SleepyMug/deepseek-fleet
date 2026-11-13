@@ -1,5 +1,5 @@
 /**
- * Where the fleet host keeps its things, in its home: its socket, the
+ * Where the gateway keeps its things, in its home: its socket, the
  * records of its boxes, and the services' packages, as it staged them.
  * @module @sleepymug/fleet/paths
  */

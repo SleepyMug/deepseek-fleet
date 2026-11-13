@@ -3,16 +3,16 @@
 Fleet is two things that run side by side, and the commands that talk to
 them:
 
-- the fleet host, `fleet serve`, which keeps the boxes, Docker containers
+- the gateway, `fleet serve`, which keeps the boxes, Docker containers
   each with fleet's helper, and the services that plug into them
   (docs/fleet/index.md), with the box image it builds from what is
   installed;
 - dsh-tau, a dsh bundle in a profile with dsh's web app, such as dsh's
   own `web` profile, whose sessions stay as dsh has them: the tau backend,
-  each run of a tau a dsh session in a box of the host's
+  each run of a tau a dsh session in a box of the gateway's
   (docs/dsh-tau/index.md);
 - tau's command, `tau`, whose socket adaptor runs taus on dsh-tau's
-  backend, and `fleet`, the host's own command.
+  backend, and `fleet`, the gateway's own command.
 
 Each package is published as `@sleepymug/<name>`, all but fleet-trace,
 which runs on a checkout only (docs/fleet-trace/index.md).
@@ -31,7 +31,7 @@ On linux, with Docker and pnpm on the PATH:
    With pnpm, `pnpm add --global @deepseek-ai/dsh@0.2.1-rc.4`, then
    `pnpm approve-builds --global` for dsh's native dependencies.
 
-2. The fleet host, with its `fleet` command, and tau's command, `tau`;
+2. The gateway, with its `fleet` command, and tau's command, `tau`;
    and, if wanted, the example service, fleet-notes, whose `notes` command
    every box then has (docs/fleet-notes/index.md):
 
@@ -44,13 +44,13 @@ On linux, with Docker and pnpm on the PATH:
 
 3. The box image, from what step 2 installed
    (docs/fleet-box/image/index.md). Build it again after each update of
-   the fleet host:
+   the gateway:
 
    ```
    fleet image build
    ```
 
-4. The fleet host, which must be running whenever dsh-tau is: in a
+4. The gateway, which must be running whenever dsh-tau is: in a
    terminal, or as a systemd user unit, its home `~/.fleet` unless
    `$FLEET_HOME` names another (docs/fleet/cli/index.md); and, beside it,
    each service, such as fleet-notes:
@@ -103,7 +103,7 @@ Each session the web UI makes has `tau_run`, which runs one too, where its
 sandbox lets it write (docs/dsh-tau/tools/index.md); and in each tau's box,
 the `tau` command runs one, as the box's run's.
 
-dsh-tau finds the fleet host on its socket, `$FLEET_SOCKET`, or
+dsh-tau finds the gateway on its socket, `$FLEET_SOCKET`, or
 `fleet.sock` in the fleet home; a profile names another, and the image of
 a run's box, with a row of its own for `fleet-tau-runs` in its
 `cordis.patch.yml`, `~/.dsh/profiles/web/cordis.patch.yml` for the `web`
@@ -132,13 +132,13 @@ switched in its chat box, as any session's:
 ```
 
 A tau that relies on a service's command, such as `notes`, says so in its
-prompt, and runs only where the fleet host has the service registered
+prompt, and runs only where the gateway has the service registered
 (tau's docs/spec/running.md).
 
 - The image holds the packages as installed on the host, and so does
-  each service's package as the host copies it into a box, so the host
+  each service's package as the gateway copies it into a box, so the host
   must be linux, on the architecture of Docker's server; and each box
-  mounts a folder of the host's, its channel to the host's services
+  mounts a folder of the host's, its channel to the gateway's services
   (docs/fleet/index.md), so Docker's server must be the host's own, not a
   remote one or Docker Desktop's VM.
 - dsh's sandbox, which confines the sessions the web UI makes, needs
@@ -189,7 +189,7 @@ pins, run as `pnpm exec dsh` in place of `dsh`.
    mkdir -p ~/.config/tau && printf 'adaptor: socket\nadaptors:\n  socket: { path: ~/.dsh/tau/tau.sock }\n' > ~/.config/tau/config.yaml
    ```
 
-5. Run the fleet host, the notes service, and dsh, each in a terminal of
+5. Run the gateway, the notes service, and dsh, each in a terminal of
    its own:
 
    ```

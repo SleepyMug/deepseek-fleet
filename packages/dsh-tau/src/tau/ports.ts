@@ -2,9 +2,10 @@
  * What the runs of taus (./runs.ts) give those that build on them, each
  * as much as it uses: the world, the `tau` preset's plugins and `tau_run`,
  * which ask which sessions are a tau's and use their boxes
- * ({@link TauBoxes}); and the tau backend, which submits, watches, finishes
- * and releases runs ({@link RunLifecycle}); and what the runs build on of the
- * fleet host ({@link FleetPort}), its client's, as a test stands in for it.
+ * ({@link TauBoxes}); and the tau backend, which submits, watches,
+ * finishes and releases runs ({@link RunLifecycle}); and what the runs
+ * build on of fleet's gateway ({@link FleetPort}), its client's, as a test
+ * stands in for it.
  * @module @sleepymug/dsh-tau/tau/ports
  */
 
@@ -13,7 +14,7 @@ import type { EventOf, Method, Methods } from '@sleepymug/fleet-protocol/helper'
 import type { Result } from '@sleepymug/dsh-tau-box/runs'
 import type { Caller, Entry } from './registry.ts'
 
-/** What the runs use of the fleet host: its boxes. */
+/** What the runs use of fleet's gateway: its boxes. */
 export interface FleetPort {
   /** Make a box, stopped, and give its id. */
   create(spec: BoxSpec): Promise<string>
@@ -22,7 +23,7 @@ export interface FleetPort {
   services(): Promise<ServiceInfo[]>
 }
 
-/** A box of the fleet host's, as fleet-sdk's `FleetBox` is. */
+/** A box of the gateway's, as fleet-sdk's `FleetBox` is. */
 export interface FleetBoxPort {
   readonly id: string
   request<M extends Method>(method: M, params: Methods[M]['params'], options?: { onEvent?: (event: EventOf<M>) => void; hold?: boolean }): Promise<Methods[M]['result']>
@@ -43,7 +44,7 @@ export interface FleetBoxPort {
 
 /** A session's box, as the world asks of it: its helper's requests, of the box started. */
 export interface RunBox {
-  /** Its id, the fleet host's. */
+  /** Its id, the gateway's. */
   readonly id: string
   request<M extends Method>(method: M, params: Methods[M]['params'], onEvent?: (event: EventOf<M>) => void): Promise<Methods[M]['result']>
 }
@@ -80,7 +81,7 @@ export interface About {
 export interface Started {
   /** The session the run is, minted here, which is the run's id. */
   sessionId: string
-  /** The box's id, the fleet host's. */
+  /** The box's id, the gateway's. */
   box: string
   /** The tau's prompt, expanded with where the box has each file. */
   prompt: string
@@ -99,7 +100,7 @@ export interface InitEnd {
 export interface TauBoxes {
   /** Whether a session is a tau's, at once, so that a caller that cannot wait, such as a process's start, can ask. */
   isTau(sessionId: string): boolean
-  /** The services of a tau's session's box, as the fleet host has them, each with its commands. */
+  /** The services of a tau's session's box, as the gateway has them, each with its commands. */
   services(sessionId: string): Promise<ServiceInfo[]>
   /** A tau's session's registry entry; a session that is not a tau's fails. */
   entry(sessionId: string): Promise<Entry>
@@ -148,7 +149,7 @@ export interface TauBoxes {
 export interface RunLifecycle {
   /** Whether a session is a tau's: one the runs have, not released. */
   isTau(sessionId: string): boolean
-  /** The tau's session whose box `box` is, the fleet host's id of it; undefined for a box that is no run's. */
+  /** The tau's session whose box `box` is, the gateway's id of it; undefined for a box that is no run's. */
   sessionOfBox(box: string): string | undefined
   /** A session's registry entry; a session that is not a tau's fails. */
   entry(sessionId: string): Promise<Entry>

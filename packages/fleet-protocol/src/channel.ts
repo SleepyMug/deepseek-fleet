@@ -1,14 +1,14 @@
 /**
- * The box's channel to the host: one HTTP/2 connection, which the helper
- * makes to the host's socket at the layout's `CHANNEL`, carrying the
+ * The box's channel to the gateway: one HTTP/2 connection, which the helper
+ * makes to the gateway's socket at the layout's `CHANNEL`, carrying the
  * connections programs in the box open to its services' sockets, each a
  * stream of its own. The helper sends one request a connection, `POST` to
  * {@link servicePath} of the service, whose body is what the program
- * sends, up to its end, and the host answers {@link OPENED} before the
+ * sends, up to its end, and the gateway answers {@link OPENED} before the
  * response's body, what the service sends back, up to its end: so each
  * side's end is a half-close, as on a socket, and a reset stream is a cut
  * connection. Only the box's helper reaches the socket, which is the box's
- * own, so the host knows the box by the socket a stream comes in on, never
+ * own, so the gateway knows the box by the socket a stream comes in on, never
  * by what the box says. HTTP/2's own flow control paces each stream and the
  * connection. Shared by both ends, so it holds only types and constants.
  * @module @sleepymug/fleet-protocol/channel
@@ -25,7 +25,7 @@ export function serviceOf(path: string | undefined): string | undefined {
   return match?.[1]
 }
 
-/** The status of a stream the host passes on to its service. */
+/** The status of a stream the gateway passes on to its service. */
 export const OPENED = 200
 
 /** The status of a stream for a service the box does not have now. */

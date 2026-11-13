@@ -14,7 +14,7 @@ const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 
 type Run = Pick<Entry, 'files' | 'exposed' | 'skills'>
 
-/** A service of a box's, as the fleet host lists it. */
+/** A service of a box's, as fleet's gateway lists it. */
 type Service = { name: string; description: string; bins: Record<string, string> }
 
 /** A context with the prompt plugin, and the one tau's session `SESSION`, whose run `run` has, its box's services `services`. */

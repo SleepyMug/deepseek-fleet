@@ -24,7 +24,7 @@ Commands:
 /** Send a request on the service's socket, and give back its answer's value. */
 function ask(request: Request): Promise<unknown> {
   const folder = process.env.FLEET_SERVICES
-  if (folder === undefined || folder === '') return Promise.reject(new Error('$FLEET_SERVICES is not set: this is no box of the fleet host\'s'))
+  if (folder === undefined || folder === '') return Promise.reject(new Error('$FLEET_SERVICES is not set: this is no box fleet\'s gateway made'))
   return new Promise((resolve, reject) => {
     const socket = createConnection(join(folder, `${SERVICE}.sock`))
     let text = ''

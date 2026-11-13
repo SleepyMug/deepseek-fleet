@@ -1,12 +1,12 @@
 /**
- * The services registered with the fleet host (docs/fleet/services/index.md):
- * each a gateway, a socket of its own on the host, and a node package, the
- * means of calling it, which the host stages as installed, with the
- * packages it depends on, and copies into every box that has the service,
- * its commands on the box's PATH. A connection a program in a box opens to
- * the service's socket there the host passes on to the gateway, a
- * connection of its own to the service's socket, after a line saying which
- * box it comes from, as the host knows it, never as the box says.
+ * The services registered with the gateway (docs/fleet/services/index.md):
+ * each a fleet server, on a socket of its own on the host, and a node
+ * package of its own, which the gateway stages as installed,
+ * with the packages it depends on, and copies into every box that has the
+ * service, its commands on the box's PATH. A connection a program in a box
+ * opens to the service's socket there the gateway passes on to its server,
+ * a connection of its own to the server's endpoint, after a line saying
+ * which box it comes from, as the gateway knows it, never as the box says.
  * @module @sleepymug/fleet/services
  */
 
@@ -31,7 +31,7 @@ const BIN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
 
 /** A service registered, with its staged package and who registered it. */
 interface Registered extends ServiceInfo {
-  /** Its staged package, `<name>@<digest>` in the host's cache. */
+  /** Its staged package, `<name>@<digest>` in the gateway's cache. */
   staged: string
   endpoint: string
   owner: unknown
@@ -51,7 +51,7 @@ export class Services {
   constructor(private readonly deps: ServicesDeps) {}
 
   /**
-   * Register a service, for its owner, a client of the host, until it
+   * Register a service, for its owner, a client of the gateway, until it
    * unregisters it, or its connection ends: its package staged and digested.
    * @throws for a spec that is not one, a name another owner has, or a command another service has.
    */
@@ -84,7 +84,7 @@ export class Services {
     return infoOf(service)
   }
 
-  /** Unregister a service, if its owner registered it, or the host does; the boxes keep its package, and lose the rest. */
+  /** Unregister a service, if its owner registered it, or the gateway does; the boxes keep its package, and lose the rest. */
   unregister(name: string, owner?: unknown): void {
     const service = this.registered.get(name)
     if (service === undefined || (owner !== undefined && service.owner !== owner)) return
@@ -135,17 +135,17 @@ export class Services {
 
   private relay(record: BoxRecord, service: Registered, connection: Duplex): void {
     const { name } = service
-    const gateway = createConnection({ path: service.endpoint, allowHalfOpen: true })
+    const server = createConnection({ path: service.endpoint, allowHalfOpen: true })
     const preamble: Preamble = { box: record.id, labels: record.labels }
-    gateway.write(`${JSON.stringify(preamble)}\n`)
-    connection.pipe(gateway)
-    gateway.pipe(connection)
-    connection.on('error', () => { gateway.destroy() })
-    gateway.on('error', (error) => {
+    server.write(`${JSON.stringify(preamble)}\n`)
+    connection.pipe(server)
+    server.pipe(connection)
+    connection.on('error', () => { server.destroy() })
+    server.on('error', (error) => {
       this.deps.platform.log(`could not relay a connection of ${record.id} to the service ${name}: ${messageOf(error)}`)
       connection.destroy(error)
     })
-    gateway.on('close', () => { if (!connection.writableEnded) connection.destroy() })
+    server.on('close', () => { if (!connection.writableEnded) connection.destroy() })
   }
 }
 

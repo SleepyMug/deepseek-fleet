@@ -2,24 +2,24 @@
 
 The tau backend, the backend of tau's socket adaptor (tau's
 docs/spec/socket.md): tau's client, the `tau` command or its SDK, hands it
-runs, and the backend runs each as a box on the fleet host
+runs, and the backend runs each as a box on fleet's gateway
 (docs/fleet/index.md) and a dsh session, watches it until its agent is
 done, then gives back how it ended, with what it left at its `out` and
 `inout` files, and releases runs. It runs in dsh's process, in the profile
 dsh-tau is installed in, such as dsh's `web` (docs/install.md), beside the
-fleet host, which runs on its own. It is built on tau's backend SDK (tau's
+gateway, which runs on its own. It is built on tau's backend SDK (tau's
 docs/spec/backend.md). A run comes as a **call** and goes back as a
 **result**, the archives of tau's docs/spec/serialization.md: the caller's
 adaptor packs the call from its files, and checks the result and puts it
 at its paths, so the backend never learns a caller's paths, and serves a
 caller on the host and one in a box alike. A submit makes the run's box on
-the fleet host, has dsh-tau's half there set it up, mints the session's id
+the gateway, has dsh-tau's half there set it up, mints the session's id
 and expands its prompt, then makes the dsh session, in the caller's folder
 as its workspace, so the web UI lists it there, and gives it the prompt,
 once the tau's init, if it has one, asks for the agent. The session's bash
 and file tools work in its box, through dsh-tau's world
 (docs/dsh-tau/world/index.md). And the backend registers the tau service
-with the fleet host, which puts the `tau` command in every box, whose runs
+with the gateway, which puts the `tau` command in every box, whose runs
 are that box's run's.
 
 ## Provides
@@ -27,19 +27,19 @@ are that box's run's.
 Four dsh plugins, which dsh-tau's `cordis.patch.yml` mounts:
 
 - `fleet-tau-runs` (`@sleepymug/dsh-tau/tau/runs-plugin`): the runs of
-  taus and their boxes (`runs.ts`), as `ctx.fleetTauRuns`, and the fleet
-  host's client, as `ctx.fleet`. It uses nothing of dsh's. The runs
+  taus and their boxes (`runs.ts`), as `ctx.fleetTauRuns`, and the client
+  of fleet's gateway, as `ctx.fleet`. It uses nothing of dsh's. The runs
   put together what a run needs: its admission (`admission.ts`), its box's
   setup by dsh-tau's half in the box (`box-setup.ts`), the registry
   (`registry.ts`), and each session's box (`session-box.ts`), all on the
-  fleet host through its `FleetPort` (`ports.ts`). Its config:
+  gateway through its `FleetPort` (`ports.ts`). Its config:
 
   | Field | What it is |
   |---|---|
   | `dshHome` | The dsh home, absolute, as `dshHomePath()` in the patch. |
-  | `fleetSocket` | The fleet host's socket; unset, `$FLEET_SOCKET`, or `fleet.sock` in the fleet home (docs/fleet-protocol/index.md). |
-  | `image` | The image of a run's box; unset, the fleet host's own. |
-  | `idleStopMs` | How long a run's box nothing occupies runs before the fleet host stops it; unset, the host's own. The patch sets 60 s. |
+  | `fleetSocket` | The gateway's socket; unset, `$FLEET_SOCKET`, or `fleet.sock` in the fleet home (docs/fleet-protocol/index.md). |
+  | `image` | The image of a run's box; unset, the gateway's own. |
+  | `idleStopMs` | How long a run's box nothing occupies runs before the gateway stops it; unset, the gateway's own. The patch sets 60 s. |
 
 - `fleet-tau-model` (`@sleepymug/dsh-tau/tau/model-plugin`): the model
   every tau's session starts on (`model.ts`), in place of dsh's default, as
@@ -88,7 +88,7 @@ Four dsh plugins, which dsh-tau's `cordis.patch.yml` mounts:
 - `fleet-tau` (`@sleepymug/dsh-tau/tau/plugin`): the tau backend
   (`service.ts`). It builds on `ctx.fleetTauRuns`, `ctx.fleet`,
   dsh's session controller, its workspace registry and its agents. It
-  registers the tau service with the fleet host (`box-service.ts`, below),
+  registers the tau service with the gateway (`box-service.ts`, below),
   then serves the backend's requests (`wire.ts`) with tau's `listenSocket`
   on `$DSH_HOME/tau/tau.sock`, for the host's `tau --adaptor socket`: a
   run's, as tau's socket adaptor makes them (tau's docs/spec/socket.md),
@@ -96,7 +96,7 @@ Four dsh plugins, which dsh-tau's `cordis.patch.yml` mounts:
 
 | Request | What it does |
 |---|---|
-| `submit { title, project? }`, then the call | Start a run of the call, which carries the tau: admit it, make its box on the fleet host and set it up, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch. Answers `{ id }`, the session's id. |
+| `submit { title, project? }`, then the call | Start a run of the call, which carries the tau: admit it, make its box on the gateway and set it up, make the dsh session, titled `title`, in the dsh workspace of `project`, and give it its prompt, or, for a tau with an init, leave that to the run's watch. Answers `{ id }`, the session's id. |
 | `status { id }` | Where the run is, at once, as tau's status has it: `{ state: "running" }`, or, once it ended, `{ state: "ended", result: 1, ok, failure? }`, a run having one result. |
 | `result { id }` | Answer `{ result: 1 }`, then send the run's result, the same each time, at once, refused while the run is running; the caller's adaptor checks it, and puts what it gave back at the caller's paths. |
 | `trace { id }` | The run's trace, `{ format: "dsh-session-events", events }`, its session's events, ended or not (below). |
@@ -113,7 +113,7 @@ serves the requests as `caller`'s, to the sessions' two ways in, each
 with tau's client and its socket adaptor:
 
 - a tau's session calls it from its box, with the `tau` command there,
-  through the tau service, whose connections the fleet host relays from
+  through the tau service, whose connections the gateway relays from
   the box, saying which box each comes from (below); its runs are in its
   own project;
 - another session, such as the web UI's, calls it with `tau_run`
@@ -122,16 +122,16 @@ with tau's client and its socket adaptor:
   folder.
 
 The tau service (`box-service.ts`) is what the backend registers with the
-fleet host (docs/fleet/services/index.md), for as long as `fleet-tau` is
+gateway (docs/fleet/services/index.md), for as long as `fleet-tau` is
 loaded, before it serves its socket, since every run's box sets itself up
 with its package:
 
 | Field | What it is |
 |---|---|
 | `name` | `tau`, whose socket in a box is `/run/fleet/services/tau.sock`. |
-| `package` | dsh-tau-box (docs/dsh-tau-box/index.md), as installed beside dsh-tau, which the host stages and puts in every box: the `tau` command on the box's PATH, and dsh-tau's half of a run's box. |
+| `package` | dsh-tau-box (docs/dsh-tau-box/index.md), as installed beside dsh-tau, which the gateway stages and puts in every box: the `tau` command on the box's PATH, and dsh-tau's half of a run's box. |
 | `env` | `TAU_ADAPTOR=socket` and `TAU_SOCKET=/run/fleet/services/tau.sock`, for every process in a box, so the `tau` command runs taus on the service. |
-| `serve` | Each connection, with tau's `serveConnection`, as the requests of the session whose box the host says it comes from (`sessionOfBox`); a box that is no run's is refused each request. |
+| `serve` | Each connection, with tau's `serveConnection`, as the requests of the session whose box the gateway says it comes from (`sessionOfBox`); a box that is no run's is refused each request. |
 
 The patch also declares `tau`, the agent preset a tau's session has, last
 in the web UI's list: a persona, the tau's prompt plugin
@@ -169,16 +169,16 @@ their boxes:
   the session is archived;
 - `hold(sessionId, occupant)`, the same, leased by `occupant`, a turn, a
   terminal, a process, a call or a file call, until its release, so the
-  fleet host does not stop the box for being idle while it is in use;
+  gateway does not stop the box for being idle while it is in use;
   `occupy` leases it without asking for it to start, as a running agent
   does;
 - `isStarted(sessionId)` and `whenStarted(sessionId, signal)`, whether the
-  box is started, as the fleet host last said, and the box once something
+  box is started, as the gateway last said, and the box once something
   starts it, which starts nothing, for a watch;
 - `copyInOnce(sessionId, from, to)`, at once, a host file copied into the
   box of a tau's session before its next use, for dsh's attachments;
 - `services(sessionId)`, the services of a tau's session's box, as the
-  fleet host lists them, for its prompt.
+  gateway lists them, for its prompt.
 
 ## Design
 
@@ -195,14 +195,14 @@ their boxes:
      against the schema. Where the box places each file is the box's.
      Problems name the tau by the run's title. Here `session-<uuid>` is
      minted, the form dsh's session ids take, which the dsh session gets.
-  2. It makes the box on the fleet host (`box.create`), its labels
+  2. It makes the box on fleet's gateway (`box.create`), its labels
      `dsh.session`, the session's id, `tau.title`, the run's title, and,
      for a run a session started, `tau.parent`, that session's id; its
      environment `BOX_ENV`, `TAU_CONTEXT=/tau/context.json`; and the config's image and idle time, if it names
      them. Every box has every service registered, the tau service among
      them.
   3. It has dsh-tau's half in the box set it up from the call
-     (`box-setup.ts`; dsh-tau-box's `setup`, below), through the host's
+     (`box-setup.ts`; dsh-tau-box's `setup`, below), through the gateway's
      `box.pipe`, the call's file its stdin, which starts the box and holds
      it while it runs; the half reports the prompt and where things are.
   4. It writes the registry entry, with the box's id, the files it
@@ -216,8 +216,8 @@ their boxes:
 - **dsh-tau's half in the box** (dsh-tau-box, docs/dsh-tau-box/index.md):
   the box's half of the backend, built on tau's backend SDK, which owns
   where a run has its things in its box, in the tau service's package,
-  which the fleet host puts in every box at `/opt/fleet/services/tau`. The
-  backend runs it with the host's `box.pipe`, since the helper's lines of
+  which the gateway puts in every box at `/opt/fleet/services/tau`. The
+  backend runs it with the gateway's `box.pipe`, since the helper's lines of
   JSON would carry the archives only as text, each command as
   dsh-tau-box/protocol makes and reads it, with host files for its input
   and output:
@@ -274,7 +274,7 @@ their boxes:
   read, never written, by what the agent runs.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/tau/runs/<session id>.json`: who started the run, its
-  caller; the box, the fleet host's id of it; the run's title, the
+  caller; the box, the gateway's id of it; the run's title, the
   project, the expanded prompt and the request id it is sent under, the
   tau's init, its expanded command and where it runs in the box, if it has
   one, each file (its name, mode, kind and base name, what `tau.json` says
@@ -338,7 +338,7 @@ their boxes:
   run, as dsh disposes of the agent then (`aborted` by `disposed`), or
   closes the cut turn later (`interrupted`); the model's error; and so on.
   The backend keeps the run's result, records how it ended in the entry,
-  and asks the fleet host to stop the box as soon as nothing leases it
+  and asks the gateway to stop the box as soon as nothing leases it
   (`stopWhenVacant`), which keeps what is in it. What a person does in the
   session later, in the web UI, is the session's, not the run's.
 - **Watching.** A run is watched from its start; when the backend loads,
@@ -378,14 +378,14 @@ their boxes:
   every run it started first, its result taken or not, and theirs.
 - **Releasing** stops the run's init, if it runs, and archives the
   session, stopping its work, since dsh does not delete sessions; then it
-  removes the box through the fleet host, which a host that does not know
+  removes the box through the gateway, which a gateway that does not know
   it any more lets be, and the session's folder, and forgets the session.
   It is the only way to stop a run, as tau's protocol has it. A session
   never started is not dsh's, so there is nothing to archive. An archive
   that fails keeps the box and the entry.
 - **A run from a box is the box's run's.** The `tau` command in a tau's
   box is tau's client, whose socket adaptor reaches the tau service's
-  socket there; the fleet host relays each connection to the service,
+  socket there; the gateway relays each connection to the service,
   saying which box it comes from, which a box cannot say for itself; and
   the service serves it as the requests of the session whose box that is,
   as the runs know it (`sessionOfBox`). So a run a box starts is that
@@ -410,26 +410,26 @@ their boxes:
   call. The calls are counted with no cap too, so a cap set later counts
   those under way; a raised cap admits waiting calls as the next lane is
   taken or given back.
-- **An idle box is stopped by the fleet host.** A session's box runs
+- **An idle box is stopped by the gateway.** A session's box runs
   while anything leases it: its agent while it runs (`fleet-tau` follows
   `agent/status` and `agent/disposed`, and leases the box without starting
   it), and the world's file calls, processes and terminals, each through
   `hold` from before it asks for the box until nothing of it can reach the
-  box. When the last lease is released, the host stops the box after its
+  box. When the last lease is released, the gateway stops the box after its
   idle time, unless something leases it again meanwhile; its next use
-  starts it again. A run's end asks the host to stop its box at once,
+  starts it again. A run's end asks the gateway to stop its box at once,
   unless something leases it, such as a user's terminal, and then as soon
   as nothing does. `boxFor` leases for no longer than it asks, so a box it
   starts for no one stops once it is idle. Every lease is held on
   `ctx.fleet`'s connection, so one dsh no longer holds, as when it
-  exits, is released, and the host stops each box once it is idle.
+  exits, is released, and the gateway stops each box once it is idle.
 - **One `SessionBox` per session** (`session-box.ts`) keeps all that is
   the box's on dsh-tau's side: the box's id, which a box set up again
   changes; the session's operations on it, one after another, so that a
   start, a stop, a copy, a pack and a release keep their order; its state,
-  as the host tells it, which it follows once something asks; what waits
+  as the gateway tells it, which it follows once something asks; what waits
   for it to start; the host files copied in; and whether it is archived.
-  It is given its box's id, the fleet host, the platform, and what sets it
+  It is given its box's id, the gateway, the platform, and what sets it
   up again from the run's call, which the runs do.
 - **Which sessions are a tau's.** The runs read the registry's entries when
   the plugin loads, each session's project and box with its id, and keep
@@ -441,7 +441,7 @@ their boxes:
   since archiving has no event of its own, and tells the backend, as it
   loads and on each change. A run whose session is archived, or whose
   caller is, or the caller's caller, and so on through the registry's
-  callers, has its box removed through the fleet host once the run has
+  callers, has its box removed through the gateway once the run has
   ended, since the box packs the run's result as it ends: a
   stop-and-archive cancels the run's turn, and the run ends soon after.
   Its entry, call and result stay, so its caller can still take its
@@ -449,7 +449,7 @@ their boxes:
   `boxFor` fails, and so does the world's work in the box. A session that
   no longer is archived has no box until its next use.
 - **A box gone is set up again** from the run's call, which the session's
-  folder keeps, when a lease of it fails because the fleet host says it is
+  folder keeps, when a lease of it fails because the gateway says it is
   gone (`BOX_GONE`), its container removed by other means, or does not
   know it (`NO_BOX`), as after an unarchive: the call is admitted again,
   a new box made with the same labels and environment, set up by
@@ -487,7 +487,7 @@ their boxes:
   says to write programs anywhere below `/tau`, such as in
   `/tau/programs`, or pipe them to `node -` in the working directory, so
   that they import the tau's packages by name, and lists each exposed package, with where it is and what it says
-  it is; and, from the fleet host's list of the services, a section,
+  it is; and, from the gateway's list of the services, a section,
   `fleet:tau-services`, lists the box's services, each with its directory,
   `/opt/fleet/services/<name>`, where its code is, its commands, if it has
   any, which are on the PATH, and what the service says it is, such as
@@ -573,7 +573,7 @@ their boxes:
   it, up to the end of what the client sends, and one out, with a result
   after it, for a result request. A socket a backend answers on is not
   taken over; one left by a backend that died is. Each connection the
-  fleet host relays from a box is served the same way, with
+  gateway relays from a box is served the same way, with
   `serveConnection`.
 - **The requests** (`wire.ts`), however they come, go through one
   handler, `handlerFor(caller)`: tau's `readRunRequest` checks a run's,
@@ -594,13 +594,13 @@ their boxes:
   the patch.
 - **Two plugins, in the order they need each other.** dsh's session
   controller needs `ctx.fs`, the world's, which needs the runs. So the runs
-  are a plugin of their own, which needs only the fleet host, and the tau
+  are a plugin of their own, which needs only the gateway, and the tau
   backend, which needs the session controller, comes last:
 
   ```
-  fleet host  ←  fleet-tau-runs  ←  fleet-fs, fleet-subprocess  ←  session controller
-                      ↑                                                  ↑
-                      └──────────────────  fleet-tau  ───────────────────┘
+  gateway  ←  fleet-tau-runs  ←  fleet-fs, fleet-subprocess  ←  session controller
+                   ↑                                                  ↑
+                   └──────────────────  fleet-tau  ───────────────────┘
   ```
 
 ## Not yet
@@ -621,8 +621,8 @@ their boxes:
 - A box left by a dsh that died while it set up a run stays. `fleet box
   list` shows it, its labels naming its session, and `fleet box rm`
   removes it.
-- The fleet host must be running before dsh-tau loads: its client connects
-  at once, and dsh-tau does not start the host.
+- fleet's gateway must be running before dsh-tau loads: its client
+  connects at once, and dsh-tau does not start the gateway.
 - A call waiting for a lane shows nothing of it: its session looks as if
   its model were slow to answer.
 - A run cannot name a model of its own: each tau's session starts on
@@ -637,7 +637,7 @@ their boxes:
 
 ## Built on
 
-- The fleet host (docs/fleet/index.md), through `@sleepymug/fleet-sdk`
+- fleet's gateway (docs/fleet/index.md), through `@sleepymug/fleet-sdk`
   (docs/fleet-sdk/index.md): `box.create`, `box.lease` and
   `box.release`, `box.watch`, `box.request`, `box.pipe`, `box.copyIn`,
   `box.stop`, `box.stopWhenVacant`, `box.remove`, `service.register` and
@@ -671,7 +671,7 @@ their boxes:
 
 ## How it runs
 
-The fleet host runs on its own, `fleet serve` (docs/fleet/cli/index.md).
+fleet's gateway runs on its own, `fleet serve` (docs/fleet/cli/index.md).
 dsh's `web` profile lists dsh-tau after dsh's base and web bundles, in
 `$DSH_HOME/profiles/web/package.json`:
 

@@ -23,9 +23,9 @@ test('a run succeeds if its last turn completed, and says why it failed otherwis
   const failures: [unknown, string][] = [
     [undefined, 'the run ended before its agent finished a turn'],
     [{ kind: 'aborted', reason: { kind: 'user' } }, 'the run was cancelled'],
-    [{ kind: 'aborted', reason: { kind: 'disposed' } }, 'the fleet host stopped during the run'],
+    [{ kind: 'aborted', reason: { kind: 'disposed' } }, 'dsh stopped during the run'],
     [{ kind: 'aborted', reason: { kind: 'hook', reason: 'over budget' } }, 'a hook cancelled the run: over budget'],
-    [{ kind: 'interrupted' }, 'the fleet host stopped during the run'],
+    [{ kind: 'interrupted' }, 'dsh stopped during the run'],
     [{ kind: 'error', error: { message: 'rate limited' } }, 'the run failed: rate limited'],
     [{ kind: 'max-tokens' }, 'the model reached its output limit'],
     [{ kind: 'blocked' }, 'the run\'s last turn ended blocked'],

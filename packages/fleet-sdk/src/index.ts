@@ -1,5 +1,5 @@
 /**
- * `@sleepymug/fleet-sdk`: the fleet host's client (./client.ts), and the
+ * `@sleepymug/fleet-sdk`: the gateway's client (./client.ts), and the
  * wire's types it speaks (fleet-protocol).
  * @module @sleepymug/fleet-sdk
  */

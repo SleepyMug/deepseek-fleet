@@ -1,5 +1,5 @@
 /**
- * The host's end of a helper (fleet-protocol's helper): it starts the helper
+ * The gateway's end of a helper (fleet-protocol's helper): it starts the helper
  * with a command, completes the handshake, and matches answers, and the
  * events before them, to requests; the box's services' connections cross
  * its channel instead (../channel.ts). Whatever runs in the box can
@@ -11,7 +11,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from '@sleepymug/fleet-protocol/helper'
+import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type GatewayMessage, type Method, type Methods } from '@sleepymug/fleet-protocol/helper'
 import { isExecResult } from './cmd/exec.ts'
 import { isDirEntries, isEditOutcome, isInfoOrNull, isPathInfoOrNull, isString, isTarget, isWatchEvent, isWriteOutcome } from './cmd/fs.ts'
 import { isInstalled } from './cmd/services.ts'
@@ -117,7 +117,7 @@ export class Helper {
       const missing = methods === undefined ? undefined : METHODS.filter(method => !methods.includes(method))
       if (missing === undefined || missing.length > 0) {
         const lacks = missing === undefined ? 'does not list its methods' : `serves no ${missing.join(', ')}`
-        throw new Error(`fleet: the helper ${lacks}: its box was made from an older image than this host's; a new box gets the current one`)
+        throw new Error(`fleet: the helper ${lacks}: its box was made from an older image than this gateway's; a new box gets the current one`)
       }
     } catch (error) {
       await helper.close()
@@ -152,7 +152,7 @@ export class Helper {
     return this.closing
   }
 
-  private send(message: HostMessage): void {
+  private send(message: GatewayMessage): void {
     this.child.stdin.write(`${JSON.stringify(message)}\n`)
   }
 

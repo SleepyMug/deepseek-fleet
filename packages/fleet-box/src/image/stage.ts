@@ -8,7 +8,7 @@
  * installed or compiled, so a box runs what the host runs; since the
  * package manager chose the platform-specific packages for this machine,
  * the box must be linux on its architecture. The image takes fleet-box so
- * (./build.ts), and the fleet host each service's package, for the boxes
+ * (./build.ts), and the gateway each service's package, for the boxes
  * that have it.
  * @module @sleepymug/fleet-box/image/stage
  */

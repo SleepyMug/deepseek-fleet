@@ -1,15 +1,15 @@
 /**
  * fleet-tau-runs, the runs of taus and their boxes (./runs.ts), as a dsh
  * plugin that provides them as `ctx.fleetTauRuns`, for dsh-tau's world
- * (../world/) and the tau backend (./plugin.ts). It builds on the fleet
- * host, which keeps the boxes, through its client, on the host's socket, and
- * nothing of dsh's, so it loads before dsh's session controller, which needs
- * the world's `ctx.fs`. Its config names the dsh home, where it keeps the
- * registry; and the fleet host's socket, the image of a run's box, and how
- * long a box nothing occupies runs before the host stops it, each the
- * host's own without it. It prints what it does on dsh's stderr
- * (../platform.ts). As it unloads, when dsh exits, it closes its client, so
- * the host lets each box stop once it is idle.
+ * (../world/) and the tau backend (./plugin.ts). It builds on fleet's
+ * gateway, which keeps the boxes, through its client, on the gateway's
+ * socket, and nothing of dsh's, so it loads before dsh's session
+ * controller, which needs the world's `ctx.fs`. Its config names the dsh
+ * home, where it keeps the registry; and the gateway's socket, the image
+ * of a run's box, and how long a box nothing occupies runs before the
+ * gateway stops it, each the gateway's own without it. It prints what it
+ * does on dsh's stderr (../platform.ts). As it unloads, when dsh exits, it
+ * closes its client, so the gateway lets each box stop once it is idle.
  * @module @sleepymug/dsh-tau/tau/runs-plugin
  */
 
@@ -27,11 +27,11 @@ export const name = 'fleet-tau-runs'
 export interface Config {
   /** The dsh home, absolute. */
   dshHome: string
-  /** The fleet host's socket; `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, by default. */
+  /** The gateway's socket; `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, by default. */
   fleetSocket?: string
-  /** The image a run's box runs; the fleet host's default by default. */
+  /** The image a run's box runs; the gateway's default by default. */
   image?: string
-  /** How long a box nothing occupies runs before it is stopped, in milliseconds; the fleet host's default by default. */
+  /** How long a box nothing occupies runs before it is stopped, in milliseconds; the gateway's default by default. */
   idleStopMs?: number
 }
 

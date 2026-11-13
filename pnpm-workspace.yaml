@@ -1,7 +1,7 @@
 packages:
   - packages/*
-  # Services of the fleet host, examples and built in, each a host package
-  # and the package it puts in the boxes, the means to call it.
+  # Services of the gateway, examples and built in, each its fleet server's
+  # package and the package it puts in the boxes.
   - services/*
   - services/*/box
   # tau, a repository of its own, a submodule here, at the commit this one

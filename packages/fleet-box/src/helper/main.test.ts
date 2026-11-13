@@ -8,7 +8,7 @@ import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { EXECUTABLE_NOT_FOUND, PROTOCOL_VERSION, type HelperMessage as Message, type HostMessage } from '@sleepymug/fleet-protocol/helper'
+import { EXECUTABLE_NOT_FOUND, PROTOCOL_VERSION, type HelperMessage as Message, type GatewayMessage } from '@sleepymug/fleet-protocol/helper'
 
 /** What the helper sends of a request: its events and its answer. */
 type HelperMessage = Extract<Message, { id: number }>
@@ -19,7 +19,7 @@ function helperProcess(): ChildProcessByStdio<Writable, Readable, null> {
 }
 
 /** Send requests to a helper on this machine and collect what it sends until it exits, by request unless `sorted` is false. */
-async function exchange(requests: HostMessage[], { sorted = true } = {}): Promise<HelperMessage[]> {
+async function exchange(requests: GatewayMessage[], { sorted = true } = {}): Promise<HelperMessage[]> {
   const child = helperProcess()
   const answers: HelperMessage[] = []
   createInterface({ input: child.stdout }).on('line', (line) => { answers.push(JSON.parse(line) as HelperMessage) })
@@ -130,7 +130,7 @@ test('the helper kills a process\'s group, and its exit ends the processes it st
   const child = helperProcess()
   const answers: HelperMessage[] = []
   createInterface({ input: child.stdout }).on('line', (line) => { answers.push(JSON.parse(line) as HelperMessage) })
-  const send = (message: HostMessage): void => { child.stdin.write(`${JSON.stringify(message)}\n`) }
+  const send = (message: GatewayMessage): void => { child.stdin.write(`${JSON.stringify(message)}\n`) }
   const until = async (found: () => boolean): Promise<void> => { while (!found()) await new Promise(resolve => setTimeout(resolve, 20)) }
   // The shell traps SIGTERM away, so only the SIGKILL after the grace period ends it.
   send({ type: 'request', id: 1, method: 'spawn', params: { process: 'p1', argv: ['sh', '-c', 'trap "" TERM; echo up; sleep 30 & wait'], cwd: dir, env: {}, stdin: null, graceMs: 200 } })
@@ -159,7 +159,7 @@ test('the helper finds programs on the PATH, and says when one is not there', as
 })
 
 /** A helper on this machine that can be talked to while it runs. */
-function live(t: { after(fn: () => Promise<void>): void }): { send(message: HostMessage): void; answers: HelperMessage[]; until(found: () => boolean): Promise<void> } {
+function live(t: { after(fn: () => Promise<void>): void }): { send(message: GatewayMessage): void; answers: HelperMessage[]; until(found: () => boolean): Promise<void> } {
   const child = helperProcess()
   t.after(async () => {
     child.stdin.end()

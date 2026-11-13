@@ -1,7 +1,7 @@
 /**
  * The environment of each process the helper starts: the helper's own, with
- * the box's services' (./services.ts), and what the host gives the process,
- * a name given `null` removed; and, whatever the host gives, the services'
+ * the box's services' (./services.ts), and what the gateway gives the process,
+ * a name given `null` removed; and, whatever the gateway gives, the services'
  * commands on its PATH, first, since a harness may pass a PATH of its own.
  * @module @sleepymug/fleet-box/helper/cmd/env
  */

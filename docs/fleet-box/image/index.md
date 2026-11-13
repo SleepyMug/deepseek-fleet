@@ -2,7 +2,7 @@
 
 Builds the box image: a Node base image with fleet-box, the helper's
 package, on top; and stages a package as installed, which the image takes
-fleet-box by, and the fleet host each service's package
+fleet-box by, and the gateway each service's package
 (docs/fleet/services/index.md).
 
 ## Provides
@@ -15,7 +15,7 @@ fleet-box by, and the fleet host each service's package
   which copies the package at `root` to `target`, and every package it
   depends on, as installed, to `target/node_modules`.
 - `@sleepymug/fleet-protocol/layout`, where things lie in a box, which the
-  host, the image and the services agree on: fleet-box at `/opt/fleet`, the
+  gateway, the image and the services agree on: fleet-box at `/opt/fleet`, the
   helper's Node and entry, the services' folders and sockets, and the
   default tag. It holds constants only.
 
@@ -23,8 +23,8 @@ fleet-box by, and the fleet host each service's package
 
 - The package goes into the image as it would be packed, with every package
   it depends on as installed on the host (`stage.ts`). Nothing is installed
-  or compiled in the image, so it runs exactly what the host built and
-  installed.
+  or compiled in the image, so it runs exactly what was built and installed
+  on the host.
   - A package from a registry is copied as installed. A workspace or linked
     package is copied as `pnpm pack` would pack it, from its `files`.
   - The copy takes pnpm's layout: the package at `/opt/fleet`, each
@@ -39,10 +39,10 @@ fleet-box by, and the fleet host each service's package
   - The host's package manager chose platform-specific packages for the
     host, so the image must be linux on the host's architecture. Optional
     dependencies for other platforms are left out.
-- The image has no command of its own (`ENTRYPOINT []`). The host decides
+- The image has no command of its own (`ENTRYPOINT []`). The gateway decides
   what runs in a box: `sleep infinity` to keep it up, and the helper and
   what its clients pipe through `docker exec`.
-- The services' packages are no part of the image: the host copies them
+- The services' packages are no part of the image: the gateway copies them
   into each box as it starts, so a service registered later reaches the
   boxes without a new image.
 
@@ -57,11 +57,11 @@ fleet-box by, and the fleet host each service's package
 ## How it runs
 
 Run `pnpm image` after changing anything that goes into the image. A box
-whose image is older than the host's helper protocol refuses to start, and
+whose image is older than the gateway's helper protocol refuses to start, and
 says that a new box gets the current image.
 
 The command builds from fleet-box as installed beside fleet, so it runs from
-the install the host runs: after `npm install --global @sleepymug/fleet`,
+the install the gateway runs: after `npm install --global @sleepymug/fleet`,
 `fleet image build` (docs/install.md).
 
 Not yet: a build is tagged without checking its helper first.

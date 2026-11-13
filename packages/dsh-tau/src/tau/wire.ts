@@ -4,7 +4,7 @@
  * docs/spec/socket.md), and as dsh-tau-box's runs has the backend's own,
  * list, served for a caller, whom each way in names, never the request: the
  * socket in the dsh home (./plugin.ts), for the host; the tau service, whose
- * connections the fleet host relays from a box (./plugin.ts), for a tau's
+ * connections fleet's gateway relays from a box (./plugin.ts), for a tau's
  * session; and `tau_run` (../tools/tau.ts), for another session, in this
  * process. What a caller sends is checked here.
  * @module @sleepymug/dsh-tau/tau/wire

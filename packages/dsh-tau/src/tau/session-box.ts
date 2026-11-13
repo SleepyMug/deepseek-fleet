@@ -1,10 +1,10 @@
 /**
- * The box of one tau's session (./runs.ts), as the fleet host keeps it: the
+ * The box of one tau's session (./runs.ts), as fleet's gateway keeps it: the
  * box's id, which a box set up again changes; the session's operations on
  * it, one after another; its leases, each of an occupant, which keep the
- * fleet host from stopping it for being idle; its state, which the host
+ * gateway from stopping it for being idle; its state, which the gateway
  * tells; the host files copied into it; and whether it is removed while its
- * session is archived. A box the host says is gone, or does not know, is set
+ * session is archived. A box the gateway says is gone, or does not know, is set
  * up again on its next use, as the runs do it, from the run's call.
  * @module @sleepymug/dsh-tau/tau/session-box
  */
@@ -23,7 +23,7 @@ export interface SessionBoxDeps {
   fleet: FleetPort
   platform: Platform
   /**
-   * Set the box up again from the run's call, the box the host knew gone,
+   * Set the box up again from the run's call, the box the gateway knew gone,
    * and give back the new one's id, started; the entry records it.
    */
   rebuild: () => Promise<string>
@@ -38,7 +38,7 @@ export class SessionBox {
   private archived = false
   /** The session was released, and the box with it. */
   private gone = false
-  /** The box's state, as the host last told it; unknown until it tells. */
+  /** The box's state, as the gateway last told it; unknown until it tells. */
   private state: BoxState | 'removed' | undefined
   private unwatch: (() => void) | undefined
   /** What waits for the box to be started, to wake as it is. */
@@ -87,7 +87,7 @@ export class SessionBox {
     }
   }
 
-  /** Whether the box is started, as the host last told it. */
+  /** Whether the box is started, as the gateway last told it. */
   isStarted(): boolean {
     this.follow()
     return this.state === 'started'
@@ -209,7 +209,7 @@ export class SessionBox {
     return port
   }
 
-  /** A lease of the box, started, set up again if the host knows it gone. */
+  /** A lease of the box, started, set up again if the gateway knows it gone. */
   private async held(occupant: Occupant): Promise<{ port: FleetBoxPort; release: () => Promise<void> }> {
     if (this.archived) throw new Error(`dsh-tau: ${this.deps.sessionId} is archived, so it has no box; unarchive it to have one again`)
     let port = this.deps.fleet.box(this.id)
@@ -266,7 +266,7 @@ export function runBox(port: FleetBoxPort): RunBox {
   }
 }
 
-/** Remove a box, unless the host has forgotten it already; whether it removed it. */
+/** Remove a box, unless the gateway has forgotten it already; whether it removed it. */
 async function removed(box: FleetBoxPort): Promise<boolean> {
   try {
     await box.remove()

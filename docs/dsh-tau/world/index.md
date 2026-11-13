@@ -64,12 +64,12 @@ added.
   its session's to change.
 - **The box** of a session comes from `ctx.fleetTauRuns.hold`, which
   starts it if it is not running, as after a restart, the run's end or an
-  idle stop, and which each use leases from the fleet host until it is
-  done, so the host does not stop the box for being idle under it
+  idle stop, and which each use leases from fleet's gateway until it is
+  done, so the gateway does not stop the box for being idle under it
   (docs/dsh-tau/tau/index.md): a file call while it runs, `which` while it
   runs, a process until it exits, and a terminal until it ends. Each
   request goes to its helper (docs/fleet-box/helper/index.md) through the
-  fleet host's `box.request`, made with `hold: false`, since the lease
+  gateway's `box.request`, made with `hold: false`, since the lease
   holds the box started (docs/fleet-sdk/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
@@ -77,7 +77,7 @@ added.
   gives are keyed the same way, with the plain path in the box as their
   display and process paths, so a call that takes a target goes where its
   key says, whoever makes it. A box's text streams in one chunk. Its
-  failures are `FsError`s: the helper's code, which the fleet host passes
+  failures are `FsError`s: the helper's code, which the gateway passes
   on as the failure's `code`, or `FS_IO_ERROR`.
 - **One box per session.** A tau's session's own work may name only its own
   box; another's is `FS_PERMISSION_DENIED`, so a model in a box never
@@ -102,7 +102,7 @@ added.
   `/fleet/attachments` in its box, such as
   `/fleet/attachments/v1/files/49/<sha256>/notes.csv`; the store's files
   never change, so a copy stays the same file. The answer comes at once,
-  and the runs copy the file in then, through the fleet host's
+  and the runs copy the file in then, through the gateway's
   `box.copyIn`, once per session, readable by all and writable by none
   (`copyInOnce`, docs/dsh-tau/tau/index.md). The
   copy is one of the session's operations on its box, so the box's next
@@ -120,7 +120,7 @@ added.
   box stopped, the viewer's feed, which reads the folder again before it
   watches again, would start the box each time it stopped. So while the
   box is stopped, the watch waits (`ctx.fleetTauRuns.whenStarted`, which
-  follows the box's state as the fleet host tells it), and once something
+  follows the box's state as the gateway tells it), and once something
   else starts the box, it watches there again and reports a change, since
   the files may have changed meanwhile. A failure while the box runs, or
   the session's deletion, is the watch's error.
@@ -153,7 +153,7 @@ added.
   while it ends, or when the helper cannot tell. So dsh's terminal
   controller reclaims a terminal no window has held for
   `unattendedTimeoutMs`, two hours by default, while it was idle, which
-  ends its lease of the box, and the fleet host stops the box once nothing
+  ends its lease of the box, and the gateway stops the box once nothing
   else uses it; one still running a command keeps the box running.
 - **Spill files.** dsh saves a tool result too big for the conversation
   to a spill file its model is told to read. A tau's session's would sit
@@ -189,9 +189,9 @@ added.
   is.
 - `@deepseek-ai/dsh-api-workspace-files` and `@deepseek-ai/dsh-typert-protocol`,
   for the `workspaceFileScope` lookup.
-- `ctx.fleetTauRuns` (dsh-tau/tau), and the fleet host's boxes through
-  it, with `@sleepymug/fleet-protocol/helper`'s types of their helper's
-  methods.
+- `ctx.fleetTauRuns` (dsh-tau/tau), and the boxes of fleet's gateway
+  through it, with `@sleepymug/fleet-protocol/helper`'s types of their
+  helper's methods.
 - dsh's attachment store's layout, `$DSH_HOME/attachments/`, whose files
   `@deepseek-ai/dsh-attachment-local` names.
 

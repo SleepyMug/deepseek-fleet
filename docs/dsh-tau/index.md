@@ -1,19 +1,19 @@
 # dsh-tau
 
 The tau backend on dsh: its dsh bundle runs each run of a tau as a dsh
-session in a box of its own, which the fleet host keeps
+session in a box of its own, which fleet's gateway keeps
 (docs/fleet/index.md). It has the tau backend and the runs of taus with
 their boxes (docs/dsh-tau/tau/index.md), the tau service it registers with
-the fleet host, which puts the `tau` command in every box; the world that
+the gateway, which puts the `tau` command in every box; the world that
 serves a tau's session from its box (docs/dsh-tau/world/index.md);
 `tau_run` (docs/dsh-tau/tools/index.md); and the web client's tau model
 and tau lanes pages (docs/dsh-tau/client/index.md). What it puts in each
 box is a package of its own, dsh-tau-box (docs/dsh-tau-box/index.md). This
 page is how its parts are put together; each part's page is what it does.
 
-dsh-tau is one of the fleet host's clients, and one of its services: it
-knows boxes by the host's ids and labels, and the host knows nothing of
-dsh or of tau.
+dsh-tau is one of the gateway's clients, and the fleet server of one of
+its services: it knows boxes by the gateway's ids and labels, and the
+gateway knows nothing of dsh or of tau.
 
 ## Design
 
@@ -26,10 +26,10 @@ dsh or of tau.
   another, not by its class: the runs of taus are, on dsh's context, the
   backend's `RunLifecycle` and the world's `TauBoxes` (`tau/ports.ts`); the
   backend reaches dsh's sessions through its `Sessions`; and the runs
-  reach the fleet host through its `FleetPort`, its boxes as
+  reach fleet's gateway through its `FleetPort`, its boxes as
   fleet-sdk's `FleetBox` is (`tau/fleet.ts` gives one of the client's).
   A test gives a fake of it, such as `tau/fake-fleet.test.util.ts`, whose
-  boxes are folders, or a fleet host in the test's own process, its boxes
+  boxes are folders, or a gateway in the test's own process, its boxes
   Docker's.
 - **The platform** (`platform.ts`) is what the runs and the backend take
   of the process: `log`, where they say what they do, `now`, `newId` and
@@ -46,10 +46,10 @@ dsh or of tau.
   `tools/`, `tau_run`; and `client/`, the web client's pages, which run in
   the browser and reach dsh, and nothing of dsh-tau's host half, through
   the web client's services.
-- **The fleet host is reached through its client.** `fleet-tau-runs`
-  connects one client, `ctx.fleet`, on the host's socket, which
+- **The gateway is reached through its client.** `fleet-tau-runs`
+  connects one client, `ctx.fleet`, on the gateway's socket, which
   every lease of a run's box, and the tau service, are held on; the
-  client makes its connection again when the host loses it, and takes them
+  client makes its connection again when the gateway loses it, and takes them
   back (docs/fleet-sdk/index.md).
 - **The plugins put the parts together.** Each dsh plugin checks its
   config, builds its parts on the services it injects, and provides them;
@@ -68,7 +68,7 @@ dsh or of tau.
   operations one after another, for each key, such as a session;
   `abortable`, which stops waiting for a promise when a signal aborts;
   `messageOf`, what a thrown value says, and `codeOf`, a failure's code,
-  such as the fleet host's `BOX_GONE` or an `FsError`'s; and `spool`, bytes
+  such as the gateway's `BOX_GONE` or an `FsError`'s; and `spool`, bytes
   written to a file as they are read. A test's platform is
   `manualPlatform()` (`platform.test.util.ts`), whose time moves, and
   timers run, as the test advances it.
@@ -84,7 +84,7 @@ Beside each part's own modules:
 
 ## Built on
 
-- The fleet host, `fleet serve`, which must be running (docs/fleet/index.md),
+- fleet's gateway, `fleet serve`, which must be running (docs/fleet/index.md),
   through `@sleepymug/fleet-sdk` and the wire's types,
   `@sleepymug/fleet-protocol`.
 - dsh-tau-box (docs/dsh-tau-box/index.md), for what goes in the boxes.

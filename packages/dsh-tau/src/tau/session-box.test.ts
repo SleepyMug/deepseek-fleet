@@ -9,7 +9,7 @@ import { SessionBox } from './session-box.ts'
 
 const SESSION = 'session-11111111-1111-4111-8111-111111111111'
 
-/** A session's box on the fake fleet host; set up again, its box gone, by making another. */
+/** A session's box on the fake gateway; set up again, its box gone, by making another. */
 async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box: SessionBox; fleet: FakeFleet; work: string; rebuilt: () => number }> {
   const work = await mkdtemp(join(tmpdir(), 'dsh-tau-session-box-'))
   t.after(() => rm(work, { recursive: true, force: true }))
@@ -33,7 +33,7 @@ async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box:
   return { box, fleet, work, rebuilt: () => rebuilds }
 }
 
-test('a box is held started, and occupied without starting it; one the fleet host says is gone is set up again, once', async (t) => {
+test('a box is held started, and occupied without starting it; one the gateway says is gone is set up again, once', async (t) => {
   const { box, fleet, rebuilt } = await make(t)
   const first = box.box
   const held = await box.hold({ kind: 'file', id: 'a' })

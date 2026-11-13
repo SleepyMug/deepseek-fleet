@@ -1,9 +1,9 @@
 /**
- * The tau service, which the tau backend registers with the fleet host
- * (./plugin.ts): its package, dsh-tau-box, which the host puts in every box,
+ * The tau service, which the tau backend registers with fleet's gateway
+ * (./plugin.ts): its package, dsh-tau-box, which the gateway puts in every box,
  * with the `tau` command, whose runs go to the backend, and dsh-tau's half
  * of a run's box; and what serves its connections, each one from a box,
- * which the host says, the box's run's, whose session is the caller of the
+ * which the gateway says, the box's run's, whose session is the caller of the
  * runs it makes, and reaches only those.
  * @module @sleepymug/dsh-tau/tau/box-service
  */
@@ -20,7 +20,7 @@ import type { Caller } from './registry.ts'
 export const DESCRIPTION = 'Runs TAUs, each in a box of its own, as this box\'s run, which waits for each: '
   + '`tau run <dir> --call-json \'<call>\' --json`, as /tau/TAU.md says.'
 
-/** The tau service's package, which the fleet host puts in every box: dsh-tau-box, as installed beside this one. */
+/** The tau service's package, which the gateway puts in every box: dsh-tau-box, as installed beside this one. */
 export const BOX_PACKAGE = dirname(createRequire(import.meta.url).resolve('@sleepymug/dsh-tau-box/package.json'))
 
 /** What the tau command in a box finds its backend by: the socket adaptor, on the service's socket there. */
@@ -40,7 +40,7 @@ export function tauService(sessionOfBox: (box: string) => string | undefined, ha
     package: BOX_PACKAGE,
     env: SERVICE_ENV,
     serve(connection, from) {
-      // The host says which box a connection comes from; a run's are its session's.
+      // The gateway says which box a connection comes from; a run's are its session's.
       const sessionId = sessionOfBox(from.box)
       serveConnection(connection, sessionId === undefined ? refuse : handlerFor({ kind: 'session', sessionId }))
     },

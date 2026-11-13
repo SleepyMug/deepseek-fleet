@@ -1,5 +1,5 @@
 /**
- * The helper, put together from what it is given: it answers the host's
+ * The helper, put together from what it is given: it answers the gateway's
  * requests (fleet-protocol's helper), read as lines from its input, each
  * answered on its output, until its input ends; then it ends the processes,
  * terminals and watches it started, and answers what it was still asked. It
@@ -12,7 +12,7 @@
 
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
-import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type HostMessage, type Method, type Methods } from '@sleepymug/fleet-protocol/helper'
+import { PROTOCOL_VERSION, type EventOf, type HelperMessage, type GatewayMessage, type Method, type Methods } from '@sleepymug/fleet-protocol/helper'
 import { exec } from './cmd/exec.ts'
 import { Files } from './cmd/fs.ts'
 import { BOX_LAYOUT, Services, type ServicesLayout } from './cmd/services.ts'
@@ -20,7 +20,7 @@ import { Processes } from './cmd/spawn.ts'
 import { Terminals } from './cmd/terminal.ts'
 
 export interface HelperIo {
-  /** The host's messages, a line of JSON each. */
+  /** The gateway's messages, a line of JSON each. */
   input: Readable
   /** Where the helper's messages go, a line of JSON each. */
   output: Writable
@@ -34,14 +34,14 @@ export interface HelperIo {
   layout?: ServicesLayout
 }
 
-/** Sends one of the request's events; false when the host has fallen behind. */
+/** Sends one of the request's events; false when the gateway has fallen behind. */
 type Emit<M extends Method> = (event: EventOf<M>) => boolean
 
 type Handlers = {
   [M in Method]: (params: Methods[M]['params'], emit: Emit<M>) => Promise<Methods[M]['result']> | Methods[M]['result']
 }
 
-/** Serve the host until the input ends, and everything the helper started has ended. */
+/** Serve the gateway until the input ends, and everything the helper started has ended. */
 export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT }: HelperIo): Promise<void> {
   const files = new Files(cwd)
   const processes = new Processes(env)
@@ -84,7 +84,7 @@ export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT 
   /** Requests not answered yet. */
   const inFlight = new Set<Promise<void>>()
 
-  const handle = async ({ id, method, params }: Extract<HostMessage, { type: 'request' }>): Promise<void> => {
+  const handle = async ({ id, method, params }: Extract<GatewayMessage, { type: 'request' }>): Promise<void> => {
     try {
       if (!Object.hasOwn(handlers, method)) throw new Error(`unknown method ${method}`)
       const emit = (value: unknown): boolean => send({ type: 'event', id, value })
@@ -102,12 +102,12 @@ export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT 
 
   const lines = createInterface({ input, crlfDelay: Infinity })
   const closed = new Promise<void>((resolve) => { lines.once('close', resolve) })
-  // Input that fails, as when the host is gone, ends as input that ends does.
+  // Input that fails, as when the gateway is gone, ends as input that ends does.
   lines.on('error', () => { lines.close() })
   lines.on('line', (line) => {
-    let message: HostMessage
+    let message: GatewayMessage
     try {
-      message = JSON.parse(line) as HostMessage
+      message = JSON.parse(line) as GatewayMessage
     } catch {
       log('unreadable message')
       return
@@ -116,7 +116,7 @@ export async function serve({ input, output, env, cwd, log, layout = BOX_LAYOUT 
     inFlight.add(handled)
     void handled.finally(() => { inFlight.delete(handled) })
   })
-  // The host has gone, or is done with the box: what it asked is answered, its processes, terminals and watches ended first.
+  // The gateway has gone, or is done with the box: what it asked is answered, its processes, terminals and watches ended first.
   await closed
   await Promise.allSettled([processes.killAll(), terminals.endAll(), files.unwatchAll(), services.close()])
   await Promise.allSettled([...inFlight])

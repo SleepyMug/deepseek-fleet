@@ -1,5 +1,5 @@
 /**
- * The fleet host, for the tests: a fake of the runs' {@link FleetPort},
+ * fleet's gateway, for the tests: a fake of the runs' {@link FleetPort},
  * whose boxes are folders, and whose pipe has dsh-tau's half set a box up
  * and pack its result there.
  * @module @sleepymug/dsh-tau/tau/fake-fleet.test.util
@@ -23,12 +23,12 @@ import type { FleetBoxPort, FleetPort } from './ports.ts'
  */
 export type Left = Record<string, string | null>
 
-/** A failure with a code, as the fleet host's client throws one. */
+/** A failure with a code, as the gateway's client throws one. */
 function coded(message: string, code: string): Error {
   return Object.assign(new Error(message), { code })
 }
 
-/** A box of the fake fleet host's. */
+/** A box of the fake gateway's. */
 interface FakeBox {
   spec: BoxSpec
   state: BoxState
@@ -39,7 +39,7 @@ interface FakeBox {
 }
 
 /**
- * The fleet host, as a record of what is done with its boxes, failing the
+ * The gateway, as a record of what is done with its boxes, failing the
  * verb `failing` names. Each box has its files in a folder of `work`, where
  * its pipe has dsh-tau's half place a call, and pack a result from what
  * `left` says the agent left, or as `tamper` says, in place of that. A box

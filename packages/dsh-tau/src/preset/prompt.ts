@@ -10,7 +10,7 @@
  * it is; says how the model runs its programs, below the program directory,
  * /tau, so that they import the tau's packages as the tau's code does, and
  * which its tau exposes, each with where it is; and lists the box's
- * services, which the fleet host puts in it, each with where its code is,
+ * services, which fleet's gateway puts in it, each with where its code is,
  * its commands, if any, and what it says it is.
  *
  * It leaves out the sections dsh writes for a person at the host, which

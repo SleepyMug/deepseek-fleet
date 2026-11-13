@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-box",
   "version": "0.0.1",
-  "description": "What the fleet host runs in each box, its helper, and the image it builds, Node with the helper on top",
+  "description": "What fleet's gateway runs in each box, its helper, and the image it builds, Node with the helper on top",
   "type": "module",
   "exports": {
     "./image/build": {

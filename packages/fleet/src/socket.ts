@@ -1,35 +1,35 @@
 /**
- * The fleet host's socket (fleet-protocol's fleet wire): a Unix socket only
+ * The gateway's socket (fleet-protocol's fleet wire): a Unix socket only
  * its owner can open, its folder made with mode 0700, on which each
- * connection is a client of the host, which says the wire's version first,
+ * connection is a client of the gateway, which says the wire's version first,
  * then asks ops, one JSON message a line, each answered once, its events
  * before; a request it cancels has its signal aborted. When the connection
  * ends, the client's requests are given up, and its leases and services go.
- * @module @sleepymug/fleet/server
+ * @module @sleepymug/fleet/socket
  */
 
 import { chmod, mkdir, unlink } from 'node:fs/promises'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { dirname } from 'node:path'
 import { createInterface } from 'node:readline'
-import { FLEET_PROTOCOL, type ClientMessage, type HostMessage, type Op } from '@sleepymug/fleet-protocol/fleet'
-import type { FleetHost } from './host.ts'
+import { FLEET_PROTOCOL, type ClientMessage, type GatewayMessage, type Op } from '@sleepymug/fleet-protocol/fleet'
+import type { FleetGateway } from './gateway.ts'
 import { messageOf } from './util/error.ts'
 
 /**
- * Serve the host on a socket at `socket`, taking over one that no host
+ * Serve the gateway on a socket at `socket`, taking over one that no gateway
  * answers on.
  * @returns what closes the socket and its connections.
- * @throws when a host already answers there.
+ * @throws when a gateway already answers there.
  */
-export async function listen(socket: string, host: FleetHost): Promise<() => Promise<void>> {
+export async function listen(socket: string, gateway: FleetGateway): Promise<() => Promise<void>> {
   await mkdir(dirname(socket), { recursive: true, mode: 0o700 })
   await claim(socket)
   const connections = new Set<Socket>()
   const server = createServer((connection) => {
     connections.add(connection)
     connection.once('close', () => connections.delete(connection))
-    serve(connection, host)
+    serve(connection, gateway)
   })
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
@@ -47,18 +47,18 @@ export async function listen(socket: string, host: FleetHost): Promise<() => Pro
 }
 
 /** Serve one client's connection. */
-export function serve(connection: Socket, host: FleetHost): void {
-  const client = host.client()
+export function serve(connection: Socket, gateway: FleetGateway): void {
+  const client = gateway.client()
   const inFlight = new Map<number, AbortController>()
   let greeted = false
-  const send = (message: HostMessage): void => {
+  const send = (message: GatewayMessage): void => {
     if (!connection.destroyed) connection.write(`${JSON.stringify(message)}\n`)
   }
   connection.on('error', () => {})
   connection.once('close', () => {
     for (const controller of inFlight.values()) controller.abort(new Error('the client went away'))
     inFlight.clear()
-    host.leave(client)
+    gateway.leave(client)
   })
   const lines = createInterface({ input: connection, crlfDelay: Infinity })
   // A connection reset, as by a client killed, fails its lines too; its close lets the client go.
@@ -73,7 +73,7 @@ export function serve(connection: Socket, host: FleetHost): void {
     }
     if (!greeted) {
       if (message?.type !== 'hello' || message.protocol !== FLEET_PROTOCOL) {
-        send({ type: 'error', id: 0, message: `fleet: the host speaks the fleet wire ${FLEET_PROTOCOL}, not ${String((message as { protocol?: unknown })?.protocol)}` })
+        send({ type: 'error', id: 0, message: `fleet: the gateway speaks the fleet wire ${FLEET_PROTOCOL}, not ${String((message as { protocol?: unknown })?.protocol)}` })
         connection.end()
         return
       }
@@ -92,7 +92,7 @@ export function serve(connection: Socket, host: FleetHost): void {
     const { id, op, params } = message
     const controller = new AbortController()
     inFlight.set(id, controller)
-    host.handle(op as Op, params as never, {
+    gateway.handle(op as Op, params as never, {
       client,
       signal: controller.signal,
       emit: (value) => { if (inFlight.has(id)) send({ type: 'event', id, value }) },
@@ -105,7 +105,7 @@ export function serve(connection: Socket, host: FleetHost): void {
   })
 }
 
-/** Take over a socket's path, unless a host answers on it. */
+/** Take over a socket's path, unless a gateway answers on it. */
 async function claim(socket: string): Promise<void> {
   const answering = await new Promise<boolean>((resolve) => {
     const probe = createConnection(socket)
@@ -115,7 +115,7 @@ async function claim(socket: string): Promise<void> {
     })
     probe.once('error', () => { resolve(false) })
   })
-  if (answering) throw new Error(`fleet: another host serves ${socket}`)
+  if (answering) throw new Error(`fleet: another gateway serves ${socket}`)
   await unlink(socket).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'ENOENT') throw error
   })

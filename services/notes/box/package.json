@@ -1,7 +1,7 @@
 {
   "name": "@sleepymug/fleet-notes-box",
   "version": "0.0.1",
-  "description": "What fleet-notes puts in each box: the notes command, which keeps notes in the box's notebook on the fleet host",
+  "description": "What fleet-notes puts in each box: the notes command, which keeps notes in the box's notebook on the host",
   "type": "module",
   "bin": {
     "notes": "./lib/notes.js"

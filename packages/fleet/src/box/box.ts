@@ -36,7 +36,7 @@ export interface BoxOptions extends DockerOptions {
   env?: Readonly<Record<string, string>>
   /** Labels of the container's own, beside {@link BOX_LABEL}. */
   labels?: Readonly<Record<string, string>>
-  /** The host's folder of the box's channel (../channel.ts), mounted at {@link CHANNEL_DIR}; none without it. */
+  /** The host folder of the box's channel (../channel.ts), mounted at {@link CHANNEL_DIR}; none without it. */
   channel?: string
 }
 

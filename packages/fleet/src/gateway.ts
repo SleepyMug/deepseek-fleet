@@ -1,5 +1,5 @@
 /**
- * The fleet host (docs/fleet/index.md): the boxes it made, each a container
+ * The gateway (docs/fleet/index.md): the boxes it made, each a container
  * with fleet's helper in it while it runs, kept as their creators ask and
  * stopped once idle (./managed.ts); the services registered with it, which
  * it puts in the boxes that have them, and whose connections it passes on
@@ -8,7 +8,7 @@
  * services last as long as the client does. It knows nothing of whoever
  * uses its boxes, a harness or a service: a box is its id, its labels, and
  * what is in it.
- * @module @sleepymug/fleet/host
+ * @module @sleepymug/fleet/gateway
  */
 
 import { createReadStream, createWriteStream } from 'node:fs'
@@ -28,6 +28,7 @@ import { messageOf } from './util/error.ts'
 
 export { Registry } from './registry.ts'
 export { systemPlatform } from './platform.ts'
+export { listen, serve } from './socket.ts'
 
 /** Docker's containers, through `Box`. */
 export const dockerBoxes: Boxes = {
@@ -39,7 +40,7 @@ export const dockerBoxes: Boxes = {
   },
 }
 
-export interface FleetHostDeps {
+export interface FleetGatewayDeps {
   registry: Registry
   /** Where the services' packages are staged. */
   cache: string
@@ -54,7 +55,7 @@ export interface FleetHostDeps {
   idleStopMs?: number
 }
 
-/** A client of the host, whose leases and services last while it does. */
+/** A client of the gateway, whose leases and services last while it does. */
 export interface Client {
   readonly leases: Map<string, { box: string; release: () => void }>
 }
@@ -75,7 +76,7 @@ interface Kept {
   channel: Channel
 }
 
-export class FleetHost {
+export class FleetGateway {
   private readonly kept = new Map<string, Kept>()
   private readonly registry: Registry
   private readonly channels: string
@@ -86,7 +87,7 @@ export class FleetHost {
   readonly services: Services
   private nextLease = 1
 
-  constructor({ registry, cache, channels, platform, boxes = dockerBoxes, image = DEFAULT_IMAGE, idleStopMs = 60_000 }: FleetHostDeps) {
+  constructor({ registry, cache, channels, platform, boxes = dockerBoxes, image = DEFAULT_IMAGE, idleStopMs = 60_000 }: FleetGatewayDeps) {
     this.registry = registry
     this.channels = channels
     this.platform = platform
@@ -96,7 +97,7 @@ export class FleetHost {
     this.services = new Services({ cache, platform, changed: () => { this.resync() } })
   }
 
-  /** Know the boxes the registry has, as a host before this one left them: one still running stops once idle. */
+  /** Know the boxes the registry has, as a gateway before this one left them: one still running stops once idle. */
   async load(): Promise<void> {
     for (const record of await this.registry.list()) {
       const kept = await this.keep(record)
@@ -195,7 +196,7 @@ export class FleetHost {
     },
     'box.request': async ({ box, method, params, hold = true }, { emit }) => {
       if (!(METHODS as string[]).includes(method)) throw new Error(`fleet: no method ${String(method)}`)
-      if (method === 'hello' || method.startsWith('services.')) throw new Error(`fleet: ${method} is the host's own`)
+      if (method === 'hello' || method.startsWith('services.')) throw new Error(`fleet: ${method} is the gateway's own`)
       const kept = this.kept_(box)
       const send = (running: RunBox): Promise<unknown> => running.request(method as Method, params as never, emit as never)
       if (!hold) return await send(await kept.box.started()) as never
@@ -308,7 +309,7 @@ export class FleetHost {
     return join(this.channels, id)
   }
 
-  /** A box the host keeps; another fails. */
+  /** A box the gateway keeps; another fails. */
   private kept_(id: string): Kept {
     const kept = typeof id === 'string' ? this.kept.get(id) : undefined
     if (kept === undefined) throw Object.assign(new Error(`fleet: no box ${String(id)}`), { code: NO_BOX })

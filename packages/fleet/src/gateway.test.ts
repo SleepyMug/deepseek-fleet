@@ -8,28 +8,28 @@ import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Fleet, type BoxState } from '@sleepymug/fleet-sdk'
 import { FLEET_PROTOCOL } from '@sleepymug/fleet-protocol/fleet'
-import { FleetHost } from './host.ts'
+import { FleetGateway } from './gateway.ts'
 import { LocalBoxes } from './local-boxes.test.util.ts'
 import { systemPlatform } from './platform.ts'
 import { Registry } from './registry.ts'
-import { listen } from './server.ts'
+import { listen } from './socket.ts'
 
-/** A host of the test's, on a socket of its own, its boxes local ones (./local-boxes.test.util.ts). */
-async function hosted(t: { after: (fn: () => Promise<void>) => void }, idleStopMs = 60_000): Promise<{ dir: string; socket: string; boxes: LocalBoxes; client: Fleet; host: FleetHost }> {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-host-'))
+/** A gateway of the test's, on a socket of its own, its boxes local ones (./local-boxes.test.util.ts). */
+async function serving(t: { after: (fn: () => Promise<void>) => void }, idleStopMs = 60_000): Promise<{ dir: string; socket: string; boxes: LocalBoxes; client: Fleet; gateway: FleetGateway }> {
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-gateway-'))
   const boxes = new LocalBoxes(join(dir, 'boxes'))
-  const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes, idleStopMs })
-  await host.load()
+  const gateway = new FleetGateway({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes, idleStopMs })
+  await gateway.load()
   const socket = join(dir, 'fleet.sock')
-  const close = await listen(socket, host)
+  const close = await listen(socket, gateway)
   const client = await Fleet.connect({ socket })
   t.after(async () => {
     await client.close()
     await close()
-    await host.close()
+    await gateway.close()
     await rm(dir, { recursive: true, force: true })
   })
-  return { dir, socket, boxes, client, host }
+  return { dir, socket, boxes, client, gateway }
 }
 
 /** A service's package, whose command `shout` sends its words to the service, and prints the answer. */
@@ -51,7 +51,7 @@ async function shoutPackage(dir: string): Promise<string> {
 }
 
 test('a service registered is put in each box that has it: its command on the PATH, which reaches the service, told the box', async (t) => {
-  const { dir, client } = await hosted(t)
+  const { dir, client } = await serving(t)
   const shouted: string[] = []
   const registration = await client.register({
     name: 'shout',
@@ -88,7 +88,7 @@ test('a service registered is put in each box that has it: its command on the PA
 })
 
 test('a box started for its lease stops once nothing has occupied it for its idle time, and its state is followed', async (t) => {
-  const { client } = await hosted(t, 100)
+  const { client } = await serving(t, 100)
   const { id } = await client.create()
   const box = client.box(id)
   const states: (BoxState | 'removed')[] = []
@@ -114,7 +114,7 @@ test('a box started for its lease stops once nothing has occupied it for its idl
 })
 
 test('a box whose container was removed by other means is gone, and its owner makes another', async (t) => {
-  const { client, boxes } = await hosted(t)
+  const { client, boxes } = await serving(t)
   const { id } = await client.create()
   await boxes.lose(id)
   await assert.rejects(client.box(id).lease({ kind: 'test', id: 'gone' }), (error: Error & { code?: string }) => error.code === 'BOX_GONE')
@@ -125,11 +125,11 @@ test('a box whose container was removed by other means is gone, and its owner ma
   await assert.rejects(client.box(other).request('echo', { text: 'x' }, { hold: false }), (error: Error & { code?: string }) => error.code === 'NOT_STARTED')
 })
 
-test('a client whose connection is reset, as by a process killed with the host\'s answers unread, leaves the host serving the others', async (t) => {
-  const { socket, client } = await hosted(t)
+test('a client whose connection is reset, as by a process killed with the gateway\'s answers unread, leaves the gateway serving the others', async (t) => {
+  const { socket, client } = await serving(t)
   const raw = createConnection(socket)
   raw.on('error', () => {})
-  // Never read, so that closing it with the host's answers unread resets it.
+  // Never read, so that closing it with the gateway's answers unread resets it.
   raw.pause()
   raw.write(`${JSON.stringify({ type: 'hello', protocol: FLEET_PROTOCOL })}\n`)
   for (let id = 1; id <= 50; id++) raw.write(`${JSON.stringify({ type: 'request', id, op: 'box.list', params: {} })}\n`)
@@ -140,7 +140,7 @@ test('a client whose connection is reset, as by a process killed with the host\'
 })
 
 test('a client\'s leases go with its connection, so a box it held stops once idle', async (t) => {
-  const { socket, client } = await hosted(t, 100)
+  const { socket, client } = await serving(t, 100)
   const { id } = await client.create()
   const other = await Fleet.connect({ socket })
   await other.box(id).lease({ kind: 'test', id: 'held' })
@@ -151,15 +151,15 @@ test('a client\'s leases go with its connection, so a box it held stops once idl
   assert.equal((await client.box(id).get()).state, 'stopped')
 })
 
-test('a host started later knows the boxes made before, and a client takes its service and leases back from it', async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-host-again-'))
+test('a gateway started later knows the boxes made before, and a client takes its service and leases back from it', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-gateway-again-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const boxes = new LocalBoxes(join(dir, 'boxes'))
   const socket = join(dir, 'fleet.sock')
-  const start = async (): Promise<{ host: FleetHost; close: () => Promise<void> }> => {
-    const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes })
-    await host.load()
-    return { host, close: await listen(socket, host) }
+  const start = async (): Promise<{ gateway: FleetGateway; close: () => Promise<void> }> => {
+    const gateway = new FleetGateway({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), boxes })
+    await gateway.load()
+    return { gateway, close: await listen(socket, gateway) }
   }
   let first = await start()
   const logged: string[] = []
@@ -169,13 +169,13 @@ test('a host started later knows the boxes made before, and a client takes its s
   const { id } = await client.create()
   await client.box(id).lease({ kind: 'test', id: 'kept' })
   await first.close()
-  await first.host.close()
+  await first.gateway.close()
   first = await start()
   t.after(async () => {
     await first.close()
-    await first.host.close()
+    await first.gateway.close()
   })
-  for (let tries = 0; first.host.services.list().length === 0; tries++) {
+  for (let tries = 0; first.gateway.services.list().length === 0; tries++) {
     assert.ok(tries < 100, 'the service is registered again')
     await delay(50)
   }
@@ -191,17 +191,17 @@ const noImage = await new Promise<string | false>((resolve) => {
 })
 
 test('in a Docker box, a service\'s package is copied in, its command runs on the box\'s Node, and its connections reach the service', { skip: noImage }, async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-host-docker-'))
-  const host = new FleetHost({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), image: IMAGE })
+  const dir = await mkdtemp(join(tmpdir(), 'fleet-gateway-docker-'))
+  const gateway = new FleetGateway({ registry: new Registry(join(dir, 'registry')), cache: join(dir, 'cache'), channels: join(dir, 'channels'), platform: systemPlatform(() => {}), image: IMAGE })
   const socket = join(dir, 'fleet.sock')
-  const close = await listen(socket, host)
+  const close = await listen(socket, gateway)
   const client = await Fleet.connect({ socket })
   let id: string | undefined
   t.after(async () => {
     if (id !== undefined) await client.box(id).remove().catch(() => {})
     await client.close()
     await close()
-    await host.close()
+    await gateway.close()
     await rm(dir, { recursive: true, force: true })
   })
   await client.register({

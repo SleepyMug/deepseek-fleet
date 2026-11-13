@@ -1,8 +1,8 @@
 /**
- * fleet-notes, a service of the fleet host, and the example of one: its
- * package, fleet-notes-box, which the host puts in each box, with the
+ * fleet-notes, a service of fleet's gateway, and the example of one: its
+ * package, fleet-notes-box, which the gateway puts in each box, with the
  * `notes` command; and what serves each connection a box's command opens,
- * a request of the box's notebook (./notes.ts), named by the box the host
+ * a request of the box's notebook (./notes.ts), named by the box the gateway
  * says the connection comes from, so a box reaches only its own.
  * @module @sleepymug/fleet-notes/service
  */
@@ -18,7 +18,7 @@ import type { Notebooks } from './notes.ts'
 export const DESCRIPTION = 'A notebook of short notes, each with tags to find it by later, kept outside the box for as long as the box is: '
   + '`notes add <text> --tag <tag>`, `notes tag <tag>`.'
 
-/** The service's package, which the fleet host puts in each box. */
+/** The service's package, which the gateway puts in each box. */
 export const BOX_PACKAGE = dirname(createRequire(import.meta.url).resolve('@sleepymug/fleet-notes-box/package.json'))
 
 /** The notes service, on `notebooks`, each box's notebook named by its id. */

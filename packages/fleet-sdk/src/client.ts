@@ -1,8 +1,8 @@
 /**
- * The fleet host's client (fleet-protocol's fleet wire): one connection to
- * the host's socket, which carries every request the client asks, and
+ * The gateway's client (fleet-protocol's fleet wire): one connection to
+ * the gateway's socket, which carries every request the client asks, and
  * holds its leases and the services it registered, as long as it lasts. A
- * connection the host loses is made again, after a pause, its services
+ * connection the gateway loses is made again, after a pause, its services
  * registered again, its leases and its watches taken again; what was asked
  * on it fails, and is the asker's to ask again.
  * @module @sleepymug/fleet-sdk/client
@@ -14,12 +14,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import {
-  FLEET_PROTOCOL, fleetSocket, type BoxInfo, type BoxSpec, type BoxState, type ClientMessage, type HostMessage, type Occupant, type Op,
+  FLEET_PROTOCOL, fleetSocket, type BoxInfo, type BoxSpec, type BoxState, type ClientMessage, type GatewayMessage, type Occupant, type Op,
   type OpEvent, type Ops, type Preamble, type ServiceInfo,
 } from '@sleepymug/fleet-protocol/fleet'
 import type { EventOf, Method, Methods } from '@sleepymug/fleet-protocol/helper'
 
-/** A failure the host reported for a request, with its code, such as `BOX_GONE`, or an `FsError`'s, if it had one. */
+/** A failure the gateway reported for a request, with its code, such as `BOX_GONE`, or an `FsError`'s, if it had one. */
 export class FleetError extends Error {
   override name = 'FleetError'
 
@@ -28,30 +28,30 @@ export class FleetError extends Error {
   }
 }
 
-/** No fleet host answers on the socket. */
+/** No gateway answers on the socket. */
 export class FleetUnreachable extends Error {
   override name = 'FleetUnreachable'
 }
 
 export interface ClientOptions {
-  /** The host's socket: `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, by default. */
+  /** The gateway's socket: `$FLEET_SOCKET`, or `fleet.sock` in the fleet home, by default. */
   socket?: string
   /** Say what went wrong outside a request, such as a connection lost; nothing by default. */
   log?: (message: string) => void
 }
 
-/** A service, as its gateway registers it: what the host puts in its boxes, and what serves each connection from one. */
+/** A service, as its server registers it: what the gateway puts in its boxes, and what serves each connection from one. */
 export interface ServiceDefinition {
   name: string
   description: string
-  /** A node package installed on this host, absolute, which the host puts in each box that has the service, its commands on the PATH. */
+  /** A node package installed on this host, absolute, which the gateway puts in each box that has the service, its commands on the PATH. */
   package: string
   /** What it adds to the environment of every process in a box that has it. */
   env?: Record<string, string>
   /**
    * Serve one connection a program in a box opened to the service's socket
    * there, as a socket on this host, which `from` says the box of, as the
-   * host knows it; what follows is the program's.
+   * gateway knows it; what follows is the program's.
    */
   serve(connection: Socket, from: Preamble): void
 }
@@ -72,7 +72,7 @@ interface Pending {
 interface Held {
   box: string
   occupant: Occupant
-  /** The host's id of it, on the connection now; undefined while it is asked for. */
+  /** The gateway's id of it, on the connection now; undefined while it is asked for. */
   id?: string
   released: boolean
 }
@@ -96,14 +96,14 @@ export class Fleet {
     this.log = options.log ?? (() => {})
   }
 
-  /** Connect to the host, which must answer now. */
+  /** Connect to the gateway, which must answer now. */
   static async connect(options: ClientOptions = {}): Promise<Fleet> {
     const client = new Fleet(options)
     await client.ensure()
     return client
   }
 
-  /** Ask the host an op, and give its result; `onEvent` is told each event it sends first; aborting `signal` cancels it. */
+  /** Ask the gateway an op, and give its result; `onEvent` is told each event it sends first; aborting `signal` cancels it. */
   async request<O extends Op>(op: O, params: Ops[O]['params'], options: { onEvent?: (event: OpEvent<O>) => void; signal?: AbortSignal } = {}): Promise<Ops[O]['result']> {
     if (this.closed) throw new Error('fleet: the client is closed')
     await this.ensure()
@@ -141,8 +141,8 @@ export class Fleet {
 
   /**
    * Register a service: its endpoint, a socket of the client's own, serves
-   * each connection the host passes on, once it has read which box it comes
-   * from; the host stages its package and puts it in each box that has it.
+   * each connection the gateway passes on, once it has read which box it comes
+   * from; the gateway stages its package and puts it in each box that has it.
    */
   async register(definition: ServiceDefinition): Promise<Registration> {
     if (this.services.has(definition.name)) throw new Error(`fleet: the service ${definition.name} is registered already`)
@@ -165,7 +165,7 @@ export class Fleet {
     }
   }
 
-  /** Close the connection: the host drops the client's leases and services. */
+  /** Close the connection: the gateway drops the client's leases and services. */
   async close(): Promise<void> {
     this.closed = true
     this.socket?.destroy()
@@ -216,7 +216,7 @@ export class Fleet {
     this.socket?.write(`${JSON.stringify(message)}\n`)
   }
 
-  /** A connection to the host, made if there is none. */
+  /** A connection to the gateway, made if there is none. */
   private ensure(): Promise<void> {
     if (this.socket !== undefined && !this.socket.destroyed && this.connecting === undefined) return Promise.resolve()
     this.connecting ??= this.open().finally(() => { this.connecting = undefined })
@@ -229,19 +229,19 @@ export class Fleet {
       connection.once('connect', () => { resolve(connection) })
       connection.once('error', (error: NodeJS.ErrnoException) => {
         reject(error.code === 'ENOENT' || error.code === 'ECONNREFUSED'
-          ? new FleetUnreachable(`no fleet host at ${this.path}: is \`fleet serve\` running?`, { cause: error })
+          ? new FleetUnreachable(`no gateway at ${this.path}: is \`fleet serve\` running?`, { cause: error })
           : error)
       })
     })
     const greeted = Promise.withResolvers<void>()
     socket.on('error', () => {})
     const lines = createInterface({ input: socket, crlfDelay: Infinity })
-    // A connection reset, as by a host killed, fails its lines too; its close connects again.
+    // A connection reset, as by a gateway killed, fails its lines too; its close connects again.
     lines.on('error', () => {})
     lines.on('line', (line) => {
-      let message: HostMessage
+      let message: GatewayMessage
       try {
-        message = JSON.parse(line) as HostMessage
+        message = JSON.parse(line) as GatewayMessage
       } catch {
         socket.destroy()
         return
@@ -265,10 +265,10 @@ export class Fleet {
     })
     let ready = false
     socket.once('close', () => {
-      greeted.reject(new Error(`fleet: the host at ${this.path} closed the connection`))
+      greeted.reject(new Error(`fleet: the gateway at ${this.path} closed the connection`))
       if (this.socket !== socket) return
       this.socket = undefined
-      const lost = new Error(`fleet: the connection to the host at ${this.path} was lost`)
+      const lost = new Error(`fleet: the connection to the gateway at ${this.path} was lost`)
       for (const pending of this.pending.values()) pending.reject(lost)
       this.pending.clear()
       // A connection that never was is the asker's failure, not one to make again.
@@ -287,7 +287,7 @@ export class Fleet {
 
   /** Make the connection again, after a pause longer each time, and take back what the client holds. */
   private reconnect(): void {
-    this.log(`lost the fleet host at ${this.path}; connecting again`)
+    this.log(`lost the gateway at ${this.path}; connecting again`)
     void (async () => {
       for (let pause = 100; !this.closed; pause = Math.min(pause * 2, 2_000)) {
         await new Promise((resolve) => { setTimeout(resolve, pause).unref() })
@@ -299,7 +299,7 @@ export class Fleet {
         }
       }
       if (this.closed) return
-      this.log(`connected again to the fleet host at ${this.path}`)
+      this.log(`connected again to the gateway at ${this.path}`)
       for (const [name, { definition, endpoint }] of this.services) {
         await this.request('service.register', specOf(definition, endpoint)).catch((error: unknown) => {
           this.log(`could not register the service ${name} again: ${error instanceof Error ? error.message : String(error)}`)
@@ -378,7 +378,7 @@ function specOf({ name, description, package: root, env }: ServiceDefinition, en
   return { name, description, package: root, endpoint, ...env === undefined ? {} : { env } }
 }
 
-/** A box of the host's, as a client asks of it. */
+/** A box of the gateway's, as a client asks of it. */
 export class FleetBox {
   constructor(private readonly client: Fleet, readonly id: string) {}
 

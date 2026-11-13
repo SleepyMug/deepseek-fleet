@@ -1,5 +1,5 @@
 /**
- * The host's side of the box's services (fleet-box's helper/cmd/services):
+ * The gateway's side of the box's services (fleet-box's helper/cmd/services):
  * the check of what the helper answers `services.installed` with, which the
  * helper connection registers (../helper.ts).
  * @module @sleepymug/fleet/box/cmd/services

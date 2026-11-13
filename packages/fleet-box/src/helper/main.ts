@@ -1,6 +1,6 @@
 /**
- * The helper's process. The host starts it in a box with `docker exec
- * --interactive`, and it serves the host (./serve.ts) on its stdin and
+ * The helper's process. The gateway starts it in a box with `docker exec
+ * --interactive`, and it serves the gateway (./serve.ts) on its stdin and
  * stdout, in the box's environment and its working folder, until its stdin
  * ends; then it exits.
  * @module @sleepymug/fleet-box/helper/main

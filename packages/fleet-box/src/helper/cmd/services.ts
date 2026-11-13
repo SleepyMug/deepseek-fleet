@@ -1,15 +1,15 @@
 /**
  * The box's services (fleet-protocol's layout): each service's package, as
- * the host copied it in as `<name>@<digest>`, a link by its name to the one
+ * the gateway copied it in as `<name>@<digest>`, a link by its name to the one
  * in use; its commands, links in the folder of commands, which is on the
  * PATH of every process the helper starts; its environment, which each of
  * them starts with; and its socket, which the helper listens on, and whose
- * every connection it carries to the host as a stream of the box's channel
- * (fleet-protocol's channel), which the host passes on to the service:
+ * every connection it carries to the gateway as a stream of the box's channel
+ * (fleet-protocol's channel), which the gateway passes on to the service:
  * either side's end is a half-close, and a cut connection is cut on both
  * sides. The helper makes the channel's connection as the first program
- * connects, and again after the host drops it, as when it restarts. Which
- * box a connection comes from is the host's to say, by the channel it comes
+ * connects, and again after the gateway drops it, as when it restarts. Which
+ * box a connection comes from is the gateway's to say, by the channel it comes
  * in on, so the helper checks only that the service is the box's. Each
  * helper has its own {@link Services}.
  * @module @sleepymug/fleet-box/helper/cmd/services
@@ -45,7 +45,7 @@ const BIN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u
 export class Services {
   private readonly servers = new Map<string, Server>()
   private readonly connections = new Set<Socket>()
-  /** The channel's connection, once a program connected, until the host drops it. */
+  /** The channel's connection, once a program connected, until the gateway drops it. */
   private session: ClientHttp2Session | undefined
   /** What the services listed last added to the environment, by name. */
   private added: Record<string, string> = {}
@@ -152,7 +152,7 @@ export class Services {
     return server
   }
 
-  /** Carry a connection a program in the box opened to a service's socket to the host, as a stream of the channel. */
+  /** Carry a connection a program in the box opened to a service's socket to the gateway, as a stream of the channel. */
   private accept(service: string, socket: Socket): void {
     this.connections.add(socket)
     socket.on('error', () => {})
@@ -176,7 +176,7 @@ export class Services {
     socket.once('close', () => { if (!socket.readableEnded && !stream.closed) stream.close(constants.NGHTTP2_CANCEL) })
   }
 
-  /** The channel's connection, made as it is first wanted, and again once the host dropped it. */
+  /** The channel's connection, made as it is first wanted, and again once the gateway dropped it. */
   private channel(): ClientHttp2Session {
     if (this.session !== undefined && !this.session.closed && !this.session.destroyed) return this.session
     const session = connectSession('http://box', {
