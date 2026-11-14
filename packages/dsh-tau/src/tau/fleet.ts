@@ -28,13 +28,10 @@ function boxOf(box: FleetBox): FleetBoxPort {
   return {
     id: box.id,
     api: box.api,
-    started: box.started,
     services: async () => (await box.info()).services,
-    lease: (occupant, options) => box.lease(occupant, options),
     watch: listener => box.watch(state => listener(state === 'removed' ? 'removed' : STATES[state] ?? 'stopped')),
     start: () => box.start(),
     stop: () => box.stop(),
-    stopWhenVacant: () => box.stopWhenVacant(),
     remove: () => box.remove(),
     put: (archive, to) => box.put(archive, to),
     get: from => box.get(from),

@@ -890,14 +890,15 @@ async function absent(image: string): Promise<string | false> {
 async function realFleet(t: { after(fn: () => Promise<void>): void }, work: string, served: () => TauService & { tauRuns: TauRuns }): Promise<FleetPort> {
   const paths = fleetPaths(join(work, 'fleet'))
   const platform = fleetPlatform(() => {})
-  const gateway = await FleetGateway.open({ paths, driver: new DockerDriver({ gatewayDir: paths.gatewayDir }), platform, image: IMAGE, idleStopMs: 60_000 })
+  const gateway = await FleetGateway.open({ paths, driver: new DockerDriver({ gatewayDir: paths.gatewayDir }), platform, image: IMAGE })
   const serving = await serve(gateway, { clients: paths.socket, boxes: paths.gatewaySocket })
   const client = await Fleet.connect({ socket: paths.socket })
   await client.serve(tauService(box => served().tauRuns.sessionOfBox(box), caller => served().backendFor(caller)))
   t.after(async () => {
     await client.close()
+    // The gateway leaves its boxes running as it closes; the test's go with it.
+    for (const box of gateway.listBoxes()) await gateway.removeBox(box.id).catch(() => {})
     await serving.close()
-    await gateway.close()
   })
   return fleetOf(client)
 }

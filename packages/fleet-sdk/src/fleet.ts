@@ -4,7 +4,7 @@
  * restarts, which carries every call the client makes: of the gateway's
  * own API, of its boxes' (./box.ts), and of its services. A service's
  * server serves it through the client too (./serve.ts), over a tunnel of
- * its own. What the client holds, its leases, watches and services, it lets
+ * its own. What the client holds, its watches and services, it lets
  * go as it closes.
  * @module @sleepymug/fleet-sdk/fleet
  */
@@ -93,7 +93,7 @@ export class Fleet {
     }
   }
 
-  /** Close the client: its services' tunnels, its leases and watches, and its connection. */
+  /** Close the client: its services' tunnels, its watches, and its connection. */
   async close(): Promise<void> {
     this.closing.abort()
     for (const registration of this.registrations) registration.close()

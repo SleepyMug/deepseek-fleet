@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file fleet/gateway/v1/boxes.proto.
  */
 export const file_fleet_gateway_v1_boxes: GenFile = /*@__PURE__*/
-  fileDesc("ChxmbGVldC9nYXRld2F5L3YxL2JveGVzLnByb3RvEhBmbGVldC5nYXRld2F5LnYxIt4CCgNCb3gSCgoCaWQYASABKAkSDQoFaW1hZ2UYAiABKAkSMQoGbGFiZWxzGAMgAygLMiEuZmxlZXQuZ2F0ZXdheS52MS5Cb3guTGFiZWxzRW50cnkSKwoDZW52GAQgAygLMh4uZmxlZXQuZ2F0ZXdheS52MS5Cb3guRW52RW50cnkSEAoIc2VydmljZXMYBSADKAkSFAoMaWRsZV9zdG9wX21zGAYgASgNEi4KCmNyZWF0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEikKBXN0YXRlGAggASgOMhouZmxlZXQuZ2F0ZXdheS52MS5Cb3hTdGF0ZRotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGioKCEVudkVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEitAIKEENyZWF0ZUJveFJlcXVlc3QSDQoFaW1hZ2UYASABKAkSPgoGbGFiZWxzGAIgAygLMi4uZmxlZXQuZ2F0ZXdheS52MS5DcmVhdGVCb3hSZXF1ZXN0LkxhYmVsc0VudHJ5EjgKA2VudhgDIAMoCzIrLmZsZWV0LmdhdGV3YXkudjEuQ3JlYXRlQm94UmVxdWVzdC5FbnZFbnRyeRIQCghzZXJ2aWNlcxgEIAMoCRIZCgxpZGxlX3N0b3BfbXMYBSABKA1IAIgBARotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGioKCEVudkVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCDwoNX2lkbGVfc3RvcF9tcyKBAQoQTGlzdEJveGVzUmVxdWVzdBI+CgZsYWJlbHMYASADKAsyLi5mbGVldC5nYXRld2F5LnYxLkxpc3RCb3hlc1JlcXVlc3QuTGFiZWxzRW50cnkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASI5ChFMaXN0Qm94ZXNSZXNwb25zZRIkCgVib3hlcxgBIAMoCzIVLmZsZWV0LmdhdGV3YXkudjEuQm94IhwKDUdldEJveFJlcXVlc3QSCwoDYm94GAEgASgJIh4KD1N0YXJ0Qm94UmVxdWVzdBILCgNib3gYASABKAkiEgoQU3RhcnRCb3hSZXNwb25zZSIdCg5TdG9wQm94UmVxdWVzdBILCgNib3gYASABKAkiEQoPU3RvcEJveFJlc3BvbnNlIiQKFVN0b3BXaGVuVmFjYW50UmVxdWVzdBILCgNib3gYASABKAkiGAoWU3RvcFdoZW5WYWNhbnRSZXNwb25zZSIfChBSZW1vdmVCb3hSZXF1ZXN0EgsKA2JveBgBIAEoCSITChFSZW1vdmVCb3hSZXNwb25zZSIeCg9XYXRjaEJveFJlcXVlc3QSCwoDYm94GAEgASgJIj0KEFdhdGNoQm94UmVzcG9uc2USKQoFc3RhdGUYASABKA4yGi5mbGVldC5nYXRld2F5LnYxLkJveFN0YXRlIiQKCE9jY3VwYW50EgwKBGtpbmQYASABKAkSCgoCaWQYAiABKAkiWwoPTGVhc2VCb3hSZXF1ZXN0EgsKA2JveBgBIAEoCRIsCghvY2N1cGFudBgCIAEoCzIaLmZsZWV0LmdhdGV3YXkudjEuT2NjdXBhbnQSDQoFc3RhcnQYAyABKAgiEgoQTGVhc2VCb3hSZXNwb25zZSqXAQoIQm94U3RhdGUSGQoVQk9YX1NUQVRFX1VOU1BFQ0lGSUVEEAASFQoRQk9YX1NUQVRFX1NUT1BQRUQQARIWChJCT1hfU1RBVEVfU1RBUlRJTkcQAhIVChFCT1hfU1RBVEVfU1RBUlRFRBADEhYKEkJPWF9TVEFURV9TVE9QUElORxAEEhIKDkJPWF9TVEFURV9HT05FEAUy1QUKBUJveGVzEkMKBkNyZWF0ZRIiLmZsZWV0LmdhdGV3YXkudjEuQ3JlYXRlQm94UmVxdWVzdBoVLmZsZWV0LmdhdGV3YXkudjEuQm94Ek8KBExpc3QSIi5mbGVldC5nYXRld2F5LnYxLkxpc3RCb3hlc1JlcXVlc3QaIy5mbGVldC5nYXRld2F5LnYxLkxpc3RCb3hlc1Jlc3BvbnNlEj0KA0dldBIfLmZsZWV0LmdhdGV3YXkudjEuR2V0Qm94UmVxdWVzdBoVLmZsZWV0LmdhdGV3YXkudjEuQm94Ek4KBVN0YXJ0EiEuZmxlZXQuZ2F0ZXdheS52MS5TdGFydEJveFJlcXVlc3QaIi5mbGVldC5nYXRld2F5LnYxLlN0YXJ0Qm94UmVzcG9uc2USSwoEU3RvcBIgLmZsZWV0LmdhdGV3YXkudjEuU3RvcEJveFJlcXVlc3QaIS5mbGVldC5nYXRld2F5LnYxLlN0b3BCb3hSZXNwb25zZRJjCg5TdG9wV2hlblZhY2FudBInLmZsZWV0LmdhdGV3YXkudjEuU3RvcFdoZW5WYWNhbnRSZXF1ZXN0GiguZmxlZXQuZ2F0ZXdheS52MS5TdG9wV2hlblZhY2FudFJlc3BvbnNlElEKBlJlbW92ZRIiLmZsZWV0LmdhdGV3YXkudjEuUmVtb3ZlQm94UmVxdWVzdBojLmZsZWV0LmdhdGV3YXkudjEuUmVtb3ZlQm94UmVzcG9uc2USUAoFV2F0Y2gSIS5mbGVldC5nYXRld2F5LnYxLldhdGNoQm94UmVxdWVzdBoiLmZsZWV0LmdhdGV3YXkudjEuV2F0Y2hCb3hSZXNwb25zZTABElAKBUxlYXNlEiEuZmxlZXQuZ2F0ZXdheS52MS5MZWFzZUJveFJlcXVlc3QaIi5mbGVldC5nYXRld2F5LnYxLkxlYXNlQm94UmVzcG9uc2UwAWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("ChxmbGVldC9nYXRld2F5L3YxL2JveGVzLnByb3RvEhBmbGVldC5nYXRld2F5LnYxItwCCgNCb3gSCgoCaWQYASABKAkSDQoFaW1hZ2UYAiABKAkSMQoGbGFiZWxzGAMgAygLMiEuZmxlZXQuZ2F0ZXdheS52MS5Cb3guTGFiZWxzRW50cnkSKwoDZW52GAQgAygLMh4uZmxlZXQuZ2F0ZXdheS52MS5Cb3guRW52RW50cnkSEAoIc2VydmljZXMYBSADKAkSLgoKY3JlYXRlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASKQoFc3RhdGUYCCABKA4yGi5mbGVldC5nYXRld2F5LnYxLkJveFN0YXRlGi0KC0xhYmVsc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4AUoECAYQB1IMaWRsZV9zdG9wX21zIpwCChBDcmVhdGVCb3hSZXF1ZXN0Eg0KBWltYWdlGAEgASgJEj4KBmxhYmVscxgCIAMoCzIuLmZsZWV0LmdhdGV3YXkudjEuQ3JlYXRlQm94UmVxdWVzdC5MYWJlbHNFbnRyeRI4CgNlbnYYAyADKAsyKy5mbGVldC5nYXRld2F5LnYxLkNyZWF0ZUJveFJlcXVlc3QuRW52RW50cnkSEAoIc2VydmljZXMYBCADKAkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBSgQIBRAGUgxpZGxlX3N0b3BfbXMigQEKEExpc3RCb3hlc1JlcXVlc3QSPgoGbGFiZWxzGAEgAygLMi4uZmxlZXQuZ2F0ZXdheS52MS5MaXN0Qm94ZXNSZXF1ZXN0LkxhYmVsc0VudHJ5Gi0KC0xhYmVsc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiOQoRTGlzdEJveGVzUmVzcG9uc2USJAoFYm94ZXMYASADKAsyFS5mbGVldC5nYXRld2F5LnYxLkJveCIcCg1HZXRCb3hSZXF1ZXN0EgsKA2JveBgBIAEoCSIeCg9TdGFydEJveFJlcXVlc3QSCwoDYm94GAEgASgJIhIKEFN0YXJ0Qm94UmVzcG9uc2UiHQoOU3RvcEJveFJlcXVlc3QSCwoDYm94GAEgASgJIhEKD1N0b3BCb3hSZXNwb25zZSIfChBSZW1vdmVCb3hSZXF1ZXN0EgsKA2JveBgBIAEoCSITChFSZW1vdmVCb3hSZXNwb25zZSIeCg9XYXRjaEJveFJlcXVlc3QSCwoDYm94GAEgASgJIj0KEFdhdGNoQm94UmVzcG9uc2USKQoFc3RhdGUYASABKA4yGi5mbGVldC5nYXRld2F5LnYxLkJveFN0YXRlKpcBCghCb3hTdGF0ZRIZChVCT1hfU1RBVEVfVU5TUEVDSUZJRUQQABIVChFCT1hfU1RBVEVfU1RPUFBFRBABEhYKEkJPWF9TVEFURV9TVEFSVElORxACEhUKEUJPWF9TVEFURV9TVEFSVEVEEAMSFgoSQk9YX1NUQVRFX1NUT1BQSU5HEAQSEgoOQk9YX1NUQVRFX0dPTkUQBTKeBAoFQm94ZXMSQwoGQ3JlYXRlEiIuZmxlZXQuZ2F0ZXdheS52MS5DcmVhdGVCb3hSZXF1ZXN0GhUuZmxlZXQuZ2F0ZXdheS52MS5Cb3gSTwoETGlzdBIiLmZsZWV0LmdhdGV3YXkudjEuTGlzdEJveGVzUmVxdWVzdBojLmZsZWV0LmdhdGV3YXkudjEuTGlzdEJveGVzUmVzcG9uc2USPQoDR2V0Eh8uZmxlZXQuZ2F0ZXdheS52MS5HZXRCb3hSZXF1ZXN0GhUuZmxlZXQuZ2F0ZXdheS52MS5Cb3gSTgoFU3RhcnQSIS5mbGVldC5nYXRld2F5LnYxLlN0YXJ0Qm94UmVxdWVzdBoiLmZsZWV0LmdhdGV3YXkudjEuU3RhcnRCb3hSZXNwb25zZRJLCgRTdG9wEiAuZmxlZXQuZ2F0ZXdheS52MS5TdG9wQm94UmVxdWVzdBohLmZsZWV0LmdhdGV3YXkudjEuU3RvcEJveFJlc3BvbnNlElEKBlJlbW92ZRIiLmZsZWV0LmdhdGV3YXkudjEuUmVtb3ZlQm94UmVxdWVzdBojLmZsZWV0LmdhdGV3YXkudjEuUmVtb3ZlQm94UmVzcG9uc2USUAoFV2F0Y2gSIS5mbGVldC5nYXRld2F5LnYxLldhdGNoQm94UmVxdWVzdBoiLmZsZWV0LmdhdGV3YXkudjEuV2F0Y2hCb3hSZXNwb25zZTABYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * A box, as the gateway keeps it.
@@ -55,13 +55,6 @@ export type Box = Message<"fleet.gateway.v1.Box"> & {
    * @generated from field: repeated string services = 5;
    */
   services: string[];
-
-  /**
-   * How long it runs while nothing occupies it, in milliseconds.
-   *
-   * @generated from field: uint32 idle_stop_ms = 6;
-   */
-  idleStopMs: number;
 
   /**
    * @generated from field: google.protobuf.Timestamp created_at = 7;
@@ -110,14 +103,6 @@ export type CreateBoxRequest = Message<"fleet.gateway.v1.CreateBoxRequest"> & {
    * @generated from field: repeated string services = 4;
    */
   services: string[];
-
-  /**
-   * How long it runs while nothing occupies it, in milliseconds; the
-   * gateway's own without it.
-   *
-   * @generated from field: optional uint32 idle_stop_ms = 5;
-   */
-  idleStopMs?: number | undefined;
 };
 
 /**
@@ -241,36 +226,6 @@ export const StopBoxResponseSchema: GenMessage<StopBoxResponse> = /*@__PURE__*/
   messageDesc(file_fleet_gateway_v1_boxes, 8);
 
 /**
- * @generated from message fleet.gateway.v1.StopWhenVacantRequest
- */
-export type StopWhenVacantRequest = Message<"fleet.gateway.v1.StopWhenVacantRequest"> & {
-  /**
-   * @generated from field: string box = 1;
-   */
-  box: string;
-};
-
-/**
- * Describes the message fleet.gateway.v1.StopWhenVacantRequest.
- * Use `create(StopWhenVacantRequestSchema)` to create a new message.
- */
-export const StopWhenVacantRequestSchema: GenMessage<StopWhenVacantRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 9);
-
-/**
- * @generated from message fleet.gateway.v1.StopWhenVacantResponse
- */
-export type StopWhenVacantResponse = Message<"fleet.gateway.v1.StopWhenVacantResponse"> & {
-};
-
-/**
- * Describes the message fleet.gateway.v1.StopWhenVacantResponse.
- * Use `create(StopWhenVacantResponseSchema)` to create a new message.
- */
-export const StopWhenVacantResponseSchema: GenMessage<StopWhenVacantResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 10);
-
-/**
  * @generated from message fleet.gateway.v1.RemoveBoxRequest
  */
 export type RemoveBoxRequest = Message<"fleet.gateway.v1.RemoveBoxRequest"> & {
@@ -285,7 +240,7 @@ export type RemoveBoxRequest = Message<"fleet.gateway.v1.RemoveBoxRequest"> & {
  * Use `create(RemoveBoxRequestSchema)` to create a new message.
  */
 export const RemoveBoxRequestSchema: GenMessage<RemoveBoxRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 11);
+  messageDesc(file_fleet_gateway_v1_boxes, 9);
 
 /**
  * @generated from message fleet.gateway.v1.RemoveBoxResponse
@@ -298,7 +253,7 @@ export type RemoveBoxResponse = Message<"fleet.gateway.v1.RemoveBoxResponse"> & 
  * Use `create(RemoveBoxResponseSchema)` to create a new message.
  */
 export const RemoveBoxResponseSchema: GenMessage<RemoveBoxResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 12);
+  messageDesc(file_fleet_gateway_v1_boxes, 10);
 
 /**
  * @generated from message fleet.gateway.v1.WatchBoxRequest
@@ -315,7 +270,7 @@ export type WatchBoxRequest = Message<"fleet.gateway.v1.WatchBoxRequest"> & {
  * Use `create(WatchBoxRequestSchema)` to create a new message.
  */
 export const WatchBoxRequestSchema: GenMessage<WatchBoxRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 13);
+  messageDesc(file_fleet_gateway_v1_boxes, 11);
 
 /**
  * @generated from message fleet.gateway.v1.WatchBoxResponse
@@ -332,75 +287,7 @@ export type WatchBoxResponse = Message<"fleet.gateway.v1.WatchBoxResponse"> & {
  * Use `create(WatchBoxResponseSchema)` to create a new message.
  */
 export const WatchBoxResponseSchema: GenMessage<WatchBoxResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 14);
-
-/**
- * What occupies a box: its kind and its own id, both its holder's to
- * choose, such as `turn` and an agent's id.
- *
- * @generated from message fleet.gateway.v1.Occupant
- */
-export type Occupant = Message<"fleet.gateway.v1.Occupant"> & {
-  /**
-   * @generated from field: string kind = 1;
-   */
-  kind: string;
-
-  /**
-   * @generated from field: string id = 2;
-   */
-  id: string;
-};
-
-/**
- * Describes the message fleet.gateway.v1.Occupant.
- * Use `create(OccupantSchema)` to create a new message.
- */
-export const OccupantSchema: GenMessage<Occupant> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 15);
-
-/**
- * @generated from message fleet.gateway.v1.LeaseBoxRequest
- */
-export type LeaseBoxRequest = Message<"fleet.gateway.v1.LeaseBoxRequest"> & {
-  /**
-   * @generated from field: string box = 1;
-   */
-  box: string;
-
-  /**
-   * @generated from field: fleet.gateway.v1.Occupant occupant = 2;
-   */
-  occupant?: Occupant | undefined;
-
-  /**
-   * Start the box, if it is not started, and answer once it is; without
-   * it, occupy the box as it is.
-   *
-   * @generated from field: bool start = 3;
-   */
-  start: boolean;
-};
-
-/**
- * Describes the message fleet.gateway.v1.LeaseBoxRequest.
- * Use `create(LeaseBoxRequestSchema)` to create a new message.
- */
-export const LeaseBoxRequestSchema: GenMessage<LeaseBoxRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 16);
-
-/**
- * @generated from message fleet.gateway.v1.LeaseBoxResponse
- */
-export type LeaseBoxResponse = Message<"fleet.gateway.v1.LeaseBoxResponse"> & {
-};
-
-/**
- * Describes the message fleet.gateway.v1.LeaseBoxResponse.
- * Use `create(LeaseBoxResponseSchema)` to create a new message.
- */
-export const LeaseBoxResponseSchema: GenMessage<LeaseBoxResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_gateway_v1_boxes, 17);
+  messageDesc(file_fleet_gateway_v1_boxes, 12);
 
 /**
  * Where a box is in its life.
@@ -458,10 +345,10 @@ export const BoxStateSchema: GenEnum<BoxState> = /*@__PURE__*/
 
 /**
  * The gateway's boxes: each a container with fleet's helper in it while it
- * runs, kept for as long as its creator wants it, and stopped once nothing
- * has occupied it for its idle time. A box's own API, its files and
- * processes, is fleet.box.v1.Box, which the gateway carries to the box's
- * helper at /boxes/<id>/.
+ * runs, kept until it is removed, and running from its start until it is
+ * stopped: when a box runs is its creator's to say, not the gateway's. A
+ * box's own API, its files and processes, is fleet.box.v1.Box, which the
+ * gateway carries to the helper of a started box at /boxes/<id>/.
  *
  * @generated from service fleet.gateway.v1.Boxes
  */
@@ -498,8 +385,8 @@ export const Boxes: GenService<{
     output: typeof BoxSchema;
   },
   /**
-   * Start a box, without occupying it: it stops once it has been idle for
-   * its idle time.
+   * Start a box, if it is not started, and answer once it is: it runs
+   * until it is stopped.
    *
    * @generated from rpc fleet.gateway.v1.Boxes.Start
    */
@@ -509,7 +396,7 @@ export const Boxes: GenService<{
     output: typeof StartBoxResponseSchema;
   },
   /**
-   * Stop a box, whatever occupies it.
+   * Stop a box, whatever runs in it; what is in it stays.
    *
    * @generated from rpc fleet.gateway.v1.Boxes.Stop
    */
@@ -517,17 +404,6 @@ export const Boxes: GenService<{
     methodKind: "unary";
     input: typeof StopBoxRequestSchema;
     output: typeof StopBoxResponseSchema;
-  },
-  /**
-   * Stop a box at once if nothing occupies it, or else as soon as nothing
-   * does.
-   *
-   * @generated from rpc fleet.gateway.v1.Boxes.StopWhenVacant
-   */
-  stopWhenVacant: {
-    methodKind: "unary";
-    input: typeof StopWhenVacantRequestSchema;
-    output: typeof StopWhenVacantResponseSchema;
   },
   /**
    * Remove a box, running or not: its container and its record.
@@ -549,18 +425,6 @@ export const Boxes: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchBoxRequestSchema;
     output: typeof WatchBoxResponseSchema;
-  },
-  /**
-   * Occupy a box for as long as the call lasts, so that it is not stopped
-   * for being idle: the first response says it is held, and none follows.
-   * Cancelling the call, or losing the connection, releases it.
-   *
-   * @generated from rpc fleet.gateway.v1.Boxes.Lease
-   */
-  lease: {
-    methodKind: "server_streaming";
-    input: typeof LeaseBoxRequestSchema;
-    output: typeof LeaseBoxResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_fleet_gateway_v1_boxes, 0);

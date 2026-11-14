@@ -6,7 +6,7 @@
  */
 
 export { Fleet, type ConnectOptions } from './fleet.ts'
-export { BoxState, FleetBox, type BoxListener, type ExecOptions, type Occupant } from './box.ts'
+export { BoxState, FleetBox, type BoxListener, type ExecOptions } from './box.ts'
 export type { Registration, ServiceDefinition } from './serve.ts'
 export { boxOf, callerOf } from './caller.ts'
 export { FleetUnreachable, Reason, reasonOf } from './errors.ts'

@@ -5,11 +5,12 @@
  * gateway, which keeps the boxes, through its client, on the gateway's
  * socket, and nothing of dsh's, so it loads before dsh's session
  * controller, which needs the world's `ctx.fs`. Its config names the dsh
- * home, where it keeps the registry; and the gateway's socket, the image
- * of a run's box, and how long a box nothing occupies runs before the
- * gateway stops it, each the gateway's own without it. It prints what it
- * does on dsh's stderr (../platform.ts). As it unloads, when dsh exits, it
- * closes its client, so the gateway lets each box stop once it is idle.
+ * home, where it keeps the registry; the gateway's socket and the image of
+ * a run's box, each the gateway's own without it; and how long a box,
+ * started, runs while nothing occupies it before it is stopped. It prints
+ * what it does on dsh's stderr (../platform.ts). As it unloads, when dsh
+ * exits, it stops the boxes started, which nothing uses after, and closes
+ * its client.
  * @module @sleepymug/dsh-tau/tau/runs-plugin
  */
 
@@ -31,7 +32,7 @@ export interface Config {
   fleetSocket?: string
   /** The image a run's box runs; the gateway's default by default. */
   image?: string
-  /** How long a box nothing occupies runs before it is stopped, in milliseconds; the gateway's default by default. */
+  /** How long a box, started, runs while nothing occupies it before it is stopped, in milliseconds; a minute by default. */
   idleStopMs?: number
 }
 
@@ -56,5 +57,5 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   await runs.load()
   ctx.provide('fleetTauRuns', runs)
   ctx.provide('fleet', client)
-  ctx.effect(() => () => { runs.close() }, 'fleet-tau boxes')
+  ctx.effect(() => () => runs.close(), 'fleet-tau boxes')
 }

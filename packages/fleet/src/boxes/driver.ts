@@ -31,4 +31,6 @@ export interface BoxDriver {
   /** Remove a box's container, running or not. */
   remove(id: string): Promise<void>
   state(id: string): Promise<ContainerState>
+  /** End what the driver runs itself, for a driver whose containers cannot outlive it; one whose containers do outlive it has none. */
+  close?(): Promise<void>
 }

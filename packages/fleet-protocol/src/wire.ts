@@ -40,8 +40,6 @@ export const HEADERS = {
   box: 'fleet-box',
   /** A box's tunnel: {@link HELPER_PROTOCOL}. */
   helperProtocol: 'fleet-helper-protocol',
-  /** A call of a box's API: `false` not to occupy the box while it runs, which then needs it started. */
-  hold: 'fleet-hold',
   /** A call the gateway carries to a service: who calls, a {@link Caller}, in binary, base64. */
   caller: 'fleet-caller-bin',
   /** A refused tunnel: why, a `Reason`'s name. */

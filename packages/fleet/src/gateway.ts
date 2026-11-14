@@ -1,8 +1,9 @@
 /**
  * The gateway (docs/fleet/index.md), put together from what it is given:
  * the boxes it made (./boxes/), each a container through its driver with
- * fleet's helper in it while it runs, kept for as long as their creators
- * want them, and stopped once idle; and the services (./services/), each a
+ * fleet's helper in it while it runs, kept until they are removed, and
+ * running from their start until they are stopped, as their creators ask;
+ * and the services (./services/), each a
  * spec staged and a server's tunnel naming it, whose clients and packages
  * it puts in the boxes made with them. It knows nothing of who uses its
  * boxes, or of what its services do: a box is its id, its labels and its
@@ -37,8 +38,6 @@ export interface GatewayDeps {
   platform: Platform
   /** The image of a box made without one. */
   image: string
-  /** How long a box made without its own idle time runs while nothing occupies it. */
-  idleStopMs: number
 }
 
 /** What follows a box's state: told it at each change, and `removed` once it is gone for good. */
@@ -99,7 +98,6 @@ export class FleetGateway {
       labels: { ...request.labels },
       env,
       services: specs.map(spec => ({ name: spec.name, spec: spec.digest })),
-      idleStopMs: request.idleStopMs ?? this.deps.idleStopMs,
       createdAt: this.deps.platform.now().toISOString(),
     }
     await this.deps.driver.create({ id: record.id, image: record.image, env: record.env, labels: record.labels })
@@ -210,18 +208,12 @@ export class FleetGateway {
     return registration
   }
 
-  /** Stop the boxes it started, as the gateway stops. */
-  async close(): Promise<void> {
-    await Promise.allSettled([...this.boxes.values()].map(({ managed }) => managed.close()))
-  }
-
   private keep(record: BoxRecord): { managed: ManagedBox; record: BoxRecord } {
     let contents: Promise<Contents> | undefined
     const managed = new ManagedBox({
       id: record.id,
       driver: this.deps.driver,
       platform: this.deps.platform,
-      idleStopMs: record.idleStopMs,
       contents: () => {
         contents ??= this.contentsOf(record).catch((error: unknown) => {
           contents = undefined
@@ -260,7 +252,6 @@ export class FleetGateway {
       labels: record.labels,
       env: record.env,
       services: record.services.map(service => service.name),
-      idleStopMs: record.idleStopMs,
       createdAt: timestampFromDate(new Date(record.createdAt)),
       state: managed.state,
     })

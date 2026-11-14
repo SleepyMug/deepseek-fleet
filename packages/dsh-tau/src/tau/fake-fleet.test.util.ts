@@ -31,9 +31,6 @@ function failed(message: string, reason: Reason): ConnectError {
 interface FakeBox {
   spec: BoxSpec
   state: BoxState
-  occupants: Set<symbol>
-  /** To stop as soon as nothing occupies it. */
-  soon: boolean
   /** Whether what the agent left is in it yet. */
   left: boolean
   watchers: Set<(state: BoxState | 'removed') => void>
@@ -43,8 +40,8 @@ interface FakeBox {
  * The gateway, as a record of what is done with its boxes, failing the
  * verb `failing` names. Each box has its files in a folder of `work`; what
  * `left` says the agent left is put there once the run's outputs are first
- * got back. A box starts as a lease or a call that holds it asks; what
- * stops it is a stop, or a stop when vacant once nothing occupies it.
+ * got back. A box runs from its start until its stop; its API needs it
+ * started.
  */
 export class FakeFleet implements FleetPort {
   readonly calls: string[] = []
@@ -70,7 +67,7 @@ export class FakeFleet implements FleetPort {
   async create(spec: BoxSpec): Promise<string> {
     const id = `box-${(++this.made_).toString(16).padStart(16, '0')}`
     this.record('create', `create ${id}`)
-    this.made.set(id, { spec, state: 'stopped', occupants: new Set(), soon: false, left: false, watchers: new Set() })
+    this.made.set(id, { spec, state: 'stopped', left: false, watchers: new Set() })
     await mkdir(this.root(id), { recursive: true })
     return id
   }
@@ -102,32 +99,17 @@ export class FakeFleet implements FleetPort {
     }
     const stop = (box: FakeBox): void => {
       fleet.record('stop', 'stop')
-      box.soon = false
       set(box, 'stopped')
     }
-    // A call that holds the box starts it; one of the box started alone needs it started.
-    const api = (holds: boolean): BoxApi => createClient(Box, createRouterTransport(this.routes(id, () => {
+    const api: BoxApi = createClient(Box, createRouterTransport(this.routes(id, () => {
       const box = known(Reason.BOX_GONE)
-      if (holds) start(box)
-      else if (box.state !== 'started') throw new ConnectError(`${id} is not started`, Code.FailedPrecondition, undefined, [{ desc: FailureSchema, value: { reason: Reason.NOT_STARTED } }])
+      if (box.state !== 'started') throw new ConnectError(`${id} is not started`, Code.FailedPrecondition, undefined, [{ desc: FailureSchema, value: { reason: Reason.NOT_STARTED } }])
       return box
     })))
-    const held = api(true)
     return {
       id,
-      api: held,
-      started: api(false),
+      api,
       async services() { return known().spec.services },
-      async lease(_occupant, { start: starting = true } = {}) {
-        const box = known(Reason.BOX_GONE)
-        if (starting) start(box)
-        const token = Symbol('lease')
-        box.occupants.add(token)
-        return async () => {
-          if (!box.occupants.delete(token)) return
-          if (box.occupants.size === 0 && box.soon && fleet.made.get(id) === box) stop(box)
-        }
-      },
       watch(listener) {
         const box = fleet.made.get(id)
         listener(box?.state ?? 'removed')
@@ -136,11 +118,6 @@ export class FakeFleet implements FleetPort {
       },
       async start() { start(known(Reason.BOX_GONE)) },
       async stop() { stop(known()) },
-      async stopWhenVacant() {
-        const box = known()
-        if (box.occupants.size === 0) stop(box)
-        else box.soon = true
-      },
       async remove() {
         const box = known()
         fleet.record('remove', 'remove')
@@ -153,10 +130,10 @@ export class FakeFleet implements FleetPort {
           yield { request: { case: 'path' as const, value: to } }
           for await (const chunk of archive) yield { request: { case: 'chunk' as const, value: chunk } }
         }
-        await held.put(requests())
+        await api.put(requests())
       },
       async *get(from) {
-        for await (const { chunk } of held.get({ path: from })) yield chunk
+        for await (const { chunk } of api.get({ path: from })) yield chunk
       },
     }
   }

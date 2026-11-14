@@ -37,6 +37,9 @@ import { SessionBox } from './session-box.ts'
 /** How long a run's init, cancelled, has after SIGTERM before SIGKILL. */
 const INIT_GRACE_MS = 5_000
 
+/** How long a run's box, started, runs while nothing occupies it, unless the runs are told otherwise. */
+const IDLE_STOP_MS = 60_000
+
 /** The environment of every process in a tau's box: where its run's context is. */
 export const BOX_ENV: Record<string, string> = {
   [CONTEXT_VARIABLE]: CONTEXT,
@@ -48,7 +51,7 @@ export interface TauRunsDeps {
   /** fleet's gateway, which keeps the boxes. */
   fleet: FleetPort
   platform: Platform
-  /** How long a box nothing occupies runs before it is stopped; the gateway's default without it. */
+  /** How long a box, started, runs while nothing occupies it before it is stopped; a minute without it. */
   idleStopMs?: number
   /** The image a box runs; the gateway's default without it. */
   image?: string
@@ -72,22 +75,29 @@ export class TauRuns implements TauBoxes, RunLifecycle {
   private readonly registry: Registry
   private readonly fleet: FleetPort
   private readonly platform: Platform
-  private readonly idleStopMs: number | undefined
+  private readonly idleStopMs: number
   private readonly image: string | undefined
 
   constructor({ registry, fleet, platform, idleStopMs, image }: TauRunsDeps) {
     this.registry = registry
     this.fleet = fleet
     this.platform = platform
-    this.idleStopMs = idleStopMs
+    this.idleStopMs = idleStopMs ?? IDLE_STOP_MS
     this.image = image
   }
 
-  /** Find the sessions the registry has, before anyone asks which sessions are a tau's. */
+  /**
+   * Find the sessions the registry has, before anyone asks which sessions
+   * are a tau's, and follow their boxes, so that one left running, as by a
+   * dsh before this one, is stopped once it is idle, at once if its run
+   * ended.
+   */
   async load(): Promise<void> {
     for (const sessionId of await this.registry.list()) {
-      const { project, cwd, box } = await this.registry.get(sessionId)
-      this.runs.set(sessionId, { project, cwd, box: this.sessionBox(sessionId, box) })
+      const { project, cwd, box, ended } = await this.registry.get(sessionId)
+      const kept = this.sessionBox(sessionId, box)
+      if (ended !== undefined) void kept.runEnded()
+      this.runs.set(sessionId, { project, cwd, box: kept })
     }
   }
 
@@ -95,10 +105,10 @@ export class TauRuns implements TauBoxes, RunLifecycle {
    * Set up a box for a run of a call. First the call is admitted as it
    * comes, and kept in the session's folder. Then the box is made by the
    * gateway, with every service registered now, and laid out from the
-   * call, which says the prompt, the files and where things are; and the
-   * session is registered. The box then stops once it is idle, unless the
-   * run's start uses it first. A failure removes the box and the session's
-   * folder.
+   * call, which says the prompt, the files and where things are, started
+   * to be; and the session is registered. The box then stops once it is
+   * idle, unless the run's start uses it first. A failure removes the box
+   * and the session's folder.
    * @param call - tau's archive of the call, which carries the tau.
    * @param caller - the host's `tau` command, or a session: a tau's, from its box, whose runs are in its project, or another, with `tau_run`.
    */
@@ -128,6 +138,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     const box = this.fleet.box(id)
     let setup
     try {
+      await box.start()
       setup = await furnish(box, this.registry.files(sessionId).call, this.scratch(sessionId))
       await this.registry.put({
         sessionId,
@@ -161,7 +172,6 @@ export class TauRuns implements TauBoxes, RunLifecycle {
       env: BOX_ENV,
       services: (await this.fleet.services()).map(service => service.name),
       ...this.image === undefined ? {} : { image: this.image },
-      ...this.idleStopMs === undefined ? {} : { idleStopMs: this.idleStopMs },
     })
   }
 
@@ -180,6 +190,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
       const accepted = await admit(createReadStream(files.call), { scratch: files.tau, title: entry.title })
       const parent: Record<string, string> = entry.caller?.kind === 'session' ? { 'tau.parent': entry.caller.sessionId } : {}
       id = await this.makeBox(sessionId, { 'tau.title': entry.title, ...parent })
+      await this.fleet.box(id).start()
       const setup = await furnish(this.fleet.box(id), files.call, this.scratch(sessionId))
       await this.registry.put({
         ...entry,
@@ -336,8 +347,8 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     return this.runs.get(sessionId)?.box.isStarted() ?? false
   }
 
-  async stopWhenVacant(sessionId: string): Promise<void> {
-    await this.runs.get(sessionId)?.box.stopWhenVacant()
+  async runEnded(sessionId: string): Promise<void> {
+    await this.runs.get(sessionId)?.box.runEnded()
   }
 
   async whenStarted(sessionId: string, signal: AbortSignal): Promise<RunBox> {
@@ -387,9 +398,13 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     })
   }
 
-  /** Stop following the boxes; the gateway stops each once nothing occupies it. */
-  close(): void {
-    for (const run of this.runs.values()) run.box.close()
+  /** Stop following the boxes, and stop those started: nothing uses them once the runs close. */
+  async close(): Promise<void> {
+    await Promise.all([...this.runs].map(async ([sessionId, run]) => {
+      await run.box.close().catch((error: unknown) => {
+        this.platform.log(`could not stop the box of ${sessionId}: ${messageOf(error)}`)
+      })
+    }))
   }
 
   /** A folder of a session's, where its box is laid out, and its result got back, while it is. */
@@ -404,8 +419,11 @@ export class TauRuns implements TauBoxes, RunLifecycle {
     return run
   }
 
+  /** A session's box, followed from now on. */
   private sessionBox(sessionId: string, box: string): SessionBox {
-    return new SessionBox({ sessionId, box, fleet: this.fleet, platform: this.platform, rebuild: () => this.rebuild(sessionId) })
+    const kept = new SessionBox({ sessionId, box, fleet: this.fleet, platform: this.platform, idleStopMs: this.idleStopMs, rebuild: () => this.rebuild(sessionId) })
+    kept.follow()
+    return kept
   }
 
   /** The session whose box `box` is, if a tau's: whose runs a connection from it may make. */

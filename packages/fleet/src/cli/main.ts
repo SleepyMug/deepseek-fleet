@@ -28,19 +28,22 @@ import { shell } from './shell.ts'
 const USAGE = `Usage: fleet <command>
 
 Commands:
-  serve [--image <image>] [--idle-stop <ms>] [--driver docker|local]
-                                run the gateway, until interrupted
+  serve [--image <image>] [--driver docker|local]
+                                run the gateway, until interrupted; the boxes
+                                it started run on
   box list [--json]             list the boxes: id, state, services, labels
   box create [--image <image>] [--label <key>=<value>]... [--service <name>]...
-             [--env <name>=<value>]... [--idle-stop <ms>]
+             [--env <name>=<value>]...
                                 make a box, stopped, and print its id
-  box start <box>               start a box, which stops once it is idle
+  box start <box>               start a box, which runs until it is stopped
   box stop <box>                stop a box
   box rm <box>...               remove boxes, running or not
   box exec <box> [--cwd <dir>] -- <program> [<arg>...]
-                                run a program in a box, and exit as it does
+                                run a program in a box, started first if it is
+                                not, and exit as it does
   box sh <box> [-- <program> [<arg>...]]
-                                a terminal in a box, its shell by default
+                                a terminal in a box, started first if it is
+                                not, its shell by default
   service list [--json]         list the services: name, commands, what each is
   image build [<tag>]           build the box image, ${DEFAULT_IMAGE} by default, from
                                 fleet-box as installed
@@ -82,16 +85,9 @@ function pairs(given: readonly string[] | undefined, what: string): Record<strin
   return out
 }
 
-function milliseconds(given: string | undefined, flag: string): number | undefined {
-  if (given === undefined) return undefined
-  const ms = Number(given)
-  if (!Number.isSafeInteger(ms) || ms < 0) throw new UsageError(`${flag} takes milliseconds, 0 or more`)
-  return ms
-}
-
 const commands: Record<string, (args: string[]) => Promise<void>> = {
   async serve(args) {
-    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { image: { type: 'string' }, 'idle-stop': { type: 'string' }, driver: { type: 'string' } } })
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { image: { type: 'string' }, driver: { type: 'string' } } })
     if (positionals.length > 0) throw new UsageError('serve takes no arguments')
     const paths = fleetPaths(fleetHome(), fleetSocket())
     const platform = systemPlatform()
@@ -99,16 +95,16 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
     if (values.driver === undefined || values.driver === 'docker') driver = new DockerDriver({ gatewayDir: paths.gatewayDir })
     else if (values.driver === 'local') driver = new LocalDriver({ dir: join(paths.home, 'local-boxes'), gatewaySocket: paths.gatewaySocket, log: platform.log })
     else throw new UsageError('--driver takes docker or local')
-    const gateway = await FleetGateway.open({ paths, driver, platform, image: values.image ?? DEFAULT_IMAGE, idleStopMs: milliseconds(values['idle-stop'], '--idle-stop') ?? 60_000 })
+    const gateway = await FleetGateway.open({ paths, driver, platform, image: values.image ?? DEFAULT_IMAGE })
     const served = await serve(gateway, { clients: paths.socket, boxes: paths.gatewaySocket }, platform.log)
     platform.log(`serving on ${paths.socket}, and to its boxes on ${paths.gatewaySocket}`)
     if (values.driver === 'local') platform.log('its boxes are folders here, which nothing isolates')
     await new Promise<void>((resolve) => {
       for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { resolve() })
     })
-    platform.log('stopping the boxes started here')
     await served.close()
-    await gateway.close()
+    // Its boxes run on, and their helpers dial the next gateway, unless the driver's cannot outlive it.
+    await driver.close?.()
   },
 
   async box(args) {
@@ -132,17 +128,15 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
       case 'create': {
         const { values, positionals } = parseArgs({
           args: rest, allowPositionals: true,
-          options: { image: { type: 'string' }, label: { type: 'string', multiple: true }, service: { type: 'string', multiple: true }, env: { type: 'string', multiple: true }, 'idle-stop': { type: 'string' } },
+          options: { image: { type: 'string' }, label: { type: 'string', multiple: true }, service: { type: 'string', multiple: true }, env: { type: 'string', multiple: true } },
         })
         if (positionals.length > 0) throw new UsageError('box create takes no arguments')
-        const idleStopMs = milliseconds(values['idle-stop'], '--idle-stop')
         await withClient(async (fleet) => {
           const box = await fleet.create({
             image: values.image ?? '',
             labels: pairs(values.label, 'a label'),
             env: pairs(values.env, 'an environment variable'),
             services: values.service ?? [],
-            ...idleStopMs === undefined ? {} : { idleStopMs },
           })
           process.stdout.write(`${box.id}\n`)
         })
@@ -178,7 +172,9 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
         const [id, ...argv] = positionals
         if (id === undefined || argv.length === 0) throw new UsageError('box exec takes a box, then --, then a program and its arguments')
         await withClient(async (fleet) => {
-          const { exit, stdout, stderr } = await fleet.box(id).exec(argv, values.cwd === undefined ? {} : { cwd: values.cwd })
+          const box = fleet.box(id)
+          await box.start()
+          const { exit, stdout, stderr } = await box.exec(argv, values.cwd === undefined ? {} : { cwd: values.cwd })
           process.stdout.write(stdout)
           process.stderr.write(stderr)
           process.exitCode = exit?.code ?? 128
@@ -190,7 +186,9 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
         const [id, ...argv] = positionals
         if (id === undefined) throw new UsageError('box sh takes a box')
         await withClient(async (fleet) => {
-          process.exitCode = await shell(fleet.box(id), argv.length === 0 ? ['/bin/sh', '-l'] : argv)
+          const box = fleet.box(id)
+          await box.start()
+          process.exitCode = await shell(box, argv.length === 0 ? ['/bin/sh', '-l'] : argv)
         })
         return
       }

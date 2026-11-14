@@ -50,7 +50,7 @@ gateway knows nothing of dsh or of tau.
   the web client's services.
 - **The gateway is reached through its client.** `fleet-tau-runs`
   connects one client, `ctx.fleet`, on the gateway's clients' socket,
-  which every lease of a run's box, and the tau service's tunnel, are held
+  which every watch of a run's box, and the tau service's tunnel, are held
   on; the client makes its connection again when the gateway loses it, and
   takes them back (docs/fleet-sdk/index.md).
 - **The plugins put the parts together.** Each dsh plugin checks its

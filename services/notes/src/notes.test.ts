@@ -13,7 +13,7 @@ test('each box keeps notes in a notebook of its own, through the notes client, o
   t.after(() => rm(dir, { recursive: true, force: true }))
   const paths = fleetPaths(join(dir, 'home'))
   const driver = new LocalDriver({ dir: join(dir, 'boxes'), gatewaySocket: paths.gatewaySocket })
-  const gateway = await FleetGateway.open({ paths, driver, platform: systemPlatform(() => {}), image: 'local', idleStopMs: 60_000 })
+  const gateway = await FleetGateway.open({ paths, driver, platform: systemPlatform(() => {}), image: 'local' })
   const served = await serve(gateway, { clients: paths.socket, boxes: paths.gatewaySocket })
   const client = await Fleet.connect({ socket: paths.socket })
   t.after(async () => {
@@ -32,6 +32,7 @@ test('each box keeps notes in a notebook of its own, through the notes client, o
   const boxes = []
   for (let i = 0; i < 2; i++) {
     const made = await client.create({ services: ['notes'] })
+    await client.box(made.id).start()
     await mkdir(join(driver.root(made.id), 'fleet', 'programs'), { recursive: true })
     await writeFile(join(driver.root(made.id), 'fleet', 'programs', 'notes.mjs'), program)
     boxes.push({ box: client.box(made.id), program: join(driver.root(made.id), 'fleet', 'programs', 'notes.mjs') })

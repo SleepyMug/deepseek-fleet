@@ -64,14 +64,12 @@ added.
   its session's to change.
 - **The box** of a session comes from `ctx.fleetTauRuns.hold`, which
   starts it if it is not running, as after a restart, the run's end or an
-  idle stop, and which each use leases from fleet's gateway until it is
-  done, so the gateway does not stop the box for being idle under it
-  (docs/dsh-tau/tau/index.md): a file call while it runs, `which` while it
-  runs, a process until it exits, and a terminal until it ends. Each
-  call is one of the box API's, `fleet.box.v1.Box`, which the gateway
-  carries to the box's helper (docs/fleet-box/helper/index.md), made on the
-  box's `started` client, which neither holds nor starts it, since the
-  lease holds the box started (docs/fleet-sdk/index.md).
+  idle stop, and which each use occupies until it is done, so the box is
+  not stopped for being idle under it (docs/dsh-tau/tau/index.md): a file
+  call while it runs, `which` while it runs, a process until it exits, and
+  a terminal until it ends. Each call is one of the box API's,
+  `fleet.box.v1.Box`, which the gateway carries to the helper of the box,
+  started, and which starts nothing (docs/fleet-sdk/index.md).
 - **Files.** A call that names a path, `resolve` and `lstat`, goes to the
   box its path or its `cwd` names, written `fleet-box://<session><path>`,
   or else to the box of the session it is for, if a tau's; a relative path
@@ -137,7 +135,7 @@ added.
   which says first that the watch is ready, then each time what is at the
   path, or what the folder holds, may have changed, until the watch's stop
   or signal cancels it. So the sidebar
-  refreshes live. A watch neither starts the box nor leases it, since the
+  refreshes live. A watch neither starts the box nor occupies it, since the
   file viewer holds one for as long as it shows a folder: if it did, an
   open browser tab would keep the box running; and if a watch failed as its
   box stopped, the viewer's feed, which reads the folder again before it
@@ -181,8 +179,8 @@ added.
   the box cannot tell. So dsh's terminal
   controller reclaims a terminal no window has held for
   `unattendedTimeoutMs`, two hours by default, while it was idle, which
-  ends its lease of the box, and the gateway stops the box once nothing
-  else uses it; one still running a command keeps the box running.
+  ends its hold of the box, and the box stops once nothing else occupies
+  it; one still running a command keeps the box running.
 - **Spill files.** dsh saves a tool result too big for the conversation
   to a spill file its model is told to read. A tau's session's would sit
   on the host, where its model does not look, so `fleet-spill` refuses

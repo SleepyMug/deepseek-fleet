@@ -4,8 +4,8 @@
  *
  * - Its clients', its owner's alone, as harnesses and services' servers
  *   reach it: the gateway's own API, `fleet.gateway.v1.Boxes` and `Services`; a
- *   box's API at `/boxes/<id>/`, carried to the box's helper, the box held
- *   while the call lasts unless the call says not to; a service at
+ *   box's API at `/boxes/<id>/`, carried to the helper of the box, which
+ *   is started; a service at
  *   `/services/<name>/`, carried to its server, which is told the call is
  *   a client's; and a service's tunnel.
  * - Its boxes', a folder each box mounts: a helper's tunnel, naming its
@@ -19,7 +19,6 @@
  * @module @sleepymug/fleet/http/server
  */
 
-import { randomBytes } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { Code, ConnectError, type ConnectRouter } from '@connectrpc/connect'
@@ -112,20 +111,13 @@ function fromClient(gateway: FleetGateway, req: Request, res: Response, api: Ret
     forward(req, res, registration.upstream, { path: route.path, drop: fleets, headers: { [HEADERS.caller]: encodeCaller({ caller: { case: 'client', value: {} } }) } })
     return
   }
-  void toBox(gateway, route.box, route.path, req, res)
+  toBox(gateway, route.box, route.path, req, res)
 }
 
-/** A call of a box's API, carried to its helper: the box held while it lasts, unless it says not to, and then only to a box that is started. */
-async function toBox(gateway: FleetGateway, box: string, path: string, req: Request, res: Response): Promise<void> {
+/** A call of a box's API, carried to its helper: the box must be started, which the call does not do. */
+function toBox(gateway: FleetGateway, box: string, path: string, req: Request, res: Response): void {
   try {
-    const managed = gateway.box(box)
-    if (req.headers[HEADERS.hold] === 'false') {
-      forward(req, res, managed.started().upstream, { path, drop: fleets })
-      return
-    }
-    const { link, release } = await managed.hold({ kind: 'call', id: randomBytes(8).toString('hex') })
-    res.once('close', release)
-    forward(req, res, link.upstream, { path, drop: fleets })
+    forward(req, res, gateway.box(box).started().upstream, { path, drop: fleets })
   } catch (error) {
     refuse(req, res, ConnectError.from(error))
   }

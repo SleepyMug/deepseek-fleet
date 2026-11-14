@@ -17,7 +17,7 @@ fleet gives things are docs/VOCAB.md's.
 - `fleet` (docs/fleet/cli/index.md), the command: `fleet serve` runs the
   gateway; the others are its clients.
 - `@sleepymug/fleet/gateway`: `FleetGateway.open({ paths, driver, platform,
-  image, idleStopMs })`, the gateway in its home, and `serve(gateway,
+  image })`, the gateway in its home, and `serve(gateway,
   { clients, boxes })`, which serves it on its two sockets; `fleetPaths`,
   `systemPlatform`; and its drivers, `DockerDriver` and `LocalDriver`.
 
@@ -27,7 +27,7 @@ The gateway's **home** is `$FLEET_HOME`, or `~/.fleet`:
 |---|---|
 | `fleet.sock` | Its clients' socket, unless `$FLEET_SOCKET` names another: its owner's alone, mode 0600. |
 | `gateway/gateway.sock` | Its boxes' socket, in a folder each box mounts at `/run/fleet/gateway`. |
-| `boxes/<id>.json` | Each box it made, as it made it: its id, image, labels, environment, services with their specs, idle time, and when (`boxes/registry.ts`). |
+| `boxes/<id>.json` | Each box it made, as it made it: its id, image, labels, environment, services with their specs, and when (`boxes/registry.ts`). |
 | `specs/<digest>.json`, `.binpb` | Each service's spec as staged, and its schema (`services/specs.ts`). |
 | `store/<digest>/` | Trees by their digest: services' packages, their clients, and what the clients import (`store.ts`). |
 
@@ -41,7 +41,7 @@ a call that answers once. What is where is fleet-protocol's wire
 | On | Path | What it is |
 |---|---|---|
 | clients' | `/fleet.gateway.v1.Boxes/*`, `/fleet.gateway.v1.Services/*` | The gateway's own API (below). |
-| clients' | `/boxes/<id>/fleet.box.v1.Box/*` | A box's API, carried to its helper, the box held while the call lasts and started if it is not, or, with `fleet-hold: false`, of a started box alone. |
+| clients' | `/boxes/<id>/fleet.box.v1.Box/*` | A box's API, carried to the helper of the box, started; a box that is not fails, `NOT_STARTED`, and the call starts none. |
 | clients' | `/services/<name>/<package>.<Service>/*` | A service, carried to its server, told the call is a client's. |
 | clients' | `/fleet/tunnel`, a WebSocket | A service's server's tunnel, naming the service and its spec. |
 | boxes' | `/fleet/tunnel`, a WebSocket | A box's helper's tunnel, naming its box. |
@@ -58,11 +58,10 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
 
 | Method | What it does |
 |---|---|
-| `Boxes.Create { image, labels, env, services, idle_stop_ms? }` | Make a box, stopped, with the services it names, each as registered now, and give it back. |
+| `Boxes.Create { image, labels, env, services }` | Make a box, stopped, with the services it names, each as registered now, and give it back. |
 | `Boxes.List { labels }`, `Boxes.Get { box }` | Every box, oldest first, or those whose labels hold each of `labels`; one box. |
-| `Boxes.Start`, `Stop`, `StopWhenVacant`, `Remove { box }` | A box's life. |
+| `Boxes.Start`, `Stop`, `Remove { box }` | A box's life: started, it runs until it is stopped. |
 | `Boxes.Watch { box }` | The box's state, now and at each change, until it is removed or the call is cancelled. |
-| `Boxes.Lease { box, occupant, start }` | Occupy the box for as long as the call lasts, the first response once it is held; with `start`, once it is started. |
 | `Services.Stage { name, description, schema, services, package, env }` | Stage a service's spec: check it, make its client, keep both; answer its digest, and whether the package is to be uploaded. |
 | `Services.Upload`, a stream | Take in a package: its digest, then its tar archive. |
 | `Services.List {}` | The services registered now. |
@@ -89,7 +88,7 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   and only then is the box `started`: `STOPPED`, `STARTING`, `STARTED`,
   `STOPPING`, or `GONE`, its container removed by other means. A helper that
   dials in for a box the gateway did not start, as one a gateway before this
-  one left running, has its box taken as started, which stops once idle.
+  one left running, has its box taken as started.
 - **A box's services are fixed when it is made**: each name, as registered
   then, with its spec. Its tree (`boxes/contents.ts`) is made from them, so
   it is fixed too, and named by the digest of what it is made from: each
@@ -100,12 +99,11 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   in `bin`, made executable; and the box's README, `README.md`. The helper
   installs it at `/fleet` as the box first starts. Its environment is its
   services', then its creator's, given the container as it is made.
-- **Leases.** What occupies a box keeps it from being stopped for being
-  idle; when the last leaves, the box stops after its idle time, unless
-  something occupies it again meanwhile, and `StopWhenVacant` has it stop as
-  soon as the last leaves. A lease is its call: it ends as the call does, so
-  a client that dies holds no box up. A call of a box's API that holds the
-  box occupies it while the call lasts.
+- **When a box runs is its creator's to say.** A box runs from its start
+  until it is stopped, or removed; the gateway starts and stops none of its
+  own accord, and a call of a box's API needs the box started, which the
+  call does not do. Whatever its creator knows of what uses the box, such as
+  dsh-tau's idle stop (docs/dsh-tau/tau/index.md), is its creator's.
 - **One operation at a time.** A box's operations, a start, a stop, a
   removal, run one after another; calls of its API run as they come.
 - **A box gone.** A box whose container is not there when it is asked to
@@ -115,7 +113,9 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   specs its home keeps; a running box's helper and a service's server dial
   it again on their own, the server staging its spec again if the gateway
   lost it.
-- **When the gateway stops**, it stops the boxes it started.
+- **When the gateway stops**, its boxes run on, their helpers dialing the
+  next gateway, but a driver's whose boxes cannot outlive it, as
+  `LocalDriver`'s, which it ends as it closes (`BoxDriver.close`).
 
 ## Not yet
 

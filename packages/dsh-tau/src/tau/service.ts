@@ -331,7 +331,7 @@ export class TauService {
       await this.runs.ended(sessionId, result)
       this.log(`${sessionId} ended${result.ok ? '' : `, failing: ${String(result.failure)}`}`)
       // At once, unless something else uses the box, such as a user's terminal: then once it no longer does.
-      await this.runs.stopWhenVacant(sessionId).catch((error: unknown) => { this.log(`could not stop the box of ${sessionId}: ${messageOf(error)}`) })
+      await this.runs.runEnded(sessionId)
     })
     // What it started and did not take the result of cannot give back anything now: its box is its caller's.
     await this.releaseChildren(sessionId, entry => entry.finishedAt === undefined)

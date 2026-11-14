@@ -8,19 +8,22 @@ in them; and `fleet image build` builds the box image.
 ## Provides
 
 ```
-fleet serve [--image <image>] [--idle-stop <ms>] [--driver docker|local]
-                              run the gateway, until interrupted
+fleet serve [--image <image>] [--driver docker|local]
+                              run the gateway, until interrupted; the boxes
+                              it started run on
 fleet box list [--json]       list the boxes: id, state, services, labels
 fleet box create [--image <image>] [--label <key>=<value>]... [--service <name>]...
-                 [--env <name>=<value>]... [--idle-stop <ms>]
+                 [--env <name>=<value>]...
                               make a box, stopped, and print its id
-fleet box start <box>         start a box, which stops once it is idle
+fleet box start <box>         start a box, which runs until it is stopped
 fleet box stop <box>          stop a box
 fleet box rm <box>...         remove boxes, running or not
 fleet box exec <box> [--cwd <dir>] -- <program> [<arg>...]
-                              run a program in a box, and exit as it does
+                              run a program in a box, started first if it is
+                              not, and exit as it does
 fleet box sh <box> [-- <program> [<arg>...]]
-                              a terminal in a box, its shell by default
+                              a terminal in a box, started first if it is
+                              not, its shell by default
 fleet service list [--json]   list the services: name, commands, what each is
 fleet image build [<tag>]     build the box image, fleet:local by default, from
                               fleet-box as installed
@@ -28,15 +31,15 @@ fleet image build [<tag>]     build the box image, fleet:local by default, from
 
 - The gateway's home is `$FLEET_HOME`, or `~/.fleet`; its clients' socket
   `$FLEET_SOCKET`, or `fleet.sock` in its home.
-- `serve` makes each box without an image of its own from `--image`, and
-  stops each nothing occupies after `--idle-stop` milliseconds, 60 000 by
-  default; `--driver local` makes each box a folder in the home, and its
-  helper a process here, which nothing isolates. It runs until SIGINT or
-  SIGTERM, then stops the boxes it started.
+- `serve` makes each box without an image of its own from `--image`;
+  `--driver local` makes each box a folder in the home, and its helper a
+  process here, which nothing isolates. It runs until SIGINT or SIGTERM;
+  its boxes run on, and their helpers dial the next gateway, but local
+  ones, which it stops.
 - `box create` gives the box its labels, its environment, and the services
   it has, each registered now.
-- `box exec` and `box sh` hold the box while they run, starting it if it is
-  not; `box sh` puts this terminal in raw mode, and follows its size.
+- `box exec` and `box sh` start the box if it is not started, and leave it
+  running; `box sh` puts this terminal in raw mode, and follows its size.
 - `--json` prints what the gateway answers, as JSON, in place of the table.
 - Exit codes: `0` on success, or `box exec`'s and `box sh`'s program's own;
   `1` when an operation fails, or no gateway answers on the socket; `2` on a

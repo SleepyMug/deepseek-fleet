@@ -2,8 +2,9 @@
  * Boxes as folders on this machine (./driver.ts), for tests, and for
  * trying fleet out without Docker: each box's "container" is its folder,
  * which roots its layout, and the helper as built, run on this machine's
- * Node, as the process the box runs while it is started. Nothing isolates
- * such a box: its programs run as whoever runs the gateway.
+ * Node, as the process the box runs while it is started, which ends as the
+ * driver closes. Nothing isolates such a box: its programs run as whoever
+ * runs the gateway.
  * @module @sleepymug/fleet/boxes/local
  */
 
@@ -83,6 +84,11 @@ export class LocalDriver implements BoxDriver {
     const box = this.boxes.get(id)
     if (box === undefined) return 'missing'
     return box.process === undefined ? 'stopped' : 'running'
+  }
+
+  /** Stop every box, whose helpers are this process's own. */
+  async close(): Promise<void> {
+    await Promise.all([...this.boxes.keys()].map(id => this.stop(id)))
   }
 
   /** As if a box's container were removed by other means. */

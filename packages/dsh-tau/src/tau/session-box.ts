@@ -1,11 +1,15 @@
 /**
- * The box of one tau's session (./runs.ts), as fleet's gateway keeps it: the
+ * The box of one tau's session (./runs.ts), as fleet's gateway keeps it,
+ * and when it runs, which is the session's to say, not the gateway's: the
  * box's id, which a box set up again changes; the session's operations on
- * it, one after another; its leases, each of an occupant, which keep the
- * gateway from stopping it for being idle; its state, which the gateway
- * tells; the host files copied into it; and whether it is removed while its
- * session is archived. A box the gateway says is gone, or does not know, is set
- * up again on its next use, as the runs do it, from the run's call.
+ * it, one after another; what occupies it, each a turn, a call, a process
+ * or a terminal of the session's; its state, which the gateway tells; the
+ * host files copied into it; and whether it is removed while its session is
+ * archived. The box is started as something holds it, and stopped once it
+ * is started and nothing has occupied it for the idle time, or at once
+ * after its run ended, whoever started it: the session, the `fleet`
+ * command, or a dsh before this one. A box the gateway says is gone, or does not know, is set up again on its
+ * next use, as the runs do it, from the run's call.
  * @module @sleepymug/dsh-tau/tau/session-box
  */
 
@@ -23,6 +27,8 @@ export interface SessionBoxDeps {
   box: string
   fleet: FleetPort
   platform: Platform
+  /** How long the box runs, started, while nothing occupies it, before it is stopped. */
+  idleStopMs: number
   /**
    * Set the box up again from the run's call, the box the gateway knew gone,
    * and give back the new one's id, started; the entry records it.
@@ -35,6 +41,14 @@ export class SessionBox {
   private readonly queue = new Queue()
   /** The host files copied in, or on their way, by their place in the box. */
   private readonly copies = new Map<string, Promise<void>>()
+  /** What occupies the box now. */
+  private readonly occupants = new Map<symbol, Occupant>()
+  /** What cancels the stop of the idle box, while one is due. */
+  private cancelIdle: (() => void) | undefined
+  /** The stop of the idle box, while it is under way. */
+  private stopping: Promise<void> | undefined
+  /** The run ended: the box, as it runs then, stops as soon as nothing occupies it. */
+  private ended = false
   /** Removed while the session is archived. */
   private archived = false
   /** The session was released, and the box with it. */
@@ -55,6 +69,21 @@ export class SessionBox {
   }
 
   /**
+   * Follow the box's state from now on, so that a box started, by whoever,
+   * is stopped once it is idle.
+   */
+  follow(): void {
+    if (this.unwatch !== undefined || this.gone) return
+    this.unwatch = this.deps.fleet.box(this.id).watch((state) => {
+      this.state = state
+      // Once stopped, by whoever, it is used afresh, and idles for the idle time.
+      if (state === 'stopped') this.ended = false
+      if (state === 'started' || state === 'removed') this.wake()
+      this.settle()
+    })
+  }
+
+  /**
    * Run an operation on the box, after those before it.
    * @param operation - is given the box, started if need be, or set up again, if gone, which only it may ask for.
    */
@@ -68,23 +97,28 @@ export class SessionBox {
    */
   async hold(occupant: Occupant): Promise<Held | undefined> {
     if (this.gone) return undefined
-    return await this.exclusive(async () => {
-      if (this.gone) return undefined
-      this.ready()
-      const box = await this.held(occupant)
-      return { box: runBox(box.port), release: () => { void box.release() } }
-    })
+    const release = this.occupy(occupant)
+    try {
+      const box = await this.exclusive(async running => (this.gone ? undefined : await running()))
+      if (box === undefined) {
+        release()
+        return undefined
+      }
+      return { box: runBox(box), release }
+    } catch (error) {
+      release()
+      throw error
+    }
   }
 
   /** Occupy the box, without starting it, until the returned release, which only the first call does. */
   occupy(occupant: Occupant): () => void {
     if (this.gone || this.archived) return () => {}
-    let released = false
-    const leased = this.deps.fleet.box(this.id).lease(occupant, { start: false }).catch(() => undefined)
+    const token = Symbol(occupant.id)
+    this.occupants.set(token, occupant)
+    this.settle()
     return () => {
-      if (released) return
-      released = true
-      void leased.then(release => release?.())
+      if (this.occupants.delete(token)) this.settle()
     }
   }
 
@@ -150,14 +184,14 @@ export class SessionBox {
 
   /** Stop the box, which keeps what is in it. */
   async stop(): Promise<void> {
-    await this.exclusive(async () => {
-      await this.deps.fleet.box(this.id).stop()
-    })
+    await this.exclusive(() => this.halt())
   }
 
-  /** Stop the box as soon as nothing occupies it: now, if nothing does, as when its run ended; else once the last occupant leaves. */
-  async stopWhenVacant(): Promise<void> {
-    await this.deps.fleet.box(this.id).stopWhenVacant()
+  /** The run ended: stop the box as soon as nothing occupies it; it settles once it is stopped, if nothing does now. */
+  async runEnded(): Promise<void> {
+    this.ended = true
+    this.settle()
+    await this.stopping
   }
 
   /**
@@ -167,6 +201,7 @@ export class SessionBox {
    */
   async archive(): Promise<void> {
     this.archived = true
+    this.disarm()
     await this.exclusive(async () => {
       if (this.gone || !this.archived) return
       if (await removed(this.deps.fleet.box(this.id))) this.deps.platform.log(`removed the box ${this.id} of ${this.deps.sessionId}, which is archived`)
@@ -191,31 +226,29 @@ export class SessionBox {
       this.gone = true
       this.copies.clear()
       this.archived = false
+      this.disarm()
       this.unwatch?.()
       this.unwatch = undefined
       this.wake()
     })
   }
 
-  /** Stop following the box's state, as the runs close. */
-  close(): void {
+  /** Stop following the box, and stop it if it is started, as the runs close: nothing of the session's uses it after. */
+  async close(): Promise<void> {
+    this.disarm()
     this.unwatch?.()
     this.unwatch = undefined
+    if (this.state !== 'started' || this.gone) return
+    await this.exclusive(() => this.halt())
   }
 
-  /** The box, started, in one of its operations, set up again if it is gone; none while it is archived. */
+  /** The box, started, in one of its operations, set up again if the gateway knows it gone; none while it is archived. */
   private async running(): Promise<FleetBoxPort> {
-    const { port, release } = await this.held({ kind: 'call', id: 'start' })
-    await release()
-    return port
-  }
-
-  /** A lease of the box, started, set up again if the gateway knows it gone. */
-  private async held(occupant: Occupant): Promise<{ port: FleetBoxPort; release: () => Promise<void> }> {
     if (this.archived) throw new Error(`dsh-tau: ${this.deps.sessionId} is archived, so it has no box; unarchive it to have one again`)
-    let port = this.deps.fleet.box(this.id)
+    const box = this.deps.fleet.box(this.id)
     try {
-      return { port, release: await port.lease(occupant) }
+      await box.start()
+      return box
     } catch (error) {
       const reason = reasonOf(error)
       if (reason !== Reason.BOX_GONE && reason !== Reason.NO_BOX) throw error
@@ -223,30 +256,65 @@ export class SessionBox {
     this.copies.clear()
     this.id = await this.deps.rebuild()
     this.restartFollowing()
-    port = this.deps.fleet.box(this.id)
-    return { port, release: await port.lease(occupant) }
+    return this.deps.fleet.box(this.id)
   }
 
-  /** Follow the box's state, if not yet. */
-  private follow(): void {
-    if (this.unwatch !== undefined || this.gone) return
-    this.unwatch = this.deps.fleet.box(this.id).watch((state) => {
-      this.state = state
-      if (state === 'started' || state === 'removed') this.wake()
+  /** Stop the box, in one of its operations; one the gateway knows gone, or no longer, is let be. */
+  private async halt(): Promise<void> {
+    try {
+      await this.deps.fleet.box(this.id).stop()
+    } catch (error) {
+      const reason = reasonOf(error)
+      if (reason !== Reason.BOX_GONE && reason !== Reason.NO_BOX) throw error
+    }
+    // Stopped, as the gateway tells next: so nothing stops it again before it does.
+    if (this.state === 'started') this.state = 'stopped'
+    this.ended = false
+  }
+
+  /**
+   * Have the idle box stopped, and only it: one that is started, which
+   * nothing occupies, after the idle time, or at once once its run ended.
+   * Whatever else it is, no stop is due.
+   */
+  private settle(): void {
+    const idle = this.state === 'started' && this.occupants.size === 0 && !this.gone && !this.archived
+    if (!idle || this.ended) this.disarm()
+    if (!idle) return
+    if (this.ended) {
+      this.stopIdle()
+      return
+    }
+    if (this.cancelIdle !== undefined) return
+    const cancel = this.deps.platform.after(this.deps.idleStopMs, () => {
+      if (this.cancelIdle === cancel) this.cancelIdle = undefined
+      this.stopIdle()
     })
+    this.cancelIdle = cancel
+  }
+
+  /** Stop the idle box, once, in one of its operations, unless something took it, or stopped it, meanwhile. */
+  private stopIdle(): void {
+    this.stopping ??= this.queue.run(async () => {
+      if (this.occupants.size > 0 || this.state !== 'started' || this.gone || this.archived) return
+      await this.halt()
+    }).catch((error: unknown) => {
+      this.deps.platform.log(`could not stop the idle box of ${this.deps.sessionId}: ${messageOf(error)}`)
+    }).finally(() => {
+      this.stopping = undefined
+    })
+  }
+
+  private disarm(): void {
+    this.cancelIdle?.()
+    this.cancelIdle = undefined
   }
 
   /** Follow the box that took the place of one gone. */
   private restartFollowing(): void {
-    if (this.unwatch === undefined) return
-    this.unwatch()
+    this.unwatch?.()
     this.unwatch = undefined
     this.state = undefined
-    this.follow()
-  }
-
-  /** Follow the box from its first use on. */
-  private ready(): void {
     this.follow()
   }
 
@@ -260,9 +328,9 @@ export class SessionBox {
   }
 }
 
-/** A box as the world uses it: its API, of the box started, which the world's own leases hold. */
+/** A box as the world uses it: its id and its API, of the box started, which the world's holds keep so. */
 export function runBox(port: FleetBoxPort): RunBox {
-  return { id: port.id, api: port.started }
+  return { id: port.id, api: port.api }
 }
 
 /** Remove a box, unless the gateway has forgotten it already; whether it removed it. */

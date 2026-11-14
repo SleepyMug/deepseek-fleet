@@ -25,7 +25,6 @@ export interface BoxRecord {
   /** The environment of every process in it, its services' and its creator's. */
   env: Record<string, string>
   services: BoxService[]
-  idleStopMs: number
   /** When it was made, as an ISO date. */
   createdAt: string
 }

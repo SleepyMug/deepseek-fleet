@@ -12,7 +12,7 @@ uses. fleet's docs and code use these, and no others.
 | **fleet home** | The gateway's folder on the host, `$FLEET_HOME` or `~/.fleet`: its sockets, its boxes' records, its specs and its store. |
 | **clients' socket** | `fleet.sock` in the fleet home, its owner's alone, on which harnesses and fleet servers reach the gateway. |
 | **boxes' socket** | `gateway/gateway.sock` in the fleet home, mounted in every box at `/run/fleet/gateway`, on which the helpers reach the gateway. |
-| **gateway API** | `fleet.gateway.v1`, the gateway's own calls: `Boxes`, which makes, lists, starts, stops, watches and leases boxes, and `Services`, which stages and lists services. |
+| **gateway API** | `fleet.gateway.v1`, the gateway's own calls: `Boxes`, which makes, lists, starts, stops, watches and removes boxes, and `Services`, which stages and lists services. |
 | **box** | A container the gateway made, with the helper in it while it runs: its id, `box-` and 16 hex digits, its labels, its environment, and its services, fixed when it is made. |
 | **driver** | What keeps a box's container for the gateway, making, starting, stopping and removing it: Docker's, or a local folder's, for trying fleet out. |
 | **image** | What a box runs: Node, with fleet-box, the helper, at `/opt/fleet`; `fleet:local` by default. |
@@ -20,8 +20,8 @@ uses. fleet's docs and code use these, and no others.
 | **box API** | `fleet.box.v1`, a box's calls, which its helper serves: `Box`, its processes, terminals and files, and `Provision`, which the gateway alone asks. |
 | **tunnel** | A connection a helper or a fleet server dials to the gateway, a WebSocket at `/fleet/tunnel`, over which the gateway then calls the dialer: what lets the gateway, which dials nothing, reach either on a machine of its own. |
 | **labels** | What a box's creator says of it, keys and values, which the gateway keeps, lists boxes by, and tells a fleet server with each call from the box. |
-| **lease** | A hold on a box, by an **occupant**, that keeps it from being stopped for being idle, for as long as the call that took it lasts. |
-| **idle stop** | A box stopping once nothing has occupied it for its idle time. |
+| **occupant** | What uses a tau's session's box, as dsh-tau counts it: a turn of its agent, a call, a process or a terminal, until it is done. fleet knows none. |
+| **idle stop** | dsh-tau's stopping a session's box once it is started and nothing has occupied it for the idle time; fleet stops a box only when asked. |
 | **harness** | A client of the gateway that makes boxes and runs agents in them, such as dsh-tau. |
 | **fleet-sdk** | What harnesses and fleet servers talk to the gateway with: `Fleet`, its boxes, each a `FleetBox`, and `fleet.serve`, which registers a service. |
 

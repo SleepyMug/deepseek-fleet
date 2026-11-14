@@ -50,7 +50,6 @@ are in `proto/`, its code generated from them in `src/gen/`, by `pnpm gen`
 | `fleet-service`, `fleet-spec` | a service's tunnel | The service's name, and the digest of the spec it serves. |
 | `fleet-box` | a box's tunnel, and the calls its helper carries | The box's id. |
 | `fleet-helper-protocol` | a box's tunnel | `HELPER_PROTOCOL`. |
-| `fleet-hold` | a call of a box's API | `false`: neither hold nor start the box. |
 | `fleet-caller-bin` | a call the gateway carries to a service | A `Caller`, binary, base64. |
 | `fleet-reason` | a tunnel refused | A `Reason`'s name. |
 

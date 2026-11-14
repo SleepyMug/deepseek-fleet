@@ -1,9 +1,9 @@
 /**
  * One of the gateway's boxes, as a client asks of it: its life, through
- * the gateway's `Boxes`; and its API, `fleet.box.v1.Box`, which the gateway
- * carries to its helper, the box held while a call lasts, or, through
- * `started`, a box already started alone. A lease and a watch last as long
- * as their call, and are taken again once a lost connection is made again.
+ * the gateway's `Boxes`, which the client says, the box running from its
+ * start until it is stopped; and its API, `fleet.box.v1.Box`, which the
+ * gateway carries to the helper of the box, started. A watch lasts as long
+ * as its call, and is taken again once a lost connection is made again.
  * @module @sleepymug/fleet-sdk/box
  */
 
@@ -11,18 +11,12 @@ import { createWriteStream } from 'node:fs'
 import { lstat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { create } from '@bufbuild/protobuf'
-import { Code, ConnectError, createClient, type CallOptions, type Client, type Interceptor } from '@connectrpc/connect'
+import { Code, ConnectError, createClient, type CallOptions, type Client } from '@connectrpc/connect'
 import { Box as BoxService, type ExecResponse, GetRequestSchema, PutRequestSchema } from '@sleepymug/fleet-protocol/box'
 import { type Box, Boxes, BoxState } from '@sleepymug/fleet-protocol/gateway'
-import { boxPath, HEADERS } from '@sleepymug/fleet-protocol/wire'
+import { boxPath } from '@sleepymug/fleet-protocol/wire'
 import { connectTransport, type Upstream } from '@sleepymug/fleet-net'
 import { packTree, pathEntry, unpackTree, writeTar } from '@sleepymug/fleet-pack'
-
-/** What occupies a box: its kind and its own id, both its holder's to choose, such as `turn` and an agent's id. */
-export interface Occupant {
-  kind: string
-  id: string
-}
 
 /** What follows a box's state: told it now, at each change, and `removed` once the box is gone. */
 export type BoxListener = (state: BoxState | 'removed') => void
@@ -38,19 +32,12 @@ export interface ExecOptions {
 }
 
 export class FleetBox {
-  /** The box's API, the box held while each call lasts, started first if it is not. */
+  /** The box's API, of the box started; a call of a box that is not fails, `NOT_STARTED`. */
   readonly api: Client<typeof BoxService>
-  /** The box's API, of a box that is started, which a call neither holds nor starts. */
-  readonly started: Client<typeof BoxService>
 
-  /** @param closing - aborted as the client closes, which ends its leases and watches. */
+  /** @param closing - aborted as the client closes, which ends its watches. */
   constructor(readonly id: string, private readonly boxes: Client<typeof Boxes>, upstream: Upstream, private readonly closing: AbortSignal) {
     this.api = createClient(BoxService, connectTransport(upstream, boxPath(id)))
-    const unheld: Interceptor = next => (req) => {
-      req.header.set(HEADERS.hold, 'false')
-      return next(req)
-    }
-    this.started = createClient(BoxService, connectTransport(upstream, boxPath(id), [unheld]))
   }
 
   /** The box, with its state. */
@@ -58,58 +45,18 @@ export class FleetBox {
     return this.boxes.get({ box: this.id }, options)
   }
 
+  /** Start the box, if it is not started, and settle once it is: it runs until it is stopped. */
   async start(): Promise<void> {
     await this.boxes.start({ box: this.id })
   }
 
+  /** Stop the box, whatever runs in it; what is in it stays. */
   async stop(): Promise<void> {
     await this.boxes.stop({ box: this.id })
   }
 
-  async stopWhenVacant(): Promise<void> {
-    await this.boxes.stopWhenVacant({ box: this.id })
-  }
-
   async remove(): Promise<void> {
     await this.boxes.remove({ box: this.id })
-  }
-
-  /**
-   * Occupy the box until the returned release, so that it is not stopped
-   * for being idle; with `start`, the default, once it is started. A lease
-   * lost with the connection is taken again as occupancy, without a start.
-   */
-  async lease(occupant: Occupant, { start = true }: { start?: boolean } = {}): Promise<() => Promise<void>> {
-    const controller = new AbortController()
-    const signal = AbortSignal.any([controller.signal, this.closing])
-    const open = (starting: boolean): AsyncIterator<unknown> => this.boxes.lease({ box: this.id, occupant, start: starting }, { signal })[Symbol.asyncIterator]()
-    let held = open(start)
-    try {
-      await held.next()
-    } catch (error) {
-      controller.abort()
-      throw error
-    }
-    void (async () => {
-      for (let pause = 100; !signal.aborted;) {
-        try {
-          // Nothing follows the first response: the lease lasts until the stream ends.
-          if ((await held.next()).done === true) return
-        } catch (error) {
-          if (signal.aborted || gone(error)) return
-        }
-        await sleep(pause, signal)
-        pause = Math.min(pause * 2, 2000)
-        held = open(false)
-        try {
-          await held.next()
-          pause = 100
-        } catch (error) {
-          if (gone(error)) return
-        }
-      }
-    })()
-    return async () => { controller.abort() }
   }
 
   /** Follow the box's state: `listener` is told it now, at each change, and `removed` once the box is gone, until the returned stop. */
@@ -139,7 +86,7 @@ export class FleetBox {
     return () => { controller.abort() }
   }
 
-  /** Run a program in the box to its end, holding the box, and give back how it ended and what it wrote. */
+  /** Run a program in the box to its end, and give back how it ended and what it wrote. */
   exec(argv: string[], { cwd, env, stdin }: ExecOptions = {}): Promise<ExecResponse> {
     return this.api.exec({ program: { argv, cwd: cwd ?? '/', env: env ?? {} }, ...stdin === undefined ? {} : { stdin: typeof stdin === 'string' ? Buffer.from(stdin) : stdin } })
   }

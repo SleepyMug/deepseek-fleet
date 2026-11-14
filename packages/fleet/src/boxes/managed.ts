@@ -1,10 +1,11 @@
 /**
  * One box as the gateway keeps it: its container, through its driver; its
- * helper, once it dials in; its operations, one after another; what
- * occupies it, and its stop once nothing has for its idle time; and what
+ * helper, once it dials in; its operations, one after another; and what
  * follows its state. A box is started once its container runs, its helper
- * has reached the gateway, and it holds its services' tree; a box whose
- * container is gone is `gone`, which its owner learns as it next uses it.
+ * has reached the gateway, and it holds its services' tree, and it runs
+ * until it is stopped: the gateway neither starts nor stops a box of its
+ * own accord. A box whose container is gone is `gone`, which its owner
+ * learns as it next uses it.
  * @module @sleepymug/fleet/boxes/managed
  */
 
@@ -27,24 +28,10 @@ export interface ManagedDeps {
   id: string
   driver: BoxDriver
   platform: Platform
-  /** How long the box runs while nothing occupies it before it is stopped. */
-  idleStopMs: number
   /** The tree of the box's services, which its helper installs as it first starts. */
   contents: () => Promise<Contents>
   /** Told each change of the box's state. */
   onState: (state: BoxState) => void
-}
-
-/** What occupies a box: its kind and its own id, both its holder's to choose. */
-export interface Occupant {
-  readonly kind: string
-  readonly id: string
-}
-
-/** A box held by an occupant until the release. */
-export interface Held {
-  link: HelperLink
-  release: () => void
 }
 
 export class ManagedBox {
@@ -53,11 +40,6 @@ export class ManagedBox {
   /** Waiting for the helper to dial in. */
   private readonly linked = new Set<(link: HelperLink) => void>()
   private readonly queue = new Queue()
-  private readonly occupants = new Map<symbol, Occupant>()
-  /** What cancels the pending stop of the idle box, which every vacancy arms again. */
-  private cancelIdle: (() => void) | undefined
-  /** To stop as soon as nothing occupies it. */
-  private soon = false
   private removed = false
 
   constructor(private readonly deps: ManagedDeps) {}
@@ -89,40 +71,12 @@ export class ManagedBox {
         try {
           await this.provision(link)
           this.setState(BoxState.STARTED)
-          this.vacated()
         } catch (error) {
           this.deps.platform.log(`could not take ${this.deps.id} as started: ${messageOf(error)}`)
           link.close()
         }
       })
     }
-  }
-
-  /** The started box's helper, held by `occupant` until the release; the box started if it is not. */
-  async hold(occupant: Occupant): Promise<Held> {
-    const release = this.occupy(occupant)
-    try {
-      return { link: await this.queue.run(() => this.running()), release }
-    } catch (error) {
-      release()
-      throw error
-    }
-  }
-
-  /** Occupy the box until the returned release, which only the first call does, without starting it. */
-  occupy(occupant: Occupant): () => void {
-    const token = Symbol(occupant.id)
-    this.occupants.set(token, occupant)
-    this.disarm()
-    return () => {
-      if (!this.occupants.delete(token)) return
-      this.vacated()
-    }
-  }
-
-  /** What occupies the box now. */
-  occupied(): Occupant[] {
-    return [...this.occupants.values()]
   }
 
   /** The helper of the box, started; a box that is not started fails. */
@@ -132,25 +86,13 @@ export class ManagedBox {
     return this.link
   }
 
-  /** Start the box, if it is not started, without occupying it. */
+  /** Start the box, if it is not started: it runs until it is stopped. */
   async start(): Promise<void> {
     await this.queue.run(() => this.running())
-    // Started for no one: it stops once it has been idle long enough.
-    this.vacated()
   }
 
-  /** Stop the box, whatever occupies it; what is in it stays. */
+  /** Stop the box, whatever runs in it; what is in it stays. */
   async stop(): Promise<void> {
-    await this.queue.run(() => this.halt())
-  }
-
-  /** Stop the box as soon as nothing occupies it: now, if nothing does; else once the last occupant leaves. */
-  async stopWhenVacant(): Promise<void> {
-    if (this.occupants.size > 0) {
-      this.soon = true
-      return
-    }
-    this.disarm()
     await this.queue.run(() => this.halt())
   }
 
@@ -165,26 +107,12 @@ export class ManagedBox {
       this.removed = true
       this.link?.close()
       this.link = undefined
-      this.occupants.clear()
-      this.disarm()
     })
   }
 
   /** Whether the box is removed, and forgotten. */
   get isRemoved(): boolean {
     return this.removed
-  }
-
-  /** Stop the box, if it is started, as the gateway closes. */
-  async close(): Promise<void> {
-    this.disarm()
-    if (this.current !== BoxState.STARTED && this.current !== BoxState.STARTING) return
-    try {
-      await this.deps.driver.stop(this.deps.id)
-      this.setState(BoxState.STOPPED)
-    } catch (error) {
-      this.deps.platform.log(`could not stop ${this.deps.id}: ${messageOf(error)}`)
-    }
   }
 
   /** The box's helper, the box started first if it is not: its container, its helper's dialing in, and its tree. */
@@ -247,7 +175,6 @@ export class ManagedBox {
   /** Stop the box, in one of its operations. */
   private async halt(): Promise<void> {
     if (this.removed) return
-    this.soon = false
     if (await this.deps.driver.state(this.deps.id) === 'missing') {
       this.setState(BoxState.GONE)
       return
@@ -274,26 +201,5 @@ export class ManagedBox {
     if (this.current === state) return
     this.current = state
     this.deps.onState(state)
-  }
-
-  /** The box may have lost its last occupant: stop it once it has been idle long enough, or at once if asked to. */
-  private vacated(): void {
-    if (this.occupants.size > 0 || this.removed) return
-    this.disarm()
-    const cancel = this.deps.platform.after(this.soon ? 0 : this.deps.idleStopMs, () => {
-      if (this.cancelIdle === cancel) this.cancelIdle = undefined
-      this.queue.run(async () => {
-        if (this.occupants.size > 0 || this.current !== BoxState.STARTED) return
-        await this.halt()
-      }).catch((error: unknown) => {
-        this.deps.platform.log(`could not stop the idle box ${this.deps.id}: ${messageOf(error)}`)
-      })
-    })
-    this.cancelIdle = cancel
-  }
-
-  private disarm(): void {
-    this.cancelIdle?.()
-    this.cancelIdle = undefined
   }
 }

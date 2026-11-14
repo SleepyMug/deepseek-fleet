@@ -39,14 +39,14 @@ export interface Serve {
 }
 
 /** A gateway of the test's, closed once the test ends. */
-export async function serving(t: { after: (fn: () => Promise<void>) => void }, options: { idleStopMs?: number } = {}): Promise<Serve> {
+export async function serving(t: { after: (fn: () => Promise<void>) => void }): Promise<Serve> {
   const dir = await mkdtemp(join(tmpdir(), 'fleet-gw-'))
   const paths = fleetPaths(join(dir, 'home'))
   const logs: string[] = []
   const log = (message: string): void => { logs.push(message) }
   const driver = new LocalDriver({ dir: join(dir, 'boxes'), gatewaySocket: paths.gatewaySocket, log })
   const open = async () => {
-    const gateway = await FleetGateway.open({ paths, driver, platform: systemPlatform(log), image: 'local', idleStopMs: options.idleStopMs ?? 60_000 })
+    const gateway = await FleetGateway.open({ paths, driver, platform: systemPlatform(log), image: 'local' })
     const served = await serve(gateway, { clients: paths.socket, boxes: paths.gatewaySocket }, log)
     return { gateway, served }
   }
@@ -66,7 +66,6 @@ export async function serving(t: { after: (fn: () => Promise<void>) => void }, o
   t.after(async () => {
     await state.client.close()
     await state.serving.close()
-    await state.gateway.close()
     for (const box of state.gateway.listBoxes()) await driver.remove(box.id).catch(() => {})
     await rm(dir, { recursive: true, force: true })
   })

@@ -18,6 +18,7 @@ test('a box made with a service has its client, which a program below /fleet imp
   assert.deepEqual(made.services, ['echo'])
   assert.equal(made.state, BoxState.STOPPED)
   const box = client.box(made.id)
+  await box.start()
   const root = driver.root(made.id)
   await mkdir(join(root, 'fleet', 'programs'), { recursive: true })
   await writeFile(join(root, 'fleet', 'programs', 'say.mjs'), [
@@ -51,6 +52,7 @@ test('a client calls a service through the gateway as a client; a box not made w
     '})',
     "call.end(JSON.stringify({ text: 'hi' }))",
   ].join('\n')
+  await client.box(bare.id).start()
   const refused = JSON.parse(await client.box(bare.id).output([process.execPath, '--input-type=module', '--eval', program]))
   assert.equal(refused.status, 404)
   assert.equal(refused.body.code, 'not_found')
@@ -61,6 +63,7 @@ test('a box\'s API: files written and read, folders listed, trees put and got, p
   const { dir, client, driver } = await serving(t)
   const made = await client.create({})
   const box = client.box(made.id)
+  await box.start()
   const root = driver.root(made.id)
   const file = join(root, 'work', 'notes.txt')
   async function* write() {
@@ -105,6 +108,7 @@ test('a box\'s files have versions a write can wait on, are replaced whole, keep
   const { client, driver } = await serving(t)
   const made = await client.create({})
   const box = client.box(made.id)
+  await box.start()
   const root = driver.root(made.id)
   const file = join(root, 'work', 'notes.txt')
   const write = (content: string, start: Record<string, unknown>) => (async function* () {
@@ -149,6 +153,7 @@ test('a box\'s files have versions a write can wait on, are replaced whole, keep
 test('a spawned program is ended, its group with it, when its call is cancelled', async (t) => {
   const { client } = await serving(t)
   const box = client.box((await client.create({})).id)
+  await box.start()
   const controller = new AbortController()
   async function* spawn() {
     yield create(SpawnRequestSchema, { request: { case: 'start', value: { program: { argv: ['sh', '-c', 'sleep 30 & echo $!; wait'] }, graceMs: 200 } } })
@@ -170,6 +175,7 @@ test('a spawned program is ended, its group with it, when its call is cancelled'
 test('a terminal runs a program, takes what is typed, and says how it ended', async (t) => {
   const { client } = await serving(t)
   const box = client.box((await client.create({})).id)
+  await box.start()
   const typed = Promise.withResolvers<void>()
   async function* terminal() {
     yield create(TerminalRequestSchema, { request: { case: 'start', value: { program: { argv: ['sh'] }, size: { cols: 80, rows: 24 } } } })
@@ -187,30 +193,31 @@ test('a terminal runs a program, takes what is typed, and says how it ended', as
   assert.equal(exit, 4)
 })
 
-test('a box nothing occupies stops after its idle time; a lease keeps it, and its watch follows it', async (t) => {
-  const { client } = await serving(t, { idleStopMs: 300 })
+test('a box runs from its start until it is stopped, and its watch follows it', async (t) => {
+  const { client } = await serving(t)
   const made = await client.create({})
   const box = client.box(made.id)
   const states: (BoxState | 'removed')[] = []
   const stop = box.watch((state) => { states.push(state) })
-  const release = await box.lease({ kind: 'test', id: '1' })
+  await box.start()
   assert.equal((await box.info()).state, BoxState.STARTED)
-  await new Promise(resolve => setTimeout(resolve, 600))
-  assert.equal((await box.info()).state, BoxState.STARTED, 'held, it is not stopped')
-  await release()
-  await until(async () => (await box.info()).state === BoxState.STOPPED, 5000, 'the idle box to stop')
+  await new Promise(resolve => setTimeout(resolve, 300))
+  assert.equal((await box.info()).state, BoxState.STARTED, 'nothing stops it but a stop')
+  await box.stop()
+  assert.equal((await box.info()).state, BoxState.STOPPED)
   await box.remove()
   await until(() => states.at(-1) === 'removed', 5000, 'the watch to see the removal')
   stop()
   assert.deepEqual(states, [BoxState.STOPPED, BoxState.STARTING, BoxState.STARTED, BoxState.STOPPING, BoxState.STOPPED, 'removed'])
 })
 
-test('a call of a box without holding it needs it started', async (t) => {
+test('a call of a box\'s API needs the box started, which the call does not do', async (t) => {
   const { client } = await serving(t)
   const box = client.box((await client.create({})).id)
-  await assert.rejects(box.started.which({ command: 'sh' }), (error: unknown) => reasonOf(error) === Reason.NOT_STARTED)
+  await assert.rejects(box.api.which({ command: 'sh' }), (error: unknown) => reasonOf(error) === Reason.NOT_STARTED)
+  assert.equal((await box.info()).state, BoxState.STOPPED)
   await box.start()
-  assert.notEqual((await box.started.which({ command: 'sh' })).path, '')
+  assert.notEqual((await box.api.which({ command: 'sh' })).path, '')
 })
 
 test('a service gone fails its calls, and the box\'s client calls it again once it is back; a name served by another is refused', async (t) => {
@@ -244,5 +251,5 @@ test('the gateway restarted, a running box\'s helper dials it again, and a servi
   await server.restart()
   await until(() => client.serviceList().then(list => list.length === 1, () => false), 10_000, 'the service to register again')
   await until(async () => (await box.info().catch(() => undefined))?.state === BoxState.STARTED, 10_000, 'the box to be taken as started')
-  assert.notEqual((await box.started.which({ command: 'sh' })).path, '')
+  assert.notEqual((await box.api.which({ command: 'sh' })).path, '')
 })

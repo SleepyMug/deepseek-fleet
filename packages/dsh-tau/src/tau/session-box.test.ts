@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { manualPlatform } from '../platform.test.util.ts'
+import { manualPlatform, type ManualPlatform } from '../platform.test.util.ts'
 import { FakeFleet } from './fake-fleet.test.util.ts'
 import { SessionBox } from './session-box.ts'
 
@@ -12,18 +12,26 @@ const SESSION = 'session-11111111-1111-4111-8111-111111111111'
 /** A box's spec, as the runs make one. */
 const SPEC = { labels: {}, env: {}, services: [] }
 
-/** A session's box on the fake gateway; set up again, its box gone, by making another. */
-async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box: SessionBox; fleet: FakeFleet; work: string; rebuilt: () => number }> {
+/** How long the test's boxes idle before they are stopped. */
+const IDLE = 1000
+
+/** Let what the box queued run. */
+const settled = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
+
+/** A session's box on the fake gateway, followed; set up again, its box gone, by making another. */
+async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box: SessionBox; fleet: FakeFleet; platform: ManualPlatform; work: string; rebuilt: () => number }> {
   const work = await mkdtemp(join(tmpdir(), 'dsh-tau-session-box-'))
   t.after(() => rm(work, { recursive: true, force: true }))
   const fleet = new FakeFleet(work)
   const first = await fleet.create(SPEC)
   let rebuilds = 0
+  const platform = manualPlatform()
   const box = new SessionBox({
     sessionId: SESSION,
     box: first,
     fleet,
-    platform: manualPlatform(),
+    platform,
+    idleStopMs: IDLE,
     rebuild: async () => {
       rebuilds += 1
       const made = await fleet.create(SPEC)
@@ -31,9 +39,10 @@ async function make(t: { after(fn: () => Promise<void>): void }): Promise<{ box:
       return made
     },
   })
-  t.after(async () => { box.close() })
+  box.follow()
+  t.after(async () => { await box.close() })
   fleet.calls.length = 0
-  return { box, fleet, work, rebuilt: () => rebuilds }
+  return { box, fleet, platform, work, rebuilt: () => rebuilds }
 }
 
 test('a box is held started, and occupied without starting it; one the gateway says is gone is set up again, once', async (t) => {
@@ -121,4 +130,67 @@ test('an archived box is removed, and none is had until it is unarchived; then i
   let forgotten = false
   await box.remove(async () => { forgotten = true })
   assert.equal(forgotten, true)
+})
+
+test('a box started and idle is stopped after the idle time, whoever started it; what occupies it keeps it, even a stop already due', async (t) => {
+  const { box, fleet, platform } = await make(t)
+  const held = await box.hold({ kind: 'file', id: 'a' })
+  platform.advance(5 * IDLE)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start'], 'occupied, it runs on')
+  held?.release()
+  platform.advance(IDLE - 1)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start'])
+  platform.advance(1)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop'])
+  assert.equal(box.isStarted(), false)
+
+  // Started by other means, as with the `fleet` command, or by a dsh before this one.
+  await fleet.box(box.box).start()
+  platform.advance(IDLE)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop', 'start', 'stop'])
+
+  // Its stop due, the box is taken before the stop runs: it is not stopped.
+  await fleet.box(box.box).start()
+  platform.advance(IDLE)
+  const release = box.occupy({ kind: 'turn', id: 'agent' })
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop', 'start', 'stop', 'start'])
+  release()
+  platform.advance(IDLE)
+  await settled()
+  assert.equal(fleet.calls.at(-1), 'stop')
+})
+
+test('once its run ended, a box stops as soon as nothing occupies it; started again, it idles for the idle time', async (t) => {
+  const { box, fleet, platform } = await make(t)
+  const held = await box.hold({ kind: 'terminal', id: 'shell' })
+  box.runEnded()
+  await settled()
+  assert.deepEqual(fleet.calls, ['start'], 'a user\'s terminal keeps it')
+  held?.release()
+  platform.advance(0)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop'])
+  ;(await box.hold({ kind: 'file', id: 'later' }))?.release()
+  platform.advance(IDLE - 1)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop', 'start'])
+  platform.advance(1)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop', 'start', 'stop'])
+})
+
+test('closing stops a box that is started, and nothing after', async (t) => {
+  const { box, fleet, platform } = await make(t)
+  ;(await box.hold({ kind: 'file', id: 'a' }))?.release()
+  await box.close()
+  assert.deepEqual(fleet.calls, ['start', 'stop'])
+  await fleet.box(box.box).start()
+  platform.advance(IDLE)
+  await settled()
+  assert.deepEqual(fleet.calls, ['start', 'stop', 'start'], 'no longer followed, it is let be')
 })

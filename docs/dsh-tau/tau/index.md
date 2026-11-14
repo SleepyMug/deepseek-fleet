@@ -43,7 +43,7 @@ Four dsh plugins, which dsh-tau's `cordis.patch.yml` mounts:
   | `dshHome` | The dsh home, absolute, as `dshHomePath()` in the patch. |
   | `fleetSocket` | The gateway's clients' socket; unset, `$FLEET_SOCKET`, or `fleet.sock` in the fleet home (docs/fleet-protocol/index.md). |
   | `image` | The image of a run's box; unset, the gateway's own. |
-  | `idleStopMs` | How long a run's box nothing occupies runs before the gateway stops it; unset, the gateway's own. The patch sets 60 s. |
+  | `idleStopMs` | How long a run's box, started, runs while nothing occupies it before it is stopped; unset, a minute. The patch sets 60 s. |
 
 - `fleet-tau-model` (`@sleepymug/dsh-tau/tau/model-plugin`): the model
   every tau's session starts on (`model.ts`), in place of dsh's default, as
@@ -183,15 +183,14 @@ their boxes:
 - `boxPath(sessionId, path)`, at once, where a path of a tau's session's
   work is in its box: its project, and what is in it, in `/tau/workspace`;
 - `boxFor(sessionId)`, the started box of a tau's session, a `RunBox`, its
-  id and `api`, the box API of the started box, which a call neither holds
-  nor starts, the world's own leases holding it; started if it is not, and
-  set up again from the run's call if it is gone; it fails while the
+  id and `api`, the box API of the started box, which a call does not
+  start, the world's own holds keeping it started; started if it is not,
+  and set up again from the run's call if it is gone; it fails while the
   session is archived;
-- `hold(sessionId, occupant)`, the same, leased by `occupant`, a turn, a
+- `hold(sessionId, occupant)`, the same, occupied by `occupant`, a turn, a
   terminal, a process, a call or a file call, until its release, so the
-  gateway does not stop the box for being idle while it is in use;
-  `occupy` leases it without asking for it to start, as a running agent
-  does;
+  box is not stopped for being idle while it is in use; `occupy` occupies
+  it without asking for it to start, as a running agent does;
 - `isStarted(sessionId)` and `whenStarted(sessionId, signal)`, whether the
   box is started, as the gateway last said, and the box once something
   starts it, which starts nothing, for a watch;
@@ -224,14 +223,13 @@ their boxes:
      environment `BOX_ENV`, `TAU_CONTEXT=/tau/context.json`; its
      `services`, every service registered at that moment, the tau service
      among them, since the gateway fixes a box's services as it makes it;
-     and the config's image and idle time, if it names them.
-  3. It lays the box out from the call (`furnish`, below), which starts
-     the box and holds it while it puts the tree there.
+     and the config's image, if it names one.
+  3. It starts the box, and lays it out from the call (`furnish`, below).
   4. It writes the registry entry, with the box's id, the files it
      checked, and what the layout said; the call stays until the run is
      released.
 
-  The box then stops once it has been idle for its idle time, unless the
+  The box then stops once it has been idle for the idle time, unless the
   run's start uses it first, as a submit's does. A failure removes the box
   and the session's folder. A tau's session's run is in the session's own
   project; the host's in the folder it names, through its symlinks.
@@ -329,8 +327,8 @@ their boxes:
   agent's runs, in the box's environment, with `TAU_CONTEXT`, from which
   it reads the args, and the services' commands on its PATH, so a program of the
   tau's, such as `node ${self}/init.mts`, imports the tau's packages, and
-  can run taus with the `tau` command, its runs the session's; it holds a
-  lease of the box until it exits. Its exit says what comes next, as tau's
+  can run taus with the `tau` command, its runs the session's; it
+  occupies the box until it exits. Its exit says what comes next, as tau's
   `initDecision` says: 0, `TAU_SKIP`, ends the run without the agent,
   which the session never gets a prompt for, init's stdout its text, and
   the run succeeds as if the agent had, packing what init left (below);
@@ -352,8 +350,8 @@ their boxes:
   run, as dsh disposes of the agent then (`aborted` by `disposed`), or
   closes the cut turn later (`interrupted`); the model's error; and so on.
   The backend keeps the run's result, records how it ended in the entry,
-  and asks the gateway to stop the box as soon as nothing leases it
-  (`stopWhenVacant`), which keeps what is in it. What a person does in the
+  and has the box stopped as soon as nothing occupies it (`runEnded`),
+  which keeps what is in it. What a person does in the
   session later, in the web UI, is the session's, not the run's.
 - **Watching.** A run is watched from its start; when the backend loads,
   it watches every run whose entry has not ended, so a run cut short by a
@@ -435,27 +433,33 @@ their boxes:
   call. The calls are counted with no cap too, so a cap set later counts
   those under way; a raised cap admits waiting calls as the next lane is
   taken or given back.
-- **An idle box is stopped by the gateway.** A session's box runs
-  while anything leases it: its agent while it runs (`fleet-tau` follows
-  `agent/status` and `agent/disposed`, and leases the box without starting
-  it), and the world's file calls, processes and terminals, each through
-  `hold` from before it asks for the box until nothing of it can reach the
-  box. When the last lease is released, the gateway stops the box after its
-  idle time, unless something leases it again meanwhile; its next use
-  starts it again. A run's end asks the gateway to stop its box at once,
-  unless something leases it, such as a user's terminal, and then as soon
-  as nothing does. `boxFor` leases for no longer than it asks, so a box it
-  starts for no one stops once it is idle. Every lease is held on
-  `ctx.fleet`'s connection, so one dsh no longer holds, as when it
-  exits, is released, and the gateway stops each box once it is idle.
+- **dsh-tau stops an idle box**, since fleet's gateway starts and stops
+  none of its own accord (docs/fleet/index.md). A session's box runs while
+  anything occupies it: its agent while it runs (`fleet-tau` follows
+  `agent/status` and `agent/disposed`, and occupies the box without
+  starting it), and the world's file calls, processes and terminals, each
+  through `hold` from before it asks for the box until nothing of it can
+  reach the box. A box that is started, as the gateway's watch tells it,
+  and that nothing occupies, is stopped after the idle time, unless
+  something occupies it again meanwhile; its next use starts it again. So
+  is one started by other means, as with `fleet box sh`, or left running by
+  a dsh before this one, which the runs follow from when they load. A
+  run's end has its box stopped at once, unless something occupies it,
+  such as a user's terminal, and then as soon as nothing does; the runs
+  loaded, a run that ended has the same. `boxFor` occupies for no longer
+  than it asks, so a box it starts for no one stops once it is idle. As
+  dsh exits, the runs stop every box that is started, since nothing of
+  theirs can use it after; a dsh that dies leaves its boxes running, until
+  the next one loads.
 - **One `SessionBox` per session** (`session-box.ts`) keeps all that is
   the box's on dsh-tau's side: the box's id, which a box set up again
   changes; the session's operations on it, one after another, so that a
-  start, a stop, a copy, a pack and a release keep their order; its state,
-  as the gateway tells it, which it follows once something asks; what waits
-  for it to start; the host files copied in; and whether it is archived.
-  It is given its box's id, the gateway, the platform, and what sets it
-  up again from the run's call, which the runs do.
+  start, a stop, a copy, a pack and a release keep their order; what
+  occupies it, and the stop of the box once it is idle; its state, as the
+  gateway tells it, which it follows from when the runs know the session;
+  what waits for it to start; the host files copied in; and whether it is
+  archived. It is given its box's id, the gateway, the platform, the idle
+  time, and what sets it up again from the run's call, which the runs do.
 - **Which sessions are a tau's.** The runs read the registry's entries when
   the plugin loads, each session's project and box with its id, and keep
   them as sessions are created and deleted, so that `isTau` and
@@ -474,7 +478,7 @@ their boxes:
   `boxFor` fails, and so does the world's work in the box. A session that
   no longer is archived has no box until its next use.
 - **A box gone is set up again** from the run's call, which the session's
-  folder keeps, when a lease of it fails because the gateway says it is
+  folder keeps, when a start of it fails because the gateway says it is
   gone (`BOX_GONE`), its container removed by other means, or does not
   know it (`NO_BOX`), as after an unarchive: the call is admitted again,
   a new box made with the same labels and environment, and every service
@@ -662,8 +666,8 @@ their boxes:
 
 - fleet's gateway (docs/fleet/index.md), through `@sleepymug/fleet-sdk`
   (docs/fleet-sdk/index.md): `create`, `serviceList`, `serve` and
-  `callerOf`, and of each `FleetBox`, `api`, `started`, `info`, `lease`,
-  `watch`, `start`, `stop`, `stopWhenVacant`, `remove`, `put` and `get`,
+  `callerOf`, and of each `FleetBox`, `api`, `info`, `watch`, `start`,
+  `stop`, `remove`, `put` and `get`,
   with `reasonOf`; the box API's `Spawn` and `Stat`;
   `@sleepymug/fleet-protocol`'s box API, failures and layout; and
   `@sleepymug/fleet-pack`'s trees, for what is put in a box and got from

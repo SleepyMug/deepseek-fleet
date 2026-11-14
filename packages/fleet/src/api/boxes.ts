@@ -1,7 +1,6 @@
 /**
  * fleet.gateway.v1's `Boxes`, served from the gateway's boxes: each call as the
- * gateway does it (../gateway.ts), a watch and a lease as long as their
- * call lasts.
+ * gateway does it (../gateway.ts), a watch as long as its call lasts.
  * @module @sleepymug/fleet/api/boxes
  */
 
@@ -23,36 +22,11 @@ export function boxesRoutes(gateway: FleetGateway): (router: ConnectRouter) => v
       await gateway.box(req.box).stop()
       return {}
     },
-    stopWhenVacant: async (req) => {
-      await gateway.box(req.box).stopWhenVacant()
-      return {}
-    },
     remove: async (req) => {
       await gateway.removeBox(req.box)
       return {}
     },
     watch: (req, ctx) => watch(gateway, req.box, ctx),
-    async *lease(req, ctx) {
-      const managed = gateway.box(req.box)
-      const occupant = { kind: req.occupant?.kind ?? '', id: req.occupant?.id ?? '' }
-      if (req.start) {
-        const { release } = await managed.hold(occupant)
-        try {
-          yield {}
-          await ended(gateway, req.box, ctx)
-        } finally {
-          release()
-        }
-      } else {
-        const release = managed.occupy(occupant)
-        try {
-          yield {}
-          await ended(gateway, req.box, ctx)
-        } finally {
-          release()
-        }
-      }
-    },
   })
 }
 
@@ -81,23 +55,4 @@ async function* watch(gateway: FleetGateway, box: string, ctx: HandlerContext): 
     stop()
     ctx.signal.removeEventListener('abort', onAbort)
   }
-}
-
-/** Settles once the call ends, or the box is removed. */
-function ended(gateway: FleetGateway, box: string, ctx: HandlerContext): Promise<void> {
-  return new Promise((resolve) => {
-    if (ctx.signal.aborted) {
-      resolve()
-      return
-    }
-    const stop = gateway.watch(box, (state) => {
-      if (state !== 'removed') return
-      stop()
-      resolve()
-    })
-    ctx.signal.addEventListener('abort', () => {
-      stop()
-      resolve()
-    }, { once: true })
-  })
 }

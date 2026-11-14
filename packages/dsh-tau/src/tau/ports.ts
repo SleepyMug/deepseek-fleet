@@ -24,7 +24,6 @@ export interface BoxSpec {
   /** The services it has, fixed once it is made. */
   services: string[]
   image?: string
-  idleStopMs?: number
 }
 
 /** A service registered with the gateway, as a tau's session's prompt tells of it. */
@@ -47,19 +46,15 @@ export interface FleetPort {
 /** A box of the gateway's, as fleet-sdk's `FleetBox` is. */
 export interface FleetBoxPort {
   readonly id: string
-  /** Its API, the box held while each call lasts, started first if it is not. */
+  /** Its API, of the box started; a call of a box that is not fails, `NOT_STARTED`. */
   readonly api: BoxApi
-  /** Its API, of the box started, which a call neither holds nor starts. */
-  readonly started: BoxApi
   /** The services it was made with. */
   services(): Promise<string[]>
-  /** Occupy the box until the returned release; with `start`, the default, once it is started. */
-  lease(occupant: Occupant, options?: { start?: boolean }): Promise<() => Promise<void>>
   /** Follow its state, until the returned stop. */
   watch(listener: (state: BoxState | 'removed') => void): () => void
+  /** Start it, if it is not started: it runs until it is stopped. */
   start(): Promise<void>
   stop(): Promise<void>
-  stopWhenVacant(): Promise<void>
   remove(): Promise<void>
   /** Unpack a tar archive into a folder of the box's. */
   put(archive: AsyncIterable<Uint8Array>, to: string): Promise<void>
@@ -70,7 +65,7 @@ export interface FleetBoxPort {
 /** A box's state, as the gateway tells it. */
 export type BoxState = 'stopped' | 'starting' | 'started' | 'stopping' | 'gone'
 
-/** A session's box, as the world asks of it: its API, of the box started, which a call neither holds nor starts. */
+/** A session's box, as the world asks of it: its API, of the box started, which a call does not start. */
 export interface RunBox {
   /** Its id, the gateway's. */
   readonly id: string
@@ -199,8 +194,8 @@ export interface RunLifecycle {
   result(sessionId: string): Promise<AsyncIterable<Uint8Array>>
   /** Record that a session's run's result was first given back. */
   finished(sessionId: string): Promise<void>
-  /** Stop a session's box as soon as nothing occupies it. */
-  stopWhenVacant(sessionId: string): Promise<void>
+  /** A session's run ended: stop its box as soon as nothing occupies it, settling once it is stopped, if nothing does now. */
+  runEnded(sessionId: string): Promise<void>
   /** Remove a session's box while the session is archived, keeping its entry and result. */
   archive(sessionId: string): Promise<void>
   /** Let a session that is no longer archived have a box again. */
