@@ -72,6 +72,10 @@ export class FakeFleet implements FleetPort {
     return id
   }
 
+  async list(): Promise<{ id: string; labels: Record<string, string> }[]> {
+    return [...this.made].map(([id, { spec }]) => ({ id, labels: spec.labels }))
+  }
+
   async services(): Promise<ServiceInfo[]> {
     return this.registered
   }

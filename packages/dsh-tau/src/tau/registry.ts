@@ -4,7 +4,9 @@
  * own, with a folder of each session's own beside it, which keeps its call
  * and its result. The backend writes an entry once the session's box is set
  * up, so an entry means a box ready to start, and before the dsh session is
- * made.
+ * made; and deletes it first as it forgets the session. So the entry is what
+ * makes a session: a folder without one is what a dsh that died while it set
+ * a session up, or forgot one, left ({@link Registry.orphans}).
  * @module @sleepymug/dsh-tau/tau/registry
  */
 
@@ -138,10 +140,20 @@ export class Registry {
     return entries.filter(entry => entry !== undefined).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
-  /** Forget a session, its folder, and then its entry; one without either is forgotten already. */
+  /** The ids of the sessions with a folder and no entry, which a dsh that died while it set them up, or forgot them, left. */
+  async orphans(): Promise<string[]> {
+    const names = await readdir(this.dir).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    })
+    const entries = new Set(names.filter(name => name.endsWith('.json')).map(name => name.slice(0, -'.json'.length)))
+    return names.filter(name => SESSION_ID.test(name) && !entries.has(name))
+  }
+
+  /** Forget a session, its entry, and then its folder; one without either is forgotten already. */
   async delete(sessionId: string): Promise<void> {
-    await rm(this.files(sessionId).folder, { recursive: true, force: true })
     await rm(this.file(sessionId), { force: true })
+    await rm(this.files(sessionId).folder, { recursive: true, force: true })
   }
 
   /** The folder of a session's own, beside its entry, and what it keeps. */

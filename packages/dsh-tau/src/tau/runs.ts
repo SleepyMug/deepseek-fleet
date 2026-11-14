@@ -40,6 +40,9 @@ const INIT_GRACE_MS = 5_000
 /** How long a run's box, started, runs while nothing occupies it, unless the runs are told otherwise. */
 const IDLE_STOP_MS = 60_000
 
+/** The label of a run's box that names its session. */
+const SESSION_LABEL = 'dsh.session'
+
 /** The environment of every process in a tau's box: where its run's context is. */
 export const BOX_ENV: Record<string, string> = {
   [CONTEXT_VARIABLE]: CONTEXT,
@@ -90,7 +93,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
    * Find the sessions the registry has, before anyone asks which sessions
    * are a tau's, and follow their boxes, so that one left running, as by a
    * dsh before this one, is stopped once it is idle, at once if its run
-   * ended.
+   * ended; then sweep what such a dsh left half done.
    */
   async load(): Promise<void> {
     for (const sessionId of await this.registry.list()) {
@@ -99,6 +102,41 @@ export class TauRuns implements TauBoxes, RunLifecycle {
       if (ended !== undefined) void kept.runEnded()
       this.runs.set(sessionId, { project, cwd, box: kept })
     }
+    await this.sweep()
+  }
+
+  /**
+   * Remove what a dsh that died on the way left, as the runs load, before
+   * any run is set up: the boxes and the folder of a session it was setting
+   * up, or forgetting, which has a folder and no entry, and a session's
+   * boxes other than its entry's, made as its box was set up again. Only
+   * boxes labelled with a session of this registry's are touched, so
+   * another dsh's on the same gateway are not; what cannot be removed now
+   * is logged, and swept as the runs next load.
+   */
+  private async sweep(): Promise<void> {
+    const orphans = new Set(await this.registry.orphans())
+    let boxes
+    try {
+      boxes = await this.fleet.list()
+    } catch (error) {
+      this.platform.log(`could not list the boxes to sweep: ${messageOf(error)}`)
+      return
+    }
+    for (const { id, labels } of boxes) {
+      const sessionId = labels[SESSION_LABEL]
+      if (sessionId === undefined) continue
+      const run = this.runs.get(sessionId)
+      if (run === undefined ? !orphans.has(sessionId) : run.box.box === id) continue
+      try {
+        await this.fleet.box(id).remove()
+        this.platform.log(`removed the box ${id}, which ${sessionId} left`)
+      } catch (error) {
+        this.platform.log(`could not remove the box ${id}, which ${sessionId} left: ${messageOf(error)}`)
+        orphans.delete(sessionId)
+      }
+    }
+    for (const sessionId of orphans) await this.registry.delete(sessionId)
   }
 
   /**
@@ -168,7 +206,7 @@ export class TauRuns implements TauBoxes, RunLifecycle {
   /** Make a session's box with the gateway, its labels naming the session, with every service registered now, and give its id. */
   private async makeBox(sessionId: string, labels: Record<string, string>): Promise<string> {
     return await this.fleet.create({
-      labels: { 'dsh.session': sessionId, ...labels },
+      labels: { [SESSION_LABEL]: sessionId, ...labels },
       env: BOX_ENV,
       services: (await this.fleet.services()).map(service => service.name),
       ...this.image === undefined ? {} : { image: this.image },

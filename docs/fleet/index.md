@@ -106,6 +106,11 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   dsh-tau's idle stop (docs/dsh-tau/tau/index.md), is its creator's.
 - **One operation at a time.** A box's operations, a start, a stop, a
   removal, run one after another; calls of its API run as they come.
+- **A box's record comes first.** The gateway writes a box's record before
+  it makes its container, and removes the container before the record, so
+  a gateway that dies on the way leaves a record without a container, a
+  box gone, never a container no record knows; a container that cannot be
+  made has its record deleted.
 - **A box gone.** A box whose container is not there when it is asked to
   start fails with `BOX_GONE`, and is `GONE`: the gateway does not make it
   again, since only its owner knows what was in it.

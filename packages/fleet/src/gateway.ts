@@ -100,8 +100,15 @@ export class FleetGateway {
       services: specs.map(spec => ({ name: spec.name, spec: spec.digest })),
       createdAt: this.deps.platform.now().toISOString(),
     }
-    await this.deps.driver.create({ id: record.id, image: record.image, env: record.env, labels: record.labels })
+    // The record first, so a gateway that dies before the container is made leaves a box gone, never a container nothing knows.
     await this.registry.put(record)
+    try {
+      await this.deps.driver.create({ id: record.id, image: record.image, env: record.env, labels: record.labels })
+    } catch (error) {
+      await this.deps.driver.remove(record.id).catch(() => {})
+      await this.registry.delete(record.id)
+      throw error
+    }
     this.deps.platform.log(`created ${record.id}${Object.entries(record.labels).map(([key, value]) => ` ${key}=${value}`).join('')}`)
     return this.infoOf(this.keep(record))
   }

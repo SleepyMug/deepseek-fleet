@@ -38,6 +38,8 @@ export interface ServiceInfo {
 export interface FleetPort {
   /** Make a box, stopped, and give its id. */
   create(spec: BoxSpec): Promise<string>
+  /** Every box the gateway keeps, by its id, with its labels. */
+  list(): Promise<{ id: string; labels: Record<string, string> }[]>
   box(id: string): FleetBoxPort
   /** The services registered now, which a run's box is made with. */
   services(): Promise<ServiceInfo[]>

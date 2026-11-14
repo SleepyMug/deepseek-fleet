@@ -19,6 +19,7 @@ const STATES: Readonly<Record<number, BoxState>> = {
 export function fleetOf(client: Fleet): FleetPort {
   return {
     create: async spec => (await client.create(spec)).id,
+    list: async () => (await client.list()).map(({ id, labels }) => ({ id, labels })),
     box: id => boxOf(client.box(id)),
     services: async () => (await client.serviceList()).map(({ name, description, commands }) => ({ name, description, commands })),
   }

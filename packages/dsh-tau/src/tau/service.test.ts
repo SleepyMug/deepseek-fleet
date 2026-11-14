@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -591,7 +591,7 @@ test('releasing a run while its init runs ends the init, and the run, without it
   await service.close()
 })
 
-test('a host that stops while a run\'s init runs leaves the run to fail, unprompted, once a service started later watches it', async (t) => {
+test('a host that stops while a run\'s init runs leaves the run to fail, unprompted, its init not run again, once a service started later watches it', async (t) => {
   const { work, tauDir, call } = await fixture(t)
   await withInit(tauDir)
   const boxes = new FakeFleet(work, LEFT)
@@ -602,11 +602,37 @@ test('a host that stops while a run\'s init runs leaves the run to fail, unpromp
   while (spawned(boxes).length === 0) await new Promise(resolve => setImmediate(resolve))
   await service.close()
   assert.equal(sessions.calls.length, 1)
-  const later = make(work, () => {}, new FakeSessions(), new FakeFleet(work, LEFT))
+  const laterBoxes = new FakeFleet(work, LEFT)
+  const later = make(work, () => {}, new FakeSessions(), laterBoxes)
   // As fleet-tau-runs loads them, before the service.
   await later.tauRuns.load()
   await later.load()
-  assert.deepEqual(await finish(later, HOST, sessionId), { ok: false, text: '', failure: 'dsh stopped before the run got its prompt' })
+  assert.deepEqual(await finish(later, HOST, sessionId), { ok: false, text: '', failure: 'dsh stopped during the run\'s init' })
+  assert.deepEqual(spawned(laterBoxes), [])
+})
+
+test('the runs loaded sweep what a dsh that died left: a session it was setting up, its box and folder, and a run\'s stray box, and nothing of another dsh\'s', async (t) => {
+  const { work, tauDir, call } = await fixture(t)
+  const boxes = new FakeFleet(work, LEFT)
+  const service = make(work, () => {}, new FakeSessions(), boxes)
+  const { sessionId, box } = await startIn(service, HOST, tauDir, call, work)
+  await service.close()
+  const spec = (session: string) => ({ labels: { 'dsh.session': session }, env: {}, services: [] })
+  // A session whose box was made, its entry not yet written; and a box made to set the run's up again, its entry not yet changed.
+  const halfMade = 'session-22222222-2222-4222-8222-222222222222'
+  await mkdir(join(work, 'taus', halfMade), { recursive: true })
+  await writeFile(join(work, 'taus', halfMade, 'call.tar'), '')
+  await boxes.create(spec(halfMade))
+  await boxes.create(spec(sessionId))
+  // Another dsh's, on the same gateway, and a box of no dsh's.
+  const others = await boxes.create(spec('session-33333333-3333-4333-8333-333333333333'))
+  const bare = await boxes.create({ labels: {}, env: {}, services: [] })
+
+  const later = make(work, () => {}, new FakeSessions(), boxes)
+  await later.tauRuns.load()
+  assert.deepEqual([...boxes.made.keys()].sort(), [box, others, bare].sort())
+  assert.equal(await stat(join(work, 'taus', halfMade)).catch(() => undefined), undefined)
+  assert.equal((await new Registry(join(work, 'taus')).get(sessionId)).box, box)
 })
 
 test('a service started later watches the runs that had not ended, and fails one that never got its prompt', async (t) => {

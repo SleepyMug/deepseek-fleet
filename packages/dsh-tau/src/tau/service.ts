@@ -308,14 +308,16 @@ export class TauService {
 
   private async untilEnd(sessionId: string, init: boolean): Promise<void> {
     // After the start's own operations, so a start under way has given the prompt.
-    const prompted = await this.serial(sessionId, async () => (await this.runs.entry(sessionId)).promptedAt !== undefined)
+    const { promptedAt, init: hasInit } = await this.serial(sessionId, () => this.runs.entry(sessionId))
+    const prompted = promptedAt !== undefined
     // A run its start just set up runs its init first, which ends the run without its agent, or prompts it.
     const initialized = !prompted && init ? await this.initialize(sessionId) : undefined
     let result: Outcome
     if (initialized !== undefined) {
       result = initialized
     } else if (!prompted && !init) {
-      result = { ok: false, text: '', failure: 'dsh stopped before the run got its prompt' }
+      // Cut short by a dsh that stopped, its init is not run again.
+      result = { ok: false, text: '', failure: hasInit === undefined ? 'dsh stopped before the run got its prompt' : 'dsh stopped during the run\'s init' }
     } else {
       try {
         result = await this.sessions.settled(sessionId, this.closing.signal)

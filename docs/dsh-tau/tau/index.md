@@ -298,8 +298,10 @@ their boxes:
   folder of the session's own, `$DSH_HOME/tau/runs/<session id>/`, holds
   the call, `call.tar`, and the run's result, `result.tar`, until the run
   is released. An entry is written last, so an entry means a box that is
-  set up, and before the dsh session is made. A backend started later
-  finds its sessions there. Only ids of the form the backend mints name an
+  set up, and before the dsh session is made; forgetting a session deletes
+  its entry first, then its folder. So the entry is what makes a session,
+  and a folder without one is what a dsh that died on the way left. A
+  backend started later finds its sessions there. Only ids of the form the backend mints name an
   entry, since they are file names.
 - **Starting the run**, once its box is set up: the submit starts the box,
   then, through dsh's workspace registry and session controller:
@@ -338,8 +340,9 @@ their boxes:
   stdout and stderr, each in a fenced block. An init that cannot run at
   all fails the run. Releasing the run cancels the call, which ends the
   init's process group, SIGTERM, then SIGKILL after five seconds; a dsh
-  that stops meanwhile ends it too, and the run then ends as one whose
-  start was cut short before its prompt.
+  that stops meanwhile ends it too, and the run then fails, `dsh stopped
+  during the run's init`, as the next dsh watches it, its init not run
+  again.
 - **A run ends** at the first time its agent is done with its prompt: the
   backend waits for the agent's `whenIdle()`, then reads the session's log
   with the session controller's `inspect` (`dsh/outcome.ts`). The run succeeded
@@ -465,6 +468,13 @@ their boxes:
   them as sessions are created and deleted, so that `isTau` and
   `sessionOfBox` answer at once, as a process's start, which cannot wait,
   needs.
+- **Loading sweeps what a dsh that died left**, before any run is set up:
+  a session folder without an entry, the session's boxes, labelled
+  `dsh.session` with its id, then the folder; and the boxes labelled with a
+  session that has an entry, other than its entry's box, made as its box
+  was set up again. A box labelled with a session this registry does not
+  know, as another dsh's on the same gateway, is let be; what cannot be
+  removed now is logged, and swept as the runs next load.
 - **Archiving removes the box.** The plugin follows which sessions dsh has
   archived, through the workspace registry's writes (`domain/changed`),
   since archiving has no event of its own, and tells the backend, as it

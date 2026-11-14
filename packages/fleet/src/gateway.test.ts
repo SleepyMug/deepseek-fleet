@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { create } from '@bufbuild/protobuf'
@@ -252,4 +252,30 @@ test('the gateway restarted, a running box\'s helper dials it again, and a servi
   await until(() => client.serviceList().then(list => list.length === 1, () => false), 10_000, 'the service to register again')
   await until(async () => (await box.info().catch(() => undefined))?.state === BoxState.STARTED, 10_000, 'the box to be taken as started')
   assert.notEqual((await box.api.which({ command: 'sh' })).path, '')
+})
+
+test('a box is recorded before its container is made: a record not written, or a container not made, leaves nothing, and a record without one is a box gone, which is removed', async (t) => {
+  const server = await serving(t)
+  const { dir, client, driver, paths } = server
+  await writeFile(paths.boxes, 'in the way')
+  await assert.rejects(client.create({}))
+  assert.deepEqual(await readdir(join(dir, 'boxes')).catch(() => []), [], 'no container is made for a box not recorded')
+  await rm(paths.boxes)
+
+  const create = driver.create.bind(driver)
+  driver.create = async () => { throw new Error('no container') }
+  await assert.rejects(client.create({}))
+  driver.create = create
+  assert.deepEqual(await client.list(), [])
+  assert.deepEqual(await readdir(paths.boxes).catch(() => []), [])
+
+  // As if the gateway died once the record was written, before the container was made.
+  const made = await client.create({})
+  await driver.lose(made.id)
+  await server.restart()
+  const box = client.box(made.id)
+  await assert.rejects(box.start(), (error: unknown) => reasonOf(error) === Reason.BOX_GONE)
+  assert.equal((await box.info()).state, BoxState.GONE)
+  await box.remove()
+  assert.deepEqual(await client.list(), [])
 })
