@@ -28,8 +28,8 @@ export const CLIENT_SCOPE = '@fleet'
 /** The helper's environment: the socket of the gateway it dials. */
 export const GATEWAY_VARIABLE = 'FLEET_GATEWAY'
 
-/** The helper's environment: the id of the box it serves. */
-export const BOX_VARIABLE = 'FLEET_BOX'
+/** The helper's environment: the token of the box it serves, by which the gateway knows its calls are the box's. */
+export const TOKEN_VARIABLE = 'FLEET_BOX_TOKEN'
 
 /** The helper's environment: where the layout is rooted, `/` without it, as outside a container. */
 export const ROOT_VARIABLE = 'FLEET_BOX_ROOT'

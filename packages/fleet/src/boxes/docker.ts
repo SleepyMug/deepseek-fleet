@@ -9,7 +9,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { BOX_LAYOUT, BOX_VARIABLE, GATEWAY_SOCKET, GATEWAY_VARIABLE, HELPER_ENTRY, HELPER_NODE } from '@sleepymug/fleet-protocol/layout'
+import { BOX_LAYOUT, GATEWAY_SOCKET, GATEWAY_VARIABLE, HELPER_ENTRY, HELPER_NODE, TOKEN_VARIABLE } from '@sleepymug/fleet-protocol/layout'
 import type { BoxDriver, ContainerSpec, ContainerState } from './driver.ts'
 
 /** The label every box's container carries. */
@@ -29,15 +29,17 @@ export class DockerDriver implements BoxDriver {
     this.docker = options.docker ?? 'docker'
   }
 
-  async create({ id, image, env, labels }: ContainerSpec): Promise<void> {
-    const environment = { ...env, [GATEWAY_VARIABLE]: `${BOX_LAYOUT.gatewayDir}/${GATEWAY_SOCKET}`, [BOX_VARIABLE]: id }
+  async create({ id, image, env, labels, token }: ContainerSpec): Promise<void> {
+    const environment = { ...env, [GATEWAY_VARIABLE]: `${BOX_LAYOUT.gatewayDir}/${GATEWAY_SOCKET}` }
+    // The token from Docker's own environment, so that it is on no command line.
     await this.run([
       'create', '--init', '--pull', 'never', '--name', id, '--label', BOX_LABEL,
       ...Object.entries(labels).flatMap(([key, value]) => ['--label', `fleet.label.${key}=${value}`]),
       ...Object.entries(environment).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
+      '--env', TOKEN_VARIABLE,
       '--mount', `type=bind,source=${this.options.gatewayDir},target=${BOX_LAYOUT.gatewayDir}`,
       image, HELPER_NODE, HELPER_ENTRY,
-    ])
+    ], { [TOKEN_VARIABLE]: token })
   }
 
   async start(id: string): Promise<void> {
@@ -62,9 +64,10 @@ export class DockerDriver implements BoxDriver {
     }
   }
 
-  private run(args: string[]): Promise<string> {
+  /** Run the Docker CLI with `args`, and with `env` added to its environment. */
+  private run(args: string[], env: Record<string, string> = {}): Promise<string> {
     return new Promise((resolve, reject) => {
-      execFile(this.docker, args, (error, stdout, stderr) => {
+      execFile(this.docker, args, { env: { ...process.env, ...env } }, (error, stdout, stderr) => {
         if (error === null) resolve(stdout.trim())
         else reject(new Error(`fleet: docker ${args[0]} failed: ${stderr.trim() || error.message}`, { cause: error }))
       })

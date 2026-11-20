@@ -26,6 +26,8 @@ export interface BoxRecord {
   /** The environment of every process in it, its services' and its creator's. */
   env: Record<string, string>
   services: BoxService[]
+  /** The hash of its token, SHA-256 in hex, by which its helper's calls are known as its; the token itself is the box's alone. */
+  token: string
   /** When it was made, as an ISO date. */
   createdAt: string
   /** The digest of the tree its helper last installed whole; none before the first, or while one is installed. */

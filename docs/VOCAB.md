@@ -14,6 +14,7 @@ uses. fleet's docs and code use these, and no others.
 | **boxes' socket** | `gateway/gateway.sock` in the fleet home, mounted in every box at `/run/fleet/gateway`, on which the helpers reach the gateway. |
 | **gateway API** | `fleet.gateway.v1`, the gateway's own calls: `Boxes`, which makes, lists, starts, stops, watches and removes boxes, and `Services`, which stages and lists services. |
 | **box** | A container the gateway made, with the helper in it while it runs: its id, `box-` and 16 hex digits, its labels, its environment, and its services, fixed when it is made. |
+| **box token** | A box's secret, 32 random bytes, which the gateway gives its container as `$FLEET_BOX_TOKEN`, keeping only its hash: the helper says it on its tunnel and on each call it carries, and the gateway knows the box by it alone. A box's id is a name, which others see; its token, no one else. |
 | **driver** | What keeps a box's container for the gateway, making, starting, stopping and removing it: Docker's, or a local folder's, for trying fleet out. |
 | **image** | What a box runs: Node, with fleet-box, the helper, at `/opt/fleet`; `fleet:local` by default. |
 | **helper** | fleet's process in a running box, its command: it dials the gateway, serves the box API over its tunnel, and carries the box's programs' calls to the services. |

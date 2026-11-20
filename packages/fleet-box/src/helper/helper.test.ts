@@ -5,17 +5,17 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { create } from '@bufbuild/protobuf'
 import { InstallRequestSchema } from '@sleepymug/fleet-protocol/box'
-import { BOX_VARIABLE, boxLayout, GATEWAY_VARIABLE, SERVICES_SOCKET_VARIABLE } from '@sleepymug/fleet-protocol/layout'
+import { boxLayout, GATEWAY_VARIABLE, SERVICES_SOCKET_VARIABLE, TOKEN_VARIABLE } from '@sleepymug/fleet-protocol/layout'
 import { bytesEntry, writeTar } from '@sleepymug/fleet-pack'
 import { boxEnvironment, programEnvironment } from './box/env.ts'
 import { Provision } from './provision.ts'
 
 test('a program\'s environment is the box\'s, less the helper\'s own, the services\' commands first on its PATH', () => {
   const layout = boxLayout('/')
-  const box = boxEnvironment({ PATH: '/usr/bin:/fleet/bin', [GATEWAY_VARIABLE]: '/run/fleet/gateway/gateway.sock', [BOX_VARIABLE]: 'box-0123456789abcdef', HOME: '/root' }, layout)
+  const box = boxEnvironment({ PATH: '/usr/bin:/fleet/bin', [GATEWAY_VARIABLE]: '/run/fleet/gateway/gateway.sock', [TOKEN_VARIABLE]: 'secret', HOME: '/root' }, layout)
   assert.equal(box.PATH, '/fleet/bin:/usr/bin')
   assert.equal(box[GATEWAY_VARIABLE], undefined)
-  assert.equal(box[BOX_VARIABLE], undefined)
+  assert.equal(box[TOKEN_VARIABLE], undefined)
   assert.equal(box[SERVICES_SOCKET_VARIABLE], '/run/fleet/services.sock')
   const program = programEnvironment(box, { PATH: '/opt/bin', MODE: 'x' }, ['HOME'], layout)
   assert.deepEqual([program.PATH, program.MODE, program.HOME], ['/fleet/bin:/opt/bin', 'x', undefined])

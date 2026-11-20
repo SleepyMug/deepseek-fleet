@@ -16,6 +16,8 @@ export interface ContainerSpec {
   /** The environment of every process in it. */
   env: Readonly<Record<string, string>>
   labels: Readonly<Record<string, string>>
+  /** The box's token, for its helper, which says it on each of its calls of the gateway. */
+  token: string
 }
 
 /** Where a container is in its life, as its driver knows it. */

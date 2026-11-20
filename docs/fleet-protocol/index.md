@@ -34,7 +34,7 @@ are in `proto/`, its code generated from them in `src/gen/`, by `pnpm gen`
   | `TREE` | the same, relative to `/fleet`, as the gateway composes it |
   | `servicesSocket`, `SERVICES_SOCKET_VARIABLE` | `/run/fleet/services.sock`, which `$FLEET_SERVICES_SOCKET` names for every process |
   | `gatewayDir`, `GATEWAY_SOCKET` | `/run/fleet/gateway`, the gateway's folder mounted, and `gateway.sock` in it |
-  | `GATEWAY_VARIABLE`, `BOX_VARIABLE`, `ROOT_VARIABLE` | the helper's: `FLEET_GATEWAY`, `FLEET_BOX`, `FLEET_BOX_ROOT` |
+  | `GATEWAY_VARIABLE`, `TOKEN_VARIABLE`, `ROOT_VARIABLE` | the helper's: `FLEET_GATEWAY`, `FLEET_BOX_TOKEN`, `FLEET_BOX_ROOT` |
   | `CLIENT_SCOPE`, `clientPackage(name)` | `@fleet`, and `@fleet/<name>` |
   | `DEFAULT_IMAGE` | `fleet:local` |
 
@@ -48,7 +48,6 @@ are in `proto/`, its code generated from them in `src/gen/`, by `pnpm gen`
 |---|---|---|
 | `fleet-tunnel` | a tunnel's opening | Its kind: `service` or `box`. |
 | `fleet-service`, `fleet-spec` | a service's tunnel | The service's name, and the digest of the spec it serves. |
-| `fleet-box` | a box's tunnel, and the calls its helper carries | The box's id. |
 | `fleet-helper-protocol` | a box's tunnel | `HELPER_PROTOCOL`. |
 | `fleet-caller-bin` | a call the gateway carries to a service | A `Caller`, binary, base64. |
 | `fleet-reason` | a tunnel refused | A `Reason`'s name. |

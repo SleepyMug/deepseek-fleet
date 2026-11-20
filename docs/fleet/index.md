@@ -27,7 +27,7 @@ The gateway's **home** is `$FLEET_HOME`, or `~/.fleet`:
 |---|---|
 | `fleet.sock` | Its clients' socket, unless `$FLEET_SOCKET` names another: its owner's alone, mode 0600. |
 | `gateway/gateway.sock` | Its boxes' socket, in a folder each box mounts at `/run/fleet/gateway`. |
-| `boxes/<id>.json` | Each box it made, as it made it: its id, image, labels, environment, services with their specs, and when; and the digest of the tree its helper last installed whole (`boxes/registry.ts`). |
+| `boxes/<id>.json` | Each box it made, as it made it: its id, image, labels, environment, services with their specs, its token's SHA-256 hash, and when; and the digest of the tree its helper last installed whole (`boxes/registry.ts`). |
 | `specs/<digest>.json`, `.binpb` | Each service's spec as staged, and its schema (`services/specs.ts`). |
 | `store/<digest>/` | Trees by their digest: services' packages, their clients, and what the clients import (`store.ts`). |
 
@@ -44,12 +44,13 @@ a call that answers once. What is where is fleet-protocol's wire
 | clients' | `/boxes/<id>/fleet.box.v1.Box/*` | A box's API, carried to the helper of the box, started; a box that is not fails, `NOT_STARTED`, and the call starts none. |
 | clients' | `/services/<name>/<package>.<Service>/*` | A service, carried to its server, told the call is a client's. |
 | clients' | `/fleet/tunnel`, a WebSocket | A service's server's tunnel, naming the service and its spec. |
-| boxes' | `/fleet/tunnel`, a WebSocket | A box's helper's tunnel, naming its box. |
-| boxes' | `/services/<name>/<package>.<Service>/*` | A service, called by a box's program, which the box's helper carries saying which box; carried to the service's server, told the box and its labels, if the box was made with the service. |
+| boxes' | `/fleet/tunnel`, a WebSocket | A box's helper's tunnel, saying its box's token. |
+| boxes' | `/services/<name>/<package>.<Service>/*` | A service, called by a box's program, which the box's helper carries saying its box's token; carried to the service's server, told the box and its labels, if the box was made with the service. |
 
 A call is carried as it came, its headers, body and trailers, both ways as
 they come, never decoded; a caller's `fleet-` headers are dropped, so what
-fleet's headers say, the gateway alone says. A call refused is refused as
+fleet's headers say, the gateway alone says; a box's token, its
+`authorization`, goes no further than the gateway. A call refused is refused as
 its protocol has it, with a `fleet.gateway.v1.Failure` detail giving the reason:
 `NO_BOX`, `BOX_GONE`, `NOT_STARTED`, `NO_SERVICE`, `UNKNOWN_SPEC`,
 `NO_PACKAGE` or `NAME_TAKEN`.
@@ -73,13 +74,14 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   `http/server.ts` with `api/`, holds nothing, and asks the domain where
   each call goes. Each part is given what it uses: `FleetGateway` its home's
   paths, its `BoxDriver`, and its `Platform` (`platform.ts`: `log`, `now`,
-  `newId` and `after`, a timer that keeps nothing alive).
+  `newId`, `newToken` and `after`, a timer that keeps nothing alive).
 - **A driver keeps the containers** (`boxes/driver.ts`): it makes, starts,
   stops and removes a box's container, and says whether it runs; nothing
   else. `DockerDriver` runs Docker's CLI: each container named by its box's
   id, labelled `fleet.box` and `fleet.label.<key>`, with an init first, the
-  helper as its command, told the gateway's socket and its box's id, and the
-  folder of the boxes' socket mounted. `LocalDriver` makes a box a folder
+  helper as its command, told the gateway's socket and its box's token,
+  given through Docker's own environment so that it is on no command line,
+  and the folder of the boxes' socket mounted. `LocalDriver` makes a box a folder
   here, its layout rooted there, and the helper as built a process here, for
   tests and for trying fleet out; nothing isolates such a box.
 - **A box's helper dials in** (`boxes/managed.ts`). A start starts the

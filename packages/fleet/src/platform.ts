@@ -13,6 +13,8 @@ export interface Platform {
   now(): Date
   /** A new id: 16 hex digits. */
   newId(): string
+  /** A new secret: 32 random bytes, in base64url. */
+  newToken(): string
   /**
    * Run `callback` after `ms`, without keeping the process alive for it.
    * @returns what cancels it.
@@ -26,6 +28,7 @@ export function systemPlatform(log: (message: string) => void = print): Platform
     log,
     now: () => new Date(),
     newId: () => randomBytes(8).toString('hex'),
+    newToken: () => randomBytes(32).toString('base64url'),
     after(ms, callback) {
       const timer = setTimeout(callback, ms)
       timer.unref()

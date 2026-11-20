@@ -15,8 +15,10 @@ connection of its own. It ends what it started as the box stops.
   runs one outside a box, as fleet's local driver and a test do, its layout
   rooted elsewhere.
 - `lib/helper/main.js`, the helper's process, the box's command: the
-  gateway's socket in `$FLEET_GATEWAY`, the box's id in `$FLEET_BOX`, and,
-  outside a container, a root in `$FLEET_BOX_ROOT`.
+  gateway's socket in `$FLEET_GATEWAY`, the box's token in
+  `$FLEET_BOX_TOKEN`, which it says as `authorization: Bearer <token>` on its
+  tunnel and on each call it carries, and, outside a container, a root in
+  `$FLEET_BOX_ROOT`.
 
 What it serves over its tunnel, fleet.box.v1 (fleet-protocol's box):
 

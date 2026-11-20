@@ -36,8 +36,6 @@ export const HEADERS = {
   service: 'fleet-service',
   /** A service's tunnel: the digest of the spec it serves, as staged. */
   spec: 'fleet-spec',
-  /** A box's tunnel, and the calls its helper carries from its programs: the box's id. */
-  box: 'fleet-box',
   /** A box's tunnel: {@link HELPER_PROTOCOL}. */
   helperProtocol: 'fleet-helper-protocol',
   /** A call the gateway carries to a service: who calls, a {@link Caller}, in binary, base64. */
@@ -45,6 +43,16 @@ export const HEADERS = {
   /** A refused tunnel: why, a `Reason`'s name. */
   reason: 'fleet-reason',
 } as const
+
+/** What a box's helper says on each of its calls of the gateway, its tunnel and those it carries from its programs: its box's token. */
+export function bearer(token: string): string {
+  return `Bearer ${token}`
+}
+
+/** The token an `authorization` header gives, as {@link bearer} says it; empty for none. */
+export function tokenOf(authorization: string | undefined): string {
+  return authorization?.startsWith('Bearer ') === true ? authorization.slice('Bearer '.length) : ''
+}
 
 /** A service's name: lowercase letters, digits and hyphens, a letter first. */
 export const SERVICE_NAME = /^[a-z][a-z0-9-]*$/u

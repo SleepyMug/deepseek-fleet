@@ -12,6 +12,7 @@
  * @module @sleepymug/fleet/gateway
  */
 
+import { createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { create } from '@bufbuild/protobuf'
 import { timestampFromDate } from '@bufbuild/protobuf/wkt'
@@ -49,6 +50,8 @@ export class FleetGateway {
   readonly registrations: Registrations
   private readonly registry: Registry
   private readonly boxes = new Map<string, { managed: ManagedBox; record: BoxRecord }>()
+  /** Each box's id, by the hash of its token. */
+  private readonly tokens = new Map<string, string>()
   private readonly listeners = new Map<string, Set<BoxListener>>()
 
   private constructor(private readonly deps: GatewayDeps, private readonly runtime: string) {
@@ -92,18 +95,20 @@ export class FleetGateway {
       Object.assign(env, spec.env)
     }
     Object.assign(env, request.env)
+    const token = this.deps.platform.newToken()
     const record: BoxRecord = {
       id: `box-${this.deps.platform.newId()}`,
       image: request.image === '' ? this.deps.image : request.image,
       labels: { ...request.labels },
       env,
       services: specs.map(spec => ({ name: spec.name, spec: spec.digest })),
+      token: hashOf(token),
       createdAt: this.deps.platform.now().toISOString(),
     }
     // The record first, so a gateway that dies before the container is made leaves a box gone, never a container nothing knows.
     await this.registry.put(record)
     try {
-      await this.deps.driver.create({ id: record.id, image: record.image, env: record.env, labels: record.labels })
+      await this.deps.driver.create({ id: record.id, image: record.image, env: record.env, labels: record.labels, token })
     } catch (error) {
       await this.deps.driver.remove(record.id).catch(() => {})
       await this.registry.delete(record.id)
@@ -141,10 +146,11 @@ export class FleetGateway {
   }
 
   async removeBox(id: string): Promise<void> {
-    const { managed } = this.find(id)
-    await managed.remove(async () => {
+    const kept = this.find(id)
+    await kept.managed.remove(async () => {
       await this.registry.delete(id)
       this.boxes.delete(id)
+      this.tokens.delete(kept.record.token)
     })
     this.deps.platform.log(`removed ${id}`)
     for (const listener of this.listeners.get(id) ?? []) listener('removed')
@@ -166,9 +172,9 @@ export class FleetGateway {
     this.find(id).managed.attach(helperLink(tunnel))
   }
 
-  /** Whether the gateway knows a box. */
-  hasBox(id: string): boolean {
-    return this.boxes.has(id)
+  /** The box whose token `token` is; none for a token no box has. */
+  boxOfToken(token: string): string | undefined {
+    return token === '' ? undefined : this.tokens.get(hashOf(token))
   }
 
   // The services.
@@ -216,6 +222,7 @@ export class FleetGateway {
   }
 
   private keep(record: BoxRecord): { managed: ManagedBox; record: BoxRecord } {
+    this.tokens.set(record.token, record.id)
     let contents: Promise<Contents> | undefined
     const managed = new ManagedBox({
       id: record.id,
@@ -273,3 +280,7 @@ export class FleetGateway {
   }
 }
 
+/** A token's hash, as a box's record keeps it. */
+function hashOf(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}

@@ -23,7 +23,7 @@ import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { Code, ConnectError, type ConnectRouter } from '@connectrpc/connect'
 import { connectNodeAdapter } from '@connectrpc/connect-node'
-import { HEADERS, HELPER_PROTOCOL, routeOf, TUNNEL_PATH, TUNNEL_PROTOCOL, encodeCaller, type TunnelKind } from '@sleepymug/fleet-protocol/wire'
+import { HEADERS, HELPER_PROTOCOL, routeOf, tokenOf, TUNNEL_PATH, TUNNEL_PROTOCOL, encodeCaller, type TunnelKind } from '@sleepymug/fleet-protocol/wire'
 import { Reason } from '@sleepymug/fleet-protocol/gateway'
 import { forward, listen, refuse, type Listener, type Request, type Response, type TunnelRequest } from '@sleepymug/fleet-net'
 import { boxesRoutes } from '../api/boxes.ts'
@@ -123,19 +123,20 @@ function toBox(gateway: FleetGateway, box: string, path: string, req: Request, r
   }
 }
 
-/** A call on the boxes' socket: a box's program's, to a service the box has. */
+/** A call on the boxes' socket: a box's program's, to a service the box has, the box the one whose token its helper says. */
 function fromBox(gateway: FleetGateway, req: Request, res: Response): void {
   const route = routeOf(req.url ?? '')
-  const box = String(req.headers[HEADERS.box] ?? '')
+  const box = gateway.boxOfToken(tokenOf(req.headers.authorization))
   if (route?.kind !== 'service') {
     refuse(req, res, new ConnectError(`fleet: a box reaches services alone, at /services/<name>/, not ${req.url ?? ''}`, Code.NotFound))
     return
   }
   try {
-    if (!gateway.hasBox(box)) throw new ConnectError(`fleet: no box ${box} is known here`, Code.PermissionDenied)
+    if (box === undefined) throw new ConnectError('fleet: the call says no token of a box known here', Code.PermissionDenied)
     const registration = gateway.serviceFor(route.name, box)
     const caller = encodeCaller({ caller: { case: 'box', value: { id: box, labels: { ...gateway.labelsOf(box) } } } })
-    forward(req, res, registration.upstream, { path: route.path, drop: fleets, headers: { [HEADERS.caller]: caller } })
+    // The box's token is the gateway's and the box's alone.
+    forward(req, res, registration.upstream, { path: route.path, drop: name => fleets(name) || name === 'authorization', headers: { [HEADERS.caller]: caller } })
   } catch (error) {
     refuse(req, res, ConnectError.from(error))
   }
@@ -164,19 +165,19 @@ async function serviceTunnel(gateway: FleetGateway, request: TunnelRequest, log:
   }
 }
 
-/** A box's helper's tunnel, on the boxes' socket, naming its box. */
+/** A box's helper's tunnel, on the boxes' socket, saying its box's token. */
 function boxTunnel(gateway: FleetGateway, request: TunnelRequest, log: (message: string) => void): void {
-  const box = String(request.headers[HEADERS.box] ?? '')
+  const box = gateway.boxOfToken(tokenOf(request.headers.authorization))
   if (!isTunnel(request, 'box')) {
-    request.refuse(400, `fleet: a box's tunnel is a WebSocket at ${TUNNEL_PATH}, its subprotocol ${TUNNEL_PROTOCOL}, naming its box`)
+    request.refuse(400, `fleet: a box's tunnel is a WebSocket at ${TUNNEL_PATH}, its subprotocol ${TUNNEL_PROTOCOL}, saying its box's token`)
     return
   }
   if (request.headers[HEADERS.helperProtocol] !== String(HELPER_PROTOCOL)) {
     request.refuse(426, `fleet: the box's helper speaks version ${String(request.headers[HEADERS.helperProtocol] ?? 'none')}, not ${HELPER_PROTOCOL}: make the box from a newer image`)
     return
   }
-  if (!gateway.hasBox(box)) {
-    request.refuse(404, `fleet: no box ${box}`, { [HEADERS.reason]: Reason[Reason.NO_BOX] })
+  if (box === undefined) {
+    request.refuse(404, 'fleet: no box known here has the token the tunnel says', { [HEADERS.reason]: Reason[Reason.NO_BOX] })
     return
   }
   try {

@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { BOX_VARIABLE, GATEWAY_VARIABLE, ROOT_VARIABLE } from '@sleepymug/fleet-protocol/layout'
+import { GATEWAY_VARIABLE, ROOT_VARIABLE, TOKEN_VARIABLE } from '@sleepymug/fleet-protocol/layout'
 import type { BoxDriver, ContainerSpec, ContainerState } from './driver.ts'
 
 /** The helper's program, as fleet-box is built beside this package. */
@@ -53,7 +53,7 @@ export class LocalDriver implements BoxDriver {
     const box = this.find(id)
     if (box.process !== undefined) return
     const child = spawn(process.execPath, [HELPER], {
-      env: { ...box.spec.env, PATH: box.spec.env.PATH ?? process.env.PATH ?? '', [GATEWAY_VARIABLE]: this.options.gatewaySocket, [BOX_VARIABLE]: id, [ROOT_VARIABLE]: box.root },
+      env: { ...box.spec.env, PATH: box.spec.env.PATH ?? process.env.PATH ?? '', [GATEWAY_VARIABLE]: this.options.gatewaySocket, [TOKEN_VARIABLE]: box.spec.token, [ROOT_VARIABLE]: box.root },
       stdio: ['ignore', 'ignore', 'pipe'],
     })
     child.stderr?.setEncoding('utf8')

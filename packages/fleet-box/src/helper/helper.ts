@@ -1,8 +1,9 @@
 /**
  * The helper, fleet's process in a box, put together from what it is
- * given: it dials the gateway, opens a tunnel naming the box, and serves the
- * box's API over it, `Box`, its processes, terminals and files, and
- * `Provision`, which the gateway asks as the box starts; it opens the tunnel
+ * given: it dials the gateway, opens a tunnel saying the box's token, by
+ * which the gateway knows the box, and serves the box's API over it, `Box`,
+ * its processes, terminals and files, and `Provision`, which the gateway
+ * asks as the box starts; it opens the tunnel
  * again whenever it is lost, as when the gateway restarts. And it serves
  * the box's services to its programs, on the services' socket, carrying
  * their calls to the gateway on a connection of its own (./relay.ts). It
@@ -15,7 +16,7 @@ import type { ConnectRouter } from '@connectrpc/connect'
 import { connectNodeAdapter } from '@connectrpc/connect-node'
 import { Box, Provision as ProvisionService } from '@sleepymug/fleet-protocol/box'
 import { BOX_LAYOUT, type BoxLayout } from '@sleepymug/fleet-protocol/layout'
-import { HEADERS, HELPER_PROTOCOL, TUNNEL_PATH, TUNNEL_PROTOCOL } from '@sleepymug/fleet-protocol/wire'
+import { bearer, HEADERS, HELPER_PROTOCOL, TUNNEL_PATH, TUNNEL_PROTOCOL } from '@sleepymug/fleet-protocol/wire'
 import { dial, keepTunnel, openTunnel } from '@sleepymug/fleet-net'
 import { boxEnvironment, type Environment } from './box/env.ts'
 import * as files from './box/files.ts'
@@ -27,8 +28,8 @@ import { relay } from './relay.ts'
 export interface HelperOptions {
   /** The gateway's socket, which the helper dials. */
   gateway: string
-  /** The box's id, which the tunnel names. */
-  box: string
+  /** The box's token, which the helper says on each of its calls of the gateway, its tunnel and those it carries. */
+  token: string
   /** Where things are in the box: the box's own layout unless a test roots it elsewhere. */
   layout?: BoxLayout
   /** The helper's environment, the box's, with its services': every program's, less the helper's own. */
@@ -43,7 +44,7 @@ export interface Helper {
 }
 
 /** Start a helper, and settle once its tunnel to the gateway first opens. */
-export async function startHelper({ gateway, box, layout = BOX_LAYOUT, env = process.env, log = () => {} }: HelperOptions): Promise<Helper> {
+export async function startHelper({ gateway, token, layout = BOX_LAYOUT, env = process.env, log = () => {} }: HelperOptions): Promise<Helper> {
   const boxEnv = boxEnvironment(env, layout)
   const processes = new Processes(boxEnv, layout)
   const terminals = new Terminals(boxEnv, layout)
@@ -74,14 +75,14 @@ export async function startHelper({ gateway, box, layout = BOX_LAYOUT, env = pro
   // A connection of the tunnel that breaks its protocol is the gateway's to open again.
   server.on('sessionError', () => {})
   const upstream = dial(gateway)
-  const services = await relay(layout, box, upstream)
+  const services = await relay(layout, token, upstream)
   const tunnel = keepTunnel({
     log,
     open: () => openTunnel({
       socket: gateway,
       path: TUNNEL_PATH,
       protocol: TUNNEL_PROTOCOL,
-      headers: { [HEADERS.tunnel]: 'box', [HEADERS.box]: box, [HEADERS.helperProtocol]: String(HELPER_PROTOCOL) },
+      headers: { [HEADERS.tunnel]: 'box', authorization: bearer(token), [HEADERS.helperProtocol]: String(HELPER_PROTOCOL) },
       server,
     }),
   })
