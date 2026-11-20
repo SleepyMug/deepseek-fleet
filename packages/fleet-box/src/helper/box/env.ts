@@ -6,7 +6,7 @@
  * @module @sleepymug/fleet-box/helper/box/env
  */
 
-import { GATEWAY_VARIABLE, ROOT_VARIABLE, SERVICES_SOCKET_VARIABLE, type BoxLayout } from '@sleepymug/fleet-protocol/layout'
+import { BOX_VARIABLE, GATEWAY_VARIABLE, ROOT_VARIABLE, SERVICES_SOCKET_VARIABLE, type BoxLayout } from '@sleepymug/fleet-protocol/layout'
 
 export type Environment = Readonly<Record<string, string | undefined>>
 
@@ -16,6 +16,7 @@ export function boxEnvironment(base: Environment, layout: BoxLayout): Record<str
   for (const [key, value] of Object.entries(base)) if (value !== undefined) env[key] = value
   // The helper's alone: a program reaches the gateway through the services' socket.
   delete env[GATEWAY_VARIABLE]
+  delete env[BOX_VARIABLE]
   delete env[ROOT_VARIABLE]
   env.PATH = withFirst(env.PATH, layout.bin)
   env[SERVICES_SOCKET_VARIABLE] = layout.servicesSocket

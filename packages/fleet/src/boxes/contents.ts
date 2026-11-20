@@ -75,9 +75,7 @@ async function readmeOf(specs: readonly Spec[], commands: readonly Record<string
   for (const [index, spec] of specs.entries()) {
     lines.push('', (await readFile(join(store.path(spec.client), 'README.md'), 'utf8')).trimEnd())
     const names = Object.keys(commands[index] ?? {})
-    if (spec.package !== '') {
-      lines.push('', `Its own package is in ${layout.services}/${spec.name}${names.length === 0 ? '.' : `, with its commands, on the PATH: ${names.map(name => `\`${name}\``).join(', ')}.`}`)
-    }
+    if (names.length > 0) lines.push('', `Its commands, on the PATH: ${names.map(name => `\`${name}\``).join(', ')}.`)
   }
   return `${lines.join('\n')}\n`
 }

@@ -48,7 +48,7 @@ test('a client calls its service through the socket with plain objects, its decl
   assert.match(declarations, /\} & \(\n {2}\/\/ Where it came from\.\n {2}\| \{ \/\*\* Fetched from here\. \*\/ url: string; box\?: never \}\n {2}\| \{ \/\*\* Copied from this box\. \*\/ box: string; url\?: never \}\n {2}\| \{ url\?: never; box\?: never \}\n\)/u)
   assert.match(declarations, /\* How soon a note matters\.\n \* - `'PRIORITY_LOW'`: Whenever\.\n \* - `'PRIORITY_HIGH'`: Now\.\n \*\/\nexport type Priority = 'PRIORITY_UNSPECIFIED' \| 'PRIORITY_LOW' \| 'PRIORITY_HIGH'/u)
   assert.match(client.readme, /`notes\.add\(request\)`, answers a `Note`: Keep a note, and give it back with its number\./u)
-  assert.match(client.readme, /curl -s --unix-socket .* http:\/\/fleet\/services\/notes\/notes\.v1\.Notes\/Add/u)
+  assert.match(client.readme, /curl -s --unix-socket .* -d '<request>' http:\/\/fleet\/services\/notes\/notes\.v1\.Notes\/Add/u)
 
   // As the box has it: the client in node_modules/@fleet/notes, and what it imports beside it.
   const box = join(dir, 'box')

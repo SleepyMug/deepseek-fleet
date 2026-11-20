@@ -151,7 +151,7 @@ function section(spec: ClientSpec, services: readonly DescService[], names: Read
       'A shell calls a method that answers once with its request as JSON, as protobuf maps it: its fields in lower camel case, bytes in base64, 64-bit integers as strings, and dates as RFC 3339:',
       '',
       '```sh',
-      `curl -s --unix-socket ${place.socket} -H 'content-type: application/json' -d '{}' http://fleet${place.path}/${service.typeName}/${method.name}`,
+      `curl -s --unix-socket ${place.socket} -H 'content-type: application/json' -d '<request>' http://fleet${place.path}/${service.typeName}/${method.name}`,
       '```',
     )
   }

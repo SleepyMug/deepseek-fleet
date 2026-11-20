@@ -47,9 +47,10 @@ What it serves over its tunnel, fleet.box.v1 (fleet-protocol's box):
   refused.
 - **Environments** (`box/env.ts`). Every program starts from the box's
   environment, its services' and its creator's, as the container has it,
-  less the helper's own, `$FLEET_GATEWAY` and `$FLEET_BOX_ROOT`; with
-  `/fleet/bin` first on its PATH, once, whatever a call gives, and
-  `$FLEET_SERVICES_SOCKET`; then what the call adds, less what it removes.
+  less the helper's own, `$FLEET_GATEWAY`, `$FLEET_BOX` and
+  `$FLEET_BOX_ROOT`; with `/fleet/bin` first on its PATH, once, whatever a
+  call gives, and `$FLEET_SERVICES_SOCKET`; then what the call adds, less
+  what it removes.
 - **Process groups.** A spawned program and what it starts share a process
   group, but what starts a session of its own; the call's end and the
   helper's end end it. A terminal's program leads a session, whose every
