@@ -5,27 +5,16 @@ package fleet.box.v1;
 // What the gateway asks of a box's helper alone, as the box starts: the
 // box's things of fleet's, its services' packages and clients and its
 // README, which the gateway composes from the box's services as one tree,
-// and the helper installs at /fleet. The gateway never carries a client's
-// calls to it.
+// and the helper installs at /fleet. Which tree a box holds is the
+// gateway's to keep. The gateway never carries a client's calls to it.
 service Provision {
-  // The digest of the tree the box holds; empty when it holds none.
-  rpc Installed(InstalledRequest) returns (InstalledResponse);
-  // Install a tree in place of the one the box holds: the first request
-  // names its digest, those after it carry it as a tar archive.
+  // Install a tree in place of the one the box holds, carried as a tar
+  // archive.
   rpc Install(stream InstallRequest) returns (InstallResponse);
 }
 
-message InstalledRequest {}
-
-message InstalledResponse {
-  string digest = 1;
-}
-
 message InstallRequest {
-  oneof part {
-    string digest = 1;
-    bytes chunk = 2;
-  }
+  bytes chunk = 1;
 }
 
 message InstallResponse {}

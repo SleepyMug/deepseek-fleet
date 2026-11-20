@@ -1,8 +1,9 @@
 /**
  * The boxes the gateway made, one JSON file each in its home's `boxes/`,
  * so that a gateway started later knows them: what each was made with,
- * which is fixed once it is made, its services among it. Whether its
- * container is there, and runs, is its driver's to say.
+ * which is fixed once it is made, its services among it, and the tree its
+ * helper last installed. Whether its container is there, and runs, is its
+ * driver's to say.
  * @module @sleepymug/fleet/boxes/registry
  */
 
@@ -27,6 +28,8 @@ export interface BoxRecord {
   services: BoxService[]
   /** When it was made, as an ISO date. */
   createdAt: string
+  /** The digest of the tree its helper last installed whole; none before the first, or while one is installed. */
+  tree?: string
 }
 
 export class Registry {

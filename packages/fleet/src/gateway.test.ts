@@ -254,6 +254,35 @@ test('the gateway restarted, a running box\'s helper dials it again, and a servi
   assert.notEqual((await box.api.which({ command: 'sh' })).path, '')
 })
 
+test('a box is given its tree once, as its record keeps, and again once its record does not', async (t) => {
+  const server = await serving(t)
+  const { dir, client, driver, paths } = server
+  const { schema, Echo } = await echoSchema(dir)
+  await client.serve({ name: 'echo', description: 'Says back.', schema, services: [Echo], routes: echoRoutes(Echo) })
+  const made = await client.create({ services: ['echo'] })
+  const box = client.box(made.id)
+  await box.start()
+  const recordFile = join(paths.boxes, `${made.id}.json`)
+  const record = JSON.parse(await readFile(recordFile, 'utf8')) as { tree?: string }
+  const tree = record.tree
+  assert.match(tree ?? '', /^[0-9a-f]{64}$/u)
+  const readme = join(driver.root(made.id), 'fleet', 'README.md')
+  assert.deepEqual((await readdir(dirname(readme))).sort(), ['README.md', 'node_modules'])
+  await writeFile(readme, 'changed')
+  await box.stop()
+  await box.start()
+  await server.restart()
+  await until(async () => (await box.info().catch(() => undefined))?.state === BoxState.STARTED, 10_000, 'the box to be taken as started')
+  assert.equal(await readFile(readme, 'utf8'), 'changed', 'a box that holds its tree is not given it again')
+  delete record.tree
+  await writeFile(recordFile, JSON.stringify(record))
+  await server.restart()
+  await until(async () => (await readFile(readme, 'utf8')) !== 'changed', 10_000, 'the box to be given its tree again')
+  await until(async () => (await box.info().catch(() => undefined))?.state === BoxState.STARTED, 10_000, 'the box to be taken as started')
+  assert.match(await readFile(readme, 'utf8'), /## echo/u)
+  assert.equal((JSON.parse(await readFile(recordFile, 'utf8')) as { tree?: string }).tree, tree)
+})
+
 test('a box is recorded before its container is made: a record not written, or a container not made, leaves nothing, and a record without one is a box gone, which is removed', async (t) => {
   const server = await serving(t)
   const { dir, client, driver, paths } = server

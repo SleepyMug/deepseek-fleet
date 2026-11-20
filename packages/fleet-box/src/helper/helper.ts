@@ -67,7 +67,6 @@ export async function startHelper({ gateway, box, layout = BOX_LAYOUT, env = pro
       get: req => files.get(req),
     })
     router.service(ProvisionService, {
-      installed: () => provision.installed(),
       install: requests => provision.install(requests),
     })
   }

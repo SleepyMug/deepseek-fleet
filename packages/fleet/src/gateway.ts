@@ -228,11 +228,19 @@ export class FleetGateway {
         })
         return contents
       },
+      installed: () => kept.record.tree,
+      keepInstalled: async (tree) => {
+        const next: BoxRecord = { ...kept.record }
+        if (tree === undefined) delete next.tree
+        else next.tree = tree
+        await this.registry.put(next)
+        kept.record = next
+      },
       onState: (state) => {
         for (const listener of this.listeners.get(record.id) ?? []) listener(state)
       },
     })
-    const kept = { managed, record }
+    const kept: { managed: ManagedBox; record: BoxRecord } = { managed, record }
     this.boxes.set(record.id, kept)
     return kept
   }

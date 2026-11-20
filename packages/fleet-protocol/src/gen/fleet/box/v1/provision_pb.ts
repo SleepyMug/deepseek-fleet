@@ -10,58 +10,16 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file fleet/box/v1/provision.proto.
  */
 export const file_fleet_box_v1_provision: GenFile = /*@__PURE__*/
-  fileDesc("ChxmbGVldC9ib3gvdjEvcHJvdmlzaW9uLnByb3RvEgxmbGVldC5ib3gudjEiEgoQSW5zdGFsbGVkUmVxdWVzdCIjChFJbnN0YWxsZWRSZXNwb25zZRIOCgZkaWdlc3QYASABKAkiOwoOSW5zdGFsbFJlcXVlc3QSEAoGZGlnZXN0GAEgASgJSAASDwoFY2h1bmsYAiABKAxIAEIGCgRwYXJ0IhEKD0luc3RhbGxSZXNwb25zZTKjAQoJUHJvdmlzaW9uEkwKCUluc3RhbGxlZBIeLmZsZWV0LmJveC52MS5JbnN0YWxsZWRSZXF1ZXN0Gh8uZmxlZXQuYm94LnYxLkluc3RhbGxlZFJlc3BvbnNlEkgKB0luc3RhbGwSHC5mbGVldC5ib3gudjEuSW5zdGFsbFJlcXVlc3QaHS5mbGVldC5ib3gudjEuSW5zdGFsbFJlc3BvbnNlKAFiBnByb3RvMw");
-
-/**
- * @generated from message fleet.box.v1.InstalledRequest
- */
-export type InstalledRequest = Message<"fleet.box.v1.InstalledRequest"> & {
-};
-
-/**
- * Describes the message fleet.box.v1.InstalledRequest.
- * Use `create(InstalledRequestSchema)` to create a new message.
- */
-export const InstalledRequestSchema: GenMessage<InstalledRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_provision, 0);
-
-/**
- * @generated from message fleet.box.v1.InstalledResponse
- */
-export type InstalledResponse = Message<"fleet.box.v1.InstalledResponse"> & {
-  /**
-   * @generated from field: string digest = 1;
-   */
-  digest: string;
-};
-
-/**
- * Describes the message fleet.box.v1.InstalledResponse.
- * Use `create(InstalledResponseSchema)` to create a new message.
- */
-export const InstalledResponseSchema: GenMessage<InstalledResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_provision, 1);
+  fileDesc("ChxmbGVldC9ib3gvdjEvcHJvdmlzaW9uLnByb3RvEgxmbGVldC5ib3gudjEiHwoOSW5zdGFsbFJlcXVlc3QSDQoFY2h1bmsYASABKAwiEQoPSW5zdGFsbFJlc3BvbnNlMlUKCVByb3Zpc2lvbhJICgdJbnN0YWxsEhwuZmxlZXQuYm94LnYxLkluc3RhbGxSZXF1ZXN0Gh0uZmxlZXQuYm94LnYxLkluc3RhbGxSZXNwb25zZSgBYgZwcm90bzM");
 
 /**
  * @generated from message fleet.box.v1.InstallRequest
  */
 export type InstallRequest = Message<"fleet.box.v1.InstallRequest"> & {
   /**
-   * @generated from oneof fleet.box.v1.InstallRequest.part
+   * @generated from field: bytes chunk = 1;
    */
-  part: {
-    /**
-     * @generated from field: string digest = 1;
-     */
-    value: string;
-    case: "digest";
-  } | {
-    /**
-     * @generated from field: bytes chunk = 2;
-     */
-    value: Uint8Array;
-    case: "chunk";
-  } | { case: undefined; value?: undefined };
+  chunk: Uint8Array;
 };
 
 /**
@@ -69,7 +27,7 @@ export type InstallRequest = Message<"fleet.box.v1.InstallRequest"> & {
  * Use `create(InstallRequestSchema)` to create a new message.
  */
 export const InstallRequestSchema: GenMessage<InstallRequest> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_provision, 2);
+  messageDesc(file_fleet_box_v1_provision, 0);
 
 /**
  * @generated from message fleet.box.v1.InstallResponse
@@ -82,31 +40,21 @@ export type InstallResponse = Message<"fleet.box.v1.InstallResponse"> & {
  * Use `create(InstallResponseSchema)` to create a new message.
  */
 export const InstallResponseSchema: GenMessage<InstallResponse> = /*@__PURE__*/
-  messageDesc(file_fleet_box_v1_provision, 3);
+  messageDesc(file_fleet_box_v1_provision, 1);
 
 /**
  * What the gateway asks of a box's helper alone, as the box starts: the
  * box's things of fleet's, its services' packages and clients and its
  * README, which the gateway composes from the box's services as one tree,
- * and the helper installs at /fleet. The gateway never carries a client's
- * calls to it.
+ * and the helper installs at /fleet. Which tree a box holds is the
+ * gateway's to keep. The gateway never carries a client's calls to it.
  *
  * @generated from service fleet.box.v1.Provision
  */
 export const Provision: GenService<{
   /**
-   * The digest of the tree the box holds; empty when it holds none.
-   *
-   * @generated from rpc fleet.box.v1.Provision.Installed
-   */
-  installed: {
-    methodKind: "unary";
-    input: typeof InstalledRequestSchema;
-    output: typeof InstalledResponseSchema;
-  },
-  /**
-   * Install a tree in place of the one the box holds: the first request
-   * names its digest, those after it carry it as a tar archive.
+   * Install a tree in place of the one the box holds, carried as a tar
+   * archive.
    *
    * @generated from rpc fleet.box.v1.Provision.Install
    */

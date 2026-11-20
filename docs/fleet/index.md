@@ -27,7 +27,7 @@ The gateway's **home** is `$FLEET_HOME`, or `~/.fleet`:
 |---|---|
 | `fleet.sock` | Its clients' socket, unless `$FLEET_SOCKET` names another: its owner's alone, mode 0600. |
 | `gateway/gateway.sock` | Its boxes' socket, in a folder each box mounts at `/run/fleet/gateway`. |
-| `boxes/<id>.json` | Each box it made, as it made it: its id, image, labels, environment, services with their specs, and when (`boxes/registry.ts`). |
+| `boxes/<id>.json` | Each box it made, as it made it: its id, image, labels, environment, services with their specs, and when; and the digest of the tree its helper last installed whole (`boxes/registry.ts`). |
 | `specs/<digest>.json`, `.binpb` | Each service's spec as staged, and its schema (`services/specs.ts`). |
 | `store/<digest>/` | Trees by their digest: services' packages, their clients, and what the clients import (`store.ts`). |
 
@@ -84,8 +84,8 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   tests and for trying fleet out; nothing isolates such a box.
 - **A box's helper dials in** (`boxes/managed.ts`). A start starts the
   container, waits for the helper's tunnel, a container that stops first
-  failing the start, gives the box its services' tree unless it holds it,
-  and only then is the box `started`: `STOPPED`, `STARTING`, `STARTED`,
+  failing the start, gives the box its services' tree unless its record
+  names that tree's digest, and only then is the box `started`: `STOPPED`, `STARTING`, `STARTED`,
   `STOPPING`, or `GONE`, its container removed by other means. A helper that
   dials in for a box the gateway did not start, as one a gateway before this
   one left running, has its box taken as started.
@@ -97,7 +97,10 @@ The gateway's API, `fleet.gateway.v1` (packages/fleet-protocol/proto/fleet/gatew
   the clients and what they import never drift apart and no image holds
   them; each service's own package in `services/<name>`, its commands linked
   in `bin`, made executable; and the box's README, `README.md`. The helper
-  installs it at `/fleet` as the box first starts. Its environment is its
+  installs it at `/fleet` as the box first starts. The gateway keeps its
+  digest in the box's record, removed before an install and written after
+  it, so a tree cut short is installed again, as is one a later gateway
+  makes otherwise. Its environment is its
   services', then its creator's, given the container as it is made.
 - **When a box runs is its creator's to say.** A box runs from its start
   until it is stopped, or removed; the gateway starts and stops none of its

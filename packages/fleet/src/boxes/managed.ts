@@ -30,6 +30,10 @@ export interface ManagedDeps {
   platform: Platform
   /** The tree of the box's services, which its helper installs as it first starts. */
   contents: () => Promise<Contents>
+  /** The digest of the tree its helper last installed whole, as its record has it. */
+  installed: () => string | undefined
+  /** Keep in its record the tree its helper installed whole, or, with none, that it holds none whole. */
+  keepInstalled: (digest: string | undefined) => Promise<void>
   /** Told each change of the box's state. */
   onState: (state: BoxState) => void
 }
@@ -163,13 +167,14 @@ export class ManagedBox {
   /** Give the box its tree, unless it holds it already. */
   private async provision(link: HelperLink): Promise<void> {
     const contents = await this.deps.contents()
-    const { digest } = await link.provision.installed({})
-    if (digest === contents.digest) return
+    if (this.deps.installed() === contents.digest) return
     async function* parts() {
-      yield create(InstallRequestSchema, { part: { case: 'digest', value: contents.digest } })
-      for await (const chunk of contents.archive()) yield create(InstallRequestSchema, { part: { case: 'chunk', value: chunk } })
+      for await (const chunk of contents.archive()) yield create(InstallRequestSchema, { chunk })
     }
+    // Forgotten first, so that a tree cut short is installed again.
+    await this.deps.keepInstalled(undefined)
     await link.provision.install(parts())
+    await this.deps.keepInstalled(contents.digest)
   }
 
   /** Stop the box, in one of its operations. */
