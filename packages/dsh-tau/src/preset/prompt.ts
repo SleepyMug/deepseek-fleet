@@ -10,8 +10,9 @@
  * it is; says how the model runs its programs, below the program directory,
  * /tau, so that they import the tau's packages as the tau's code does, and
  * which its tau exposes, each with where it is; and lists the box's
- * services, which fleet's gateway puts in it, each with where its code is,
- * its commands, if any, and what it says it is.
+ * services, which fleet's gateway puts in it, whose clients the programs
+ * below /tau import, each with where its code is, its commands, if any,
+ * and what it says it is.
  *
  * It leaves out the sections dsh writes for a person at the host, which
  * are false in a box, and dsh's identity, which the persona says in its
@@ -133,7 +134,8 @@ export function services(listed: readonly ServiceInfo[]): string {
   const commands = (names: readonly string[]): string =>
     names.length === 0 ? '' : `, with ${names.length === 1 ? 'the command' : 'the commands'} ${names.map(command => `\`${command}\``).join(', ')}`
   return [
-    'Your container\'s services, each reaching what it serves outside your container. A program anywhere in your container imports '
+    'Your container\'s services, each reaching what it serves outside your container. A program below '
+      + `${PROGRAMS}, such as in ${PROGRAMS}/programs, or piped to \`node -\` in your working directory, imports `
       + 'a service\'s client by its name, as `import { notes } from \'@fleet/notes\'`, whose methods take and give plain objects, and '
       + `whose index.d.ts, in ${BOX_LAYOUT.modules}/@fleet/<name>, says what each does; ${BOX_LAYOUT.readme} says how to call them, `
       + 'with curl too. A service\'s commands, if it has any, are on your PATH:',

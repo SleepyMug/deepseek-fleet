@@ -110,8 +110,8 @@ test('a tau\'s prompt lists its box\'s services, each with its client, its comma
   ])
   const text = (await ctx.systemPrompt.assemble(forSession(SESSION))).sections.find(section => section.name === 'fleet:tau-services')?.text ?? ''
   assert.equal(text, [
-    'Your container\'s services, each reaching what it serves outside your container. A program anywhere in your container imports '
-      + 'a service\'s client by its name, as `import { notes } from \'@fleet/notes\'`, whose methods take and give plain objects, and '
+    'Your container\'s services, each reaching what it serves outside your container. A program below /tau, such as in /tau/programs, '
+      + 'or piped to `node -` in your working directory, imports a service\'s client by its name, as `import { notes } from \'@fleet/notes\'`, whose methods take and give plain objects, and '
       + 'whose index.d.ts, in /fleet/node_modules/@fleet/<name>, says what each does; /fleet/README.md says how to call them, with curl too. '
       + 'A service\'s commands, if it has any, are on your PATH:',
     '',

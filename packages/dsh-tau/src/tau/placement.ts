@@ -10,7 +10,7 @@
  * @module @sleepymug/dsh-tau/tau/placement
  */
 
-import { copyFile, mkdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { join, posix, relative, sep } from 'node:path'
 import { Readable } from 'node:stream'
@@ -47,9 +47,9 @@ export interface Setup {
 /**
  * Lay a run's box out from its call: place, in `scratch`, as the box will
  * have them, the tau the call carries, each file's content, each `out`
- * directory's folder, the run's context, the link to the tau's packages,
- * tau's primers, and the link to the clients of the box's services; put
- * them in the box, at its root, as one tree; and remove `scratch`.
+ * directory's folder, the run's context, the links to the tau's packages
+ * and to the clients of the box's services, and tau's primers; put them in
+ * the box, at its root, as one tree; and remove `scratch`.
  * @param call - the file of the run's call, as it was admitted.
  */
 export async function furnish(box: FleetBoxPort, call: string, scratch: string): Promise<Setup> {
@@ -83,12 +83,16 @@ export async function layOut(call: AsyncIterable<Uint8Array>, root: string): Pro
   const run = tau.expand(envelope, places, SELF)
   for (const [name, { mode, kind }] of Object.entries(envelope.files)) if (mode === 'out' && kind === 'dir') await mkdir(at(places[name] as string), { recursive: true })
   await writeFile(at(CONTEXT), `${JSON.stringify({ self: SELF, files: places, args: run.args }, null, 2)}\n`)
-  // The tau's packages, below the program directory: a link, so the tau's directory holds the only copy.
-  if (await isDir(join(tau.dir, 'node_modules'))) await symlink(posix.relative(PROGRAMS, posix.join(SELF, 'node_modules')), at(MODULES))
+  // The tau's packages, below the program directory, each a link, so the tau's directory holds the only copy,
+  // and the services' clients, which hold their scope; a name starting with a dot, as .bin, is no package.
+  await mkdir(at(MODULES))
+  const own = await isDir(join(tau.dir, 'node_modules')) ? await readdir(join(tau.dir, 'node_modules')) : []
+  for (const name of own.filter(name => !name.startsWith('.') && posix.join(MODULES, name) !== CLIENTS.link)) {
+    await symlink(posix.relative(MODULES, posix.join(SELF, 'node_modules', name)), at(posix.join(MODULES, name)))
+  }
+  await symlink(CLIENTS.to, at(CLIENTS.link))
   await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), at(PRIMER))
   await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU_DEV.md')), at(DEV_PRIMER))
-  await mkdir(at(posix.dirname(CLIENTS.link)), { recursive: true })
-  await symlink(CLIENTS.to, at(CLIENTS.link))
   return {
     prompt: run.prompt,
     cwd: FOLDERS.inout,

@@ -240,8 +240,10 @@ test('setting up a run\'s box makes it with the gateway, with every service regi
   assert.equal(await readFile(join(root, 'tau/workspace/site/index.md'), 'utf8'), '# Home\n')
   assert.equal(await readFile(join(root, 'tau/self/PROMPT.md'), 'utf8'), PROMPT)
   assert.deepEqual(await readdir(join(root, 'tau/out')), ['pages'])
-  assert.equal(await readlink(join(root, 'tau/node_modules')), 'self/node_modules')
-  assert.equal(await readlink(join(root, 'node_modules/@fleet')), '/fleet/node_modules/@fleet')
+  assert.deepEqual((await readdir(join(root, 'tau/node_modules'))).sort(), ['@fleet', 'kit'])
+  assert.equal(await readlink(join(root, 'tau/node_modules/kit')), '../self/node_modules/kit')
+  assert.equal(await readlink(join(root, 'tau/node_modules/@fleet')), '/fleet/node_modules/@fleet')
+  assert.deepEqual(await readdir(root), ['tau'])
   assert.deepEqual(JSON.parse(await readFile(join(root, 'tau/context.json'), 'utf8')), {
     self: '/tau/self', files: { notes: '/tau/in/notes.md', site: '/tau/workspace/site', report: '/tau/out/report.md', pages: '/tau/out/pages' }, args: { style: 'terse' },
   })
@@ -945,9 +947,10 @@ test('a real box places a call\'s files and the tau, its packages below the prog
     }
     const found = await exec('find /tau -path /tau/self/node_modules -prune -o -not -type d -print')
     assert.deepEqual(found.stdout.trim().split('\n').sort(), [
-      '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/context.json', '/tau/in/notes.md', '/tau/node_modules', '/tau/self/PROMPT.md',
-      '/tau/self/tau.json', '/tau/workspace/site/index.md',
+      '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/context.json', '/tau/in/notes.md', '/tau/node_modules/@fleet', '/tau/node_modules/kit',
+      '/tau/self/PROMPT.md', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
+    assert.notEqual((await exec('test -e /node_modules')).code, 0)
     // Its run's context, which TAU_CONTEXT names for every process.
     assert.deepEqual(JSON.parse((await exec('cat "$TAU_CONTEXT"')).stdout), { self: '/tau/self', files: { notes: '/tau/in/notes.md', site: '/tau/workspace/site', report: '/tau/out/report.md', pages: '/tau/out/pages' }, args: { style: 'terse' } })
     // A TypeScript program written below /tau, which node runs as is, imports a package of the tau's own by its name.
@@ -960,10 +963,11 @@ test('a real box places a call\'s files and the tau, its packages below the prog
       'node /tau/programs/twice.mts eggs',
     ].join('\n'))
     assert.deepEqual([typed.code, typed.stdout, typed.stderr], [0, 'eggs, eggs', ''])
-    // The tau service's command is there, for the agent to run taus, and its client, for any program.
+    // The tau service's command is there, for the agent to run taus, and its client, for a program below /tau, as one piped to node there.
     assert.match((await exec('tau --help')).stdout, /^usage: tau check/u)
     assert.equal((await exec('echo "$TAU_ADAPTOR $TAU_RPC_SOCKET $TAU_RPC_PATH"')).stdout.trim(), 'rpc /run/fleet/services.sock /services/tau')
-    assert.equal((await exec('test -f /node_modules/@fleet/tau/index.d.ts')).code, 0)
+    const client = await exec('cd /tau/workspace && echo \'import { runs } from "@fleet/tau"; console.log(typeof runs.status)\' | node -')
+    assert.deepEqual([client.code, client.stdout, client.stderr], [0, 'function\n', ''])
     assert.equal((await exec('cat /tau/in/notes.md')).stdout, 'buy milk\n')
     assert.equal((await exec('test -d /tau/out/pages')).code, 0)
     // The caller's folder, where dsh runs the session's work, is /tau/workspace in the box, and not there at its own path.
