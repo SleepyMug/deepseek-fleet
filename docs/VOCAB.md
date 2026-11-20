@@ -38,7 +38,7 @@ uses. fleet's docs and code use these, and no others.
 | **failure** | Why the gateway refused a call, its **reason**, as `NO_BOX` or `NO_SERVICE`, given with the call's error. |
 | **store** | `store/` in the fleet home, where the gateway keeps trees by their digests: services' packages, their clients, and what the clients import. |
 | **package** | A node package of a service's own, which the gateway puts in each box made with the service, at `/fleet/services/<name>`. |
-| **command** | A program of a service's package, its `bin`, linked in `/fleet/bin`, first on the PATH of every process in a box made with the service. |
+| **command** | A program of a service's package, its `bin`, linked in `/fleet/bin`, first on the PATH of every process in a box made with the service, with what it does, in a sentence, if the service's spec says. |
 | **provisioning** | The gateway giving a box its services' tree at `/fleet` as it first starts, before anything else uses it. |
 | **services socket** | `/run/fleet/services.sock` in a box, `$FLEET_SERVICES_SOCKET`, on which the box's programs reach every service, and which the helper carries to the gateway. |
 
@@ -51,7 +51,7 @@ uses. fleet's docs and code use these, and no others.
 | **client** | What the gateway makes from a service's schema and puts in each box made with it, `@fleet/<name>` in `/fleet/node_modules`: a constant whose methods call the service, taking and giving plain objects, and its declarations, `index.d.ts`, whole in one file, for whoever writes a program to read. |
 | **plain object** | A message as a client takes and gives it: its fields by their JSON names, bytes a `Uint8Array`, a 64-bit integer a number, an enum its value's name, a Timestamp a `Date`. |
 | **fleet-service-client** | What every client imports, which turns plain objects into messages and back, by the schema the client embeds, and calls the service. |
-| **box README** | `/fleet/README.md`, which says what services the box has, and how a program calls them. |
+| **box README** | `/fleet/README.md`, which says what services the box has, how a program calls them, and their commands, each with what it does. |
 
 ## Names no longer used
 

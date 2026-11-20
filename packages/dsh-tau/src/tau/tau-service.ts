@@ -23,9 +23,14 @@ import { HOST, type Caller } from './registry.ts'
 /** The service's name, and so its path through the gateway, `/services/tau`, and its client, `@fleet/tau`. */
 export const SERVICE = 'tau'
 
-/** What the tau service says it is, for whoever lists the services, and a tau's session's prompt. */
-export const DESCRIPTION = 'Runs TAUs, each in a box of its own, as this box\'s run, which waits for each: '
-  + '`tau run <dir> --call-json \'<call>\' --json`, as /tau/TAU.md says.'
+/** What the tau service says it is, for whoever lists the services, the box's README, and a tau's session's prompt. */
+export const DESCRIPTION = 'Runs TAUs, each in a box of its own, as this box\'s run, which waits for each.'
+
+/** What the tau service's command does, for the box's README and a tau's session's prompt. */
+export const COMMANDS = {
+  tau: 'Runs a TAU and waits for it, `tau run <dir> --call-json \'<call>\' --json`, or starts it, `tau start`, so that several run at once; '
+    + '`tau --help` says the rest.',
+}
 
 /** The tau service's package, which the gateway puts in every box: tau, as installed beside this package. */
 export const TAU_PACKAGE = dirname(createRequire(import.meta.url).resolve('@sleepymug/tau/package.json'))
@@ -46,6 +51,7 @@ export function tauService(sessionOfBox: (box: string) => string | undefined, ba
     services: [Runs],
     package: TAU_PACKAGE,
     env: SERVICE_ENV,
+    commands: COMMANDS,
     routes: runsRoutes((context) => {
       const { caller } = callerOf(context)
       if (caller.case !== 'box') return backendFor(HOST)

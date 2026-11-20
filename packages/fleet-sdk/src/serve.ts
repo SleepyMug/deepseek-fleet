@@ -39,6 +39,8 @@ export interface ServiceDefinition {
   package?: string
   /** What it adds to the environment of every process in a box that has it. */
   env?: Record<string, string>
+  /** What each of its package's commands does, in a sentence, by the command's name, for the box's README. */
+  commands?: Record<string, string>
 }
 
 /** A service registered, for as long as its tunnel lasts. */
@@ -65,6 +67,7 @@ export async function serveService(definition: ServiceDefinition, { socket, serv
     services: definition.services.map(service => (typeof service === 'string' ? service : service.typeName)),
     package: staged?.digest ?? '',
     env: definition.env ?? {},
+    commands: definition.commands ?? {},
   }
   const register = async (): Promise<string> => {
     const { spec, upload } = await services.stage(request)

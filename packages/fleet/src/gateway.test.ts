@@ -37,6 +37,28 @@ test('a box made with a service has its client, which a program below /fleet imp
   assert.equal((await box.info()).state, BoxState.STARTED)
 })
 
+test('a service\'s package\'s commands are on a box\'s PATH, and the README and the service list say what each does, as its spec says', async (t) => {
+  const { dir, client, driver } = await serving(t)
+  const { schema, Echo } = await echoSchema(dir)
+  const pkg = join(dir, 'echo-package')
+  await mkdir(pkg, { recursive: true })
+  await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: 'echo-package', version: '1.0.0', bin: { say: 'say.js', quiet: 'quiet.js' }, files: [] }))
+  await writeFile(join(pkg, 'say.js'), '#!/usr/bin/env node\nconsole.log(process.argv.slice(2).join(" "))\n')
+  await writeFile(join(pkg, 'quiet.js'), '#!/usr/bin/env node\n')
+  const definition = { name: 'echo', description: 'Says back.', schema, services: [Echo], routes: echoRoutes(Echo), package: pkg }
+  await assert.rejects(client.serve({ ...definition, commands: { 'a/b': 'No command.' } }), /"a\/b" is no command's name/u)
+  await client.serve({ ...definition, commands: { say: 'Says its arguments back.' } })
+  assert.deepEqual((await client.serviceList()).map(({ commands }) => commands.map(({ name, description }) => ({ name, description }))), [
+    [{ name: 'quiet', description: '' }, { name: 'say', description: 'Says its arguments back.' }],
+  ])
+  const made = await client.create({ services: ['echo'] })
+  const box = client.box(made.id)
+  await box.start()
+  assert.equal(await box.output(['say', 'hi', 'there']), 'hi there\n')
+  const readme = await readFile(join(driver.root(made.id), 'fleet', 'README.md'), 'utf8')
+  assert.match(readme, /\n\nIts commands, on the PATH:\n\n- `quiet`\n- `say`: Says its arguments back\.\n$/u)
+})
+
 test('a client calls a service through the gateway as a client; a box not made with it is refused', async (t) => {
   const { dir, client } = await serving(t)
   const { schema, Echo } = await echoSchema(dir)

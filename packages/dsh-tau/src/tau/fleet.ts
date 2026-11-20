@@ -21,7 +21,7 @@ export function fleetOf(client: Fleet): FleetPort {
     create: async spec => (await client.create(spec)).id,
     list: async () => (await client.list()).map(({ id, labels }) => ({ id, labels })),
     box: id => boxOf(client.box(id)),
-    services: async () => (await client.serviceList()).map(({ name, description, commands }) => ({ name, description, commands })),
+    services: async () => (await client.serviceList()).map(({ name, description, commands }) => ({ name, description, commands: commands.map(command => ({ name: command.name, description: command.description })) })),
   }
 }
 

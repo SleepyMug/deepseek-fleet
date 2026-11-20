@@ -11,8 +11,8 @@
  * /tau, so that they import the tau's packages as the tau's code does, and
  * which its tau exposes, each with where it is; and lists the box's
  * services, which fleet's gateway puts in it, whose clients the programs
- * below /tau import, each with where its code is, its commands, if any,
- * and what it says it is.
+ * below /tau import, each with where its code is, what it says it is, and
+ * its commands, if any, each with what it does.
  *
  * It leaves out the sections dsh writes for a person at the host, which
  * are false in a box, and dsh's identity, which the persona says in its
@@ -71,8 +71,7 @@ export const WHERE = 'You work in a container of your own, as root, with network
   + 'No one answers you during the run, so finish the task on your own. When you stop, the run ends, and your last message is the text '
   + 'your caller gets: make it your answer, and say there if you could not do the task. Your caller gets that text, what you leave at '
   + 'your out and inout files, and what your container\'s services did; anything else you write is discarded with the container.\n\n'
-  + `${PRIMER} says what a TAU takes, and what a run of one promises, and ${DEV_PRIMER} how to make one: `
-  + `read ${PRIMER} before you run a TAU yourself.`
+  + `${PRIMER} says what a TAU takes, and what a run of one promises, and ${DEV_PRIMER} how to make one.`
 
 /** What write and edit each say, once: their tools refuse to change a file the model has not read. */
 export const READ_FIRST = 'Read an existing file before you overwrite it with write or change it with edit, unless you wrote or edited it '
@@ -125,14 +124,13 @@ export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
 }
 
 /**
- * The box's services, each with its client, its commands, if any, and what
- * it says it is, and where the box says how to call them; nothing for a box
- * without any.
+ * The box's services, each with its client, what it says it is, and its
+ * commands, if any, each with what it does, and where the box says how to
+ * call them; nothing for a box without any.
  */
 export function services(listed: readonly ServiceInfo[]): string {
   if (listed.length === 0) return ''
-  const commands = (names: readonly string[]): string =>
-    names.length === 0 ? '' : `, with ${names.length === 1 ? 'the command' : 'the commands'} ${names.map(command => `\`${command}\``).join(', ')}`
+  const command = ({ name, description }: ServiceInfo['commands'][number]): string => `  - its command \`${name}\`${description === '' ? '' : `: ${description}`}`
   return [
     'Your container\'s services, each reaching what it serves outside your container. A program below '
       + `${PROGRAMS}, such as in ${PROGRAMS}/programs, or piped to \`node -\` in your working directory, imports `
@@ -140,7 +138,7 @@ export function services(listed: readonly ServiceInfo[]): string {
       + `whose index.d.ts, in ${BOX_LAYOUT.modules}/@fleet/<name>, says what each does; ${BOX_LAYOUT.readme} says how to call them, `
       + 'with curl too. A service\'s commands, if it has any, are on your PATH:',
     '',
-    ...listed.map(({ name, description, commands: named }) => `- \`${name}\`, its client \`${clientPackage(name)}\`${commands(named)}: ${description}`),
+    ...listed.flatMap(({ name, description, commands }) => [`- \`${name}\`, its client \`${clientPackage(name)}\`: ${description}`, ...commands.map(command)]),
   ].join('\n')
 }
 

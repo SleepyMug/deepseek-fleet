@@ -84,7 +84,7 @@ export class FleetGateway {
     const commands = new Map<string, string>()
     const env: Record<string, string> = {}
     for (const spec of specs) {
-      for (const command of Object.keys(await this.specs.commands(spec))) {
+      for (const command of Object.keys(await this.specs.bin(spec))) {
         const other = commands.get(command)
         if (other !== undefined) throw new ConnectError(`fleet: ${other} and ${spec.name} both have the command ${command}`, Code.InvalidArgument)
         commands.set(command, spec.name)
@@ -201,7 +201,7 @@ export class FleetGateway {
       name: spec.name,
       description: spec.description,
       services: [...spec.services],
-      commands: Object.keys(await this.specs.commands(spec)).sort(),
+      commands: Object.keys(await this.specs.bin(spec)).sort().map(command => ({ name: command, description: spec.commands[command] ?? '' })),
       env: { ...spec.env },
       spec: spec.digest,
     })))

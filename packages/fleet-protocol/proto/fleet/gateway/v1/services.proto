@@ -37,6 +37,9 @@ message StageServiceRequest {
   string package = 5;
   // What it adds to the environment of every process in a box that has it.
   map<string, string> env = 6;
+  // What each of its package's commands does, in a sentence, by the
+  // command's name.
+  map<string, string> commands = 7;
 }
 
 message StageServiceResponse {
@@ -70,9 +73,17 @@ message Service {
   string description = 2;
   // The protobuf services it serves.
   repeated string services = 3;
-  // Its package's commands, each by its name.
-  repeated string commands = 4;
+  // Its package's commands, by their names.
+  repeated Command commands = 4;
   map<string, string> env = 5;
   // The digest of its spec.
   string spec = 6;
+}
+
+// A command of a service's package, on the PATH in a box that has it.
+message Command {
+  string name = 1;
+  // What it does, in a sentence, as the service's spec says; empty if it
+  // says nothing.
+  string description = 2;
 }

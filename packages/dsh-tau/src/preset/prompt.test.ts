@@ -15,7 +15,7 @@ const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 type Run = Pick<Entry, 'files' | 'exposed' | 'skills'>
 
 /** A service of a box's, as fleet's gateway lists it. */
-type Service = { name: string; description: string; commands: string[] }
+type Service = { name: string; description: string; commands: { name: string; description: string }[] }
 
 /** A context with the prompt plugin, and the one tau's session `SESSION`, whose run `run` has, its box's services `services`. */
 async function prompted(run: Partial<Run> = {}, services: Service[] = []): Promise<Context> {
@@ -102,10 +102,10 @@ test('a tau\'s prompt says how the model runs its programs, below the program di
   assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))
 })
 
-test('a tau\'s prompt lists its box\'s services, each with its client, its commands, if any, and what it says it is, and where the box says how to call them', async () => {
+test('a tau\'s prompt lists its box\'s services, each with its client, what it says it is, and its commands, if any, each with what it does, and where the box says how to call them', async () => {
   const ctx = await prompted({}, [
-    { name: 'tau', description: 'Runs TAUs.', commands: ['tau'] },
-    { name: 'notes', description: 'A notebook, {{kept}}.', commands: ['notes', 'notes-dump'] },
+    { name: 'tau', description: 'Runs TAUs.', commands: [{ name: 'tau', description: 'Runs one, `tau run <dir>`.' }] },
+    { name: 'notes', description: 'A notebook, {{kept}}.', commands: [{ name: 'notes', description: 'Keeps a note, {{now}}.' }, { name: 'notes-dump', description: '' }] },
     { name: 'quiet', description: 'Nothing to run.', commands: [] },
   ])
   const text = (await ctx.systemPrompt.assemble(forSession(SESSION))).sections.find(section => section.name === 'fleet:tau-services')?.text ?? ''
@@ -115,8 +115,11 @@ test('a tau\'s prompt lists its box\'s services, each with its client, its comma
       + 'whose index.d.ts, in /fleet/node_modules/@fleet/<name>, says what each does; /fleet/README.md says how to call them, with curl too. '
       + 'A service\'s commands, if it has any, are on your PATH:',
     '',
-    '- `tau`, its client `@fleet/tau`, with the command `tau`: Runs TAUs.',
-    '- `notes`, its client `@fleet/notes`, with the commands `notes`, `notes-dump`: A notebook, {{kept}}.',
+    '- `tau`, its client `@fleet/tau`: Runs TAUs.',
+    '  - its command `tau`: Runs one, `tau run <dir>`.',
+    '- `notes`, its client `@fleet/notes`: A notebook, {{kept}}.',
+    '  - its command `notes`: Keeps a note, {{now}}.',
+    '  - its command `notes-dump`',
     '- `quiet`, its client `@fleet/quiet`: Nothing to run.',
   ].join('\n'))
   assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-services'))

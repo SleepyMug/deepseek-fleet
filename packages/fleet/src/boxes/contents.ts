@@ -35,9 +35,9 @@ export interface ContentsDeps {
 
 /** The tree of a box with `specs`. */
 export async function contentsOf(specs: readonly Spec[], { store, specs: all, runtime }: ContentsDeps): Promise<Contents> {
-  const commands = await Promise.all(specs.map(spec => all.commands(spec)))
+  const commands = await Promise.all(specs.map(spec => all.bin(spec)))
   const digest = createHash('sha256')
-    .update(JSON.stringify({ generator: GENERATOR, runtime, services: specs.map(spec => [spec.name, spec.client, spec.package]) }))
+    .update(JSON.stringify({ generator: GENERATOR, runtime, services: specs.map(spec => [spec.name, spec.client, spec.package, spec.commands]) }))
     .digest('hex')
   const readme = await readmeOf(specs, commands, store)
   async function* entries(): AsyncGenerator<WriteEntry> {
@@ -60,7 +60,7 @@ export async function contentsOf(specs: readonly Spec[], { store, specs: all, ru
   return { digest, archive: () => writeTar(entries()) }
 }
 
-/** The box's README: what it has, and how a program uses it, each service's part as its client says it. */
+/** The box's README: what it has, and how a program uses it, each service's part as its client says it, then its commands, each with what its spec says it does. */
 async function readmeOf(specs: readonly Spec[], commands: readonly Record<string, string>[], store: Store): Promise<string> {
   const layout = BOX_LAYOUT
   const lines = [
@@ -74,8 +74,14 @@ async function readmeOf(specs: readonly Spec[], commands: readonly Record<string
   ]
   for (const [index, spec] of specs.entries()) {
     lines.push('', (await readFile(join(store.path(spec.client), 'README.md'), 'utf8')).trimEnd())
-    const names = Object.keys(commands[index] ?? {})
-    if (names.length > 0) lines.push('', `Its commands, on the PATH: ${names.map(name => `\`${name}\``).join(', ')}.`)
+    const names = Object.keys(commands[index] ?? {}).sort()
+    if (names.length > 0) {
+      lines.push('', 'Its commands, on the PATH:', '')
+      for (const name of names) {
+        const does = spec.commands[name] ?? ''
+        lines.push(`- \`${name}\`${does === '' ? '' : `: ${does}`}`)
+      }
+    }
   }
   return `${lines.join('\n')}\n`
 }

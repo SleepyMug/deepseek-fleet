@@ -208,7 +208,7 @@ const commands: Record<string, (args: string[]) => Promise<void>> = {
         process.stdout.write(`${JSON.stringify(services.map(service => ({ ...service, $typeName: undefined })), null, 2)}\n`)
         return
       }
-      table([['SERVICE', 'COMMANDS', 'WHAT IT IS'], ...services.map(service => [service.name, service.commands.join(' ') || '-', service.description])])
+      table([['SERVICE', 'COMMANDS', 'WHAT IT IS'], ...services.map(service => [service.name, service.commands.map(command => command.name).join(' ') || '-', service.description])])
     })
   },
 

@@ -1,7 +1,8 @@
 /**
  * The services' specs, as their servers stage them: a service's name, what
  * it is, its schema, the protobuf services it serves, its package, if it
- * has one, and what it adds to a box's environment. Staging checks the
+ * has one, what it adds to a box's environment, and what each of the
+ * package's commands does. Staging checks the
  * spec, makes its client (fleet-codegen) and keeps both, the client in the
  * store, under the spec's digest, which a server's tunnel names; the same
  * spec staged again is the one already kept. Specs outlast the gateway, so
@@ -32,6 +33,8 @@ export interface Spec {
   /** The digest of its package, in the store once uploaded; empty for none. */
   readonly package: string
   readonly env: Readonly<Record<string, string>>
+  /** What each of its package's commands does, in a sentence, by the command's name. */
+  readonly commands: Readonly<Record<string, string>>
   /** The digest of its client, in the store. */
   readonly client: string
 }
@@ -46,16 +49,18 @@ export class Specs {
 
   /** Check a spec, make its client, and keep both; the same spec staged again is the one kept. */
   async stage(request: StageServiceRequest): Promise<Spec> {
-    const { name, description, schema, services, package: pkg, env } = request
+    const { name, description, schema, services, package: pkg, env, commands } = request
     if (!SERVICE_NAME.test(name)) throw invalid(`${JSON.stringify(name)} is no service's name: lowercase letters, digits and hyphens, a letter first`)
     if (schema === undefined || schema.file.length === 0) throw invalid(`${name} has no schema`)
     if (services.length === 0) throw invalid(`${name} serves no protobuf service`)
     if (pkg !== '' && !DIGEST.test(pkg)) throw invalid(`${JSON.stringify(pkg)} is no package's digest`)
     for (const key of Object.keys(env)) if (!ENV_NAME.test(key)) throw invalid(`${JSON.stringify(key)} is no environment variable's name`)
-    const sortedEnv = Object.fromEntries(Object.entries(env).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+    for (const command of Object.keys(commands)) if (!isCommand(command)) throw invalid(`${JSON.stringify(command)} is no command's name`)
+    const sortedEnv = sorted(env)
+    const sortedCommands = sorted(commands)
     const schemaBytes = toBinary(FileDescriptorSetSchema, schema)
     const digest = createHash('sha256')
-      .update(JSON.stringify({ name, description, services, package: pkg, env: sortedEnv, generator: GENERATOR }))
+      .update(JSON.stringify({ name, description, services, package: pkg, env: sortedEnv, commands: sortedCommands, generator: GENERATOR }))
       .update(schemaBytes)
       .digest('hex')
     const kept = await this.get(digest)
@@ -80,7 +85,7 @@ export class Specs {
       if (error instanceof SchemaError) throw invalid(error.message)
       throw error
     }
-    const spec: Spec = { digest, name, description, services: [...services], package: pkg, env: sortedEnv, client }
+    const spec: Spec = { digest, name, description, services: [...services], package: pkg, env: sortedEnv, commands: sortedCommands, client }
     await mkdir(this.dir, { recursive: true, mode: 0o700 })
     await writeFile(join(this.dir, `${digest}.binpb`), schemaBytes)
     await writeFile(join(this.dir, `${digest}.json.new`), `${JSON.stringify(spec, null, 2)}\n`)
@@ -106,18 +111,27 @@ export class Specs {
   }
 
   /** A spec's package's commands, each by its name, the path of its program in the package, as its `bin` says. */
-  async commands(spec: Spec): Promise<Record<string, string>> {
+  async bin(spec: Spec): Promise<Record<string, string>> {
     if (spec.package === '' || !(await this.store.has(spec.package))) return {}
     const manifest = JSON.parse(await readFile(join(this.store.path(spec.package), 'package.json'), 'utf8')) as { name?: string; bin?: string | Record<string, string> }
     const bin = typeof manifest.bin === 'string' ? { [(manifest.name ?? spec.name).replace(/^@[^/]+\//u, '')]: manifest.bin } : manifest.bin ?? {}
     const commands: Record<string, string> = {}
     for (const [command, path] of Object.entries(bin)) {
       const inside = posix.normalize(path).replace(/^\.\//u, '')
-      if (command.includes('/') || inside.startsWith('../') || posix.isAbsolute(inside)) continue
+      if (!isCommand(command) || inside.startsWith('../') || posix.isAbsolute(inside)) continue
       commands[command] = inside
     }
     return commands
   }
+}
+
+/** A name a command can have in a box's bin. */
+function isCommand(name: string): boolean {
+  return name !== '' && name !== '.' && name !== '..' && !name.includes('/')
+}
+
+function sorted(record: Readonly<Record<string, string>>): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 }
 
 function invalid(message: string): ConnectError {

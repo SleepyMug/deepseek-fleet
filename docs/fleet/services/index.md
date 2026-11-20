@@ -38,6 +38,7 @@ const registration = await fleet.serve({
   services: [Notes],
   package: '/…/node_modules/some-box-package',           // optional: a package of its own, for its commands
   env: { NOTES_STYLE: 'terse' },                         // optional: for every process in a box made with it
+  commands: { notes: 'Keeps a note: `notes <text>`.' },   // optional: what each command does, in a sentence, for the box README
   routes: router => router.service(Notes, {
     add: (req, ctx) => notebooks.add(boxOf(ctx).id, req.text, req.tags),
     tagged: (req, ctx) => ({ notes: notebooks.tagged(boxOf(ctx).id, req.tag) }),

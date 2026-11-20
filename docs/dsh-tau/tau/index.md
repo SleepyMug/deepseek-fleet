@@ -145,9 +145,10 @@ made with it:
 | Field | What it is |
 |---|---|
 | `name` | `tau`, so its path through the gateway is `/services/tau`, and its client `@fleet/tau`. |
-| `description` | That it runs taus, each in a box of its own, as the box's run's, with `tau run`, as `/tau/TAU.md` says. |
+| `description` | That it runs taus, each in a box of its own, as the box's run, which waits for each. |
 | `schema`, `services` | tau's own, `descriptors()` and `Runs` of `@sleepymug/tau/rpc`, with its comments, so the gateway makes the client `@fleet/tau` of it, plain objects and all, for every box made with the service. |
 | `package` | tau itself, `TAU_PACKAGE`, as installed beside dsh-tau, which the gateway stages and puts in every box made with the service: its `tau` command, linked in `/fleet/bin`, on the box's PATH. |
+| `commands` | What `tau` does, `COMMANDS`: runs a tau and waits for it, `tau run <dir> --call-json '<call>' --json`, or starts it, `tau start`, so that several run at once, `tau --help` saying the rest; for the box README and a tau's session's prompt. |
 | `env` | `TAU_ADAPTOR=rpc`, `TAU_RPC_SOCKET=/run/fleet/services.sock` and `TAU_RPC_PATH=/services/tau`, for every process in a box, so the `tau` command runs taus on the service, through the box's services socket. |
 | `routes` | tau's `runsRoutes`, each call served by the backend for its caller, as fleet-sdk's `callerOf` reads the gateway's: from a box, the session whose box it is (`sessionOfBox`), a box that is no run's refused, `permission_denied`; from a client of the gateway, the host. |
 
@@ -199,8 +200,8 @@ their boxes:
   archive of the one file, mode 0444, readable by all and writable by none,
   put in the box with `Box.Put`;
 - `services(sessionId)`, the services a tau's session's box was made with,
-  each as registered now, its name, its description and its commands, for
-  its prompt; one no longer registered is left out.
+  each as registered now, its name, its description and its commands, each
+  with what it does, for its prompt; one no longer registered is left out.
 
 ## Design
 
@@ -518,7 +519,7 @@ their boxes:
   ends: no one answers the model, its last message is the run's text, and
   its caller gets that, its `out` and `inout` files and what the commands
   of its box's services did, and nothing else it writes. And it says where
-  tau's `TAU.md` and `TAU_DEV.md` are. From the session's registry entry,
+  tau's `TAU.md` and `TAU_DEV.md` are, and what each says. From the session's registry entry,
   after it: a section, `fleet:tau-files`, lists the run's files, each with
   its mode, its kind, its place and what `tau.json` says it is, and says
   what each mode asks, that the run fails unless the agent leaves each
@@ -529,9 +530,9 @@ their boxes:
   that they import the tau's packages by name, and lists each exposed package, with where it is and what it says
   it is; and, from the services the box was made with, as the gateway
   lists them now, a section, `fleet:tau-services`, lists the box's
-  services, each with its client, `@fleet/<name>`, its commands, if it has
-  any, which are on the PATH, and what the service says it is, such as
-  `tau`, dsh-tau's own; and says that a program below `/tau`, such as in
+  services, each with its client, `@fleet/<name>`, and what the service
+  says it is, such as `tau`, dsh-tau's own, then its commands, if it has
+  any, which are on the PATH, each with what the service says it does; and says that a program below `/tau`, such as in
   `/tau/programs`, or piped to `node -` in the working directory, imports
   a client by its name, whose methods take and give plain objects, and
   whose `index.d.ts`, in `/fleet/node_modules/@fleet/<name>`, says what each

@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file fleet/gateway/v1/services.proto.
  */
 export const file_fleet_gateway_v1_services: GenFile = /*@__PURE__*/
-  fileDesc("Ch9mbGVldC9nYXRld2F5L3YxL3NlcnZpY2VzLnByb3RvEhBmbGVldC5nYXRld2F5LnYxIvgBChNTdGFnZVNlcnZpY2VSZXF1ZXN0EgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSMgoGc2NoZW1hGAMgASgLMiIuZ29vZ2xlLnByb3RvYnVmLkZpbGVEZXNjcmlwdG9yU2V0EhAKCHNlcnZpY2VzGAQgAygJEg8KB3BhY2thZ2UYBSABKAkSOwoDZW52GAYgAygLMi4uZmxlZXQuZ2F0ZXdheS52MS5TdGFnZVNlcnZpY2VSZXF1ZXN0LkVudkVudHJ5GioKCEVudkVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiNAoUU3RhZ2VTZXJ2aWNlUmVzcG9uc2USDAoEc3BlYxgBIAEoCRIOCgZ1cGxvYWQYAiABKAgiQQoUVXBsb2FkUGFja2FnZVJlcXVlc3QSEAoGZGlnZXN0GAEgASgJSAASDwoFY2h1bmsYAiABKAxIAEIGCgRwYXJ0IhcKFVVwbG9hZFBhY2thZ2VSZXNwb25zZSIVChNMaXN0U2VydmljZXNSZXF1ZXN0IkMKFExpc3RTZXJ2aWNlc1Jlc3BvbnNlEisKCHNlcnZpY2VzGAEgAygLMhkuZmxlZXQuZ2F0ZXdheS52MS5TZXJ2aWNlIrsBCgdTZXJ2aWNlEgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSEAoIc2VydmljZXMYAyADKAkSEAoIY29tbWFuZHMYBCADKAkSLwoDZW52GAUgAygLMiIuZmxlZXQuZ2F0ZXdheS52MS5TZXJ2aWNlLkVudkVudHJ5EgwKBHNwZWMYBiABKAkaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ATKWAgoIU2VydmljZXMSVgoFU3RhZ2USJS5mbGVldC5nYXRld2F5LnYxLlN0YWdlU2VydmljZVJlcXVlc3QaJi5mbGVldC5nYXRld2F5LnYxLlN0YWdlU2VydmljZVJlc3BvbnNlElsKBlVwbG9hZBImLmZsZWV0LmdhdGV3YXkudjEuVXBsb2FkUGFja2FnZVJlcXVlc3QaJy5mbGVldC5nYXRld2F5LnYxLlVwbG9hZFBhY2thZ2VSZXNwb25zZSgBElUKBExpc3QSJS5mbGVldC5nYXRld2F5LnYxLkxpc3RTZXJ2aWNlc1JlcXVlc3QaJi5mbGVldC5nYXRld2F5LnYxLkxpc3RTZXJ2aWNlc1Jlc3BvbnNlYgZwcm90bzM", [file_google_protobuf_descriptor]);
+  fileDesc("Ch9mbGVldC9nYXRld2F5L3YxL3NlcnZpY2VzLnByb3RvEhBmbGVldC5nYXRld2F5LnYxIvACChNTdGFnZVNlcnZpY2VSZXF1ZXN0EgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSMgoGc2NoZW1hGAMgASgLMiIuZ29vZ2xlLnByb3RvYnVmLkZpbGVEZXNjcmlwdG9yU2V0EhAKCHNlcnZpY2VzGAQgAygJEg8KB3BhY2thZ2UYBSABKAkSOwoDZW52GAYgAygLMi4uZmxlZXQuZ2F0ZXdheS52MS5TdGFnZVNlcnZpY2VSZXF1ZXN0LkVudkVudHJ5EkUKCGNvbW1hbmRzGAcgAygLMjMuZmxlZXQuZ2F0ZXdheS52MS5TdGFnZVNlcnZpY2VSZXF1ZXN0LkNvbW1hbmRzRW50cnkaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARovCg1Db21tYW5kc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiNAoUU3RhZ2VTZXJ2aWNlUmVzcG9uc2USDAoEc3BlYxgBIAEoCRIOCgZ1cGxvYWQYAiABKAgiQQoUVXBsb2FkUGFja2FnZVJlcXVlc3QSEAoGZGlnZXN0GAEgASgJSAASDwoFY2h1bmsYAiABKAxIAEIGCgRwYXJ0IhcKFVVwbG9hZFBhY2thZ2VSZXNwb25zZSIVChNMaXN0U2VydmljZXNSZXF1ZXN0IkMKFExpc3RTZXJ2aWNlc1Jlc3BvbnNlEisKCHNlcnZpY2VzGAEgAygLMhkuZmxlZXQuZ2F0ZXdheS52MS5TZXJ2aWNlItYBCgdTZXJ2aWNlEgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSEAoIc2VydmljZXMYAyADKAkSKwoIY29tbWFuZHMYBCADKAsyGS5mbGVldC5nYXRld2F5LnYxLkNvbW1hbmQSLwoDZW52GAUgAygLMiIuZmxlZXQuZ2F0ZXdheS52MS5TZXJ2aWNlLkVudkVudHJ5EgwKBHNwZWMYBiABKAkaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASIsCgdDb21tYW5kEgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkylgIKCFNlcnZpY2VzElYKBVN0YWdlEiUuZmxlZXQuZ2F0ZXdheS52MS5TdGFnZVNlcnZpY2VSZXF1ZXN0GiYuZmxlZXQuZ2F0ZXdheS52MS5TdGFnZVNlcnZpY2VSZXNwb25zZRJbCgZVcGxvYWQSJi5mbGVldC5nYXRld2F5LnYxLlVwbG9hZFBhY2thZ2VSZXF1ZXN0GicuZmxlZXQuZ2F0ZXdheS52MS5VcGxvYWRQYWNrYWdlUmVzcG9uc2UoARJVCgRMaXN0EiUuZmxlZXQuZ2F0ZXdheS52MS5MaXN0U2VydmljZXNSZXF1ZXN0GiYuZmxlZXQuZ2F0ZXdheS52MS5MaXN0U2VydmljZXNSZXNwb25zZWIGcHJvdG8z", [file_google_protobuf_descriptor]);
 
 /**
  * @generated from message fleet.gateway.v1.StageServiceRequest
@@ -62,6 +62,14 @@ export type StageServiceRequest = Message<"fleet.gateway.v1.StageServiceRequest"
    * @generated from field: map<string, string> env = 6;
    */
   env: { [key: string]: string };
+
+  /**
+   * What each of its package's commands does, in a sentence, by the
+   * command's name.
+   *
+   * @generated from field: map<string, string> commands = 7;
+   */
+  commands: { [key: string]: string };
 };
 
 /**
@@ -198,11 +206,11 @@ export type Service = Message<"fleet.gateway.v1.Service"> & {
   services: string[];
 
   /**
-   * Its package's commands, each by its name.
+   * Its package's commands, by their names.
    *
-   * @generated from field: repeated string commands = 4;
+   * @generated from field: repeated fleet.gateway.v1.Command commands = 4;
    */
-  commands: string[];
+  commands: Command[];
 
   /**
    * @generated from field: map<string, string> env = 5;
@@ -223,6 +231,33 @@ export type Service = Message<"fleet.gateway.v1.Service"> & {
  */
 export const ServiceSchema: GenMessage<Service> = /*@__PURE__*/
   messageDesc(file_fleet_gateway_v1_services, 6);
+
+/**
+ * A command of a service's package, on the PATH in a box that has it.
+ *
+ * @generated from message fleet.gateway.v1.Command
+ */
+export type Command = Message<"fleet.gateway.v1.Command"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * What it does, in a sentence, as the service's spec says; empty if it
+   * says nothing.
+   *
+   * @generated from field: string description = 2;
+   */
+  description: string;
+};
+
+/**
+ * Describes the message fleet.gateway.v1.Command.
+ * Use `create(CommandSchema)` to create a new message.
+ */
+export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
+  messageDesc(file_fleet_gateway_v1_services, 7);
 
 /**
  * The services that plug into the gateway. A service's server stages its

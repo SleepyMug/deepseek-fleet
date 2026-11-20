@@ -30,8 +30,8 @@ export interface BoxSpec {
 export interface ServiceInfo {
   name: string
   description: string
-  /** Its package's commands, on the PATH in a box that has it. */
-  commands: string[]
+  /** Its package's commands, on the PATH in a box that has it, each with what it does, if the service says. */
+  commands: { name: string; description: string }[]
 }
 
 /** What the runs use of fleet's gateway: its boxes. */
