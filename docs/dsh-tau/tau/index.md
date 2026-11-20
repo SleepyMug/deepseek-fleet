@@ -243,15 +243,13 @@ their boxes:
   the `in` and `inout` files there, and checks them (`place`); then it
   expands the args, the prompt, and the tau's init, if it has one, with the
   places (`expand`), makes each `out` folder that is a `dir`, writes the
-  run's context, `/tau/context.json` (tau's docs/spec/context.md), makes
-  `/tau/node_modules`, linking in it each package of the tau's own, if it
-  has any, and `@fleet`, the box's service clients, and puts tau's
-  `TAU.md` and `TAU_DEV.md`, as its tau library has them, in `/tau`. It puts the folder in
-  the box as one tree, a tar archive unpacked at `/` (`Box.Put`), removes
-  the folder, and gives `{ prompt, cwd, places, programs, init?, packages
-  }`: the prompt, the agent's working directory, each file's place, the
-  program directory, the init, and the packages of the tau's own it
-  exposes, each with where it is in the box and what it says it is.
+  run's context, `/tau/context.json` (tau's docs/spec/context.md), links
+  `/tau/node_modules/@fleet` to the box's service clients, and puts tau's
+  `TAU.md` and `TAU_DEV.md`, as its tau library has them, in `/tau`. It
+  puts the folder in the box as one tree, a tar archive unpacked at `/`
+  (`Box.Put`), removes the folder, and gives `{ prompt, cwd, places, init?
+  }`: the prompt, the agent's working directory, each file's place, and
+  the init.
 - **Places**, as `layout.ts` has them, each under
   the base name of the caller's path, or, for an `in` given a list of
   paths, the file's name:
@@ -262,9 +260,7 @@ their boxes:
   | an `inout` file | `/tau/workspace/<base name>` |
   | an `out` file | `/tau/out/<base name>` |
   | the tau's own directory, `${self}` | `/tau/self` |
-  | the program directory (tau's docs/spec/runtimes.md) | `/tau` |
-  | the tau's packages, below it: a link to each in the tau's own `node_modules/`, but those whose names start with a dot, as `.bin`, and its `@fleet` | `/tau/node_modules/<name>` |
-  | the clients of the box's services, `@fleet/<name>`, below it: a link to `/fleet/node_modules/@fleet` | `/tau/node_modules/@fleet` |
+  | the clients of the box's services, `@fleet/<name>`: a link to `/fleet/node_modules/@fleet` | `/tau/node_modules/@fleet` |
   | the run's context, which `TAU_CONTEXT` names | `/tau/context.json` |
   | tau's `TAU.md`, what a tau takes and what a run of one promises, for the agent to read | `/tau/TAU.md` |
   | tau's `TAU_DEV.md`, how to make a tau, for the agent to read | `/tau/TAU_DEV.md` |
@@ -279,11 +275,9 @@ their boxes:
   Node looks for a package in every folder above the file that imports it,
   so a program the agent writes anywhere below `/tau`, such as in
   `/tau/programs`, or pipes to `node -` in its working directory, imports
-  the tau's packages and the box's service clients, `@fleet/<name>`, by
-  name from `/tau/node_modules`, as the tau's own code does from
-  `/tau/self/node_modules`, and then from `/tau/node_modules`. Nothing is
-  put at the box's root. The tau's own directory is read, never written,
-  by what the agent runs.
+  the box's service clients, `@fleet/<name>`, by name from
+  `/tau/node_modules`. Nothing is put at the box's root. The tau's own
+  directory is read, never written, by what the agent runs.
 - **The registry** (`registry.ts`) has one JSON file per session,
   `$DSH_HOME/tau/runs/<session id>.json`: who started the run, its
   caller; the box, the gateway's id of it; the run's title, the
@@ -291,9 +285,7 @@ their boxes:
   tau's init, its expanded command and where it runs in the box, if it has
   one, each file (its name, mode, kind and base name, what `tau.json` says
   it is, and its place, as the layout placed it), the working directory
-  and the program directory in the box, as the layout gave them, the
-  packages the tau exposes, each with where the box has it and what it
-  says it is, the names of its skills, when it was made, when it was given
+  in the box, as the layout gave it, the names of its skills, when it was made, when it was given
   its prompt, when and how its run ended, when its result was first given
   back, and when the box was last set up again, if it was. Beside it, a
   folder of the session's own, `$DSH_HOME/tau/runs/<session id>/`, holds
@@ -329,8 +321,8 @@ their boxes:
   laid out, in the agent's working directory, `/tau/workspace`, as a bash command of the
   agent's runs, in the box's environment, with `TAU_CONTEXT`, from which
   it reads the args, and the services' commands on its PATH, so a program of the
-  tau's, such as `node ${self}/init.mts`, imports the tau's packages, and
-  can run taus with the `tau` command, its runs the session's; it
+  tau's, such as `node ${self}/init.mts`, can run taus with the `tau`
+  command, its runs the session's; it
   occupies the box until it exits. Its exit says what comes next, as tau's
   `initDecision` says: 0, `TAU_SKIP`, ends the run without the agent,
   which the session never gets a prompt for, init's stdout its text, and
@@ -495,8 +487,7 @@ their boxes:
   a new box made with the same labels and environment, and every service
   registered now, laid out from the call, as when the run started, and the
   entry records its id,
-  the files, the working directory and what the tau exposes as they are
-  now, and when. The box is then as it was when the run began: what the
+  the files and the working directory as they are now, and when. The box is then as it was when the run began: what the
   agent did in the box is gone.
 - **The agent is told** (`preset/reset.ts`). Before each step of a
   tau's session that sends messages, the plugin has the box ready, through
@@ -523,12 +514,8 @@ their boxes:
   after it: a section, `fleet:tau-files`, lists the run's files, each with
   its mode, its kind, its place and what `tau.json` says it is, and says
   what each mode asks, that the run fails unless the agent leaves each
-  `out` and `inout`, and that a directory merges into the caller's; for a
-  tau that exposes a package of its own, a section, `fleet:tau-programs`,
-  says to write programs anywhere below `/tau`, such as in
-  `/tau/programs`, or pipe them to `node -` in the working directory, so
-  that they import the tau's packages by name, and lists each exposed package, with where it is and what it says
-  it is; and, from the services the box was made with, as the gateway
+  `out` and `inout`, and that a directory merges into the caller's; and,
+  from the services the box was made with, as the gateway
   lists them now, a section, `fleet:tau-services`, lists the box's
   services, each with its client, `@fleet/<name>`, and what the service
   says it is, such as `tau`, dsh-tau's own, then its commands, if it has

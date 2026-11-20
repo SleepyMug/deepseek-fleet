@@ -7,12 +7,9 @@
  * its caller gets; and where tau's TAU.md and TAU_DEV.md are. For each
  * session, as its registry entry has it, it lists the run's files, each
  * with its mode, its kind, where the box has it and what `tau.json` says
- * it is; says how the model runs its programs, below the program directory,
- * /tau, so that they import the tau's packages as the tau's code does, and
- * which its tau exposes, each with where it is; and lists the box's
- * services, which fleet's gateway puts in it, whose clients the programs
- * below /tau import, each with where its code is, what it says it is, and
- * its commands, if any, each with what it does.
+ * it is; and lists the box's services, which fleet's gateway puts in it,
+ * whose clients the programs below /tau import, each with where its code
+ * is, what it says it is, and its commands, if any, each with what it does.
  *
  * It leaves out the sections dsh writes for a person at the host, which
  * are false in a box, and dsh's identity, which the persona says in its
@@ -110,19 +107,6 @@ export function files({ files }: Pick<Entry, 'files'>): string {
   ].join('\n')
 }
 
-/** How the model runs its programs, and the packages of the tau's own they import, each with where it is; nothing for a tau that exposes none. */
-export function programs({ exposed }: Pick<Entry, 'exposed'>): string {
-  if (exposed.length === 0) return ''
-  return [
-    `Run programs with bash's \`node\`: write each anywhere below ${PROGRAMS}, such as in ${PROGRAMS}/programs, or pipe it to \`node -\` `
-      + `in your working directory, so that it imports the TAU's packages, in ${PROGRAMS}/node_modules, by name, as the TAU's code does. `
-      + 'Write JavaScript, or TypeScript that Node.js runs as is, its types stripped, without `enum` or '
-      + '`namespace`. It can import the packages below; read what one declares before you use it.',
-    '',
-    ...exposed.map(({ specifier, dir, description }) => `- \`${specifier}\`, in ${dir}, whose package.json names its declarations${description === undefined ? '' : `: ${description}`}`),
-  ].join('\n')
-}
-
 /**
  * The box's services, each with its client, what it says it is, and its
  * commands, if any, each with what it does, and where the box says how to
@@ -148,13 +132,12 @@ export function services(listed: readonly ServiceInfo[]): string {
  */
 export function boxed(
   assembly: PromptAssembly,
-  entry: Pick<Entry, 'files' | 'exposed' | 'skills'> | undefined,
+  entry: Pick<Entry, 'files' | 'skills'> | undefined,
   listed: readonly ServiceInfo[] = [],
 ): PromptAssembly {
   const added: AssembledSection[] = entry === undefined ? [] : [
     // The tau's descriptions are its author's, and the services' theirs, not prompt variables.
     { name: 'fleet:tau-files', text: files(entry), interpolate: false },
-    { name: 'fleet:tau-programs', text: programs(entry), interpolate: false },
     { name: 'fleet:tau-services', text: services(listed), interpolate: false },
   ].filter(section => section.text !== '')
   const merged = assembly.sections.some(section => section.name === 'tool:write') && assembly.sections.some(section => section.name === 'tool:edit')

@@ -30,12 +30,12 @@ const run = promisify(execFile)
 const PROMPT = 'Add ${notes} to ${site} in a ${style} style, then write ${report} and fill ${pages}. You are ${self}.\n'
 const EXPANDED = 'Add /tau/in/notes.md to /tau/workspace/site in a terse style, then write /tau/out/report.md and fill /tau/out/pages. You are /tau/self.\n'
 
-/** A folder with a tau that takes a file of each mode, and exposes a package of its own, and the caller's files for it. */
+/** A folder with a tau that takes a file of each mode, and the caller's files for it. */
 async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ work: string; tauDir: string; call: { files: Record<string, string>; args: Record<string, unknown> } }> {
   const work = await mkdtemp(join(tmpdir(), 'dsh-tau-test-'))
   t.after(() => rm(work, { recursive: true, force: true }))
   const tauDir = join(work, 'tau')
-  await mkdir(join(tauDir, 'node_modules', 'kit'), { recursive: true })
+  await mkdir(tauDir)
   await writeFile(join(tauDir, 'PROMPT.md'), PROMPT)
   await writeFile(join(tauDir, 'tau.json'), JSON.stringify({
     files: {
@@ -45,11 +45,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }): Promise<{ w
       pages: { kind: 'dir', mode: 'out', description: 'New pages.' },
     },
     args: { type: 'object', properties: { style: { type: 'string', description: 'How to write.' } }, required: ['style'] },
-    exposes: ['kit'],
   }))
-  // A package of the tau's own, which its programs import by its name, below the program directory.
-  await writeFile(join(tauDir, 'node_modules', 'kit', 'package.json'), JSON.stringify({ name: 'kit', type: 'module', exports: './index.js', description: 'Twice as much.' }))
-  await writeFile(join(tauDir, 'node_modules', 'kit', 'index.js'), 'export const twice = text => `${text}, ${text}`\n')
   await writeFile(join(work, 'notes.md'), 'buy milk\n')
   await mkdir(join(work, 'site'))
   await writeFile(join(work, 'site', 'index.md'), '# Home\n')
@@ -105,7 +101,7 @@ function callOf(tauDir: string, call: unknown, cwd: string): { about: { title: s
   }
   return {
     about: { title: basename(tau.dir), project: cwd },
-    archive: packCall({ envelope: { files, args: resolved.args }, tau: tau.dir, inputs }),
+    archive: packCall({ envelope: { files, args: resolved.args }, tau: tau.dir, exclude: tau.exclude, inputs }),
     delivery: { files, targets },
   }
 }
@@ -240,10 +236,7 @@ test('setting up a run\'s box makes it with the gateway, with every service regi
   assert.equal(await readFile(join(root, 'tau/workspace/site/index.md'), 'utf8'), '# Home\n')
   assert.equal(await readFile(join(root, 'tau/self/PROMPT.md'), 'utf8'), PROMPT)
   assert.deepEqual(await readdir(join(root, 'tau/out')), ['pages'])
-  assert.deepEqual((await readdir(join(root, 'tau/node_modules'))).sort(), ['@fleet', 'kit'])
-  assert.equal(await readlink(join(root, 'tau/node_modules/kit')), '../self/node_modules/kit')
   assert.equal(await readlink(join(root, 'tau/node_modules/@fleet')), '/fleet/node_modules/@fleet')
-  assert.deepEqual(await readdir(root), ['tau'])
   assert.deepEqual(JSON.parse(await readFile(join(root, 'tau/context.json'), 'utf8')), {
     self: '/tau/self', files: { notes: '/tau/in/notes.md', site: '/tau/workspace/site', report: '/tau/out/report.md', pages: '/tau/out/pages' }, args: { style: 'terse' },
   })
@@ -257,7 +250,6 @@ test('setting up a run\'s box makes it with the gateway, with every service regi
   assert.equal(entry.prompt, EXPANDED)
   assert.match(entry.promptRequestId, /^[0-9a-f-]{36}$/u)
   assert.equal(entry.promptedAt, undefined)
-  assert.deepEqual(entry.exposed, [{ specifier: 'kit', dir: '/tau/node_modules/kit', description: 'Twice as much.' }])
   assert.deepEqual(entry.skills, [])
   assert.deepEqual(entry.files, {
     notes: { mode: 'in', kind: 'file', base: 'notes.md', description: 'What to add.', place: '/tau/in/notes.md' },
@@ -266,7 +258,6 @@ test('setting up a run\'s box makes it with the gateway, with every service regi
     pages: { mode: 'out', kind: 'dir', base: 'pages', description: 'New pages.', place: '/tau/out/pages' },
   })
   assert.equal(entry.cwd, '/tau/workspace')
-  assert.equal(entry.programs, '/tau')
   assert.equal(service.tauRuns.sessionOfBox(created.box), created.sessionId)
   assert.equal(service.tauRuns.sessionOfBox('box-ffffffffffffffff'), undefined)
   assert.match(logged.join('\n'), new RegExp(`created ${created.sessionId} in ${created.box}`, 'u'))
@@ -931,7 +922,7 @@ async function realFleet(t: { after(fn: () => Promise<void>): void }, work: stri
   return fleetOf(client)
 }
 
-test('a real box places a call\'s files and the tau, its packages below the program directory, and packs what its agent left', { skip: await absent(IMAGE) }, async (t) => {
+test('a real box places a call\'s files and the tau, and packs what its agent left', { skip: await absent(IMAGE) }, async (t) => {
   const { work, tauDir, call } = await fixture(t)
   let service: TauService & { tauRuns: TauRuns } | undefined
   const fleet = await realFleet(t, work, () => service as TauService & { tauRuns: TauRuns })
@@ -947,22 +938,11 @@ test('a real box places a call\'s files and the tau, its packages below the prog
     }
     const found = await exec('find /tau -path /tau/self/node_modules -prune -o -not -type d -print')
     assert.deepEqual(found.stdout.trim().split('\n').sort(), [
-      '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/context.json', '/tau/in/notes.md', '/tau/node_modules/@fleet', '/tau/node_modules/kit',
+      '/tau/TAU.md', '/tau/TAU_DEV.md', '/tau/context.json', '/tau/in/notes.md', '/tau/node_modules/@fleet',
       '/tau/self/PROMPT.md', '/tau/self/tau.json', '/tau/workspace/site/index.md',
     ])
-    assert.notEqual((await exec('test -e /node_modules')).code, 0)
     // Its run's context, which TAU_CONTEXT names for every process.
     assert.deepEqual(JSON.parse((await exec('cat "$TAU_CONTEXT"')).stdout), { self: '/tau/self', files: { notes: '/tau/in/notes.md', site: '/tau/workspace/site', report: '/tau/out/report.md', pages: '/tau/out/pages' }, args: { style: 'terse' } })
-    // A TypeScript program written below /tau, which node runs as is, imports a package of the tau's own by its name.
-    const typed = await exec([
-      "mkdir -p /tau/programs && cat > /tau/programs/twice.mts <<'EOF'",
-      'import { twice } from "kit"',
-      'const said: string = twice(process.argv[2] ?? "")',
-      'process.stdout.write(said)',
-      'EOF',
-      'node /tau/programs/twice.mts eggs',
-    ].join('\n'))
-    assert.deepEqual([typed.code, typed.stdout, typed.stderr], [0, 'eggs, eggs', ''])
     // The tau service's command is there, for the agent to run taus, and its client, for a program below /tau, as one piped to node there.
     assert.match((await exec('tau --help')).stdout, /^usage: tau check/u)
     assert.equal((await exec('echo "$TAU_ADAPTOR $TAU_RPC_SOCKET $TAU_RPC_PATH"')).stdout.trim(), 'rpc /run/fleet/services.sock /services/tau')
@@ -997,7 +977,7 @@ test('a real box runs a tau\'s init in the agent\'s working directory, which rea
   await withInit(tauDir)
   await writeFile(join(tauDir, 'init.mts'), [
     'import { mkdirSync, readFileSync, writeFileSync } from "node:fs"',
-    'import { twice } from "kit"',
+    'const twice = (text: string): string => `${text}, ${text}`',
     'const { files, args } = JSON.parse(readFileSync(process.env.TAU_CONTEXT as string, "utf8"))',
     'writeFileSync(files.report, `${twice(args.style)}\\n`)',
     'mkdirSync(files.pages, { recursive: true })',

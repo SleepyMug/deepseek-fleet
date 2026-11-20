@@ -27,7 +27,7 @@ export const PRIMERS: readonly Primer[] = [
   },
   {
     name: 'tau-dev',
-    description: 'How to make a TAU: its directory, tau.json, prompt, APIs, programs, skills and init. Load it before you make or change a TAU.',
+    description: 'How to make a TAU: its directory, tau.json, prompt, programs, skills and init. Load it before you make or change a TAU.',
     specifier: '@sleepymug/tau/TAU_DEV.md',
   },
 ]

@@ -10,9 +10,9 @@
  * @module @sleepymug/dsh-tau/tau/placement
  */
 
-import { copyFile, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { join, posix, relative, sep } from 'node:path'
+import { join, posix } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
@@ -23,7 +23,7 @@ import { decodeResult, packResult, unpackCall } from '@sleepymug/tau/wire-tar'
 import { packTree, unpackTree } from '@sleepymug/fleet-pack'
 import { FileType } from '@sleepymug/fleet-protocol/box'
 import { messageOf } from '../util/error.ts'
-import { CLIENTS, CONTEXT, DEV_PRIMER, FOLDERS, MODULES, PRIMER, PROGRAMS, SELF, placer } from './layout.ts'
+import { CLIENTS, CONTEXT, DEV_PRIMER, FOLDERS, MODULES, PRIMER, SELF, placer } from './layout.ts'
 import type { Accepted } from './admission.ts'
 import type { FleetBoxPort } from './ports.ts'
 import type { Entry } from './registry.ts'
@@ -36,20 +36,16 @@ export interface Setup {
   cwd: string
   /** Where each file is, by name, extra files included. */
   places: { [name: string]: string }
-  /** The program directory, below which a program imports the tau's packages. */
-  programs: string
   /** The tau's init, its command, its placeholders expanded; none for a tau without one. */
   init?: string
-  /** The packages of the tau's own that it exposes, each by name, with where it is, and what it says it is. */
-  packages: { name: string; dir: string; description?: string }[]
 }
 
 /**
  * Lay a run's box out from its call: place, in `scratch`, as the box will
  * have them, the tau the call carries, each file's content, each `out`
- * directory's folder, the run's context, the links to the tau's packages
- * and to the clients of the box's services, and tau's primers; put them in
- * the box, at its root, as one tree; and remove `scratch`.
+ * directory's folder, the run's context, the link to the clients of the
+ * box's services, and tau's primers; put them in the box, at its root, as
+ * one tree; and remove `scratch`.
  * @param call - the file of the run's call, as it was admitted.
  */
 export async function furnish(box: FleetBoxPort, call: string, scratch: string): Promise<Setup> {
@@ -83,13 +79,7 @@ export async function layOut(call: AsyncIterable<Uint8Array>, root: string): Pro
   const run = tau.expand(envelope, places, SELF)
   for (const [name, { mode, kind }] of Object.entries(envelope.files)) if (mode === 'out' && kind === 'dir') await mkdir(at(places[name] as string), { recursive: true })
   await writeFile(at(CONTEXT), `${JSON.stringify({ self: SELF, files: places, args: run.args }, null, 2)}\n`)
-  // The tau's packages, below the program directory, each a link, so the tau's directory holds the only copy,
-  // and the services' clients, which hold their scope; a name starting with a dot, as .bin, is no package.
   await mkdir(at(MODULES))
-  const own = await isDir(join(tau.dir, 'node_modules')) ? await readdir(join(tau.dir, 'node_modules')) : []
-  for (const name of own.filter(name => !name.startsWith('.') && posix.join(MODULES, name) !== CLIENTS.link)) {
-    await symlink(posix.relative(MODULES, posix.join(SELF, 'node_modules', name)), at(posix.join(MODULES, name)))
-  }
   await symlink(CLIENTS.to, at(CLIENTS.link))
   await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU.md')), at(PRIMER))
   await copyFile(fileURLToPath(import.meta.resolve('@sleepymug/tau/TAU_DEV.md')), at(DEV_PRIMER))
@@ -97,13 +87,7 @@ export async function layOut(call: AsyncIterable<Uint8Array>, root: string): Pro
     prompt: run.prompt,
     cwd: FOLDERS.inout,
     places,
-    programs: PROGRAMS,
     ...run.init === undefined ? {} : { init: run.init },
-    packages: tau.exposed.map(({ specifier, description, dir }) => ({
-      name: specifier,
-      dir: posix.join(MODULES, ...relative(join(tau.dir, 'node_modules'), dir).split(sep)),
-      ...description === undefined ? {} : { description },
-    })),
   }
 }
 
@@ -195,15 +179,6 @@ function inBox(text: string, scratch: string): string {
 /** Each place, where `at` has it. */
 function rooted(places: { [name: string]: string }, at: (path: string) => string): { [name: string]: string } {
   return Object.fromEntries(Object.entries(places).map(([name, place]) => [name, at(place)]))
-}
-
-function isDir(path: string): Promise<boolean> {
-  return stat(path).then(info => info.isDirectory(), () => false)
-}
-
-/** What the tau exposes, with where the box has each, and what it says it is, as its layout has them. */
-export function exposedIn({ packages }: Setup): Entry['exposed'] {
-  return packages.map(({ name, dir, description }) => ({ specifier: name, dir, ...description === undefined ? {} : { description } }))
 }
 
 /** Each file of a run, as it was admitted, with where its box has it, as its layout placed it. */

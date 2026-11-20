@@ -12,7 +12,7 @@ import type { TauRuns } from '../tau/runs.ts'
 
 const SESSION = 'session-00000000-0000-4000-8000-000000000000'
 
-type Run = Pick<Entry, 'files' | 'exposed' | 'skills'>
+type Run = Pick<Entry, 'files' | 'skills'>
 
 /** A service of a box's, as fleet's gateway lists it. */
 type Service = { name: string; description: string; commands: { name: string; description: string }[] }
@@ -22,7 +22,7 @@ async function prompted(run: Partial<Run> = {}, services: Service[] = []): Promi
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(SkillRegistry, {})
-  const entry: Run = { files: {}, exposed: [], ...run }
+  const entry: Run = { files: {}, ...run }
   ctx.provide('fleetTauRuns', { isTau: (sessionId: string) => sessionId === SESSION, entry: async () => entry, services: async () => services } as unknown as TauRuns)
   await ctx.plugin(TauPrompt)
   return ctx
@@ -85,23 +85,6 @@ test('a tau\'s prompt lists the run\'s files, each with its mode, its kind, its 
   assert.equal(TauPrompt.files({ files: { list: { mode: 'in', kind: 'file', base: 'list.txt' } } }), '')
 })
 
-test('a tau\'s prompt says how the model runs its programs, below the program directory, and lists the packages its tau exposes to them, with where each is, after its files', async () => {
-  const ctx = await prompted({
-    files: { list: { mode: 'in', kind: 'file', base: 'list.txt', place: '/tau/in/list.txt' } },
-    exposed: [{ specifier: 'notes-kit', dir: '/tau/node_modules/notes-kit', description: 'Notes, {{tagged}}.' }, { specifier: 'notes-digest', dir: '/tau/node_modules/notes-digest' }],
-  })
-  const { sections } = await ctx.systemPrompt.assemble(forSession(SESSION))
-  const names = sections.map(section => section.name)
-  assert.equal(names.indexOf('fleet:tau-programs'), names.indexOf('fleet:tau-files') + 1)
-  const text = sections.find(section => section.name === 'fleet:tau-programs')?.text ?? ''
-  assert.match(text, /^Run programs with bash's `node`: write each anywhere below \/tau, such as in \/tau\/programs, or pipe it to `node -` in your working directory, so that it imports the TAU's packages, in \/tau\/node_modules, by name/u)
-  assert.doesNotMatch(text, /PATH/u)
-  assert.match(text, /\n\n- `notes-kit`, in \/tau\/node_modules\/notes-kit, whose package\.json names its declarations: Notes, \{\{tagged\}\}\.\n- `notes-digest`, in \/tau\/node_modules\/notes-digest, whose package\.json names its declarations$/u)
-  // A session not a tau's, and a tau that exposes nothing, get none.
-  assert.ok(!(await ctx.systemPrompt.assemble(forSession('session-11111111-1111-4111-8111-111111111111'))).sections.some(section => section.name === 'fleet:tau-programs'))
-  assert.ok(!(await (await prompted()).systemPrompt.assemble(forSession(SESSION))).sections.some(section => section.name === 'fleet:tau-programs'))
-})
-
 test('a tau\'s prompt lists its box\'s services, each with its client, what it says it is, and its commands, if any, each with what it does, and where the box says how to call them', async () => {
   const ctx = await prompted({}, [
     { name: 'tau', description: 'Runs TAUs.', commands: [{ name: 'tau', description: 'Runs one, `tau run <dir>`.' }] },
@@ -132,7 +115,7 @@ test('in a box, bash says what it does there, and the skill tool is hidden from 
     sections: [], contexts: [], variables: {},
     tools: [tool('bash', { command: { type: 'string' }, timeoutMs: { type: 'number', description: 'The executor applies its configured default and cap.' } }), tool('skill'), tool('read')],
   }
-  const { tools } = TauPrompt.boxed(assembly, { files: {}, exposed: [], skills: [] })
+  const { tools } = TauPrompt.boxed(assembly, { files: {}, skills: [] })
   assert.deepEqual(tools.map(({ name }) => name), ['bash', 'read'])
   assert.equal(tools[0]?.description, TauPrompt.BASH)
   assert.deepEqual(tools[0]?.parameters, {
@@ -141,15 +124,15 @@ test('in a box, bash says what it does there, and the skill tool is hidden from 
   })
   assert.equal(tools[1]?.description, 'dsh\'s read.')
   // A tau with skills, or an entry written before skills were kept, keeps it.
-  assert.deepEqual(TauPrompt.boxed(assembly, { files: {}, exposed: [], skills: ['greet'] }).tools.map(({ name }) => name), ['bash', 'skill', 'read'])
-  assert.deepEqual(TauPrompt.boxed(assembly, { files: {}, exposed: [] }).tools.map(({ name }) => name), ['bash', 'skill', 'read'])
+  assert.deepEqual(TauPrompt.boxed(assembly, { files: {}, skills: ['greet'] }).tools.map(({ name }) => name), ['bash', 'skill', 'read'])
+  assert.deepEqual(TauPrompt.boxed(assembly, { files: {} }).tools.map(({ name }) => name), ['bash', 'skill', 'read'])
 })
 
 test('the preset shadows the skills of tau\'s primers, which the host has, for its agents alone, which cannot load them', async () => {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(SkillRegistry, {})
-  ctx.provide('fleetTauRuns', { isTau: () => true, entry: async () => ({ files: {}, exposed: [] }) } as unknown as TauRuns)
+  ctx.provide('fleetTauRuns', { isTau: () => true, entry: async () => ({ files: {} }) } as unknown as TauRuns)
   ctx.skills.register({ name: 'tau', description: 'TAU.md.', source: 'bundled', content: '# TAU' })
   ctx.skills.register({ name: 'tau-dev', description: 'TAU_DEV.md.', source: 'bundled', content: '# Making a TAU' })
   const preset = { preset: 'tau' }
@@ -166,7 +149,7 @@ test('the preset hides the host\'s tools, such as tau_run, from each of its agen
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(SkillRegistry, {})
   await ctx.plugin(ToolRuntime, {})
-  ctx.provide('fleetTauRuns', { isTau: () => true, entry: async () => ({ files: {}, exposed: [] }) } as unknown as TauRuns)
+  ctx.provide('fleetTauRuns', { isTau: () => true, entry: async () => ({ files: {} }) } as unknown as TauRuns)
   const tool = (name: string): Parameters<typeof ctx.tools.register>[0] => defineContentToolFixture({ name, description: 'A tool.', parameters: {}, execute: async () => [] })
   ctx.tools.register(tool('web_fetch'))
   const preset = { preset: 'tau' }

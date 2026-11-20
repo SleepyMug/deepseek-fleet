@@ -14,7 +14,7 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promise
 import { basename, join } from 'node:path'
 import type { Envelope } from '@sleepymug/tau/core'
 import type { Outcome } from '@sleepymug/tau/core'
-import { FOLDERS, PROGRAMS } from './layout.ts'
+import { FOLDERS } from './layout.ts'
 
 /** The ids the service mints: `session-` and a UUID, the form dsh's sessions take. */
 const SESSION_ID = /^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
@@ -77,10 +77,6 @@ export interface Entry {
   files: { [name: string]: Envelope['files'][string] & { description?: string; place?: string } }
   /** The agent's working directory in the box, as its layout placed it. */
   cwd: string
-  /** The program directory in the box, below which the agent's programs import the tau's packages, as its layout placed it. */
-  programs: string
-  /** The packages of the tau's own it exposes to its programs, each by the name they import it as, with where the box has it, and what it says it is. */
-  exposed: readonly { specifier: string; dir: string; description?: string }[]
   /** The names of the tau's skills; none for an entry written before they were kept. */
   skills?: readonly string[]
   createdAt: string
@@ -116,9 +112,9 @@ export class Registry {
   async find(sessionId: string): Promise<Entry | undefined> {
     if (!SESSION_ID.test(sessionId)) return undefined
     try {
-      const entry = JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Omit<Entry, 'cwd' | 'programs' | 'title'> & Partial<Entry> & { tauDir?: string }
+      const entry = JSON.parse(await readFile(this.file(sessionId), 'utf8')) as Omit<Entry, 'cwd' | 'title'> & Partial<Entry> & { tauDir?: string }
       // What an entry written before the layout reported them, or before runs had titles, has.
-      return { ...entry, title: entry.title ?? basename(entry.tauDir ?? 'tau'), cwd: entry.cwd ?? FOLDERS.inout, programs: entry.programs ?? PROGRAMS }
+      return { ...entry, title: entry.title ?? basename(entry.tauDir ?? 'tau'), cwd: entry.cwd ?? FOLDERS.inout }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
       throw error

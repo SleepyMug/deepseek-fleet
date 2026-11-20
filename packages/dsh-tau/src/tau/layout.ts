@@ -6,11 +6,10 @@
  * tau's backend SDK asks, and the tau's own directory at /tau/self. A file
  * whose base name is taken in its folder is in a folder of its own there,
  * named for the file, with a suffix if that is taken too: notes.md, then
- * extra/notes.md, for the file extra. /tau is the program directory (tau's
- * docs/spec/runtimes.md): /tau/node_modules links each package of the tau's
- * own, and the clients of the box's services, which fleet's gateway puts in
+ * extra/notes.md, for the file extra. /tau/node_modules links the clients
+ * of the box's services, which fleet's gateway puts in
  * /fleet/node_modules/@fleet, so that a program anywhere below /tau imports
- * them all. The run's context is /tau/context.json, which `TAU_CONTEXT`
+ * them. The run's context is /tau/context.json, which `TAU_CONTEXT`
  * names for every process in the box (tau's docs/spec/context.md); and
  * tau's TAU.md, what a tau is, and TAU_DEV.md, how to make one, for the
  * agent to read, in /tau.
@@ -26,10 +25,10 @@ export const FOLDERS: { readonly [M in Mode]: string } = { in: '/tau/in', inout:
 /** The tau's own directory, which `${self}` names. */
 export const SELF = '/tau/self'
 
-/** The program directory, below which a program imports the tau's packages. */
+/** Below which a program imports the clients of the box's services. */
 export const PROGRAMS = '/tau'
 
-/** Where the tau's packages, and the services' clients, are for the programs below {@link PROGRAMS}: a folder of links to them. */
+/** Where the clients of the box's services are, for the programs below {@link PROGRAMS}. */
 export const MODULES = `${PROGRAMS}/node_modules`
 
 /** The run's context (tau's docs/spec/context.md). */
@@ -44,11 +43,7 @@ export const PRIMER = '/tau/TAU.md'
 /** tau's TAU_DEV.md, how to make a tau, for the agent to read. */
 export const DEV_PRIMER = '/tau/TAU_DEV.md'
 
-/**
- * Where the clients of the box's services are linked, in {@link MODULES}, and
- * where the link leads: the scope is the services', so a tau's own packages
- * of that scope are not linked there.
- */
+/** Where the clients of the box's services are linked, in {@link MODULES}, and where the link leads. */
 export const CLIENTS = { link: `${MODULES}/@fleet`, to: '/fleet/node_modules/@fleet' } as const
 
 /** Where each file of one run is in its box, by its name, asked for each in turn. */

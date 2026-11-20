@@ -29,7 +29,7 @@ import { messageOf } from '../util/error.ts'
 import { spool, streamOf } from '../util/stream.ts'
 import { admit, type Accepted } from './admission.ts'
 import { CONTEXT, CONTEXT_VARIABLE } from './layout.ts'
-import { exposedIn, furnish, packIn, placed } from './placement.ts'
+import { furnish, packIn, placed } from './placement.ts'
 import type { About, FleetPort, Held, InitEnd, Occupant, RunBox, RunLifecycle, ServiceInfo, Started, TauBoxes } from './ports.ts'
 import { HOST, type Caller, type Entry, type Registry } from './registry.ts'
 import { SessionBox } from './session-box.ts'
@@ -189,8 +189,6 @@ export class TauRuns implements TauBoxes, RunLifecycle {
         promptRequestId: this.platform.newId(),
         files: placed(accepted, setup),
         cwd: setup.cwd,
-        programs: setup.programs,
-        exposed: exposedIn(setup),
         skills: accepted.skills,
         createdAt: this.platform.now().toISOString(),
       })
@@ -235,8 +233,6 @@ export class TauRuns implements TauBoxes, RunLifecycle {
         box: id,
         files: placed(accepted, setup),
         cwd: setup.cwd,
-        programs: setup.programs,
-        exposed: exposedIn(setup),
         skills: accepted.skills,
         resetAt: this.platform.now().toISOString(),
       })

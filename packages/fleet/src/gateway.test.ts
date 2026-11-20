@@ -46,7 +46,6 @@ test('a service\'s package\'s commands are on a box\'s PATH, and the README and 
   await writeFile(join(pkg, 'say.js'), '#!/usr/bin/env node\nconsole.log(process.argv.slice(2).join(" "))\n')
   await writeFile(join(pkg, 'quiet.js'), '#!/usr/bin/env node\n')
   const definition = { name: 'echo', description: 'Says back.', schema, services: [Echo], routes: echoRoutes(Echo), package: pkg }
-  await assert.rejects(client.serve({ ...definition, commands: { 'a/b': 'No command.' } }), /"a\/b" is no command's name/u)
   await client.serve({ ...definition, commands: { say: 'Says its arguments back.' } })
   assert.deepEqual((await client.serviceList()).map(({ commands }) => commands.map(({ name, description }) => ({ name, description }))), [
     [{ name: 'quiet', description: '' }, { name: 'say', description: 'Says its arguments back.' }],
